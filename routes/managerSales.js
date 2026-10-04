@@ -796,7 +796,128 @@ async function ensureSchema(db) {
             [DEFAULT_PLAN_AMOUNT]
         );
     } catch (_) {}
+    try {
+        await alignInvoiceTwinRowNos(db);
+    } catch (e) {
+        console.warn('[manager-sales] invoice row_no align', e && e.message);
+    }
     schemaReady = true;
+}
+
+function foldInvoiceNo(s) {
+    return String(s || '')
+        .trim()
+        .replace(/\s+/g, '')
+        .toLowerCase();
+}
+
+function rowMonthKey(paidAt) {
+    const m = paidMonth(paidAt);
+    return m >= 1 && m <= 12 ? m : 0;
+}
+
+function claimRowNo(usedMap, monthKey, wanted, invoiceKey) {
+    const k = monthKey >= 1 && monthKey <= 12 ? monthKey : 0;
+    if (!usedMap.has(k)) usedMap.set(k, { byNo: new Map(), byInv: new Map() });
+    const st = usedMap.get(k);
+    const inv = invoiceKey || '';
+    if (inv && st.byInv.has(inv)) return st.byInv.get(inv);
+    let n = Math.round(Number(wanted));
+    if (!Number.isFinite(n) || n < 1) n = 1;
+    while (st.byNo.has(n) && st.byNo.get(n) !== inv) n += 1;
+    st.byNo.set(n, inv);
+    if (inv) st.byInv.set(inv, n);
+    return n;
+}
+
+async function applyRowNoUpdates(db, updates) {
+    if (!updates.length) return;
+    const chunk = 80;
+    for (let j = 0; j < updates.length; j += chunk) {
+        const part = updates.slice(j, j + chunk);
+        const whens = part.map(() => 'WHEN ? THEN ?').join(' ');
+        const args = [];
+        part.forEach((u) => {
+            args.push(u.id, u.n);
+        });
+        const ids = part.map((u) => u.id);
+        await db.query(
+            `UPDATE dg_manager_sales_rows SET row_no = CASE id ${whens} END WHERE id IN (${ids.map(() => '?').join(',')})`,
+            args.concat(ids)
+        );
+    }
+}
+
+/** Один № счёта в месяце — один порядковый номер (НДС-позиции). */
+async function alignInvoiceTwinRowNos(db) {
+    const [hit] = await db.query(`
+        SELECT 1 AS x
+          FROM dg_manager_sales_rows
+         WHERE TRIM(COALESCE(our_invoice_no, '')) <> ''
+         GROUP BY manager_user_id, year, COALESCE(MONTH(paid_at), 0), LOWER(TRIM(our_invoice_no))
+        HAVING COUNT(*) > 1 AND COUNT(DISTINCT row_no) > 1
+         LIMIT 1
+    `);
+    if (!hit.length) return;
+    const [rows] = await db.query(`
+        SELECT id, manager_user_id, year, COALESCE(MONTH(paid_at), 0) AS m, row_no, our_invoice_no
+          FROM dg_manager_sales_rows
+         ORDER BY manager_user_id ASC, year ASC, m ASC, row_no ASC, id ASC
+    `);
+    const updates = [];
+    let i = 0;
+    while (i < (rows || []).length) {
+        const g = `${rows[i].manager_user_id}:${rows[i].year}:${rows[i].m}`;
+        const group = [];
+        while (i < rows.length && `${rows[i].manager_user_id}:${rows[i].year}:${rows[i].m}` === g) {
+            group.push({
+                id: rows[i].id,
+                orig: Number(rows[i].row_no) || 0,
+                row_no: Number(rows[i].row_no) || 0,
+                inv: foldInvoiceNo(rows[i].our_invoice_no),
+            });
+            i += 1;
+        }
+        const byInv = {};
+        group.forEach((r) => {
+            if (!r.inv) return;
+            if (!byInv[r.inv]) byInv[r.inv] = [];
+            byInv[r.inv].push(r);
+        });
+        let merged = false;
+        Object.keys(byInv).forEach((inv) => {
+            const pack = byInv[inv];
+            if (pack.length < 2) return;
+            const base = Math.min.apply(
+                null,
+                pack.map((r) => r.row_no)
+            );
+            pack.forEach((r) => {
+                if (r.row_no !== base) {
+                    r.row_no = base;
+                    merged = true;
+                }
+            });
+        });
+        if (!merged) continue;
+        const uniq = [];
+        group.forEach((r) => {
+            if (uniq.indexOf(r.row_no) < 0) uniq.push(r.row_no);
+        });
+        uniq.sort((a, b) => a - b);
+        const remap = {};
+        let expect = uniq.length && uniq[0] >= 1 ? uniq[0] : 1;
+        uniq.forEach((u) => {
+            remap[u] = expect;
+            expect += 1;
+        });
+        group.forEach((r) => {
+            const n = remap[r.row_no] != null ? remap[r.row_no] : r.row_no;
+            if (n !== r.orig) updates.push({ id: r.id, n });
+        });
+    }
+    await applyRowNoUpdates(db, updates);
+    if (updates.length) console.log('[manager-sales] same invoice → same row_no:', updates.length);
 }
 
 function sqlDate(v) {
@@ -1208,12 +1329,76 @@ async function buildListWhere(db, q, req) {
     return { year, month, managerId, whereSql: where.join(' AND '), params };
 }
 
-async function nextRowNo(db, managerUserId, year) {
-    const [rows] = await db.query(
-        'SELECT COALESCE(MAX(row_no), 0) + 1 AS n FROM dg_manager_sales_rows WHERE manager_user_id = ? AND year = ?',
-        [managerUserId, year]
-    );
+async function nextRowNo(db, managerUserId, year, month) {
+    const m = Math.round(Number(month) || 0);
+    const [rows] =
+        m >= 1 && m <= 12
+            ? await db.query(
+                  `SELECT COALESCE(MAX(row_no), 0) + 1 AS n
+                     FROM dg_manager_sales_rows
+                    WHERE manager_user_id = ? AND year = ? AND MONTH(paid_at) = ?`,
+                  [managerUserId, year, m]
+              )
+            : await db.query(
+                  `SELECT COALESCE(MAX(row_no), 0) + 1 AS n
+                     FROM dg_manager_sales_rows
+                    WHERE manager_user_id = ? AND year = ? AND paid_at IS NULL`,
+                  [managerUserId, year]
+              );
     return Number(rows && rows[0] && rows[0].n) || 1;
+}
+
+async function rowNoTaken(db, managerUserId, year, month, rowNo, exceptId, invoiceNo) {
+    const m = Math.round(Number(month) || 0);
+    const n = Math.round(Number(rowNo) || 0);
+    const ex = Number(exceptId) || 0;
+    const inv = foldInvoiceNo(invoiceNo);
+    const invSql = inv
+        ? " AND LOWER(REPLACE(TRIM(COALESCE(our_invoice_no, '')), ' ', '')) <> ?"
+        : '';
+    const extra = inv ? [inv] : [];
+    const [rows] =
+        m >= 1 && m <= 12
+            ? await db.query(
+                  `SELECT id FROM dg_manager_sales_rows
+                    WHERE manager_user_id = ? AND year = ? AND MONTH(paid_at) = ? AND row_no = ? AND id <> ?${invSql}
+                    LIMIT 1`,
+                  [managerUserId, year, m, n, ex].concat(extra)
+              )
+            : await db.query(
+                  `SELECT id FROM dg_manager_sales_rows
+                    WHERE manager_user_id = ? AND year = ? AND paid_at IS NULL AND row_no = ? AND id <> ?${invSql}
+                    LIMIT 1`,
+                  [managerUserId, year, n, ex].concat(extra)
+              );
+    return !!(rows && rows[0]);
+}
+
+async function rowNoForSameInvoice(db, managerUserId, year, month, invoiceNo, exceptId) {
+    const inv = foldInvoiceNo(invoiceNo);
+    if (!inv) return null;
+    const m = Math.round(Number(month) || 0);
+    const ex = Number(exceptId) || 0;
+    const [rows] =
+        m >= 1 && m <= 12
+            ? await db.query(
+                  `SELECT row_no FROM dg_manager_sales_rows
+                    WHERE manager_user_id = ? AND year = ? AND MONTH(paid_at) = ?
+                      AND LOWER(REPLACE(TRIM(COALESCE(our_invoice_no, '')), ' ', '')) = ?
+                      AND id <> ?
+                    LIMIT 1`,
+                  [managerUserId, year, m, inv, ex]
+              )
+            : await db.query(
+                  `SELECT row_no FROM dg_manager_sales_rows
+                    WHERE manager_user_id = ? AND year = ? AND paid_at IS NULL
+                      AND LOWER(REPLACE(TRIM(COALESCE(our_invoice_no, '')), ' ', '')) = ?
+                      AND id <> ?
+                    LIMIT 1`,
+                  [managerUserId, year, inv, ex]
+              );
+    const n = Number(rows && rows[0] && rows[0].row_no);
+    return Number.isFinite(n) && n > 0 ? n : null;
 }
 
 async function fetchRowById(db, id) {
@@ -1945,6 +2130,10 @@ module.exports = function managerSalesRouterFactory(db) {
                     : sortBy === 'id' || sortBy === 'updated_at'
                       ? `r.${sortBy}`
                       : `r.${sortBy}`;
+            const orderSql =
+                sortBy === 'row_no'
+                    ? `r.row_no ${sortDir}, r.our_invoice_no ASC, r.id ASC`
+                    : `${sortCol} ${sortDir}, r.id ASC`;
 
             const [[cnt]] = await db.query(
                 `SELECT COUNT(*) AS total
@@ -1973,7 +2162,7 @@ module.exports = function managerSalesRouterFactory(db) {
                 `SELECT ${ROW_SELECT}
                    FROM ${ROW_FROM}
                   WHERE ${built.whereSql}
-                  ORDER BY ${sortCol} ${sortDir}, r.id ASC
+                  ORDER BY ${orderSql}
                   LIMIT ? OFFSET ?`,
                 built.params.concat([limit, offset])
             );
@@ -2071,7 +2260,8 @@ module.exports = function managerSalesRouterFactory(db) {
             if (!managerUserId) {
                 return res.status(400).json({ error: 'Не указан менеджер' });
             }
-            const rowNo = await nextRowNo(db, managerUserId, year);
+            const monthHint = Math.round(Number(body.month) || 0);
+            const rowNo = await nextRowNo(db, managerUserId, year, monthHint);
             const row = applyBodyToRow(body, {
                 year,
                 manager_user_id: managerUserId,
@@ -2130,6 +2320,32 @@ module.exports = function managerSalesRouterFactory(db) {
             const next = applyBodyToRow(req.body || {}, mapRow(existing));
             if (!canSeeAll(req)) next.manager_user_id = Number(existing.manager_user_id);
             const newMonth = paidMonth(next.paid_at);
+            const newMid = Number(next.manager_user_id);
+            const twinNo = await rowNoForSameInvoice(
+                db,
+                newMid,
+                next.year,
+                newMonth,
+                next.our_invoice_no,
+                id
+            );
+            if (twinNo) next.row_no = twinNo;
+            else if (
+                newMonth !== oldMonth ||
+                Number(next.year) !== Number(existing.year) ||
+                newMid !== Number(existing.manager_user_id)
+            ) {
+                const taken = await rowNoTaken(
+                    db,
+                    newMid,
+                    next.year,
+                    newMonth,
+                    next.row_no,
+                    id,
+                    next.our_invoice_no
+                );
+                if (taken) next.row_no = await nextRowNo(db, newMid, next.year, newMonth);
+            }
             const creditMid = creditManagerId(existing);
             const plans = await loadPlans(db);
             const factsPre = await fetchMonthTotals(db, next.year, [creditMid]);
@@ -2923,7 +3139,17 @@ module.exports = function managerSalesRouterFactory(db) {
                     error: 'Не удалось распознать заголовки. Ожидаются колонки Google-таблицы менеджера.',
                 });
             }
-            let nextNo = await nextRowNo(db, managerUserId, year);
+            let nextNo = 1;
+            const usedByMonth = new Map();
+            const [existNos] = await db.query(
+                `SELECT COALESCE(MONTH(paid_at), 0) AS m, row_no, our_invoice_no
+                   FROM dg_manager_sales_rows
+                  WHERE manager_user_id = ? AND year = ?`,
+                [managerUserId, year]
+            );
+            (existNos || []).forEach((r) => {
+                claimRowNo(usedByMonth, Number(r.m) || 0, r.row_no, foldInvoiceNo(r.our_invoice_no));
+            });
             let wouldInsert = 0;
             let skipped = 0;
             const errors = [];
@@ -2940,18 +3166,25 @@ module.exports = function managerSalesRouterFactory(db) {
                     return;
                 }
                 try {
-                    const rowNo =
-                        obj.row_no != null && String(obj.row_no).trim() !== ''
-                            ? Math.round(Number(toNum(obj.row_no) || nextNo))
-                            : nextNo;
-                    nextNo = Math.max(nextNo, rowNo) + 1;
                     const row = applyBodyToRow(obj, {
                         year,
                         manager_user_id: managerUserId,
-                        row_no: rowNo,
+                        row_no: 0,
                         has_contract: '',
                         invoice_org: '',
                     });
+                    const mk = rowMonthKey(row.paid_at);
+                    const wanted =
+                        obj.row_no != null && String(obj.row_no).trim() !== ''
+                            ? Math.round(Number(toNum(obj.row_no) || 0))
+                            : 0;
+                    row.row_no = claimRowNo(
+                        usedByMonth,
+                        mk,
+                        wanted || nextNo,
+                        foldInvoiceNo(row.our_invoice_no)
+                    );
+                    nextNo = Math.max(nextNo, row.row_no) + 1;
                     toInsert.push(row);
                     wouldInsert += 1;
                 } catch (e) {

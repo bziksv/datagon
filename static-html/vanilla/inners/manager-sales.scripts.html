@@ -1405,6 +1405,43 @@
     return (h % 5) + 1;
   }
 
+  function invoiceFold(row) {
+    return String((row && row.our_invoice_no) || "")
+      .trim()
+      .replace(/\s+/g, "")
+      .toLowerCase();
+  }
+
+  function invoiceDupCounts() {
+    var cnt = {};
+    (state.rows || []).forEach(function (r) {
+      var k = invoiceFold(r);
+      if (!k) return;
+      cnt[k] = (cnt[k] || 0) + 1;
+    });
+    return cnt;
+  }
+
+  function invoiceDupTone(row, cnt) {
+    var k = invoiceFold(row);
+    if (!k) return 0;
+    var n = (cnt || {})[k] || 0;
+    if (n < 2) return 0;
+    return shipToneIndex("inv:" + k);
+  }
+
+  function sortInvoiceTwinRows() {
+    (state.rows || []).sort(function (a, b) {
+      var na = Number(a && a.row_no) || 0;
+      var nb = Number(b && b.row_no) || 0;
+      if (na !== nb) return na - nb;
+      var ia = invoiceFold(a);
+      var ib = invoiceFold(b);
+      if (ia !== ib) return ia < ib ? -1 : ia > ib ? 1 : 0;
+      return (Number(a && a.id) || 0) - (Number(b && b.id) || 0);
+    });
+  }
+
   function shipMates(row) {
     return Array.isArray(row && row.ship_group_mates) ? row.ship_group_mates : [];
   }
@@ -1492,6 +1529,7 @@
       return;
     }
     var tones = handedToneMap();
+    var invCnt = invoiceDupCounts();
     tbody.innerHTML = state.rows
       .map(function (row) {
         var trCls = [];
@@ -1512,6 +1550,11 @@
         if (shipGid && shipGroupSize(row) >= 2) {
           trCls.push("dg-msl-ship");
           trCls.push("dg-msl-ship-t" + shipToneIndex(shipGid));
+        }
+        var invDup = invoiceDupTone(row, invCnt);
+        if (invDup) {
+          trCls.push("dg-msl-invdup");
+          trCls.push("dg-msl-invdup-t" + invDup);
         }
         if (rowNeedsHighlight(row)) trCls.push("dg-msl-need-terms");
         return (
@@ -1569,6 +1612,7 @@
       .then(json)
       .then(function (data) {
         state.rows = data.rows || [];
+        if (!state.sort_by || state.sort_by === "row_no") sortInvoiceTwinRows();
         state.total = data.total || 0;
         state.totals = data.totals || null;
         state.plan = data.plan || null;
@@ -2287,6 +2331,8 @@
   function postAddRow(managerId) {
     var body = { year: state.year };
     if (managerId) body.manager_user_id = Number(managerId);
+    var mo = Number(state.month);
+    if (mo >= 1 && mo <= 12) body.month = mo;
     return fetch("/api/manager-sales", {
       method: "POST",
       credentials: "same-origin",

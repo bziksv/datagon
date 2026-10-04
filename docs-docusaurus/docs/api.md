@@ -91,7 +91,7 @@ description: Справочник REST-эндпоинтов p.datagon.ru (осн
 - `/api/db-admin` -> `routes/dbAdmin.js` (Управление БД: размеры таблиц, связи, превью, ANALYZE/OPTIMIZE)
 - `/api/finance` -> `routes/finance.js` (Финансы / Точка: JWT, счета, балансы, проводки; только чтение)
 - `/api/manager-sales` -> `routes/managerSales.js` (Таблицы менеджеров: годовой журнал оплат `dg_manager_sales_rows`)
-- `/api/ops-sheet` -> `routes/opsSheet.js` (Операционный лист: свод по менеджерам + ручные поля `dg_ops_sheet_manual`)
+- `/api/ops-sheet` -> `routes/opsSheet.js` (Операционный лист: свод + Planfix-заявки `dg_ops_planfix_tasks`)
 - `GET /api/processes/overview`, `POST /api/sync-all-start`, `POST /api/sync-site-start`, `GET /api/sync-status` -> `server.js`
 
 ## Auth
@@ -2094,7 +2094,7 @@ Body: `{ manager_user_id, year, month, plan_amount, note }`. Точечная п
 
 ### POST `/api/manager-sales`
 
-Создать строку. Body: поля журнала + `year`, опционально `manager_user_id` (только Полный доступ / Бухгалтерия / admin). `row_no` всегда выдаёт система (`MAX+1` в паре менеджер+год), клиентский номер игнорируется. `status` нормализуется к фиксированному списку.
+Создать строку. Body: поля журнала + `year`, опционально `month` (1–12 — следующий № в этом месяце по дате оплаты; иначе среди черновиков без даты), опционально `manager_user_id` (только Полный доступ / Бухгалтерия / admin). `row_no` выдаёт система; одинаковый **№ нашего счёта** в месяце получает тот же порядковый № (позиции НДС). `status` нормализуется к фиксированному списку.
 
 ### PATCH `/api/manager-sales/:id`
 
@@ -2150,28 +2150,49 @@ CSV UTF-8 с BOM по текущему фильтру.
 
 ## Операционный лист
 
-Страница `/ops-sheet.html`, роутер `routes/opsSheet.js`, формулы `lib/opsSheetCalc.js`. Матрица: ключ **`ops-sheet`**.
+Страница `/ops-sheet.html`, роутер `routes/opsSheet.js`, формулы `lib/opsSheetCalc.js`. Матрица: ключ **`ops-sheet`**. Адрес после «Применить»: `year`, `month` (`all` или 1–12 — период Planfix), `search`, `q` / `page` (таблица задач), `jump` (прокрутка к месяцу в листе).
 
 - Полный свод по **всем** менеджерам специальности «Менеджер по продажам» для любого, у кого страница не `hidden` (без ограничения «только своя таблица»).
-- Режим **`view`** — только чтение; **`full`** — правка ручных ячеек (`PUT /manual`).
+- Режим **`view`** — только чтение; **`full`** — правка ручных ячеек (`PUT /manual`) и синк/маппинг Planfix.
 - Auto-метрики из `dg_manager_sales_rows` (credit = `COALESCE(handed_to_user_id, manager_user_id)`, `archived_at IS NULL`, месяц из `paid_at`) и планов `dg_manager_sales_plans`.
-- Ручные поля в `dg_ops_sheet_manual`: `applications_count`, `coefficient`, `bonus_past`, `salary`.
-- **Оплаченные заявки** — auto: `COUNT` строк `dg_manager_sales_rows` credit-менеджера за месяц (`paid_at`, не архив).
-- UI: год → 12 блоков месяцев (строки менеджеров + ИТОГО). Сценарий: [Операционный лист](/docs/ops-sheet).
+- Ручные поля в `dg_ops_sheet_manual`: `coefficient`, `bonus_past`, `salary`.
+- **Кол-во заявок** — auto из снимка Planfix `dg_ops_planfix_tasks` (номер задачи, постановщик, «Статус Сделки/Письма», `created_at`). Менеджер = **постановщик**; месяц = **дата создания**. В счёт входят только статусы с галкой «в кол-во заявок» в `dg_ops_planfix_status_map`.
+- **Оплаченные заявки** — auto: число продаж credit-менеджера за месяц (`paid_at`, не архив): один **№ нашего счёта** = одна продажа (позиции НДС не удваивают счётчик); строка без номера счёта считается отдельно. Это не корзина Planfix «оплаченная».
+- UI: год → 12 блоков месяцев (строки менеджеров + ИТОГО). Сценарий: [Операционный лист](/docs/ops-sheet). Синк: `lib/opsSheetPlanfixSyncRevision.js`, поле `sync_script`.
 
 ### GET `/api/ops-sheet/meta`
 
-Годы, список менеджеров, `can_write`, легенда колонок / формулы.
+Годы, список менеджеров, `can_write`, легенда колонок / формулы, `planfix_configured`, `status_buckets`, `sync_script`.
 
 ### GET `/api/ops-sheet`
 
-Query: `year` (по умолчанию текущий). Ответ: `months[{ month, label, rows, totals }]`, `managers`, `can_write`.
+Query: `year` (по умолчанию текущий). Ответ: `months[{ month, label, rows, totals }]`, `managers`, `can_write`, `planfix_unmatched`.
 
-В строке: `turnover`, `profit_before_tax`, `profit_after_tax`, `profit_pct`, `bonus_current`, ручные поля, `apps_per_sale`, `avg_check`, `fact_profit`, `salary_paid`, `company_profit`, `company_pct`, `plan_amount`, `plan_status` (`выполнен` / `не выполнен`).
+В строке: `turnover`, `profit_before_tax`, `profit_after_tax`, `profit_pct`, `bonus_current`, `applications_count` (Planfix), ручные поля, `apps_per_sale`, `avg_check`, `fact_profit`, `salary_paid`, `company_profit`, `company_pct`, `plan_amount`, `plan_status` (`выполнен` / `не выполнен`).
 
 ### PUT `/api/ops-sheet/manual`
 
-Body: `year`, `month`, `manager_user_id` + любое из ручных полей. Только `full`. Ответ: пересчитанная `row` + `totals` месяца.
+Body: `year`, `month`, `manager_user_id` + `coefficient` / `bonus_past` / `salary`. Только `full`. Ответ: пересчитанная `row` + `totals` месяца.
+
+### GET `/api/ops-sheet/planfix`
+
+Query: `year`, `month` (`0` = весь год, `1–12` = месяц). Локальная панель статусов **за период**: `statuses[]` (`status_value`, `tasks_n` / `tasks_in_year`, `bucket`, `suggested_bucket`, `count_in_apps`, `mapped`), `buckets`, `unmatched_assigners`, `local_total`, `empty_status`, `with_status`, `period`, `last_synced_at`, `sync_script`.
+
+### GET `/api/ops-sheet/planfix-tasks`
+
+Query: `year`, `month`, `q` (номер / постановщик / статус), `page`, `limit` (по умолчанию 100, макс. 200). Строки из `dg_ops_planfix_tasks` за период: `rows[]` (`task_id`, `assigner_name`, `status_value`, `created_at`, `synced_at`), `account` (для ссылки `https://{account}.planfix.ru/task/{id}`), `total`, `pages`, `shown`, `empty_status`, `with_status`.
+
+### GET `/api/ops-sheet/planfix-sync-status`
+
+Живой этап текущего синка: `{ active, stage, message, pages, fetched, stored, elapsed_sec, dry_run, year }`. UI опрашивает раз в секунду, пока идёт POST `/planfix-sync`.
+
+### POST `/api/ops-sheet/planfix-sync`
+
+Только `full`. Body: `{ year, month }`. Шаги: `POST /task/list` (номер, постановщик, дата создания, системный **Статус Планфикс** → `planfix_status`) → отдельно читается справочник **«Статус Сделки/Письма»** из отчётов Planfix, где колонка не дублирует процесс задачи (сейчас 450694 / 450690: «Отправлено КП», «Обработка запроса», …). Значения пишутся в `status_value` и `dg_ops_planfix_status_catalog` для привязки к корзинам. Отчёты вроде 450666, где в одноимённой колонке стоят «Новая / В работе (Все) / Завершенная (Все)», отбрасываются. Ответ включает `status_report.unique_statuses`, `status_report.reports[]`.
+
+### PUT `/api/ops-sheet/planfix-status-map`
+
+Только `full`. Body: `{ year, month, items: [{ status_value, bucket, count_in_apps, is_separator? }] }`. Порядок `items` = порядок строк таблицы (`sort_order` в `dg_ops_planfix_status_catalog`). Разделители (`__sep:N` / `is_separator`) сохраняются в каталоге, в карту корзин не пишутся. `month` для счётчиков панели после сохранения. Корзины: `in_work`, `paid`, `rejected`, `info_spam`, `supplier`, `no_goods`, `aggregator`. Ответ: сохранённая панель + `mismatches` (проверка из БД).
 
 ## Финансы
 

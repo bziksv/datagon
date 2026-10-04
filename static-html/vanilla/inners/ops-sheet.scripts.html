@@ -38,7 +38,6 @@
   var PCT_KEYS = { profit_pct: 1, company_pct: 1 };
   var INT_KEYS = { applications_count: 1, paid_applications: 1 };
   var MANUAL_KEYS = {
-    applications_count: 1,
     coefficient: 1,
     bonus_past: 1,
     salary: 1,
@@ -49,9 +48,10 @@
     profit_after_tax: "SUM(разница / diff) с налогом 16%",
     profit_pct: "прибыль после налога / оборот × 100",
     bonus_current: "SUM(diff) × % МП. месяца / 100",
-    applications_count: "Ручной ввод",
+    applications_count:
+      "задачи Planfix: постановщик = менеджер, месяц = дата создания, статус в корзине с галкой «в кол-во заявок»",
     coefficient: "Ручной ввод",
-    paid_applications: "число оплаченных продаж за месяц (строки таблиц менеджеров с датой оплаты)",
+    paid_applications: "оплаченные продажи за месяц: один № счёта = одна продажа (НДС-позиции не удваивают)",
     apps_per_sale: "кол-во заявок / оплаченные заявки",
     avg_check: "оборот / оплаченные заявки",
     bonus_past: "Ручной ввод",
@@ -65,15 +65,19 @@
 
   var FILTERS_KEY = "datagon_ops_sheet_filters_collapsed_v1";
   var TABLE_COLLAPSE_KEY = "dg.ops-sheet.table-card.collapsed.v1";
+  var PF_COLLAPSE_KEY = "datagon_ops_sheet_planfix_collapsed_v1";
   var COLS_KEY = "dg.ops.colvisible.v1";
   var WIDTHS_KEY = "dg.ops.colwidths.v1";
   var MONTH_SHORT = ["", "Янв", "Фев", "Мар", "Апр", "Май", "Июн", "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек"];
 
   var cy = new Date().getFullYear();
+  var curMonth = new Date().getMonth() + 1;
   var state = {
     year: cy,
     search: "",
-    pending: { year: cy, search: "" },
+    pf_month: curMonth,
+    jump_month: 0,
+    pending: { year: cy, search: "", pf_month: curMonth },
     months: [],
     managers: [],
     years: [],
@@ -81,6 +85,28 @@
     visible: OPS_COLS.map(function (c) { return c[0]; }),
     widths: {},
     loading: false,
+    pf: {
+      buckets: [],
+      statuses: [],
+      unmatched: [],
+      local_total: 0,
+      last_synced_at: null,
+      configured: false,
+      sync_script: null,
+      unmapped: 0,
+      account: "almamed",
+      period: "",
+      empty_status: 0,
+      with_status: 0,
+      task_q: "",
+      task_page: 1,
+      task_limit: 100,
+      task_total: 0,
+      task_pages: 1,
+      task_shown: 0,
+      task_rows: [],
+      syncing: false,
+    },
   };
 
   function el(id) {
@@ -137,6 +163,83 @@
     if (window.DatagonNotify && window.DatagonNotify.toast) {
       window.DatagonNotify.toast({ type: type || "info", message: message || "" });
     }
+  }
+
+  var urlSyncTimer = null;
+  var SHARE_KEYS = ["year", "month", "search", "q", "page", "jump"];
+
+  function hasShareQuery() {
+    try {
+      var p = new URLSearchParams(window.location.search || "");
+      return SHARE_KEYS.some(function (k) {
+        return p.get(k) != null && String(p.get(k)) !== "";
+      });
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function parseShareMonth(raw) {
+    var m = String(raw == null ? "" : raw).trim();
+    if (m === "all" || m === "0") return 0;
+    var n = Number(m);
+    if (Number.isFinite(n) && n >= 1 && n <= 12) return n;
+    return null;
+  }
+
+  function applyShareQueryToPending() {
+    if (!hasShareQuery()) return false;
+    var p = new URLSearchParams(window.location.search || "");
+    var y = Number(p.get("year"));
+    if (Number.isFinite(y) && y >= 2019 && y <= 2100) state.pending.year = y;
+    if (p.has("month")) {
+      var pm = parseShareMonth(p.get("month"));
+      if (pm != null) state.pending.pf_month = pm;
+    }
+    if (p.has("search")) state.pending.search = p.get("search") || "";
+    if (p.has("q")) state.pf.task_q = String(p.get("q") || "").trim();
+    var page = Number(p.get("page"));
+    if (Number.isFinite(page) && page > 1) state.pf.task_page = Math.round(page);
+    if (p.has("jump")) {
+      var jm = Number(p.get("jump"));
+      state.jump_month = Number.isFinite(jm) && jm >= 1 && jm <= 12 ? Math.round(jm) : 0;
+    }
+    return true;
+  }
+
+  function syncUrlFromState() {
+    var params = new URLSearchParams();
+    params.set("year", String(state.year || cy));
+    params.set("month", Number(state.pf_month) === 0 ? "all" : String(state.pf_month || curMonth));
+    if (state.search) params.set("search", state.search);
+    if (state.pf.task_q) params.set("q", state.pf.task_q);
+    if (Number(state.pf.task_page) > 1) params.set("page", String(state.pf.task_page));
+    if (state.jump_month >= 1 && state.jump_month <= 12) params.set("jump", String(state.jump_month));
+    var next = window.location.pathname + "?" + params.toString();
+    try {
+      window.history.replaceState(null, "", next);
+    } catch (e) {}
+  }
+
+  function scheduleUrlSync() {
+    if (urlSyncTimer) clearTimeout(urlSyncTimer);
+    urlSyncTimer = setTimeout(function () {
+      urlSyncTimer = null;
+      syncUrlFromState();
+    }, 50);
+  }
+
+  function paintFilterForm() {
+    var y = el("dg-ops-f-year");
+    var s = el("dg-ops-search");
+    var mirr = el("dg-ops-table-search-mirror");
+    var pfSel = el("dg-ops-pf-month");
+    var tq = el("dg-ops-pf-tasks-search");
+    if (y) y.value = String(state.pending.year || cy);
+    if (s) s.value = String(state.pending.search || "");
+    if (mirr) mirr.value = String(state.pending.search || "");
+    if (pfSel) pfSel.value = String(Number(state.pending.pf_month) === 0 ? 0 : state.pending.pf_month || curMonth);
+    if (tq) tq.value = String(state.pf.task_q || "");
   }
 
   function userStorageKey(base) {
@@ -214,6 +317,7 @@
     if (!btn) return;
     var dirty =
       Number(state.pending.year) !== Number(state.year) ||
+      Number(state.pending.pf_month) !== Number(state.pf_month) ||
       String(state.pending.search || "") !== String(state.search || "");
     btn.classList.toggle("dg-flt-dirty", dirty);
     btn.textContent = dirty ? "Применить •" : "Применить";
@@ -224,12 +328,49 @@
     if (!sel) return;
     var list = (years && years.length ? years.slice() : [cy]).slice();
     if (list.indexOf(cy) < 0) list.unshift(cy);
+    var py = Number(state.pending.year);
+    if (Number.isFinite(py) && list.indexOf(py) < 0) list.push(py);
+    list.sort(function (a, b) { return b - a; });
     sel.innerHTML = list
       .map(function (y) {
         return '<option value="' + y + '">' + y + "</option>";
       })
       .join("");
     sel.value = String(state.pending.year || cy);
+  }
+
+  function expandOpsTableCard() {
+    var body = el("dg-ops-table-body");
+    var btn = el("dg-ops-table-toggle");
+    if (!body) return;
+    try {
+      localStorage.setItem(TABLE_COLLAPSE_KEY, "0");
+    } catch (e) {}
+    body.style.display = "";
+    if (btn) btn.textContent = "Свернуть";
+  }
+
+  function jumpToMonth(month) {
+    var m = Number(month);
+    if (!m || m < 1 || m > 12) return;
+    expandOpsTableCard();
+    var host = el("dg-ops-month-jump");
+    if (host) {
+      var btns = host.querySelectorAll("button[data-ops-month]");
+      for (var i = 0; i < btns.length; i += 1) {
+        var on = Number(btns[i].getAttribute("data-ops-month")) === m;
+        btns[i].classList.toggle("btn-primary", on);
+        btns[i].classList.toggle("btn-outline-secondary", !on);
+      }
+    }
+    var target = document.getElementById("ops-month-" + m);
+    if (!target) {
+      toast("warning", "Сначала нажмите «Применить» — ниже появятся 12 таблиц месяцев");
+      return;
+    }
+    target.scrollIntoView({ behavior: "smooth", block: "start" });
+    state.jump_month = m;
+    scheduleUrlSync();
   }
 
   function renderMonthJump() {
@@ -241,10 +382,11 @@
       b.type = "button";
       b.className = "btn btn-sm btn-outline-secondary";
       b.textContent = MONTH_SHORT[m];
+      b.setAttribute("data-ops-month", String(m));
       b.setAttribute("data-dg-no-activity", "1");
-      b.addEventListener("click", function () {
-        var target = document.getElementById("ops-month-" + m);
-        if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+      b.title = "Прокрутить операционный лист к «" + MONTH_SHORT[m] + "»";
+      b.addEventListener("click", function (ev) {
+        jumpToMonth(ev.currentTarget.getAttribute("data-ops-month"));
       });
       host.appendChild(b);
     }
@@ -511,13 +653,608 @@
     });
   }
 
+  function applyPlanfixPanel(j) {
+    if (!j) return;
+    state.pf.buckets = j.buckets || j.status_buckets || state.pf.buckets || [];
+    state.pf.statuses = j.statuses || [];
+    state.pf.unmatched = j.unmatched_assigners || [];
+    state.pf.local_total = Number(j.local_total || 0);
+    state.pf.last_synced_at = j.last_synced_at || null;
+    state.pf.configured = j.configured != null ? !!j.configured : state.pf.configured;
+    state.pf.sync_script = j.sync_script || state.pf.sync_script;
+    state.pf.unmapped = Number(j.unmapped || 0);
+    if (j.period != null) state.pf.period = j.period;
+    if (j.empty_status != null) state.pf.empty_status = Number(j.empty_status || 0);
+    if (j.with_status != null) state.pf.with_status = Number(j.with_status || 0);
+    if (j.account) state.pf.account = String(j.account).trim() || state.pf.account;
+    renderPlanfixPanel();
+  }
+
+  function setLogType(box, type) {
+    var t = type || "info";
+    var next =
+      "alert mt-3 mb-0 alert-" +
+      (t === "danger" ? "danger" : t === "success" ? "success" : t === "warning" ? "warning" : "info");
+    if (box.className !== next) box.className = next;
+    box.classList.remove("d-none");
+  }
+
+  function setNodeText(id, text) {
+    var n = el(id);
+    if (!n) return;
+    var t = text == null ? "" : String(text);
+    if (n.textContent !== t) n.textContent = t;
+  }
+
+  function ensureProgressShell() {
+    var box = el("dg-ops-action-log");
+    if (!box) return null;
+    if (box.getAttribute("data-ops-prog") !== "1") {
+      box.innerHTML =
+        '<div id="dg-ops-pf-prog-title"></div>' +
+        '<div id="dg-ops-pf-prog-filters" class="small"></div>' +
+        '<div id="dg-ops-pf-prog-stage"></div>' +
+        '<div id="dg-ops-pf-prog-counts"></div>';
+      box.setAttribute("data-ops-prog", "1");
+    }
+    return box;
+  }
+
+  function patchLiveProgress(j, sec) {
+    var box = ensureProgressShell();
+    if (!box) return;
+    setLogType(box, "info");
+    var title = "Синхронизация идёт, прошло " + fmtIntRu(sec) + " с…";
+    setNodeText("dg-ops-pf-prog-title", title);
+    setNodeText("dg-ops-pf-prog-filters", "Фильтры: " + planfixFiltersLine());
+    setNodeText("dg-ops-pf-prog-stage", "Этап: " + ((j && j.message) || "ждём ответ сервера…"));
+    var counts = "";
+    if (j && (j.pages || j.fetched || j.stored)) {
+      counts =
+        "Страниц: " +
+        fmtIntRu(j.pages) +
+        ", задач: " +
+        fmtIntRu(j.fetched) +
+        ", записано: " +
+        fmtIntRu(j.stored);
+    }
+    setNodeText("dg-ops-pf-prog-counts", counts);
+  }
+
+  function showActionLog(type, message, asHtml) {
+    var box = el("dg-ops-action-log");
+    if (!box) return;
+    box.removeAttribute("data-ops-prog");
+    setLogType(box, type);
+    if (asHtml) box.innerHTML = String(message || "");
+    else box.textContent = String(message || "");
+  }
+
+  function fmtIntRu(n) {
+    return Number(n || 0).toLocaleString("ru-RU");
+  }
+
+  function pfMonthFromUi() {
+    var n = Number(state.pf_month);
+    if (n === 0) return 0;
+    if (n >= 1 && n <= 12) return n;
+    return curMonth;
+  }
+
+  function fillPfMonthSelect() {
+    var sel = el("dg-ops-pf-month");
+    if (!sel) return;
+    var html = '<option value="0">Весь год</option>';
+    for (var m = 1; m <= 12; m += 1) {
+      html += '<option value="' + m + '">' + MONTH_SHORT[m] + "</option>";
+    }
+    sel.innerHTML = html;
+    var want = Number(state.pending.pf_month);
+    if (want === 0) sel.value = "0";
+    else if (want >= 1 && want <= 12) sel.value = String(want);
+    else sel.value = String(curMonth);
+  }
+
+  function planfixFiltersLine() {
+    var m = pfMonthFromUi();
+    var period = m ? MONTH_SHORT[m] : "весь год";
+    return (
+      "год листа: " +
+      String(state.year) +
+      "; период Planfix: " +
+      period +
+      "; постановщик = менеджер продаж; месяц заявки = дата создания"
+    );
+  }
+
+  function formatPlanfixSummary(j, prefix) {
+    var lines = [
+      "<strong>" + (prefix || "Синхронизация Planfix") + "</strong>",
+      "Фильтры: " + planfixFiltersLine(),
+      "Поле: «" +
+        escapeHtml((j.field && j.field.name) || "Статус Сделки/Письма") +
+        "»" +
+        (j.field && j.field.id ? " (id " + escapeHtml(String(j.field.id)) + ")" : ""),
+      "Период: " + escapeHtml(j.period || planfixFiltersLine()),
+      "Страниц: " + fmtIntRu(j.pages) +
+        ", задач в выборке: " + fmtIntRu(j.total != null ? j.total : j.to_update),
+    ];
+    if (j.field && j.field.lookup_error) {
+      lines.push("<strong>Поле статуса:</strong> " + escapeHtml(j.field.lookup_error));
+    }
+    lines.push(
+      "Записано: ✓ " + fmtIntRu(j.stored) +
+        ", пропущено: " + fmtIntRu(j.skipped) +
+        " (без номера " + fmtIntRu(j.no_id) + ", без даты " + fmtIntRu(j.no_date) + ")" +
+        ", без статуса: " + fmtIntRu(j.empty_status) +
+        ", локально за период: " + fmtIntRu(j.local_total) +
+        ", время: " + fmtIntRu(j.duration_sec) + " с"
+    );
+    if (j.sync_script && j.sync_script.version) {
+      lines.push("Скрипт: v" + escapeHtml(String(j.sync_script.version)) + " · rev." + escapeHtml(String(j.sync_script.revision)));
+    }
+    if (j.status_values_seen && j.status_values_seen.length) {
+      lines.push("Статусы в выборке: " + j.status_values_seen.map(function (s) { return escapeHtml(s); }).join("; "));
+    }
+    if (j.sample_assigners && j.sample_assigners.length) {
+      lines.push(
+        "Постановщики (первые): " +
+          j.sample_assigners
+            .slice(0, 8)
+            .map(function (a) {
+              return escapeHtml(a.name) + " (" + fmtIntRu(a.n) + ")";
+            })
+            .join("; ")
+      );
+    }
+    if (j.errors && j.errors.length) {
+      lines.push("<strong>Ошибки:</strong>");
+      j.errors.slice(0, 20).forEach(function (er) {
+        lines.push("• " + escapeHtml(er.code || "?") + " — " + escapeHtml(er.error || "ошибка"));
+      });
+    }
+    return lines.join("<br>");
+  }
+
+  function bucketSelectHtml(selected, suggested) {
+    var cur = selected || suggested || "";
+    var opts = ['<option value="">— не привязан —</option>'].concat(
+      (state.pf.buckets || []).map(function (b) {
+        return (
+          '<option value="' +
+          escapeHtml(b.key) +
+          '"' +
+          (cur === b.key ? " selected" : "") +
+          ">" +
+          escapeHtml(b.label) +
+          "</option>"
+        );
+      })
+    );
+    return opts.join("");
+  }
+
+  function isPfStatusSep(name, row) {
+    if (row && (row.is_separator === true || row.is_separator === 1 || row.is_separator === "1")) return true;
+    var s = String(name || "").trim();
+    return /^__sep[:_-]/i.test(s) || /^[-–—_]{3,}$/.test(s);
+  }
+
+  function readMapItemsFromDom() {
+    var tbody = el("dg-ops-pf-map-tbody");
+    if (!tbody) return [];
+    var rows = tbody.querySelectorAll("tr[data-ops-status]");
+    var items = [];
+    rows.forEach(function (tr) {
+      var status = tr.getAttribute("data-ops-status") || "";
+      var sep = tr.getAttribute("data-ops-sep") === "1";
+      var sel = tr.querySelector("select.dg-ops-pf-bucket");
+      var chk = tr.querySelector("input.dg-ops-pf-count");
+      items.push({
+        status_value: status,
+        bucket: sep ? "" : sel ? sel.value : "",
+        count_in_apps: sep ? false : !!(chk && chk.checked),
+        is_separator: sep,
+      });
+    });
+    return items;
+  }
+
+  function statusRowHtml(s, idx) {
+    var sep = isPfStatusSep(s.status_value, s);
+    var grip =
+      '<span class="dg-ops-pf-drag" title="Перетащить" aria-label="Перетащить">⋮⋮</span>';
+    if (sep) {
+      return (
+        '<tr class="dg-ops-pf-sep" draggable="false" data-ops-sep="1" data-ops-status="' +
+        escapeHtml(s.status_value) +
+        '">' +
+        '<td class="dg-ops-pf-grip-td">' +
+        grip +
+        "</td>" +
+        '<td colspan="4" class="dg-ops-pf-sep-td"><span class="dg-ops-pf-sep-line">-----</span></td></tr>'
+      );
+    }
+    var shownBucket = s.bucket || s.suggested_bucket || "";
+    var countOn = !!s.count_in_apps;
+    return (
+      '<tr draggable="false" data-ops-status="' +
+      escapeHtml(s.status_value) +
+      '">' +
+      '<td class="dg-ops-pf-grip-td">' +
+      grip +
+      "</td>" +
+      "<td>" +
+      (s.status_value
+        ? escapeHtml(s.status_value)
+        : "без статуса (Planfix не отдал поле)") +
+      (s.suggested_bucket && !s.mapped ? ' <span class="text-muted">(предложение)</span>' : "") +
+      "</td>" +
+      '<td class="dg-ops-num">' +
+      escapeHtml(formatInt(s.tasks_n != null ? s.tasks_n : s.tasks_in_year || 0)) +
+      "</td>" +
+      '<td><select class="form-select form-select-sm dg-ops-pf-bucket" data-idx="' +
+      idx +
+      '">' +
+      bucketSelectHtml(s.bucket, s.suggested_bucket) +
+      "</select></td>" +
+      '<td><div class="form-check"><input class="form-check-input dg-ops-pf-count" type="checkbox"' +
+      (countOn ? " checked" : "") +
+      (shownBucket ? "" : " disabled") +
+      "></div></td></tr>"
+    );
+  }
+
+  function findStatusRow(tbody, status) {
+    var rows = tbody.querySelectorAll("tr[data-ops-status]");
+    for (var i = 0; i < rows.length; i += 1) {
+      if (rows[i].getAttribute("data-ops-status") === status) return rows[i];
+    }
+    return null;
+  }
+
+  function renderPlanfixPanel() {
+    var write = !!state.can_write;
+    ["dg-ops-pf-sync", "dg-ops-pf-save-map"].forEach(function (id) {
+      var b = el(id);
+      if (b) b.disabled = !write || !!state.pf.syncing;
+    });
+    var badge = el("dg-ops-pf-script-badge");
+    var sc = state.pf.sync_script;
+    if (badge) {
+      var badgeText = sc && sc.version ? "v" + sc.version + " · rev." + sc.revision : "";
+      if (badge.textContent !== badgeText) badge.textContent = badgeText;
+    }
+    var tbody = el("dg-ops-pf-map-tbody");
+    if (tbody) {
+      var list = state.pf.statuses || [];
+      if (!list.length) {
+        tbody.innerHTML =
+          '<tr><td colspan="5" class="text-muted">Нет строк за период — синхронизируйте выбранный месяц.</td></tr>';
+      } else {
+        tbody.innerHTML = list
+          .map(function (s, idx) {
+            return statusRowHtml(s, idx);
+          })
+          .join("");
+      }
+    }
+    var insight = el("dg-ops-pf-insight");
+    if (insight) {
+      var tot = Number(state.pf.local_total || 0);
+      var emptyN = Number(state.pf.empty_status || 0);
+      var withN = Number(state.pf.with_status || 0);
+      var period = state.pf.period || "";
+      if (tot > 0 && emptyN === tot) {
+        insight.className = "alert alert-warning py-2 px-3";
+        insight.classList.remove("d-none");
+        insight.innerHTML =
+          "За <strong>" +
+          escapeHtml(period || "период") +
+          "</strong> в базе <strong>" +
+          fmtIntRu(tot) +
+          "</strong> задач без «Статус Сделки/Письма». Синхронизация отдельно читает это поле из отчёта Planfix — нажмите «Синхронизировать Planfix» ещё раз, если отчёт не успел догрузиться.";
+      } else if (tot === 0) {
+        insight.className = "alert alert-info py-2 px-3";
+        insight.classList.remove("d-none");
+        insight.textContent =
+          "За " + (period || "период") + " локально 0 задач. Выберите месяц и нажмите «Синхронизировать Planfix».";
+      } else {
+        insight.className = "alert alert-success py-2 px-3";
+        insight.classList.remove("d-none");
+        insight.textContent =
+          "Период " +
+          (period || "") +
+          ": задач " +
+          tot +
+          ", со статусом " +
+          withN +
+          ", без статуса " +
+          emptyN +
+          ".";
+      }
+    }
+    var um = el("dg-ops-pf-unmatched");
+    if (um) {
+      var parts = [];
+      parts.push(
+        "Локально за период" +
+          (state.pf.period ? " (" + escapeHtml(state.pf.period) + ")" : "") +
+          ": " +
+          fmtIntRu(state.pf.local_total) +
+          " задач" +
+          (state.pf.empty_status ? ", без статуса: " + fmtIntRu(state.pf.empty_status) : "") +
+          "."
+      );
+      if (state.pf.last_synced_at) parts.push("Последняя синхронизация: " + String(state.pf.last_synced_at) + ".");
+      if (state.pf.unmapped) parts.push("Без корзины: " + fmtIntRu(state.pf.unmapped) + ".");
+      if (!state.pf.configured) parts.push("Токен Planfix не задан (Настройки → Planfix).");
+      var unmatched = state.pf.unmatched || [];
+      if (unmatched.length) {
+        parts.push(
+          "Не сопоставлены постановщики: " +
+            unmatched
+              .slice(0, 12)
+              .map(function (u) {
+                return escapeHtml(u.name) + " (" + fmtIntRu(u.tasks) + ")";
+              })
+              .join("; ") +
+            (unmatched.length > 12 ? "…" : "")
+        );
+      }
+      var html = parts.join(" ");
+      if (um.innerHTML !== html) um.innerHTML = html;
+    }
+  }
+
+  function planfixYearMonthQs() {
+    return (
+      "year=" +
+      encodeURIComponent(String(state.year)) +
+      "&month=" +
+      encodeURIComponent(String(pfMonthFromUi()))
+    );
+  }
+
+  function fmtPfDt(v) {
+    if (!v) return "—";
+    return String(v).replace("T", " ").slice(0, 19);
+  }
+
+  function planfixTaskHref(taskId) {
+    var acc = String(state.pf.account || "almamed").replace(/[^a-z0-9-]/gi, "") || "almamed";
+    var tid = String(taskId || "").replace(/\D/g, "");
+    if (!tid) return "";
+    return "https://" + acc + ".planfix.ru/task/" + tid;
+  }
+
+  function renderPlanfixTasks() {
+    var tbody = el("dg-ops-pf-tasks-tbody");
+    var st = el("dg-ops-pf-tasks-status");
+    var prev = el("dg-ops-pf-tasks-prev");
+    var next = el("dg-ops-pf-tasks-next");
+    var rows = state.pf.task_rows || [];
+    if (tbody) {
+      if (!rows.length) {
+        tbody.innerHTML =
+          '<tr><td colspan="5" class="text-muted">За этот период в локальной базе нет задач (или поиск ничего не нашёл).</td></tr>';
+      } else {
+        tbody.innerHTML = rows
+          .map(function (r) {
+            var tid = String(r.task_id || "");
+            var href = planfixTaskHref(tid);
+            var idCell = href
+              ? '<a href="' +
+                escapeHtml(href) +
+                '" target="_blank" rel="noopener noreferrer">' +
+                escapeHtml(tid) +
+                "</a>"
+              : escapeHtml(tid);
+            var stv = r.status_value
+              ? escapeHtml(r.status_value)
+              : '<span class="text-muted">пусто</span>';
+            var pfSt = r.planfix_status
+              ? escapeHtml(r.planfix_status)
+              : '<span class="text-muted">—</span>';
+            return (
+              "<tr><td>" +
+              idCell +
+              "</td><td>" +
+              escapeHtml(r.assigner_name || "—") +
+              "</td><td>" +
+              escapeHtml(fmtPfDt(r.created_at)) +
+              "</td><td>" +
+              stv +
+              "</td><td>" +
+              pfSt +
+              "</td></tr>"
+            );
+          })
+          .join("");
+      }
+    }
+    if (st) {
+      st.textContent =
+        "Найдено: " +
+        fmtIntRu(state.pf.task_total) +
+        "; страница " +
+        fmtIntRu(state.pf.task_page) +
+        "/" +
+        fmtIntRu(state.pf.task_pages) +
+        "; показано: " +
+        fmtIntRu(state.pf.task_shown) +
+        (state.pf.period ? "; период: " + state.pf.period : "");
+    }
+    if (prev) prev.disabled = state.pf.task_page <= 1;
+    if (next) next.disabled = state.pf.task_page >= state.pf.task_pages;
+  }
+
+  function loadPlanfixTasks() {
+    var q = String(state.pf.task_q || "").trim();
+    var page = state.pf.task_page || 1;
+    var url =
+      "/api/ops-sheet/planfix-tasks?" +
+      planfixYearMonthQs() +
+      "&page=" +
+      encodeURIComponent(String(page)) +
+      "&limit=" +
+      encodeURIComponent(String(state.pf.task_limit || 100));
+    if (q) url += "&q=" + encodeURIComponent(q);
+    return apiGet(url).then(function (j) {
+      state.pf.task_rows = j.rows || [];
+      state.pf.task_total = Number(j.total || 0);
+      state.pf.task_page = Number(j.page || 1);
+      state.pf.task_pages = Number(j.pages || 1);
+      state.pf.task_shown = Number(j.shown || 0);
+      if (j.period) state.pf.period = j.period;
+      if (j.account) state.pf.account = String(j.account).trim() || state.pf.account;
+      renderPlanfixTasks();
+      scheduleUrlSync();
+      return j;
+    });
+  }
+
+  function loadPlanfix() {
+    return apiGet("/api/ops-sheet/planfix?" + planfixYearMonthQs())
+      .then(function (j) {
+        applyPlanfixPanel(j);
+        return j;
+      })
+      .then(function (j) {
+        return loadPlanfixTasks().then(function () {
+          return j;
+        });
+      });
+  }
+
+  function runPlanfixSync() {
+    var started = Date.now();
+    var year = state.year;
+    state.pf.syncing = true;
+    patchLiveProgress({ message: "старт…" }, 0);
+    var lastProg = null;
+    var timer = setInterval(function () {
+      var sec = Math.round((Date.now() - started) / 1000);
+      fetch("/api/ops-sheet/planfix-sync-status", { credentials: "same-origin" })
+        .then(function (r) {
+          return r.json();
+        })
+        .then(function (j) {
+          if (j && j.success) lastProg = j;
+          patchLiveProgress(lastProg || j, sec);
+        })
+        .catch(function () {
+          patchLiveProgress(lastProg, sec);
+        });
+    }, 1000);
+    var body = { year: year, month: pfMonthFromUi() };
+    var run = function () {
+      return fetch("/api/ops-sheet/planfix-sync", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }).then(function (r) {
+        return r.json().then(function (j) {
+          if (!r.ok || !j || j.success === false) {
+            throw new Error((j && j.error) || "HTTP " + r.status);
+          }
+          return j;
+        });
+      });
+    };
+    var btn = el("dg-ops-pf-sync");
+    var p =
+      window.DatagonNotify && window.DatagonNotify.busyRun && btn
+        ? window.DatagonNotify.busyRun(btn, run)
+        : run();
+    return p
+      .then(function (j) {
+        clearInterval(timer);
+        state.pf.syncing = false;
+        applyPlanfixPanel(j);
+        showActionLog("success", formatPlanfixSummary(j), true);
+        return loadYear();
+      })
+      .catch(function (e) {
+        clearInterval(timer);
+        state.pf.syncing = false;
+        showActionLog("danger", "Ошибка: " + escapeHtml(e.message || e) + "<br>Фильтры: " + planfixFiltersLine(), true);
+        toast("danger", e.message || "Planfix");
+      });
+  }
+
+  function savePlanfixMap(opts) {
+    opts = opts || {};
+    var items = readMapItemsFromDom();
+    var box = el("dg-ops-pf-save-msg");
+    function setMsg(type, html) {
+      if (opts.silent && type !== "danger") return;
+      if (!box) return;
+      box.className = "alert mt-3 mb-0 alert-" + type;
+      box.innerHTML = html;
+      box.classList.remove("d-none");
+    }
+    if (!items.length) {
+      setMsg("warning", "Сначала синхронизируйте Planfix — список статусов пустой.");
+      return;
+    }
+    setMsg("warning", "Сохраняем…");
+    var run = function () {
+      return fetch("/api/ops-sheet/planfix-status-map", {
+        method: "PUT",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ year: state.year, month: pfMonthFromUi(), items: items }),
+      }).then(function (r) {
+        return r.json().then(function (j) {
+          if (!r.ok || !j || j.success === false) {
+            throw new Error((j && j.error) || "HTTP " + r.status);
+          }
+          return j;
+        });
+      });
+    };
+    var btn = el("dg-ops-pf-save-map");
+    var p =
+      window.DatagonNotify && window.DatagonNotify.busyRun && btn
+        ? window.DatagonNotify.busyRun(btn, run)
+        : run();
+    return p
+      .then(function (j) {
+        applyPlanfixPanel(j);
+        if (j.mismatches && j.mismatches.length) {
+          setMsg(
+            "warning",
+            "Сохранили, но проверка не совпала: " +
+              j.mismatches
+                .map(function (m) {
+                  return escapeHtml(m.status_value);
+                })
+                .join(", ")
+          );
+        } else if (!opts.silent) {
+          setMsg("success", "Привязка сохранена: " + fmtIntRu(j.saved) + " статусов. Кол-во заявок пересчитаем.");
+        }
+        return loadYear();
+      })
+      .catch(function (e) {
+        setMsg("danger", escapeHtml(e.message || "Ошибка сохранения"));
+        toast("danger", e.message || "Не удалось сохранить привязку");
+      });
+  }
+
   function loadMeta() {
     return apiGet("/api/ops-sheet/meta").then(function (j) {
       state.years = j.years || [];
       state.managers = j.managers || [];
       state.can_write = !!j.can_write;
+      state.pf.configured = !!j.planfix_configured;
+      state.pf.sync_script = j.sync_script || state.pf.sync_script;
+      state.pf.buckets = j.status_buckets || state.pf.buckets;
       if (j.year && !state.year) state.year = j.year;
       fillYearSelect(state.years);
+      renderPlanfixPanel();
       return j;
     });
   }
@@ -534,6 +1271,10 @@
         state.loading = false;
         setHint("");
         renderAll();
+        if (state.pf.syncing) return null;
+        return loadPlanfix().catch(function () {
+          return null;
+        });
       });
     };
     var btn = el("dg-ops-apply");
@@ -551,22 +1292,47 @@
     });
   }
 
-  function commitFilters() {
+  function commitFilters(opts) {
+    var ySel = el("dg-ops-f-year");
+    var sInp = el("dg-ops-search");
+    var pfSel = el("dg-ops-pf-month");
+    if (ySel) state.pending.year = Number(ySel.value) || cy;
+    if (sInp) state.pending.search = sInp.value;
+    if (pfSel) {
+      var pm = Number(pfSel.value);
+      state.pending.pf_month = pm === 0 ? 0 : pm >= 1 && pm <= 12 ? pm : curMonth;
+    }
     state.year = Number(state.pending.year) || cy;
     state.search = String(state.pending.search || "").trim();
+    state.pf_month = Number(state.pending.pf_month);
+    if (state.pf_month !== 0 && (state.pf_month < 1 || state.pf_month > 12)) state.pf_month = curMonth;
+    if (!(opts && opts.keepTaskPage)) state.pf.task_page = 1;
     syncDirtyMarker();
-    return loadYear();
+    scheduleUrlSync();
+    return loadYear().then(function (res) {
+      if (state.jump_month >= 1 && state.jump_month <= 12) {
+        window.setTimeout(function () {
+          jumpToMonth(state.jump_month);
+        }, 50);
+      }
+      return res;
+    });
   }
 
   function resetFilters() {
     state.pending.year = cy;
     state.pending.search = "";
-    var y = el("dg-ops-f-year");
-    var s = el("dg-ops-search");
-    var m = el("dg-ops-table-search-mirror");
-    if (y) y.value = String(cy);
-    if (s) s.value = "";
-    if (m) m.value = "";
+    state.pending.pf_month = curMonth;
+    state.jump_month = 0;
+    state.pf.task_q = "";
+    state.pf.task_page = 1;
+    paintFilterForm();
+    var log = el("dg-ops-action-log");
+    if (log) {
+      log.classList.add("d-none");
+      log.textContent = "";
+      log.innerHTML = "";
+    }
     return commitFilters();
   }
 
@@ -872,18 +1638,159 @@
         syncDirtyMarker();
       });
     }
+    var pfSel = el("dg-ops-pf-month");
+    if (pfSel) {
+      pfSel.addEventListener("change", function () {
+        var n = Number(pfSel.value);
+        state.pending.pf_month = n === 0 ? 0 : n >= 1 && n <= 12 ? n : curMonth;
+        syncDirtyMarker();
+      });
+    }
     if (el("dg-ops-apply")) {
       el("dg-ops-apply").addEventListener("click", function () {
-        var sel = el("dg-ops-f-year");
-        if (sel) state.pending.year = Number(sel.value) || cy;
-        var s = el("dg-ops-search");
-        if (s) state.pending.search = s.value;
         commitFilters();
       });
     }
     if (el("dg-ops-reset")) {
       el("dg-ops-reset").addEventListener("click", function () {
         resetFilters();
+      });
+    }
+  }
+
+  function planfixCardCollapse() {
+    var body = el("dg-ops-pf-body");
+    var btn = el("dg-ops-pf-toggle");
+    if (!body || !btn) return;
+    function apply() {
+      var c = false;
+      try { c = localStorage.getItem(PF_COLLAPSE_KEY) === "1"; } catch (e) {}
+      body.style.display = c ? "none" : "";
+      btn.textContent = c ? "Развернуть" : "Свернуть";
+    }
+    btn.addEventListener("click", function () {
+      var c = false;
+      try { c = localStorage.getItem(PF_COLLAPSE_KEY) === "1"; } catch (e) {}
+      try { localStorage.setItem(PF_COLLAPSE_KEY, c ? "0" : "1"); } catch (e2) {}
+      apply();
+    });
+    apply();
+  }
+
+  function bindPlanfixMapDrag(tbody) {
+    var dragRow = null;
+    tbody.addEventListener("mousedown", function (ev) {
+      var handle = ev.target && ev.target.closest ? ev.target.closest(".dg-ops-pf-drag") : null;
+      var tr = ev.target && ev.target.closest ? ev.target.closest("tr[data-ops-status]") : null;
+      if (tr) tr.draggable = !!handle;
+    });
+    tbody.addEventListener("dragstart", function (ev) {
+      var handle = ev.target && ev.target.closest ? ev.target.closest(".dg-ops-pf-drag") : null;
+      var tr = ev.target && ev.target.closest ? ev.target.closest("tr[data-ops-status]") : null;
+      if (!tr || !handle) {
+        ev.preventDefault();
+        return;
+      }
+      dragRow = tr;
+      tr.classList.add("dg-ops-pf-dragging");
+      try {
+        ev.dataTransfer.effectAllowed = "move";
+        ev.dataTransfer.setData("text/plain", tr.getAttribute("data-ops-status") || "");
+      } catch (e) {}
+    });
+    tbody.addEventListener("dragover", function (ev) {
+      if (!dragRow) return;
+      ev.preventDefault();
+      try {
+        ev.dataTransfer.dropEffect = "move";
+      } catch (e2) {}
+      var over = ev.target && ev.target.closest ? ev.target.closest("tr[data-ops-status]") : null;
+      if (!over || over === dragRow) return;
+      var rect = over.getBoundingClientRect();
+      var before = ev.clientY < rect.top + rect.height / 2;
+      if (before) tbody.insertBefore(dragRow, over);
+      else tbody.insertBefore(dragRow, over.nextSibling);
+    });
+    tbody.addEventListener("drop", function (ev) {
+      ev.preventDefault();
+    });
+    tbody.addEventListener("dragend", function () {
+      if (dragRow) dragRow.classList.remove("dg-ops-pf-dragging");
+      dragRow = null;
+      tbody.querySelectorAll("tr[data-ops-status]").forEach(function (tr) {
+        tr.draggable = false;
+      });
+      if (state.can_write) savePlanfixMap({ silent: true });
+    });
+  }
+
+  function bindPlanfix() {
+    if (el("dg-ops-pf-sync")) {
+      el("dg-ops-pf-sync").addEventListener("click", function () {
+        runPlanfixSync();
+      });
+    }
+    if (el("dg-ops-pf-save-map")) {
+      el("dg-ops-pf-save-map").addEventListener("click", function () {
+        savePlanfixMap();
+      });
+    }
+    var tbody = el("dg-ops-pf-map-tbody");
+    if (tbody) {
+      tbody.addEventListener("change", function (ev) {
+        var t = ev.target;
+        if (!t || !t.classList.contains("dg-ops-pf-bucket")) return;
+        var tr = t.closest("tr");
+        if (!tr) return;
+        var chk = tr.querySelector("input.dg-ops-pf-count");
+        if (!chk) return;
+        var key = t.value;
+        chk.disabled = !key;
+        if (!key) {
+          chk.checked = false;
+          return;
+        }
+        var b = (state.pf.buckets || []).find(function (x) { return x.key === key; });
+        if (b && b.countDefault === false) chk.checked = false;
+        else chk.checked = true;
+      });
+      bindPlanfixMapDrag(tbody);
+    }
+    function commitPfTasks() {
+      var inp = el("dg-ops-pf-tasks-search");
+      state.pf.task_q = inp ? String(inp.value || "").trim() : "";
+      state.pf.task_page = 1;
+      return loadPlanfixTasks();
+    }
+    if (el("dg-ops-pf-tasks-apply")) {
+      el("dg-ops-pf-tasks-apply").addEventListener("click", function () {
+        commitPfTasks();
+      });
+    }
+    var tsearch = el("dg-ops-pf-tasks-search");
+    if (tsearch) {
+      tsearch.addEventListener("keydown", function (ev) {
+        if (ev.key === "Enter") {
+          ev.preventDefault();
+          commitPfTasks();
+        } else if (ev.key === "Escape") {
+          tsearch.value = "";
+          commitPfTasks();
+        }
+      });
+    }
+    if (el("dg-ops-pf-tasks-prev")) {
+      el("dg-ops-pf-tasks-prev").addEventListener("click", function () {
+        if (state.pf.task_page <= 1) return;
+        state.pf.task_page -= 1;
+        loadPlanfixTasks();
+      });
+    }
+    if (el("dg-ops-pf-tasks-next")) {
+      el("dg-ops-pf-tasks-next").addEventListener("click", function () {
+        if (state.pf.task_page >= state.pf.task_pages) return;
+        state.pf.task_page += 1;
+        loadPlanfixTasks();
       });
     }
   }
@@ -900,21 +1807,30 @@
   }
 
   function init() {
+    var fromUrl = applyShareQueryToPending();
     loadVisible();
     loadWidths();
     renderMonthJump();
     filtersCollapse();
     tableCardCollapse();
+    planfixCardCollapse();
     columnControls();
     bindHeaderSearchMirror();
     bindFilters();
     bindTableEdit();
+    bindPlanfix();
+    fillPfMonthSelect();
+    paintFilterForm();
     syncDirtyMarker();
     loadMeta()
       .then(function () {
-        state.pending.year = state.year || cy;
+        if (!fromUrl) {
+          state.pending.year = state.year || cy;
+        }
         fillYearSelect(state.years);
-        return commitFilters();
+        fillPfMonthSelect();
+        paintFilterForm();
+        return commitFilters({ keepTaskPage: fromUrl });
       })
       .catch(function (e) {
         setHint("Ошибка: " + (e.message || e));

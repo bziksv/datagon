@@ -3260,7 +3260,7 @@ initDB().then(async () => {
     app.use('/api/db-admin', require('./routes/dbAdmin')(db));
     app.use('/api/finance', financeRouterFactory(db, appSettings));
     app.use('/api/manager-sales', require('./routes/managerSales')(db));
-    app.use('/api/ops-sheet', require('./routes/opsSheet')(db));
+    app.use('/api/ops-sheet', require('./routes/opsSheet')(db, appSettings));
     app.use('/api/specialties', require('./routes/specialties')(db));
     app.post('/api/settings/auto-sync-run', async (req, res) => {
         try {
