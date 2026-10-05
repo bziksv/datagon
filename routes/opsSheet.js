@@ -1105,7 +1105,10 @@ async function reportOverlapsLocalPeriod(db, byTask, year, month) {
 
 async function enrichFromDealStatusReport(appSettings, db, onProgress, year, month) {
     const ids = pf.DEAL_STATUS_REPORT_IDS || [450694];
-    const forcePeriodGenerate = Number(month) >= 1 && Number(month) <= 12;
+    // И месяц, и «весь год»: всегда generate. Период только в UI Planfix (API дат не принимает).
+    // Толстый сейв + срез по датам занижает гистограмму (год: Поставщик 4704 вместо цифр Planfix).
+    const periodMonth = Number(month) >= 1 && Number(month) <= 12 ? Number(month) : 0;
+    const forcePeriodGenerate = true;
     const merged = new Map();
     const unique = [];
     const used = [];
@@ -1115,9 +1118,9 @@ async function enrichFromDealStatusReport(appSettings, db, onProgress, year, mon
         const id = ids[i];
         if (typeof onProgress === 'function') {
             onProgress(
-                forcePeriodGenerate
-                    ? `Отчёт ${id}: generate за выбранный месяц (период как в Planfix UI)`
-                    : `Отчёт ${id}: колонка «${pf.STATUS_FIELD_NAME}»`
+                periodMonth
+                    ? `Отчёт ${id}: generate за месяц (период как в Planfix UI)`
+                    : `Отчёт ${id}: generate за весь ${year} (период как в Planfix UI)`
             );
         }
         let save = null;
@@ -1127,21 +1130,17 @@ async function enrichFromDealStatusReport(appSettings, db, onProgress, year, mon
             const fields = pf.collectReportFields(det);
             if (!fields.some((f) => pf.isStatusFieldName(f && f.name))) continue;
 
-            if (forcePeriodGenerate) {
-                // Толстый сейв «за всё время» при срезе по нашим датам даёт меньше, чем гистограмма
-                // в Planfix за месяц (Поставщик 1559 vs 1605). Период задаётся в UI отчёта Planfix —
-                // API generate дат не принимает, поэтому всегда generate при синке месяца.
-                try {
-                    const fresh = await generateDealStatusReport(appSettings, id, onProgress);
-                    if (fresh && fresh.id) {
-                        localGenerated = true;
-                        generated = true;
-                        save = { id: fresh.id, chunksCount: Number(fresh.chunksCount) || 1 };
-                    }
-                } catch (e) {
-                    generate_error = e && e.message ? e.message : String(e);
+            try {
+                const fresh = await generateDealStatusReport(appSettings, id, onProgress);
+                if (fresh && fresh.id) {
+                    localGenerated = true;
+                    generated = true;
+                    save = { id: fresh.id, chunksCount: Number(fresh.chunksCount) || 1 };
                 }
-            } else {
+            } catch (e) {
+                generate_error = e && e.message ? e.message : String(e);
+            }
+            if (!save || !save.id) {
                 const list = await restJson(
                     appSettings,
                     'POST',
@@ -1150,18 +1149,6 @@ async function enrichFromDealStatusReport(appSettings, db, onProgress, year, mon
                     20000
                 );
                 save = pickBestReportSave(pf.collectReportSaves(list));
-                if (!save || !save.id) {
-                    try {
-                        const fresh = await generateDealStatusReport(appSettings, id, onProgress);
-                        if (fresh && fresh.id) {
-                            localGenerated = true;
-                            generated = true;
-                            save = { id: fresh.id, chunksCount: Number(fresh.chunksCount) || 1 };
-                        }
-                    } catch (e) {
-                        generate_error = e && e.message ? e.message : String(e);
-                    }
-                }
             }
         } catch (e) {
             generate_error = e && e.message ? e.message : String(e);
@@ -1173,10 +1160,10 @@ async function enrichFromDealStatusReport(appSettings, db, onProgress, year, mon
         let overlaps = year
             ? await reportOverlapsLocalPeriod(db, read.byTask, year, month)
             : true;
-        if (!overlaps && !localGenerated && !forcePeriodGenerate) {
+        if (!overlaps && !localGenerated) {
             if (typeof onProgress === 'function') {
                 onProgress(
-                    `Сейв отчёта ${id} не содержит задач выбранного периода — генерируем отчёт в Planfix`
+                    `Сейв отчёта ${id} не содержит задач выбранного периода — generate в Planfix`
                 );
             }
             try {
@@ -1197,8 +1184,8 @@ async function enrichFromDealStatusReport(appSettings, db, onProgress, year, mon
         if (score < 1) continue;
         const dealUniques = (read.unique || []).filter((s) => s && !pf.isPlanfixProcessStatusName(s));
 
-        if (forcePeriodGenerate && localGenerated) {
-            // Только свежий месячный сейв — не мержим толстые исторические.
+        if (localGenerated) {
+            // Только свежий сейв периода — не мержим толстые исторические.
             merged.clear();
             unique.length = 0;
             used.length = 0;
@@ -1255,8 +1242,8 @@ async function enrichFromDealStatusReport(appSettings, db, onProgress, year, mon
         report_id: used[0].report_id,
         save_id: used[0].save_id,
         year: Number(year) || 0,
-        month: forcePeriodGenerate ? Number(month) : 0,
-        scope: forcePeriodGenerate ? 'period' : 'all',
+        month: periodMonth,
+        scope: 'period',
         generated,
     });
     await refreshTaskDatesFromSheet(db);
@@ -1270,7 +1257,7 @@ async function enrichFromDealStatusReport(appSettings, db, onProgress, year, mon
         unique_statuses: unique,
         generated,
         covers_period: used.some((r) => r.covers_period),
-        scope: forcePeriodGenerate ? 'period' : 'all',
+        scope: 'period',
         generate_error: generate_error || undefined,
     };
 }
