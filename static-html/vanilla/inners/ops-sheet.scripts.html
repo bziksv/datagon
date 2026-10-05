@@ -1840,6 +1840,13 @@
   function bindPlanfix() {
     if (el("dg-ops-pf-sync")) {
       el("dg-ops-pf-sync").addEventListener("click", function () {
+        var m = pfMonthFromUi();
+        this.setAttribute(
+          "data-dg-notify-start",
+          m
+            ? "Забираем заявки Planfix за выбранный месяц…"
+            : "Забираем весь год одним прогоном (все 12 месяцев, без помесячных запусков)…"
+        );
         runPlanfixSync();
       });
     }

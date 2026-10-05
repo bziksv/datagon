@@ -1670,7 +1670,9 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
                 stage: 'fields',
                 message: dryRun
                     ? `Пробный просмотр (${periodLabel}): справочник полей`
-                    : `Справочник полей Planfix (${periodLabel})`,
+                    : month
+                      ? `Справочник полей Planfix (${periodLabel})`
+                      : `Весь ${year}: все 12 месяцев одним прогоном (заявки листа, без второго обхода аккаунта)`,
                 pages: 0,
                 fetched: 0,
                 stored: 0,
