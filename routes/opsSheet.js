@@ -120,6 +120,14 @@ function pfSyncPublic() {
     };
 }
 
+const PF_SYNC_STALE_MS = 45 * 60 * 1000;
+
+function pfSyncLockIsStale() {
+    if (!pfSyncJob.active) return false;
+    const t = Number(pfSyncJob.updated_ms) || Number(pfSyncJob.started_ms) || 0;
+    return t > 0 && Date.now() - t > PF_SYNC_STALE_MS;
+}
+
 async function ensureSchema(db) {
     if (schemaReady) return;
     await db.query(`
@@ -1286,10 +1294,18 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
             if (!canWrite(req)) {
                 return res.status(403).json({ success: false, error: 'Недостаточно прав (нужен full)' });
             }
+            if (pfSyncJob.active && pfSyncLockIsStale()) {
+                markPfSync({
+                    active: false,
+                    stage: 'idle',
+                    message: 'Сбросили зависший синк (нет прогресса > 45 мин)',
+                });
+            }
             if (pfSyncJob.active) {
                 return res.status(409).json({
                     success: false,
                     error: 'Синхронизация Planfix уже идёт',
+                    attached: true,
                     ...pfSyncPublic(),
                 });
             }

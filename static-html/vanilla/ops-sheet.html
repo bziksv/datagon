@@ -2436,6 +2436,74 @@
       });
   }
 
+  function waitForActivePfSync(seed) {
+    var startedWait = Date.now();
+    if (seed) {
+      patchLiveProgress(seed, Number(seed.elapsed_sec) || 0);
+    }
+    showActionLog(
+      "info",
+      "На сервере уже идёт синк Planfix — второй не запускаем, ждём окончания.<br>Фильтры: " +
+        planfixFiltersLine(),
+      true
+    );
+    return new Promise(function (resolve, reject) {
+      var ticks = 0;
+      function tick() {
+        ticks += 1;
+        fetch("/api/ops-sheet/planfix-sync-status", { credentials: "same-origin" })
+          .then(function (r) {
+            return r.json();
+          })
+          .then(function (j) {
+            patchLiveProgress(j, Number(j.elapsed_sec) || Math.round((Date.now() - startedWait) / 1000));
+            if (j && j.success && !j.active) {
+              loadPlanfix()
+                .then(function (panel) {
+                  resolve({
+                    success: true,
+                    attached: true,
+                    pages: j.pages,
+                    stored: j.stored,
+                    total: j.fetched,
+                    fetched: j.fetched,
+                    period: j.year
+                      ? Number(j.month)
+                        ? "месяц " + j.month + " / " + j.year
+                        : "весь " + j.year
+                      : "",
+                    statuses: panel && panel.statuses,
+                    buckets: panel && panel.buckets,
+                    local_total: panel && panel.local_total,
+                    last_synced_at: panel && panel.last_synced_at,
+                    empty_status: panel && panel.empty_status,
+                    with_status: panel && panel.with_status,
+                    unmatched_assigners: panel && panel.unmatched_assigners,
+                    sync_script: panel && panel.sync_script,
+                  });
+                })
+                .catch(reject);
+              return;
+            }
+            if (ticks > 2400) {
+              reject(new Error("Синк Planfix не завершился за 40 мин — обновите страницу и проверьте журнал"));
+              return null;
+            }
+            window.setTimeout(tick, 1000);
+            return null;
+          })
+          .catch(function (e) {
+            if (ticks > 2400) {
+              reject(e);
+              return;
+            }
+            window.setTimeout(tick, 1500);
+          });
+      }
+      tick();
+    });
+  }
+
   function runPlanfixSync() {
     var started = Date.now();
     var year = state.year;
@@ -2465,6 +2533,10 @@
         body: JSON.stringify(body),
       }).then(function (r) {
         return r.json().then(function (j) {
+          if (r.status === 409 || (j && j.attached && j.active)) {
+            toast("info", "Синк уже идёт — ждём на сервере");
+            return waitForActivePfSync(j);
+          }
           if (!r.ok || !j || j.success === false) {
             throw new Error((j && j.error) || "HTTP " + r.status);
           }

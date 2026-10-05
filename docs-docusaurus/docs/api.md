@@ -2184,11 +2184,13 @@ Query: `year`, `month`, `q` (номер / постановщик / статус)
 
 ### GET `/api/ops-sheet/planfix-sync-status`
 
-Живой этап текущего синка: `{ active, stage, message, pages, fetched, stored, elapsed_sec, dry_run, year }`. UI опрашивает раз в секунду, пока идёт POST `/planfix-sync`.
+Живой этап текущего синка: `{ active, stage, message, pages, fetched, stored, elapsed_sec, dry_run, year }`. UI опрашивает раз в секунду, пока идёт POST `/planfix-sync`. После 409 тот же статус используется, чтобы **дождаться** уже запущенного синка, а не слать второй.
 
 ### POST `/api/ops-sheet/planfix-sync`
 
 Только `full`. Body: `{ year, month }`. Шаги: сотрудники Planfix → постановщики специальности «Менеджер по продажам» → `POST /task/list` **только их** задачи за дату создания периода, шаблоны заявок/КП **14** и **176404** отдельными запросами (не `14;176404` — Planfix тогда отдаёт 0 строк) → системный **Статус Планфикс** → отдельно справочник **«Статус Сделки/Письма»** из отчётов. Обрыв TLS Planfix (`fetch failed`) повторяется до 4 раз, между страницами пауза 250 мс. Ответ включает `assigners_matched`, `skipped_not_manager`, `status_report.unique_statuses`.
+
+Повторный POST, пока синк жив: **409** `{ success: false, error, attached: true, …planfix-sync-status }`. UI не считает это аварией: подключается к прогрессу и ждёт `active: false`. Лок в памяти процесса; если нет прогресса **> 45 мин**, следующий POST сбрасывает лок и стартует заново.
 
 ### PUT `/api/ops-sheet/planfix-status-map`
 
