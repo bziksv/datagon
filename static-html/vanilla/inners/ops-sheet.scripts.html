@@ -989,6 +989,8 @@
       } else {
         insight.className = "alert alert-success py-2 px-3";
         insight.classList.remove("d-none");
+        var repTot = state.pf.report_total;
+        var rm = state.pf.report_meta || {};
         insight.innerHTML =
           "Период <strong>" +
           escapeHtml(period || "") +
@@ -999,11 +1001,10 @@
           fmtIntRu(withN) +
           ", без статуса " +
           fmtIntRu(emptyN) +
-          ". Колонка «В отчёте Planfix» — generate сейва за этот месяц (как гистограмма в Planfix), без отбора постановщик/шаблон" +
-          (state.pf.report_total != null
-            ? " (в сейве: " + fmtIntRu(state.pf.report_total) + ")"
-            : " (прочерк, пока не пройдёт фаза отчёта; в Planfix выставьте период месяца и синкните)") +
-          ". «Кол-во заявок» в листе считается только из заявок листа.";
+          ".<br>Колонка <strong>В отчёте Planfix</strong> — гистограмма сейва отчёта" +
+          (rm.save_id ? " №" + escapeHtml(String(rm.save_id)) : "") +
+          (repTot != null ? ": <strong>" + fmtIntRu(repTot) + "</strong> задач со статусом сделки" : " (нет данных — нажмите «Только статусы из отчёта»)") +
+          ". Она должна совпадать с Planfix. Колонка <strong>В заявках листа</strong> всегда меньше — там только менеджеры+КП.";
       }
     }
     var um = el("dg-ops-pf-unmatched");
