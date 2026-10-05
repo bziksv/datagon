@@ -1075,51 +1075,14 @@ async function refreshTaskDatesFromSheet(db) {
 }
 
 async function indexAllTaskDatesForPeriod(appSettings, db, year, month, onProgress) {
+    // Второй полный /task/list без шаблона/постановщика на «весь год» — десятки тысяч
+    // offset и часы поверх уже записанных заявок листа. Для месяца гистограмма отчёта
+    // берётся из generate, даты листа достаточно скопировать из dg_ops_planfix_tasks.
+    if (typeof onProgress === 'function') {
+        onProgress('Копируем даты из заявок листа (без второго обхода всего аккаунта)');
+    }
     await refreshTaskDatesFromSheet(db);
-    let dateType = 'otherRange';
-    async function load(offset) {
-        return listTasksPage(appSettings, {
-            offset,
-            pageSize: 100,
-            year,
-            month,
-            assignerId: null,
-            templateId: null,
-            withFieldFilter: false,
-            dateType,
-        });
-    }
-    try {
-        await load(0);
-    } catch (_) {
-        dateType = 'otherPeriod';
-    }
-    let offset = 0;
-    let stored = 0;
-    for (;;) {
-        if (typeof onProgress === 'function') {
-            onProgress(`Индекс дат всех задач периода (без шаблона КП и постановщика): offset ${offset}`);
-        }
-        const payload = await load(offset);
-        const tasks = pf.collectTasks(payload);
-        if (!tasks.length) break;
-        const rows = [];
-        tasks.forEach((t) => {
-            const id = pf.pickTaskId(t);
-            const created = pf.parsePlanfixDateTime(
-                t.dateTime || t.createdDate || t.createDate || t.date
-            );
-            if (!id || !created) return;
-            rows.push({ task_id: id, created_at: created });
-        });
-        await upsertTaskDates(db, rows);
-        stored += rows.length;
-        if (tasks.length < 100) break;
-        offset += tasks.length;
-        await sleep(250);
-        if (offset > 100000) break;
-    }
-    return stored;
+    return 0;
 }
 
 async function reportOverlapsLocalPeriod(db, byTask, year, month) {
