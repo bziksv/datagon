@@ -268,7 +268,7 @@ async function ensureSchema(db) {
             year INT NOT NULL DEFAULT 0,
             month INT NOT NULL DEFAULT 0,
             scope VARCHAR(16) NOT NULL DEFAULT 'all',
-            generated TINYINT NOT NULL DEFAULT 0,
+            is_generated TINYINT NOT NULL DEFAULT 0,
             synced_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
@@ -934,11 +934,11 @@ async function upsertReportMeta(db, meta) {
     const year = meta && Number(meta.year) ? Number(meta.year) : 0;
     const month = meta && Number(meta.month) ? Number(meta.month) : 0;
     const scope = meta && meta.scope === 'period' ? 'period' : 'all';
-    const generated = meta && meta.generated ? 1 : 0;
+    const isGenerated = meta && meta.generated ? 1 : 0;
     const ts = mysqlNow();
     await db.query(
         `INSERT INTO dg_ops_planfix_report_meta
-            (id, report_id, save_id, year, month, scope, generated, synced_at)
+            (id, report_id, save_id, year, month, scope, is_generated, synced_at)
          VALUES (1, ?, ?, ?, ?, ?, ?, ?)
          ON DUPLICATE KEY UPDATE
             report_id = VALUES(report_id),
@@ -946,16 +946,16 @@ async function upsertReportMeta(db, meta) {
             year = VALUES(year),
             month = VALUES(month),
             scope = VALUES(scope),
-            generated = VALUES(generated),
+            is_generated = VALUES(is_generated),
             synced_at = VALUES(synced_at)`,
-        [rid, sid, year, month, scope, generated, ts]
+        [rid, sid, year, month, scope, isGenerated, ts]
     );
 }
 
 async function loadReportMeta(db) {
     try {
         const [rows] = await db.query(
-            `SELECT report_id, save_id, year, month, scope, generated, synced_at
+            `SELECT report_id, save_id, year, month, scope, is_generated, synced_at
                FROM dg_ops_planfix_report_meta WHERE id = 1 LIMIT 1`
         );
         return rows && rows[0] ? rows[0] : null;
