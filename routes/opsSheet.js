@@ -234,6 +234,15 @@ async function ensureSchema(db) {
     } catch (e) {
         if (!(e && (e.errno === 1060 || /duplicate column/i.test(String(e.message || ''))))) throw e;
     }
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS dg_ops_planfix_report_status_counts (
+            status_value VARCHAR(191) NOT NULL PRIMARY KEY,
+            n INT NOT NULL DEFAULT 0,
+            report_id INT NOT NULL DEFAULT 0,
+            save_id INT NOT NULL DEFAULT 0,
+            synced_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
     await seedDealStatusCatalog(db);
     await assignMissingCatalogOrder(db);
     await migratePlanfixCreatedAtToMoscow(db);
@@ -901,6 +910,32 @@ async function applyReportStatuses(db, byTask) {
     return applied;
 }
 
+async function upsertReportStatusCounts(db, byTask, meta) {
+    await db.query('DELETE FROM dg_ops_planfix_report_status_counts');
+    const countBy = new Map();
+    (byTask || new Map()).forEach((status) => {
+        const s = String(status || '').trim();
+        if (!s || pf.isPlanfixProcessStatusName(s) || pf.isDealStatusSeparator(s)) return;
+        countBy.set(s, (countBy.get(s) || 0) + 1);
+    });
+    if (!countBy.size) return 0;
+    const rows = [...countBy.entries()];
+    const ph = rows.map(() => '(?,?,?,?,?)').join(',');
+    const args = [];
+    const rid = meta && Number(meta.report_id) ? Number(meta.report_id) : 0;
+    const sid = meta && Number(meta.save_id) ? Number(meta.save_id) : 0;
+    const ts = mysqlNow();
+    rows.forEach(([status, n]) => {
+        args.push(status.slice(0, 191), n, rid, sid, ts);
+    });
+    await db.query(
+        `INSERT INTO dg_ops_planfix_report_status_counts (status_value, n, report_id, save_id, synced_at)
+         VALUES ${ph}`,
+        args
+    );
+    return rows.length;
+}
+
 async function reportOverlapsLocalPeriod(db, byTask, year, month) {
     const ids = [...(byTask || new Map()).keys()];
     if (!ids.length) return false;
@@ -1016,6 +1051,7 @@ async function enrichFromDealStatusReport(appSettings, db, onProgress, year, mon
     }
     const applied = await applyReportStatuses(db, merged);
     await upsertCatalog(db, unique, 'report');
+    await upsertReportStatusCounts(db, merged, used[0]);
     return {
         report_id: used[0].report_id,
         reports: used,
@@ -1062,6 +1098,15 @@ async function loadPlanfixPanel(db, year, managers, month) {
           WHERE created_at >= ? AND created_at < ?`,
         [b.fromSql, b.toSql]
     );
+    let reportCountRows = [];
+    try {
+        const [rr] = await db.query(
+            `SELECT status_value, n, report_id, save_id, synced_at FROM dg_ops_planfix_report_status_counts`
+        );
+        reportCountRows = rr || [];
+    } catch (e) {
+        if (!(e && (e.errno === 1146 || /doesn't exist/i.test(String(e.message || ''))))) throw e;
+    }
     const mapBy = {};
     (mapRows || []).forEach((r) => {
         mapBy[String(r.status_value)] = {
@@ -1073,6 +1118,23 @@ async function loadPlanfixPanel(db, year, managers, month) {
     (taskStatusRows || []).forEach((r) => {
         countBy[String(r.status_value || '')] = Number(r.n) || 0;
     });
+    const reportBy = {};
+    let reportMeta = null;
+    let reportTotal = 0;
+    (reportCountRows || []).forEach((r) => {
+        const k = String(r.status_value || '');
+        const n = Number(r.n) || 0;
+        reportBy[k] = n;
+        reportTotal += n;
+        if (!reportMeta) {
+            reportMeta = {
+                report_id: Number(r.report_id) || 0,
+                save_id: Number(r.save_id) || 0,
+                synced_at: r.synced_at || null,
+            };
+        }
+    });
+    const hasReportCounts = (reportCountRows || []).length > 0;
     const names = {};
     const catMeta = {};
     const catOrder = [];
@@ -1087,6 +1149,9 @@ async function loadPlanfixPanel(db, year, managers, month) {
     });
     Object.keys(countBy).forEach((k) => {
         if (!names[k]) names[k] = 'task';
+    });
+    Object.keys(reportBy).forEach((k) => {
+        if (!names[k]) names[k] = 'report';
     });
     Object.keys(mapBy).forEach((k) => {
         if (!names[k]) names[k] = 'map';
@@ -1121,6 +1186,7 @@ async function loadPlanfixPanel(db, year, managers, month) {
                 is_separator: isSep,
                 tasks_in_year: isSep ? 0 : countBy[status_value] || 0,
                 tasks_n: isSep ? 0 : countBy[status_value] || 0,
+                tasks_n_report: isSep ? 0 : hasReportCounts ? reportBy[status_value] || 0 : null,
                 bucket: isSep ? '' : bucket,
                 suggested_bucket: isSep ? '' : suggested,
                 count_in_apps: isSep ? false : countIn,
@@ -1143,6 +1209,8 @@ async function loadPlanfixPanel(db, year, managers, month) {
         period: periodLabel,
         empty_status: emptyStatus,
         with_status: Math.max(0, (Number(tot.n) || 0) - emptyStatus),
+        report_total: hasReportCounts ? reportTotal : null,
+        report_meta: reportMeta,
     };
 }
 

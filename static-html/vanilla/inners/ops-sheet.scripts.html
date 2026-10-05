@@ -90,6 +90,8 @@
       statuses: [],
       unmatched: [],
       local_total: 0,
+      report_total: null,
+      report_meta: null,
       last_synced_at: null,
       configured: false,
       sync_script: null,
@@ -659,6 +661,8 @@
     state.pf.statuses = j.statuses || [];
     state.pf.unmatched = j.unmatched_assigners || [];
     state.pf.local_total = Number(j.local_total || 0);
+    if (j.report_total != null) state.pf.report_total = Number(j.report_total);
+    if (j.report_meta) state.pf.report_meta = j.report_meta;
     state.pf.last_synced_at = j.last_synced_at || null;
     state.pf.configured = j.configured != null ? !!j.configured : state.pf.configured;
     state.pf.sync_script = j.sync_script || state.pf.sync_script;
@@ -890,7 +894,7 @@
         '<td class="dg-ops-pf-grip-td">' +
         grip +
         "</td>" +
-        '<td colspan="4" class="dg-ops-pf-sep-td"><span class="dg-ops-pf-sep-line">-----</span></td></tr>'
+        '<td colspan="5" class="dg-ops-pf-sep-td"><span class="dg-ops-pf-sep-line">-----</span></td></tr>'
       );
     }
     var shownBucket = s.bucket || s.suggested_bucket || "";
@@ -908,7 +912,10 @@
         : "без статуса (Planfix не отдал поле)") +
       (s.suggested_bucket && !s.mapped ? ' <span class="text-muted">(предложение)</span>' : "") +
       "</td>" +
-      '<td class="dg-ops-num">' +
+      '<td class="dg-ops-num" title="Сейв отчёта Planfix, без отбора постановщик / шаблон КП">' +
+      (s.tasks_n_report == null ? "—" : escapeHtml(formatInt(s.tasks_n_report))) +
+      "</td>" +
+      '<td class="dg-ops-num" title="Постановщик = менеджер продаж, шаблоны заявок/КП 14 и 176404, дата создания = период фильтра">' +
       escapeHtml(formatInt(s.tasks_n != null ? s.tasks_n : s.tasks_in_year || 0)) +
       "</td>" +
       '<td><select class="form-select form-select-sm dg-ops-pf-bucket" data-idx="' +
@@ -948,7 +955,7 @@
       var list = state.pf.statuses || [];
       if (!list.length) {
         tbody.innerHTML =
-          '<tr><td colspan="5" class="text-muted">Нет строк за период — синхронизируйте выбранный месяц.</td></tr>';
+          '<tr><td colspan="6" class="text-muted">Нет строк за период — синхронизируйте выбранный месяц.</td></tr>';
       } else {
         tbody.innerHTML = list
           .map(function (s, idx) {
@@ -980,16 +987,21 @@
       } else {
         insight.className = "alert alert-success py-2 px-3";
         insight.classList.remove("d-none");
-        insight.textContent =
-          "Период " +
-          (period || "") +
-          ": задач " +
-          tot +
+        insight.innerHTML =
+          "Период <strong>" +
+          escapeHtml(period || "") +
+          "</strong>: в заявках листа <strong>" +
+          fmtIntRu(tot) +
+          "</strong> (постановщик = менеджер продаж, шаблоны КП 14 и 176404)" +
           ", со статусом " +
-          withN +
+          fmtIntRu(withN) +
           ", без статуса " +
-          emptyN +
-          ".";
+          fmtIntRu(emptyN) +
+          ". Колонка «В отчёте Planfix» — сейв отчёта <em>без</em> этих отборов" +
+          (state.pf.report_total != null
+            ? " (строк в сейве: " + fmtIntRu(state.pf.report_total) + ")"
+            : " (появится после синка, фаза отчёта)") +
+          ". «Кол-во заявок» в листе считается только из заявок листа.";
       }
     }
     var um = el("dg-ops-pf-unmatched");
