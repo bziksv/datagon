@@ -2013,6 +2013,8 @@
   function patchLiveProgress(j, sec) {
     var box = ensureProgressShell();
     if (!box) return;
+    // После рестарта Node job мёртв (active:false) — не крутим «идёт…» со старым offset
+    if (j && j.success && j.active === false) return;
     setLogType(box, "info");
     var title = "Синхронизация идёт, прошло " + fmtIntRu(sec) + " с…";
     setNodeText("dg-ops-pf-prog-title", title);

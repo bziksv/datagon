@@ -1869,14 +1869,10 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
             if (!dryRun) {
                 markPfSync({
                     stage: 'task_dates',
-                    message: `Индекс дат всех задач ${periodLabel} (без отбора постановщик/шаблон) для сверки с отчётом`,
+                    message: `Копируем даты из заявок листа (${periodLabel})`,
                 });
-                const datesN = await indexAllTaskDatesForPeriod(settings, db, year, month, (msg) => {
+                await indexAllTaskDatesForPeriod(settings, db, year, month, (msg) => {
                     markPfSync({ stage: 'task_dates', message: msg });
-                });
-                markPfSync({
-                    stage: 'task_dates',
-                    message: `Индекс дат: ${datesN} задач периода`,
                 });
             }
 
