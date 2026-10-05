@@ -17,6 +17,64 @@ const { getFxRates, toRub, normalizeCurrency } = require('../lib/datagonFxRates'
 
 const PRICE_EPS = 0.005;
 const APPLY_HARD_MAX = 50000;
+/** Не пишем на сателлит, если новая цена < 20% от текущей (защита от эталона 0 и опечаток). */
+const NETWORK_PRICE_CRASH_RATIO = 0.2;
+
+function networkPriceWriteGuard({ sourceOk, finalPrice, targetRub }) {
+    const neu = Number(finalPrice);
+    if (!sourceOk || !Number.isFinite(neu) || neu <= 0) {
+        return {
+            allow: false,
+            code: 'zero_source',
+            note: 'skip;guard=zero_source',
+            error: 'эталон ≤ 0 — на сателлит не пишем (иначе уедет 0)',
+        };
+    }
+    const oldP = Number(targetRub);
+    if (Number.isFinite(oldP) && oldP > 0 && neu < oldP * NETWORK_PRICE_CRASH_RATIO) {
+        return {
+            allow: false,
+            code: 'price_crash',
+            note: 'skip;guard=price_crash',
+            error: `стоп: ${Math.round(oldP)} → ${Math.round(neu)} ₽ (падение больше 80%)`,
+        };
+    }
+    return { allow: true };
+}
+
+async function stampNetworkGuardSkip(db, targetProductId, note) {
+    const id = Number(targetProductId);
+    if (!Number.isFinite(id) || id <= 0) return;
+    await db.query(
+        `UPDATE my_products
+         SET network_sync_at = NOW(), network_sync_note = ?, updated_at = NOW()
+         WHERE id = ?`,
+        [String(note || 'skip;guard').slice(0, 255), id]
+    );
+}
+
+async function applyNetworkPriceGuard(db, opts) {
+    const o = opts || {};
+    const pair = o.pair || {};
+    const g = networkPriceWriteGuard({
+        sourceOk: !!o.sourceOk,
+        finalPrice: o.finalPrice,
+        targetRub: o.targetRub,
+    });
+    if (g.allow) return g;
+    if (g.code === 'price_crash') o.counters.skipped_price_crash += 1;
+    else o.counters.skipped_no_source_price += 1;
+    if (o.errors && o.errors.length < 20) {
+        o.errors.push({
+            code: pair.target_sku || pair.target_code || String(pair.target_product_id || ''),
+            error: g.error,
+        });
+    }
+    if (!o.dryRun) {
+        await stampNetworkGuardSkip(db, pair.target_product_id, g.note);
+    }
+    return g;
+}
 
 function networkPricesRouterFactory(db, appSettings) {
     const router = express.Router();
@@ -33,6 +91,7 @@ function networkPricesRouterFactory(db, appSettings) {
         skipped_no_link: 0,
         skipped_no_pct: 0,
         skipped_no_source_price: 0,
+        skipped_price_crash: 0,
         cms_failed: 0,
         errors: [],
         started_at: null,
@@ -233,6 +292,7 @@ function networkPricesRouterFactory(db, appSettings) {
                 out.delta_pct_vs_proposed = null;
                 out.delta_pct_vs_source = null;
                 out.can_apply = false;
+                out.write_guard = 'zero_source';
                 return out;
             }
             out.proposed_price = prop.finalPrice;
@@ -240,6 +300,12 @@ function networkPricesRouterFactory(db, appSettings) {
             out.source_price_rub = Number(prop.source_price_rub);
             out.fx_applied = !!prop.fx_applied;
             const tgtRub = toRub(out.target_price, out.target_currency, fx);
+            const guard = networkPriceWriteGuard({
+                sourceOk: true,
+                finalPrice: prop.finalPrice,
+                targetRub: tgtRub,
+            });
+            out.write_guard = guard.allow ? null : guard.code;
             if (Number.isFinite(tgtRub) && tgtRub > 0) {
                 out.delta_pct_vs_proposed = ((tgtRub - prop.finalPrice) / prop.finalPrice) * 100;
             } else {
@@ -253,7 +319,8 @@ function networkPricesRouterFactory(db, appSettings) {
             out.can_apply =
                 (out.link_status === 'linked' || out.link_kind) &&
                 out.target_product_id != null &&
-                !pricesEqual(tgtRub, prop.finalPrice);
+                !pricesEqual(tgtRub, prop.finalPrice) &&
+                !!guard.allow;
             return out;
         });
     }
@@ -1486,6 +1553,7 @@ function networkPricesRouterFactory(db, appSettings) {
             would_update: 0,
             skipped_unchanged: 0,
             skipped_no_source_price: 0,
+            skipped_price_crash: 0,
             cms_failed: 0,
             errors: [],
             duration_sec: null,
@@ -1504,16 +1572,24 @@ function networkPricesRouterFactory(db, appSettings) {
                     pricePct,
                     fx
                 );
-                if (!prop.ok) {
-                    result.skipped_no_source_price += 1;
-                    continue;
-                }
                 const live =
                     liveMap.get(`sku:${normalizeSku(pair.target_sku)}`) ||
                     liveMap.get(`xml:${String(pair.target_code || '').trim()}`);
                 const tgtRub = live
                     ? toRub(live.price, live.currency || 'RUB', fx)
                     : toRub(pair.target_price, pair.target_currency || 'RUB', fx);
+                const guard = await applyNetworkPriceGuard(db, {
+                    pair,
+                    sourceOk: !!prop.ok,
+                    finalPrice: prop.ok ? prop.finalPrice : 0,
+                    targetRub: tgtRub,
+                    errors: result.errors,
+                    counters: result,
+                    dryRun,
+                });
+                if (!guard.allow) {
+                    continue;
+                }
                 if (pricesEqual(tgtRub, prop.finalPrice)) {
                     result.skipped_unchanged += 1;
                     continue;
@@ -1588,8 +1664,8 @@ function networkPricesRouterFactory(db, appSettings) {
         result.duration_sec = Math.round(((Date.now() - started) / 1000) * 100) / 100;
         if (!result.message) {
             result.message = dryRun
-                ? `Пробный прогон: к записи ${result.would_update}, без изменений ${result.skipped_unchanged}, без цены эталона ${result.skipped_no_source_price}`
-                : `Записано ✓ ${result.written}, без изменений ${result.skipped_unchanged}, ошибок CMS × ${result.cms_failed}`;
+                ? `Пробный прогон: к записи ${result.would_update}, без изменений ${result.skipped_unchanged}, эталон 0: ${result.skipped_no_source_price}, стоп-обвал: ${result.skipped_price_crash || 0}`
+                : `Записано ✓ ${result.written}, без изменений ${result.skipped_unchanged}, эталон 0 (не пишем): ${result.skipped_no_source_price}, стоп-обвал: ${result.skipped_price_crash || 0}, ошибок CMS × ${result.cms_failed}`;
         }
         return result;
     }
@@ -1632,6 +1708,7 @@ function networkPricesRouterFactory(db, appSettings) {
                 skipped_no_link: 0,
                 skipped_no_pct: 0,
                 skipped_no_source_price: 0,
+                skipped_price_crash: 0,
                 cms_failed: 0,
                 errors: [],
                 started_at: new Date().toISOString(),
@@ -1653,6 +1730,7 @@ function networkPricesRouterFactory(db, appSettings) {
             applyJob.would_update = result.would_update || 0;
             applyJob.skipped_unchanged = result.skipped_unchanged || 0;
             applyJob.skipped_no_source_price = result.skipped_no_source_price || 0;
+            applyJob.skipped_price_crash = result.skipped_price_crash || 0;
             applyJob.skipped_no_pct = result.skipped_no_pct || 0;
             applyJob.cms_failed = result.cms_failed || 0;
             applyJob.errors = result.errors || [];
@@ -1747,8 +1825,14 @@ networkPricesRouterFactory.triggerNetworkPricesSyncFromSettings = async function
     let scanned = 0;
     let written = 0;
     let skipped = 0;
+    let skipped_no_source_price = 0;
+    let skipped_price_crash = 0;
     let failed = 0;
     const errors = [];
+    const counters = {
+        skipped_no_source_price: 0,
+        skipped_price_crash: 0,
+    };
 
     for (const cfg of cfgRows) {
         const targetSiteId = Number(cfg.target_site_id);
@@ -1820,21 +1904,26 @@ networkPricesRouterFactory.triggerNetworkPricesSyncFromSettings = async function
                 scanned += 1;
                 const srcCur = String(pair.source_currency || 'RUB').trim().toUpperCase();
                 const baseRub = priceToRub(pair.source_price, srcCur, fx);
-                if (!Number.isFinite(baseRub) || baseRub <= 0) {
-                    skipped += 1;
-                    continue;
-                }
-                const finalPrice = roundPx(baseRub * (1 + pricePct / 100), 'RUB');
-                if (!Number.isFinite(finalPrice) || finalPrice <= 0) {
-                    skipped += 1;
-                    continue;
-                }
+                const sourceOk = Number.isFinite(baseRub) && baseRub > 0;
+                const finalPrice = sourceOk ? roundPx(baseRub * (1 + pricePct / 100), 'RUB') : 0;
                 const live =
                     liveMap.get(`sku:${String(pair.target_sku || '').trim()}`) ||
                     liveMap.get(`xml:${String(pair.target_code || '').trim()}`);
                 const tgtRub = live
                     ? priceToRub(live.price, live.currency || 'RUB', fx)
                     : priceToRub(pair.target_price, pair.target_currency || 'RUB', fx);
+                const guard = await applyNetworkPriceGuard(db, {
+                    pair,
+                    sourceOk,
+                    finalPrice,
+                    targetRub: tgtRub,
+                    errors,
+                    counters,
+                    dryRun: false,
+                });
+                if (!guard.allow) {
+                    continue;
+                }
                 if (
                     Number.isFinite(tgtRub) &&
                     Math.abs(Number(tgtRub) - finalPrice) < PRICE_EPS_SYNC
@@ -1925,17 +2014,25 @@ networkPricesRouterFactory.triggerNetworkPricesSyncFromSettings = async function
         }
     }
 
+    skipped_no_source_price = counters.skipped_no_source_price;
+    skipped_price_crash = counters.skipped_price_crash;
     const cacheFail = (errors || []).some((e) => String(e.error || '').startsWith('cache_clear'));
+    const guardBits = [];
+    if (skipped_no_source_price) guardBits.push(`эталон 0 (не пишем): ${skipped_no_source_price}`);
+    if (skipped_price_crash) guardBits.push(`стоп-обвал: ${skipped_price_crash}`);
+    const guardTxt = guardBits.length ? `, ${guardBits.join(', ')}` : '';
     return {
         success: (failed === 0 || written > 0) && !cacheFail,
         scanned,
         written,
         skipped,
+        skipped_no_source_price,
+        skipped_price_crash,
         failed,
         errors,
         message: cacheFail
             ? `Цены сети: записано ✓ ${written}, но кэш витрины Bitrix НЕ сброшен (ошибок × ${failed})`
-            : `Цены сети: записано ✓ ${written}, без изменений ${skipped}, ошибок × ${failed}`,
+            : `Цены сети: записано ✓ ${written}, без изменений ${skipped}${guardTxt}, ошибок × ${failed}`,
     };
 };
 
