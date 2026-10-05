@@ -2176,7 +2176,7 @@ Body: `year`, `month`, `manager_user_id` + `coefficient` / `bonus_past` / `salar
 
 ### GET `/api/ops-sheet/planfix`
 
-Query: `year`, `month` (`0` = весь год, `1–12` = месяц). Локальная панель статусов **за период**: `statuses[]` (`status_value`, `tasks_n` / `tasks_in_year` — заявки листа: постановщик=менеджер продаж + шаблоны 14/176404, `tasks_n_report` — задачи сейва отчёта Planfix **без** этих отборов, но **с датой создания в выбранном периоде** (`null` до фазы отчёта), `bucket`, `suggested_bucket`, `count_in_apps`, `mapped`), `report_total`, `report_meta`, `buckets`, `unmatched_assigners`, `local_total`, `empty_status`, `with_status`, `period`, `last_synced_at`, `sync_script`.
+Query: `year`, `month` (`0` = весь год, `1–12` = месяц). Локальная панель статусов **за период**: `statuses[]` (`status_value`, `tasks_n` / `tasks_in_year` — заявки листа: постановщик=менеджер продаж + шаблоны 14/176404, `tasks_n_report` — гистограмма сейва отчёта Planfix после **generate за месяц** (период из UI Planfix; без отбора постановщик/шаблон), при синке «весь год» — срез по дате создания; `null` до фазы отчёта, `bucket`, `suggested_bucket`, `count_in_apps`, `mapped`), `report_total`, `report_meta`, `buckets`, `unmatched_assigners`, `local_total`, `empty_status`, `with_status`, `period`, `last_synced_at`, `sync_script`.
 
 ### GET `/api/ops-sheet/planfix-tasks`
 

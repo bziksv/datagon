@@ -260,6 +260,18 @@ async function ensureSchema(db) {
             KEY idx_ops_pf_task_dates_created (created_at)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS dg_ops_planfix_report_meta (
+            id TINYINT NOT NULL PRIMARY KEY DEFAULT 1,
+            report_id INT NOT NULL DEFAULT 0,
+            save_id INT NOT NULL DEFAULT 0,
+            year INT NOT NULL DEFAULT 0,
+            month INT NOT NULL DEFAULT 0,
+            scope VARCHAR(16) NOT NULL DEFAULT 'all',
+            generated TINYINT NOT NULL DEFAULT 0,
+            synced_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
     await seedDealStatusCatalog(db);
     await assignMissingCatalogOrder(db);
     await migratePlanfixCreatedAtToMoscow(db);
@@ -876,29 +888,81 @@ async function generateDealStatusReport(appSettings, reportId, onProgress) {
 }
 
 async function readDealStatusReportPairs(appSettings, reportId, save, onProgress) {
-    const chunks = Math.max(1, Number(save && save.chunksCount) || 1);
+    let chunks = Math.max(1, Number(save && save.chunksCount) || 1);
     const byTask = new Map();
     const unique = [];
     let hint = {};
-    for (let c = 0; c < chunks; c += 1) {
+    let c = 0;
+    // chunksCount в list иногда врёт/пустой — читаем, пока чанки не кончатся (потолок 40).
+    const maxChunks = Math.max(chunks, 40);
+    for (; c < maxChunks; c += 1) {
         if (typeof onProgress === 'function') {
-            onProgress(`Читаем «${pf.STATUS_FIELD_NAME}»: чанк ${c + 1}/${chunks}`);
+            onProgress(`Читаем «${pf.STATUS_FIELD_NAME}»: чанк ${c + 1}/${chunks > 1 ? chunks : '?'}`);
         }
-        const payload = await restJson(
-            appSettings,
-            'POST',
-            `/report/${reportId}/save/${save.id}/data?chunk=${c}`,
-            {},
-            60000
-        );
+        let payload;
+        try {
+            payload = await restJson(
+                appSettings,
+                'POST',
+                `/report/${reportId}/save/${save.id}/data?chunk=${c}`,
+                {},
+                60000
+            );
+        } catch (e) {
+            if (c === 0) throw e;
+            break;
+        }
         const parsed = pf.parseDealStatusReportRows(payload, hint);
         hint = { taskIdx: parsed.taskIdx, statusIdx: parsed.statusIdx };
-        (parsed.pairs || []).forEach((p) => {
+        const pairs = parsed.pairs || [];
+        if (!pairs.length && c > 0) break;
+        if (!pairs.length && c === 0) break;
+        pairs.forEach((p) => {
             byTask.set(p.task_id, p.status_value);
             if (unique.indexOf(p.status_value) < 0) unique.push(p.status_value);
         });
+        if (Number(save && save.chunksCount) > 0 && c + 1 >= Number(save.chunksCount)) break;
+        // если chunksCount не задан — продолжаем до пустого чанка
+        if (!(Number(save && save.chunksCount) > 0) && pairs.length < 10 && c > 0) break;
     }
-    return { byTask, unique, chunks, save_id: save.id };
+    return { byTask, unique, chunks: Math.max(1, c), save_id: save.id };
+}
+
+async function upsertReportMeta(db, meta) {
+    const rid = meta && Number(meta.report_id) ? Number(meta.report_id) : 0;
+    const sid = meta && Number(meta.save_id) ? Number(meta.save_id) : 0;
+    const year = meta && Number(meta.year) ? Number(meta.year) : 0;
+    const month = meta && Number(meta.month) ? Number(meta.month) : 0;
+    const scope = meta && meta.scope === 'period' ? 'period' : 'all';
+    const generated = meta && meta.generated ? 1 : 0;
+    const ts = mysqlNow();
+    await db.query(
+        `INSERT INTO dg_ops_planfix_report_meta
+            (id, report_id, save_id, year, month, scope, generated, synced_at)
+         VALUES (1, ?, ?, ?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE
+            report_id = VALUES(report_id),
+            save_id = VALUES(save_id),
+            year = VALUES(year),
+            month = VALUES(month),
+            scope = VALUES(scope),
+            generated = VALUES(generated),
+            synced_at = VALUES(synced_at)`,
+        [rid, sid, year, month, scope, generated, ts]
+    );
+}
+
+async function loadReportMeta(db) {
+    try {
+        const [rows] = await db.query(
+            `SELECT report_id, save_id, year, month, scope, generated, synced_at
+               FROM dg_ops_planfix_report_meta WHERE id = 1 LIMIT 1`
+        );
+        return rows && rows[0] ? rows[0] : null;
+    } catch (e) {
+        if (e && (e.errno === 1146 || /doesn't exist/i.test(String(e.message || '')))) return null;
+        throw e;
+    }
 }
 
 async function applyReportStatuses(db, byTask) {
@@ -1078,6 +1142,7 @@ async function reportOverlapsLocalPeriod(db, byTask, year, month) {
 
 async function enrichFromDealStatusReport(appSettings, db, onProgress, year, month) {
     const ids = pf.DEAL_STATUS_REPORT_IDS || [450694];
+    const forcePeriodGenerate = Number(month) >= 1 && Number(month) <= 12;
     const merged = new Map();
     const unique = [];
     const used = [];
@@ -1086,30 +1151,53 @@ async function enrichFromDealStatusReport(appSettings, db, onProgress, year, mon
     for (let i = 0; i < ids.length; i += 1) {
         const id = ids[i];
         if (typeof onProgress === 'function') {
-            onProgress(`Отчёт ${id}: колонка «${pf.STATUS_FIELD_NAME}»`);
+            onProgress(
+                forcePeriodGenerate
+                    ? `Отчёт ${id}: generate за выбранный месяц (период как в Planfix UI)`
+                    : `Отчёт ${id}: колонка «${pf.STATUS_FIELD_NAME}»`
+            );
         }
         let save = null;
+        let localGenerated = false;
         try {
             const det = await restJson(appSettings, 'GET', `/report/${id}`, null, 15000);
             const fields = pf.collectReportFields(det);
             if (!fields.some((f) => pf.isStatusFieldName(f && f.name))) continue;
-            const list = await restJson(
-                appSettings,
-                'POST',
-                `/report/${id}/save/list`,
-                { offset: 0, pageSize: 20, fields: 'id,name,dateTime,chunksCount' },
-                20000
-            );
-            save = pickBestReportSave(pf.collectReportSaves(list));
-            if (!save || !save.id) {
+
+            if (forcePeriodGenerate) {
+                // Толстый сейв «за всё время» при срезе по нашим датам даёт меньше, чем гистограмма
+                // в Planfix за месяц (Поставщик 1559 vs 1605). Период задаётся в UI отчёта Planfix —
+                // API generate дат не принимает, поэтому всегда generate при синке месяца.
                 try {
                     const fresh = await generateDealStatusReport(appSettings, id, onProgress);
                     if (fresh && fresh.id) {
+                        localGenerated = true;
                         generated = true;
                         save = { id: fresh.id, chunksCount: Number(fresh.chunksCount) || 1 };
                     }
                 } catch (e) {
                     generate_error = e && e.message ? e.message : String(e);
+                }
+            } else {
+                const list = await restJson(
+                    appSettings,
+                    'POST',
+                    `/report/${id}/save/list`,
+                    { offset: 0, pageSize: 20, fields: 'id,name,dateTime,chunksCount' },
+                    20000
+                );
+                save = pickBestReportSave(pf.collectReportSaves(list));
+                if (!save || !save.id) {
+                    try {
+                        const fresh = await generateDealStatusReport(appSettings, id, onProgress);
+                        if (fresh && fresh.id) {
+                            localGenerated = true;
+                            generated = true;
+                            save = { id: fresh.id, chunksCount: Number(fresh.chunksCount) || 1 };
+                        }
+                    } catch (e) {
+                        generate_error = e && e.message ? e.message : String(e);
+                    }
                 }
             }
         } catch (e) {
@@ -1122,7 +1210,7 @@ async function enrichFromDealStatusReport(appSettings, db, onProgress, year, mon
         let overlaps = year
             ? await reportOverlapsLocalPeriod(db, read.byTask, year, month)
             : true;
-        if (!overlaps && !generated) {
+        if (!overlaps && !localGenerated && !forcePeriodGenerate) {
             if (typeof onProgress === 'function') {
                 onProgress(
                     `Сейв отчёта ${id} не содержит задач выбранного периода — генерируем отчёт в Planfix`
@@ -1131,6 +1219,7 @@ async function enrichFromDealStatusReport(appSettings, db, onProgress, year, mon
             try {
                 const fresh = await generateDealStatusReport(appSettings, id, onProgress);
                 if (fresh && fresh.id) {
+                    localGenerated = true;
                     generated = true;
                     save = { id: fresh.id, chunksCount: Number(fresh.chunksCount) || 1 };
                     if (!save.chunksCount) save.chunksCount = 1;
@@ -1144,6 +1233,30 @@ async function enrichFromDealStatusReport(appSettings, db, onProgress, year, mon
         const score = pf.scoreDealStatusUniques(read.unique);
         if (score < 1) continue;
         const dealUniques = (read.unique || []).filter((s) => s && !pf.isPlanfixProcessStatusName(s));
+
+        if (forcePeriodGenerate && localGenerated) {
+            // Только свежий месячный сейв — не мержим толстые исторические.
+            merged.clear();
+            unique.length = 0;
+            used.length = 0;
+            read.byTask.forEach((val, tid) => {
+                if (!val || pf.isPlanfixProcessStatusName(val)) return;
+                merged.set(tid, val);
+            });
+            dealUniques.forEach((s) => {
+                if (unique.indexOf(s) < 0) unique.push(s);
+            });
+            used.push({
+                report_id: id,
+                save_id: read.save_id,
+                chunks: read.chunks,
+                report_rows: read.byTask.size,
+                score,
+                covers_period: true,
+            });
+            break;
+        }
+
         read.byTask.forEach((val, tid) => {
             if (!val || pf.isPlanfixProcessStatusName(val)) return;
             merged.set(tid, val);
@@ -1175,6 +1288,14 @@ async function enrichFromDealStatusReport(appSettings, db, onProgress, year, mon
     await upsertCatalog(db, unique, 'report');
     await upsertReportStatusCounts(db, merged, used[0]);
     await upsertReportTasks(db, merged, used[0]);
+    await upsertReportMeta(db, {
+        report_id: used[0].report_id,
+        save_id: used[0].save_id,
+        year: Number(year) || 0,
+        month: forcePeriodGenerate ? Number(month) : 0,
+        scope: forcePeriodGenerate ? 'period' : 'all',
+        generated,
+    });
     await refreshTaskDatesFromSheet(db);
     return {
         report_id: used[0].report_id,
@@ -1186,6 +1307,7 @@ async function enrichFromDealStatusReport(appSettings, db, onProgress, year, mon
         unique_statuses: unique,
         generated,
         covers_period: used.some((r) => r.covers_period),
+        scope: forcePeriodGenerate ? 'period' : 'all',
         generate_error: generate_error || undefined,
     };
 }
@@ -1226,26 +1348,51 @@ async function loadPlanfixPanel(db, year, managers, month) {
     let reportMeta = null;
     let hasReportCounts = false;
     try {
-        const [[snap]] = await db.query(
-            `SELECT COUNT(*) AS n, MAX(report_id) AS report_id, MAX(save_id) AS save_id, MAX(synced_at) AS synced_at
-               FROM dg_ops_planfix_report_task`
-        );
-        hasReportCounts = Number(snap && snap.n) > 0;
-        if (hasReportCounts) {
-            reportMeta = {
-                report_id: Number(snap.report_id) || 0,
-                save_id: Number(snap.save_id) || 0,
-                synced_at: snap.synced_at || null,
-            };
+        const metaRow = await loadReportMeta(db);
+        const reqMonth = Number(b.month) || 0;
+        const periodScoped =
+            metaRow &&
+            String(metaRow.scope || '') === 'period' &&
+            Number(metaRow.year) === Number(year) &&
+            Number(metaRow.month) === reqMonth;
+        if (periodScoped) {
+            // Сейв сгенерирован при синке этого месяца (период в Planfix UI) — гистограмма 1:1 с Planfix.
             const [rr] = await db.query(
-                `SELECT r.status_value, COUNT(*) AS n
-                   FROM dg_ops_planfix_report_task r
-                   INNER JOIN dg_ops_planfix_task_dates d ON d.task_id = r.task_id
-                  WHERE d.created_at >= ? AND d.created_at < ?
-                  GROUP BY r.status_value`,
-                [b.fromSql, b.toSql]
+                `SELECT status_value, n, report_id, save_id, synced_at FROM dg_ops_planfix_report_status_counts`
             );
             reportCountRows = rr || [];
+            hasReportCounts = reportCountRows.length > 0;
+            reportMeta = {
+                report_id: Number(metaRow.report_id) || 0,
+                save_id: Number(metaRow.save_id) || 0,
+                synced_at: metaRow.synced_at || null,
+                scope: 'period',
+                year: Number(metaRow.year) || 0,
+                month: Number(metaRow.month) || 0,
+            };
+        } else {
+            const [[snap]] = await db.query(
+                `SELECT COUNT(*) AS n, MAX(report_id) AS report_id, MAX(save_id) AS save_id, MAX(synced_at) AS synced_at
+                   FROM dg_ops_planfix_report_task`
+            );
+            hasReportCounts = Number(snap && snap.n) > 0;
+            if (hasReportCounts) {
+                reportMeta = {
+                    report_id: Number(snap.report_id) || 0,
+                    save_id: Number(snap.save_id) || 0,
+                    synced_at: snap.synced_at || null,
+                    scope: metaRow ? String(metaRow.scope || 'all') : 'all',
+                };
+                const [rr] = await db.query(
+                    `SELECT r.status_value, COUNT(*) AS n
+                       FROM dg_ops_planfix_report_task r
+                       INNER JOIN dg_ops_planfix_task_dates d ON d.task_id = r.task_id
+                      WHERE d.created_at >= ? AND d.created_at < ?
+                      GROUP BY r.status_value`,
+                    [b.fromSql, b.toSql]
+                );
+                reportCountRows = rr || [];
+            }
         }
     } catch (e) {
         if (!(e && (e.errno === 1146 || /doesn't exist/i.test(String(e.message || ''))))) throw e;
