@@ -1580,8 +1580,9 @@
   function beginInlineNameEdit(viewEl, opts) {
     if (!viewEl || viewEl.querySelector(".dg-fin-name-editor")) return;
     var current = String(opts.value || "").trim();
+    var fundStart = !!opts.isFund;
     var editor = document.createElement("div");
-    editor.className = "dg-fin-name-editor";
+    editor.className = "dg-fin-name-editor dg-fin-acc-name-editor";
     editor.innerHTML =
       '<input type="text" class="form-control form-control-sm dg-fin-inline-cname" maxlength="120" placeholder="' +
       esc(opts.placeholder || "Название") +
@@ -1589,11 +1590,16 @@
       '<button type="button" class="btn btn-sm btn-primary dg-fin-inline-save" data-dg-notify-start="' +
       esc(opts.notifyStart || "Сохраняем…") +
       '">OK</button>' +
-      '<button type="button" class="btn btn-sm btn-outline-secondary dg-fin-inline-cancel">✕</button>';
+      '<button type="button" class="btn btn-sm btn-outline-secondary dg-fin-inline-cancel">✕</button>' +
+      '<label class="dg-fin-inline-fund-lab">' +
+      '<input type="checkbox" class="form-check-input dg-fin-inline-fund" />' +
+      "<span>Фонд</span></label>";
     var input = editor.querySelector(".dg-fin-inline-cname");
+    var fundInp = editor.querySelector(".dg-fin-inline-fund");
     var saveBtn = editor.querySelector(".dg-fin-inline-save");
     var cancelBtn = editor.querySelector(".dg-fin-inline-cancel");
     input.value = current;
+    if (fundInp) fundInp.checked = fundStart;
     viewEl.replaceChildren(editor);
     input.focus();
     input.select();
@@ -1603,15 +1609,18 @@
       closed = true;
       renderBalances();
     }
+    function fundNow() {
+      return !!(fundInp && fundInp.checked);
+    }
     function commit() {
       if (closed) return;
       var next = String(input.value || "").trim();
-      if (next === current) {
+      if (next === current && fundNow() === fundStart) {
         close();
         return;
       }
       closed = true;
-      Promise.resolve(opts.onSave(next, saveBtn))
+      Promise.resolve(opts.onSave(next, saveBtn, fundNow()))
         .catch(function (e) {
           toast("danger", e.message || String(e));
           closed = false;
@@ -2242,10 +2251,11 @@
         if (!aid) return;
         beginInlineNameEdit(accView, {
           value: accView.getAttribute("data-custom-name") || "",
+          isFund: aFund,
           placeholder: "Название",
           notifyStart: "Сохраняем счёт…",
-          onSave: function (next, btn) {
-            return saveAccountMeta(aid, abank, aFund, next, btn);
+          onSave: function (next, btn, isFund) {
+            return saveAccountMeta(aid, abank, isFund, next, btn);
           },
         });
       }

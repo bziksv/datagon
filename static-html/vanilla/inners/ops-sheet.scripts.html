@@ -779,19 +779,37 @@
       "Страниц: " + fmtIntRu(j.pages) +
         ", задач в выборке: " + fmtIntRu(j.total != null ? j.total : j.to_update),
     ];
+    if (j.assigners_matched != null) {
+      lines.push(
+        "Постановщики-менеджеры: " +
+          fmtIntRu(j.assigners_matched) +
+          (j.assigner_names && j.assigner_names.length
+            ? " (" + j.assigner_names.map(function (n) { return escapeHtml(n); }).join(", ") + ")"
+            : "")
+      );
+    }
     if (j.field && j.field.lookup_error) {
       lines.push("<strong>Поле статуса:</strong> " + escapeHtml(j.field.lookup_error));
     }
     lines.push(
       "Записано: ✓ " + fmtIntRu(j.stored) +
         ", пропущено: " + fmtIntRu(j.skipped) +
-        " (без номера " + fmtIntRu(j.no_id) + ", без даты " + fmtIntRu(j.no_date) + ")" +
+        " (без номера " + fmtIntRu(j.no_id) + ", без даты " + fmtIntRu(j.no_date) +
+        ", не менеджер продаж " + fmtIntRu(j.skipped_not_manager) + ")" +
         ", без статуса: " + fmtIntRu(j.empty_status) +
         ", локально за период: " + fmtIntRu(j.local_total) +
         ", время: " + fmtIntRu(j.duration_sec) + " с"
     );
-    if (j.sync_script && j.sync_script.version) {
-      lines.push("Скрипт: v" + escapeHtml(String(j.sync_script.version)) + " · rev." + escapeHtml(String(j.sync_script.revision)));
+    if (j.status_report) {
+      lines.push(
+        "Отчёт «Статус Сделки/Письма»: строк " +
+          fmtIntRu(j.status_report.report_rows) +
+          ", записано в задачи " +
+          fmtIntRu(j.status_report.statuses_applied) +
+          (j.status_report.covers_period === false
+            ? " — сейв отчёта не содержит этот месяц, в Planfix сформируйте отчёт за нужный период"
+            : "")
+      );
     }
     if (j.status_values_seen && j.status_values_seen.length) {
       lines.push("Статусы в выборке: " + j.status_values_seen.map(function (s) { return escapeHtml(s); }).join("; "));
@@ -953,7 +971,7 @@
           escapeHtml(period || "период") +
           "</strong> в базе <strong>" +
           fmtIntRu(tot) +
-          "</strong> задач без «Статус Сделки/Письма». Синхронизация отдельно читает это поле из отчёта Planfix — нажмите «Синхронизировать Planfix» ещё раз, если отчёт не успел догрузиться.";
+          "</strong> задач без «Статус Сделки/Письма». Поле с карточки задачи токен не отдаёт — берём его из отчёта Planfix «Отчет за месяц по всем». Если в отчёте другой период (не этот месяц), колонка останется пустой: сформируйте отчёт за нужный месяц в Planfix и синхронизируйте снова.";
       } else if (tot === 0) {
         insight.className = "alert alert-info py-2 px-3";
         insight.classList.remove("d-none");

@@ -210,7 +210,27 @@ async function ensureSchema(db) {
     }
     await seedDealStatusCatalog(db);
     await assignMissingCatalogOrder(db);
+    await migratePlanfixCreatedAtToMoscow(db);
     schemaReady = true;
+}
+
+const OPS_PLANFIX_CREATED_TZ_KEY = 'ops_planfix_created_at_tz';
+
+async function migratePlanfixCreatedAtToMoscow(db) {
+    const [rows] = await db.query(
+        'SELECT setting_value FROM app_settings WHERE setting_key = ? LIMIT 1',
+        [OPS_PLANFIX_CREATED_TZ_KEY]
+    );
+    const cur = rows && rows[0] ? String(rows[0].setting_value || '') : '';
+    if (cur === 'europe_moscow') return;
+    await db.query(
+        'UPDATE dg_ops_planfix_tasks SET created_at = DATE_ADD(created_at, INTERVAL 3 HOUR)'
+    );
+    await db.query(
+        `INSERT INTO app_settings (setting_key, setting_value) VALUES (?, 'europe_moscow')
+         ON DUPLICATE KEY UPDATE setting_value = 'europe_moscow'`,
+        [OPS_PLANFIX_CREATED_TZ_KEY]
+    );
 }
 
 async function seedDealStatusCatalog(db) {
@@ -664,7 +684,7 @@ async function upsertCatalog(db, values, source) {
     await assignMissingCatalogOrder(db);
 }
 
-async function listTasksPage(appSettings, { offset, pageSize, fieldId, year, month, withFieldFilter, dateType }) {
+async function listTasksPage(appSettings, { offset, pageSize, fieldId, year, month, withFieldFilter, dateType, assignerId, templateId }) {
     const b = pf.periodBounds(year, month);
     const filters = [
         {
@@ -673,6 +693,15 @@ async function listTasksPage(appSettings, { offset, pageSize, fieldId, year, mon
             value: { dateType: dateType || 'otherRange', dateFrom: b.fromPf, dateTo: b.toPf },
         },
     ];
+    const aid = Number(assignerId);
+    if (Number.isFinite(aid) && aid > 0) {
+        filters.push({ type: 1, operator: 'equal', value: `user:${aid}` });
+    }
+    const tid = Number(templateId);
+    if (Number.isFinite(tid) && tid > 0) {
+        // Planfix type 51 не принимает «14;176404» как ИЛИ — такой value даёт 0 строк.
+        filters.push({ type: 51, operator: 'equal', value: String(tid) });
+    }
     if (withFieldFilter && fieldId) {
         filters.push({ type: 152, operator: 'equal', value: fieldId });
     }
@@ -688,6 +717,48 @@ async function listTasksPage(appSettings, { offset, pageSize, fieldId, year, mon
         },
         60000
     );
+}
+
+async function listPlanfixUsers(appSettings, onProgress) {
+    const out = [];
+    let offset = 0;
+    for (let page = 0; page < 50; page += 1) {
+        if (typeof onProgress === 'function') {
+            onProgress(`Сотрудники Planfix: offset ${offset}`);
+        }
+        const payload = await restJson(
+            appSettings,
+            'POST',
+            '/user/list',
+            { offset, pageSize: 100, fields: 'id,name,lastName,firstName' },
+            30000
+        );
+        const users = pf.collectUsers(payload);
+        if (!users.length) break;
+        users.forEach((u) => {
+            const id = Number(u && u.id);
+            if (!Number.isFinite(id) || id <= 0) return;
+            out.push({ id, name: pf.pickUserDisplayName(u) });
+        });
+        if (users.length < 100) break;
+        offset += users.length;
+    }
+    return out;
+}
+
+function matchAssignerIds(pfUsers, managers) {
+    const ids = [];
+    const names = [];
+    const mgrHits = new Set();
+    (pfUsers || []).forEach((u) => {
+        const mgr = pf.matchManagerByAssigner(u.name, managers);
+        if (!mgr) return;
+        if (ids.indexOf(u.id) >= 0) return;
+        ids.push(u.id);
+        names.push(u.name || mgr.full_name || mgr.username);
+        mgrHits.add(mgr.id);
+    });
+    return { ids, names, managersMatched: mgrHits.size };
 }
 
 function sleep(ms) {
@@ -804,7 +875,25 @@ async function applyReportStatuses(db, byTask) {
     return applied;
 }
 
-async function enrichFromDealStatusReport(appSettings, db, onProgress) {
+async function reportOverlapsLocalPeriod(db, byTask, year, month) {
+    const ids = [...(byTask || new Map()).keys()];
+    if (!ids.length) return false;
+    const b = pf.periodBounds(year, month);
+    for (let i = 0; i < ids.length; i += 400) {
+        const slice = ids.slice(i, i + 400);
+        const ph = slice.map(() => '?').join(',');
+        const [rows] = await db.query(
+            `SELECT 1 AS x FROM dg_ops_planfix_tasks
+              WHERE task_id IN (${ph}) AND created_at >= ? AND created_at < ?
+              LIMIT 1`,
+            [...slice, b.fromSql, b.toSql]
+        );
+        if (rows && rows.length) return true;
+    }
+    return false;
+}
+
+async function enrichFromDealStatusReport(appSettings, db, onProgress, year, month) {
     const ids = pf.DEAL_STATUS_REPORT_IDS || [450694];
     const merged = new Map();
     const unique = [];
@@ -846,7 +935,29 @@ async function enrichFromDealStatusReport(appSettings, db, onProgress) {
         }
         if (!save || !save.id) continue;
         if (!save.chunksCount) save.chunksCount = 1;
-        const read = await readDealStatusReportPairs(appSettings, id, save, onProgress);
+        let read = await readDealStatusReportPairs(appSettings, id, save, onProgress);
+        let overlaps = year
+            ? await reportOverlapsLocalPeriod(db, read.byTask, year, month)
+            : true;
+        if (!overlaps && !generated) {
+            if (typeof onProgress === 'function') {
+                onProgress(
+                    `Сейв отчёта ${id} не содержит задач выбранного периода — генерируем отчёт в Planfix`
+                );
+            }
+            try {
+                const fresh = await generateDealStatusReport(appSettings, id, onProgress);
+                if (fresh && fresh.id) {
+                    generated = true;
+                    save = { id: fresh.id, chunksCount: Number(fresh.chunksCount) || 1 };
+                    if (!save.chunksCount) save.chunksCount = 1;
+                    read = await readDealStatusReportPairs(appSettings, id, save, onProgress);
+                    overlaps = await reportOverlapsLocalPeriod(db, read.byTask, year, month);
+                }
+            } catch (e) {
+                generate_error = e && e.message ? e.message : String(e);
+            }
+        }
         const score = pf.scoreDealStatusUniques(read.unique);
         if (score < 1) continue;
         const dealUniques = (read.unique || []).filter((s) => s && !pf.isPlanfixProcessStatusName(s));
@@ -863,6 +974,7 @@ async function enrichFromDealStatusReport(appSettings, db, onProgress) {
             chunks: read.chunks,
             report_rows: read.byTask.size,
             score,
+            covers_period: !!overlaps,
         });
     }
     if (!used.length) {
@@ -887,6 +999,7 @@ async function enrichFromDealStatusReport(appSettings, db, onProgress) {
         statuses_applied: applied,
         unique_statuses: unique,
         generated,
+        covers_period: used.some((r) => r.covers_period),
         generate_error: generate_error || undefined,
     };
 }
@@ -1216,53 +1329,73 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
             });
             ownsJob = true;
 
+            const errors = [];
+            const managers = await listSalesManagers(db);
+            let pfUsers = [];
+            try {
+                markPfSync({ stage: 'users', message: 'Сотрудники Planfix — ищем постановщиков-менеджеров продаж' });
+                pfUsers = await listPlanfixUsers(settings, (msg) => {
+                    markPfSync({ stage: 'users', message: msg });
+                });
+            } catch (e) {
+                errors.push({
+                    code: 'user_list',
+                    error: e && e.message ? e.message : 'Не удалось получить /user/list',
+                });
+            }
+            const matchedAssigners = matchAssignerIds(pfUsers, managers);
+            const assignerQueue = matchedAssigners.ids.length ? matchedAssigners.ids : [null];
+            const templateQueue =
+                (pf.DEAL_STATUS_TEMPLATE_IDS || []).length > 0
+                    ? pf.DEAL_STATUS_TEMPLATE_IDS.slice()
+                    : [null];
+            if (!matchedAssigners.ids.length) {
+                errors.push({
+                    code: 'assigners',
+                    error:
+                        'Не сопоставили сотрудников Planfix с менеджерами продаж — временно забираем все задачи за период и отбрасываем чужих постановщиков при записи.',
+                });
+            }
+
             const field = await findDealStatusField(settings, (msg) => {
                 markPfSync({ stage: 'fields', message: msg });
             });
-            const firstTryFieldFilter = !!field.id;
+            const firstTryFieldFilter = false;
             let withFieldFilter = firstTryFieldFilter;
             let dateType = 'otherRange';
-            let page;
-            async function loadFirstPage() {
-                markPfSync({
-                    stage: 'first_page',
-                    message: `Первая страница за ${periodLabel} (фильтр поля=${withFieldFilter ? 'да' : 'нет'}, дата=${dateType})`,
-                });
+            async function loadPage(offset, assignerId, templateId) {
                 return listTasksPage(settings, {
-                    offset: 0,
+                    offset: offset || 0,
                     pageSize: 100,
                     fieldId: field.id,
                     year,
                     month,
                     withFieldFilter,
                     dateType,
+                    assignerId,
+                    templateId,
                 });
             }
             try {
-                page = await loadFirstPage();
+                markPfSync({
+                    stage: 'first_page',
+                    message: `Первая страница за ${periodLabel} (постановщики: ${
+                        matchedAssigners.ids.length || 'все, потом отсев'
+                    }, шаблон=${templateQueue[0] || 'любой'}, дата=${dateType})`,
+                });
+                await loadPage(0, assignerQueue[0], templateQueue[0]);
             } catch (e) {
-                if (withFieldFilter) {
-                    withFieldFilter = false;
-                    try {
-                        page = await loadFirstPage();
-                    } catch (e2) {
-                        dateType = 'otherPeriod';
-                        page = await loadFirstPage();
-                    }
-                } else {
-                    dateType = 'otherPeriod';
-                    page = await loadFirstPage();
-                }
+                dateType = 'otherPeriod';
+                await loadPage(0, assignerQueue[0], templateQueue[0]);
             }
 
             const syncedAt = mysqlNow();
-            const errors = [];
-            let offset = 0;
             let pages = 0;
             let fetched = 0;
             let stored = 0;
             let skippedNoDate = 0;
             let skippedNoId = 0;
+            let skippedNotManager = 0;
             let emptyStatus = 0;
             const seenStatuses = {};
             const sampleAssigners = {};
@@ -1280,6 +1413,10 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
                     }
                     if (mapped.skip === 'no_date') {
                         skippedNoDate += 1;
+                        return;
+                    }
+                    if (!pf.matchManagerByAssigner(mapped.assigner_name, managers)) {
+                        skippedNotManager += 1;
                         return;
                     }
                     if (!mapped.status_value) emptyStatus += 1;
@@ -1301,44 +1438,40 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
                     stored,
                     message: dryRun
                         ? `Пробный просмотр: страница ${pages}, задач ${fetched}`
-                        : `Страница ${pages}: забрано ${fetched}, записано ${stored}`,
+                        : `Страница ${pages}: забрано ${fetched}, своих ${stored}, чужих постановщиков ${skippedNotManager}`,
                 });
                 return tasks.length;
             };
 
-            let pageLen = await consume(page, !dryRun);
-            const firstTasks = pf.collectTasks(page);
-            const firstHasCustom = firstTasks.some((t) => pf.taskHasCustomFieldBag(t));
-            if (firstTasks.length && !firstHasCustom) {
-                const scopeMsg =
-                    'Токен не отдаёт customFieldData на задачах. «Статус Сделки/Письма» читаем отдельно из отчёта Planfix (колонка с этим именем).';
-                errors.push({ code: 'no_custom_fields', error: scopeMsg });
-                if (!field.lookup_error) field.lookup_error = scopeMsg;
-            }
-            offset = pageLen;
-            if (!dryRun) {
-                while (pageLen === 100) {
+            async function paginateAssigner(assignerId, templateId) {
+                let pageLen = 0;
+                let localOffset = 0;
+                do {
                     markPfSync({
                         stage: 'pages',
-                        message: `Запрашиваем страницу ${pages + 1} (offset ${offset})`,
+                        message:
+                            (assignerId ? `Постановщик user:${assignerId}` : 'Все постановщики') +
+                            (templateId ? `, шаблон ${templateId}` : '') +
+                            `, offset ${localOffset}`,
                     });
-                    const next = await listTasksPage(settings, {
-                        offset,
-                        pageSize: 100,
-                        fieldId: field.id,
-                        year,
-                        month,
-                        withFieldFilter,
-                        dateType,
-                    });
-                    pageLen = await consume(next, true);
+                    const next = await loadPage(localOffset, assignerId, templateId);
+                    pageLen = await consume(next, !dryRun);
                     if (pageLen < 100) break;
-                    offset += pageLen;
+                    localOffset += pageLen;
                     if (pages > 5000) {
                         errors.push({ code: 'limit', error: 'Остановлено: больше 5000 страниц' });
                         break;
                     }
+                } while (pageLen === 100);
+            }
+
+            for (let ai = 0; ai < assignerQueue.length; ai += 1) {
+                for (let ti = 0; ti < templateQueue.length; ti += 1) {
+                    await paginateAssigner(assignerQueue[ai], templateQueue[ti]);
                 }
+            }
+
+            if (!dryRun) {
                 markPfSync({
                     stage: 'prune',
                     message: month
@@ -1361,10 +1494,17 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
                     });
                     reportMeta = await enrichFromDealStatusReport(settings, db, (msg) => {
                         markPfSync({ stage: 'status_report', message: msg });
-                    });
+                    }, year, month);
                     (reportMeta.unique_statuses || []).forEach((s) => {
                         if (s) seenStatuses[s] = true;
                     });
+                    if (reportMeta.covers_period === false) {
+                        errors.push({
+                            code: 'status_report_period',
+                            error:
+                                'Отчёт «Отчет за месяц по всем» не содержит задач этого периода (сейв без пересечения с выборкой). В Planfix откройте отчёт, выставьте даты нужного месяца и сформируйте; API не передаёт период в generate. Затем синхронизируйте снова.',
+                        });
+                    }
                     const b2 = pf.periodBounds(year, month);
                     const [emptyRows] = await db.query(
                         `SELECT COUNT(*) AS n FROM dg_ops_planfix_tasks
@@ -1393,7 +1533,6 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
                 await upsertCatalog(db, field.enumValues || [], 'enum');
             }
 
-            const managers = await listSalesManagers(db);
             const panel = await loadPlanfixPanel(db, year, managers, month);
             const durationSec = Math.round((Date.now() - started) / 10) / 100;
             markPfSync({
@@ -1419,9 +1558,12 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
                 total: fetched,
                 to_update: dryRun ? fetched : stored,
                 stored: dryRun ? 0 : stored,
-                skipped: skippedNoDate + skippedNoId,
+                skipped: skippedNoDate + skippedNoId + skippedNotManager,
                 no_date: skippedNoDate,
                 no_id: skippedNoId,
+                skipped_not_manager: skippedNotManager,
+                assigners_matched: matchedAssigners.ids.length,
+                assigner_names: matchedAssigners.names,
                 empty_status: emptyStatus,
                 pages,
                 duration_sec: durationSec,

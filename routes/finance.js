@@ -773,7 +773,7 @@ function factory(db, appSettings) {
                 org_aliases,
                 can_write: pageMode(req) === 'full',
                 api_note:
-                    'Банк — в шапке организации (Точка). Фонд: клик по бейджу типа. Название — клик по тексту или карандашу.',
+                    'Банк — в шапке организации (Точка). Фонд: галка при редактировании названия (карандаш) или клик по бейджу типа.',
             });
         } catch (e) {
             res.status(500).json({ success: false, error: e.message || String(e) });

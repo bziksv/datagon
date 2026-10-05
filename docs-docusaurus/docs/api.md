@@ -2156,7 +2156,7 @@ CSV UTF-8 с BOM по текущему фильтру.
 - Режим **`view`** — только чтение; **`full`** — правка ручных ячеек (`PUT /manual`) и синк/маппинг Planfix.
 - Auto-метрики из `dg_manager_sales_rows` (credit = `COALESCE(handed_to_user_id, manager_user_id)`, `archived_at IS NULL`, месяц из `paid_at`) и планов `dg_manager_sales_plans`.
 - Ручные поля в `dg_ops_sheet_manual`: `coefficient`, `bonus_past`, `salary`.
-- **Кол-во заявок** — auto из снимка Planfix `dg_ops_planfix_tasks` (номер задачи, постановщик, «Статус Сделки/Письма», `created_at`). Менеджер = **постановщик**; месяц = **дата создания**. В счёт входят только статусы с галкой «в кол-во заявок» в `dg_ops_planfix_status_map`.
+- **Кол-во заявок** — auto из снимка Planfix `dg_ops_planfix_tasks` (номер задачи, постановщик, «Статус Сделки/Письма», `created_at`). Менеджер = **постановщик**; месяц = **дата создания по `Europe/Moscow`** (как фильтр месяца в Planfix; `dateTime` API в UTC). В счёт входят только статусы с галкой «в кол-во заявок» в `dg_ops_planfix_status_map`.
 - **Оплаченные заявки** — auto: число продаж credit-менеджера за месяц (`paid_at`, не архив): один **№ нашего счёта** = одна продажа (позиции НДС не удваивают счётчик); строка без номера счёта считается отдельно. Это не корзина Planfix «оплаченная».
 - UI: год → 12 блоков месяцев (строки менеджеров + ИТОГО). Сценарий: [Операционный лист](/docs/ops-sheet). Синк: `lib/opsSheetPlanfixSyncRevision.js`, поле `sync_script`.
 
@@ -2188,11 +2188,11 @@ Query: `year`, `month`, `q` (номер / постановщик / статус)
 
 ### POST `/api/ops-sheet/planfix-sync`
 
-Только `full`. Body: `{ year, month }`. Шаги: `POST /task/list` (номер, постановщик, дата создания, системный **Статус Планфикс** → `planfix_status`) → отдельно читается справочник **«Статус Сделки/Письма»** из отчётов Planfix, где колонка не дублирует процесс задачи (сейчас 450694 / 450690: «Отправлено КП», «Обработка запроса», …). Значения пишутся в `status_value` и `dg_ops_planfix_status_catalog` для привязки к корзинам. Отчёты вроде 450666, где в одноимённой колонке стоят «Новая / В работе (Все) / Завершенная (Все)», отбрасываются. Ответ включает `status_report.unique_statuses`, `status_report.reports[]`.
+Только `full`. Body: `{ year, month }`. Шаги: сотрудники Planfix → постановщики специальности «Менеджер по продажам» → `POST /task/list` **только их** задачи за дату создания периода, шаблоны заявок/КП **14** и **176404** отдельными запросами (не `14;176404` — Planfix тогда отдаёт 0 строк) → системный **Статус Планфикс** → отдельно справочник **«Статус Сделки/Письма»** из отчётов. Ответ включает `assigners_matched`, `skipped_not_manager`, `status_report.unique_statuses`.
 
 ### PUT `/api/ops-sheet/planfix-status-map`
 
-Только `full`. Body: `{ year, month, items: [{ status_value, bucket, count_in_apps, is_separator? }] }`. Порядок `items` = порядок строк таблицы (`sort_order` в `dg_ops_planfix_status_catalog`). Разделители (`__sep:N` / `is_separator`) сохраняются в каталоге, в карту корзин не пишутся. `month` для счётчиков панели после сохранения. Корзины: `in_work`, `paid`, `rejected`, `info_spam`, `supplier`, `no_goods`, `aggregator`. Ответ: сохранённая панель + `mismatches` (проверка из БД).
+Только `full`. Body: `{ year, month, items: [{ status_value, bucket, count_in_apps, is_separator? }] }`. Порядок `items` = порядок строк таблицы (`sort_order` в `dg_ops_planfix_status_catalog`). Разделители (`__sep:N` / `is_separator`) сохраняются в каталоге, в карту корзин не пишутся. `month` для счётчиков панели после сохранения. Корзины: `in_work`, `paid`, `paid_shipped`, `rejected`, `info_spam`, `supplier`, `no_goods`, `aggregator`, `gbuz`. Ответ: сохранённая панель + `mismatches` (проверка из БД).
 
 ## Финансы
 
