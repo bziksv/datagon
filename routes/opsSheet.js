@@ -243,6 +243,23 @@ async function ensureSchema(db) {
             synced_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS dg_ops_planfix_report_task (
+            task_id BIGINT NOT NULL PRIMARY KEY,
+            status_value VARCHAR(191) NOT NULL,
+            report_id INT NOT NULL DEFAULT 0,
+            save_id INT NOT NULL DEFAULT 0,
+            synced_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            KEY idx_ops_pf_report_task_status (status_value)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS dg_ops_planfix_task_dates (
+            task_id BIGINT NOT NULL PRIMARY KEY,
+            created_at DATETIME NOT NULL,
+            KEY idx_ops_pf_task_dates_created (created_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
     await seedDealStatusCatalog(db);
     await assignMissingCatalogOrder(db);
     await migratePlanfixCreatedAtToMoscow(db);
@@ -936,6 +953,111 @@ async function upsertReportStatusCounts(db, byTask, meta) {
     return rows.length;
 }
 
+async function upsertReportTasks(db, byTask, meta) {
+    await db.query('DELETE FROM dg_ops_planfix_report_task');
+    const rows = [];
+    (byTask || new Map()).forEach((status, tid) => {
+        const s = String(status || '').trim();
+        if (!s || pf.isPlanfixProcessStatusName(s) || pf.isDealStatusSeparator(s)) return;
+        const id = Number(tid);
+        if (!Number.isFinite(id) || id <= 0) return;
+        rows.push({ task_id: id, status_value: s.slice(0, 191) });
+    });
+    if (!rows.length) return 0;
+    const rid = meta && Number(meta.report_id) ? Number(meta.report_id) : 0;
+    const sid = meta && Number(meta.save_id) ? Number(meta.save_id) : 0;
+    const ts = mysqlNow();
+    for (let i = 0; i < rows.length; i += 400) {
+        const slice = rows.slice(i, i + 400);
+        const ph = slice.map(() => '(?,?,?,?,?)').join(',');
+        const args = [];
+        slice.forEach((r) => {
+            args.push(r.task_id, r.status_value, rid, sid, ts);
+        });
+        await db.query(
+            `INSERT INTO dg_ops_planfix_report_task (task_id, status_value, report_id, save_id, synced_at)
+             VALUES ${ph}`,
+            args
+        );
+    }
+    return rows.length;
+}
+
+async function upsertTaskDates(db, rows) {
+    if (!rows || !rows.length) return 0;
+    for (let i = 0; i < rows.length; i += 400) {
+        const slice = rows.slice(i, i + 400);
+        const ph = slice.map(() => '(?,?)').join(',');
+        const args = [];
+        slice.forEach((r) => {
+            args.push(r.task_id, r.created_at);
+        });
+        await db.query(
+            `INSERT INTO dg_ops_planfix_task_dates (task_id, created_at)
+             VALUES ${ph}
+             ON DUPLICATE KEY UPDATE created_at = VALUES(created_at)`,
+            args
+        );
+    }
+    return rows.length;
+}
+
+async function refreshTaskDatesFromSheet(db) {
+    await db.query(`
+        INSERT INTO dg_ops_planfix_task_dates (task_id, created_at)
+        SELECT task_id, created_at FROM dg_ops_planfix_tasks
+        ON DUPLICATE KEY UPDATE created_at = VALUES(created_at)
+    `);
+}
+
+async function indexAllTaskDatesForPeriod(appSettings, db, year, month, onProgress) {
+    await refreshTaskDatesFromSheet(db);
+    let dateType = 'otherRange';
+    async function load(offset) {
+        return listTasksPage(appSettings, {
+            offset,
+            pageSize: 100,
+            year,
+            month,
+            assignerId: null,
+            templateId: null,
+            withFieldFilter: false,
+            dateType,
+        });
+    }
+    try {
+        await load(0);
+    } catch (_) {
+        dateType = 'otherPeriod';
+    }
+    let offset = 0;
+    let stored = 0;
+    for (;;) {
+        if (typeof onProgress === 'function') {
+            onProgress(`Индекс дат всех задач периода (без шаблона КП и постановщика): offset ${offset}`);
+        }
+        const payload = await load(offset);
+        const tasks = pf.collectTasks(payload);
+        if (!tasks.length) break;
+        const rows = [];
+        tasks.forEach((t) => {
+            const id = pf.pickTaskId(t);
+            const created = pf.parsePlanfixDateTime(
+                t.dateTime || t.createdDate || t.createDate || t.date
+            );
+            if (!id || !created) return;
+            rows.push({ task_id: id, created_at: created });
+        });
+        await upsertTaskDates(db, rows);
+        stored += rows.length;
+        if (tasks.length < 100) break;
+        offset += tasks.length;
+        await sleep(250);
+        if (offset > 100000) break;
+    }
+    return stored;
+}
+
 async function reportOverlapsLocalPeriod(db, byTask, year, month) {
     const ids = [...(byTask || new Map()).keys()];
     if (!ids.length) return false;
@@ -1052,6 +1174,8 @@ async function enrichFromDealStatusReport(appSettings, db, onProgress, year, mon
     const applied = await applyReportStatuses(db, merged);
     await upsertCatalog(db, unique, 'report');
     await upsertReportStatusCounts(db, merged, used[0]);
+    await upsertReportTasks(db, merged, used[0]);
+    await refreshTaskDatesFromSheet(db);
     return {
         report_id: used[0].report_id,
         reports: used,
@@ -1099,13 +1223,34 @@ async function loadPlanfixPanel(db, year, managers, month) {
         [b.fromSql, b.toSql]
     );
     let reportCountRows = [];
+    let reportMeta = null;
+    let hasReportCounts = false;
     try {
-        const [rr] = await db.query(
-            `SELECT status_value, n, report_id, save_id, synced_at FROM dg_ops_planfix_report_status_counts`
+        const [[snap]] = await db.query(
+            `SELECT COUNT(*) AS n, MAX(report_id) AS report_id, MAX(save_id) AS save_id, MAX(synced_at) AS synced_at
+               FROM dg_ops_planfix_report_task`
         );
-        reportCountRows = rr || [];
+        hasReportCounts = Number(snap && snap.n) > 0;
+        if (hasReportCounts) {
+            reportMeta = {
+                report_id: Number(snap.report_id) || 0,
+                save_id: Number(snap.save_id) || 0,
+                synced_at: snap.synced_at || null,
+            };
+            const [rr] = await db.query(
+                `SELECT r.status_value, COUNT(*) AS n
+                   FROM dg_ops_planfix_report_task r
+                   INNER JOIN dg_ops_planfix_task_dates d ON d.task_id = r.task_id
+                  WHERE d.created_at >= ? AND d.created_at < ?
+                  GROUP BY r.status_value`,
+                [b.fromSql, b.toSql]
+            );
+            reportCountRows = rr || [];
+        }
     } catch (e) {
         if (!(e && (e.errno === 1146 || /doesn't exist/i.test(String(e.message || ''))))) throw e;
+        hasReportCounts = false;
+        reportCountRows = [];
     }
     const mapBy = {};
     (mapRows || []).forEach((r) => {
@@ -1119,22 +1264,13 @@ async function loadPlanfixPanel(db, year, managers, month) {
         countBy[String(r.status_value || '')] = Number(r.n) || 0;
     });
     const reportBy = {};
-    let reportMeta = null;
     let reportTotal = 0;
     (reportCountRows || []).forEach((r) => {
         const k = String(r.status_value || '');
         const n = Number(r.n) || 0;
         reportBy[k] = n;
         reportTotal += n;
-        if (!reportMeta) {
-            reportMeta = {
-                report_id: Number(r.report_id) || 0,
-                save_id: Number(r.save_id) || 0,
-                synced_at: r.synced_at || null,
-            };
-        }
     });
-    const hasReportCounts = (reportCountRows || []).length > 0;
     const names = {};
     const catMeta = {};
     const catOrder = [];
@@ -1574,6 +1710,20 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
                 for (let ti = 0; ti < templateQueue.length; ti += 1) {
                     await paginateAssigner(assignerQueue[ai], templateQueue[ti]);
                 }
+            }
+
+            if (!dryRun) {
+                markPfSync({
+                    stage: 'task_dates',
+                    message: `Индекс дат всех задач ${periodLabel} (без отбора постановщик/шаблон) для сверки с отчётом`,
+                });
+                const datesN = await indexAllTaskDatesForPeriod(settings, db, year, month, (msg) => {
+                    markPfSync({ stage: 'task_dates', message: msg });
+                });
+                markPfSync({
+                    stage: 'task_dates',
+                    message: `Индекс дат: ${datesN} задач периода`,
+                });
             }
 
             if (!dryRun) {
