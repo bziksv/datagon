@@ -940,7 +940,7 @@
 
   function renderPlanfixPanel() {
     var write = !!state.can_write;
-    ["dg-ops-pf-sync", "dg-ops-pf-save-map"].forEach(function (id) {
+    ["dg-ops-pf-sync", "dg-ops-pf-report-only", "dg-ops-pf-save-map"].forEach(function (id) {
       var b = el(id);
       if (b) b.disabled = !write || !!state.pf.syncing;
     });
@@ -1234,11 +1234,13 @@
     });
   }
 
-  function runPlanfixSync() {
+  function runPlanfixSync(opts) {
+    opts = opts || {};
+    var reportOnly = !!opts.reportOnly;
     var started = Date.now();
     var year = state.year;
     state.pf.syncing = true;
-    patchLiveProgress({ message: "старт…" }, 0);
+    patchLiveProgress({ message: reportOnly ? "только отчёт…" : "старт…" }, 0);
     var lastProg = null;
     var timer = setInterval(function () {
       var sec = Math.round((Date.now() - started) / 1000);
@@ -1255,6 +1257,7 @@
         });
     }, 1000);
     var body = { year: year, month: pfMonthFromUi() };
+    if (reportOnly) body.report_only = 1;
     var run = function () {
       return fetch("/api/ops-sheet/planfix-sync", {
         method: "POST",
@@ -1276,7 +1279,7 @@
         });
       });
     };
-    var btn = el("dg-ops-pf-sync");
+    var btn = el(reportOnly ? "dg-ops-pf-report-only" : "dg-ops-pf-sync");
     var p =
       window.DatagonNotify && window.DatagonNotify.busyRun && btn
         ? window.DatagonNotify.busyRun(btn, run)
@@ -1848,6 +1851,11 @@
             : "Забираем весь год одним прогоном (все 12 месяцев, без помесячных запусков)…"
         );
         runPlanfixSync();
+      });
+    }
+    if (el("dg-ops-pf-report-only")) {
+      el("dg-ops-pf-report-only").addEventListener("click", function () {
+        runPlanfixSync({ reportOnly: true });
       });
     }
     if (el("dg-ops-pf-save-map")) {

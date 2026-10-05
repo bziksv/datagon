@@ -1640,6 +1640,11 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
                 body.dry_run === true ||
                 body.dry_run === '1' ||
                 String(req.query.dry_run || '') === '1';
+            const reportOnly =
+                body.report_only === 1 ||
+                body.report_only === true ||
+                body.report_only === '1' ||
+                String(req.query.report_only || '') === '1';
             const { token } = credsFromSettings(settings);
             if (!token) {
                 return res.status(400).json({
@@ -1654,12 +1659,14 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
                 year,
                 month,
                 last_error: null,
-                stage: 'fields',
+                stage: reportOnly ? 'status_report' : 'fields',
                 message: dryRun
                     ? `Пробный просмотр (${periodLabel}): справочник полей`
-                    : month
-                      ? `Справочник полей Planfix (${periodLabel})`
-                      : `Весь ${year}: все 12 месяцев одним прогоном (заявки листа, без второго обхода аккаунта)`,
+                    : reportOnly
+                      ? `Только отчёт Planfix «${pf.STATUS_FIELD_NAME}» за ${periodLabel} (без повторной выгрузки задач)`
+                      : month
+                        ? `Справочник полей Planfix (${periodLabel})`
+                        : `Весь ${year}: все 12 месяцев одним прогоном (заявки листа, без второго обхода аккаунта)`,
                 pages: 0,
                 fetched: 0,
                 stored: 0,
@@ -1668,6 +1675,54 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
             ownsJob = true;
             setImmediate(() => {
                 (async () => {
+            if (reportOnly && !dryRun) {
+                const errors = [];
+                markPfSync({
+                    stage: 'status_report',
+                    message: `Generate отчёта за ${periodLabel} (задачи листа не трогаем)`,
+                });
+                let reportMeta = null;
+                try {
+                    reportMeta = await enrichFromDealStatusReport(settings, db, (msg) => {
+                        markPfSync({ stage: 'status_report', message: msg });
+                    }, year, month);
+                } catch (e) {
+                    errors.push({
+                        code: 'status_report',
+                        error: e && e.message ? e.message : 'Не удалось прочитать отчёт',
+                    });
+                    throw e;
+                }
+                const b2 = pf.periodBounds(year, month);
+                const [totRows] = await db.query(
+                    `SELECT COUNT(*) AS n FROM dg_ops_planfix_tasks
+                      WHERE created_at >= ? AND created_at < ?`,
+                    [b2.fromSql, b2.toSql]
+                );
+                const [emptyRows] = await db.query(
+                    `SELECT COUNT(*) AS n FROM dg_ops_planfix_tasks
+                      WHERE created_at >= ? AND created_at < ?
+                        AND (status_value IS NULL OR status_value = '')`,
+                    [b2.fromSql, b2.toSql]
+                );
+                const durationSec = Math.round((Date.now() - started) / 10) / 100;
+                const localN = Number(totRows && totRows[0] && totRows[0].n) || 0;
+                const emptyN = Number(emptyRows && emptyRows[0] && emptyRows[0].n) || 0;
+                markPfSync({
+                    active: false,
+                    stage: 'done',
+                    last_error: null,
+                    message: `Отчёт готов: ${reportMeta.report_rows || 0} задач в сейве, статусы на лист записаны, ${durationSec} с`,
+                    pages: 0,
+                    fetched: reportMeta.report_rows || 0,
+                    stored: reportMeta.statuses_applied || 0,
+                });
+                // result for waiters is via status; panel reload on client
+                void localN;
+                void emptyN;
+                void errors;
+                return;
+            }
             const errors = [];
             const managers = await listSalesManagers(db);
             let pfUsers = [];
@@ -1927,6 +1982,7 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
                 started: true,
                 attached: false,
                 dry_run: !!dryRun,
+                report_only: !!reportOnly,
                 year,
                 month,
                 period: periodLabel,
