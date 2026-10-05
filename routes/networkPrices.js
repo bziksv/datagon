@@ -17,18 +17,43 @@ const { getFxRates, toRub, normalizeCurrency } = require('../lib/datagonFxRates'
 
 const PRICE_EPS = 0.005;
 const APPLY_HARD_MAX = 50000;
+/** Живая цена сайта > 0: пишем только если |сайт − расчёт с Альмамеда| / сайт > 3%. Эталон 0 — всегда пишем 0. */
+const NETWORK_WRITE_DELTA_PCT = 3;
 
-function networkPriceWriteGuard({ sourceOk, finalPrice }) {
+function networkPriceWriteDecision({ sourceOk, sourceRub, finalPrice, targetRub }) {
     const neu = Number(finalPrice);
-    if (!sourceOk || !Number.isFinite(neu) || neu < 0) {
+    const src = Number(sourceRub);
+    if (!sourceOk || !Number.isFinite(neu) || neu < 0 || !Number.isFinite(src) || src < 0) {
         return {
             allow: false,
             code: 'bad_price',
             note: 'skip;guard=bad_price',
             error: 'у эталона нет цены (пусто / не число) — не пишем',
+            skipUnchanged: false,
         };
     }
-    return { allow: true };
+    const oldP = Number(targetRub);
+    const oldFinite = Number.isFinite(oldP);
+
+    if (src === 0 || neu === 0) {
+        if (oldFinite && Math.abs(oldP) < PRICE_EPS) {
+            return { allow: false, code: 'unchanged', skipUnchanged: true };
+        }
+        return { allow: true, code: 'source_zero' };
+    }
+
+    if (oldFinite && oldP > 0) {
+        const pct = (Math.abs(oldP - neu) / oldP) * 100;
+        if (!(pct > NETWORK_WRITE_DELTA_PCT)) {
+            return { allow: false, code: 'within_3pct', skipUnchanged: true };
+        }
+        return { allow: true, code: 'delta_gt_3pct' };
+    }
+
+    if (oldFinite && Math.abs(oldP - neu) < PRICE_EPS) {
+        return { allow: false, code: 'unchanged', skipUnchanged: true };
+    }
+    return { allow: true, code: 'fill' };
 }
 
 async function stampNetworkGuardSkip(db, targetProductId, note) {
@@ -45,11 +70,17 @@ async function stampNetworkGuardSkip(db, targetProductId, note) {
 async function applyNetworkPriceGuard(db, opts) {
     const o = opts || {};
     const pair = o.pair || {};
-    const g = networkPriceWriteGuard({
+    const g = networkPriceWriteDecision({
         sourceOk: !!o.sourceOk,
+        sourceRub: o.sourceRub,
         finalPrice: o.finalPrice,
+        targetRub: o.targetRub,
     });
     if (g.allow) return g;
+    if (g.skipUnchanged) {
+        o.counters.skipped_unchanged += 1;
+        return g;
+    }
     o.counters.skipped_no_source_price += 1;
     if (o.errors && o.errors.length < 20) {
         o.errors.push({
@@ -287,8 +318,9 @@ function networkPricesRouterFactory(db, appSettings) {
             out.source_price_rub = Number(prop.source_price_rub);
             out.fx_applied = !!prop.fx_applied;
             const tgtRub = toRub(out.target_price, out.target_currency, fx);
-            const guard = networkPriceWriteGuard({
+            const guard = networkPriceWriteDecision({
                 sourceOk: true,
+                sourceRub: prop.source_price_rub,
                 finalPrice: prop.finalPrice,
                 targetRub: tgtRub,
             });
@@ -306,7 +338,6 @@ function networkPricesRouterFactory(db, appSettings) {
             out.can_apply =
                 (out.link_status === 'linked' || out.link_kind) &&
                 out.target_product_id != null &&
-                !pricesEqual(tgtRub, prop.finalPrice) &&
                 !!guard.allow;
             return out;
         });
@@ -1568,17 +1599,14 @@ function networkPricesRouterFactory(db, appSettings) {
                 const guard = await applyNetworkPriceGuard(db, {
                     pair,
                     sourceOk: !!prop.ok,
-                    finalPrice: prop.ok ? prop.finalPrice : 0,
+                    sourceRub: prop.ok ? prop.source_price_rub : NaN,
+                    finalPrice: prop.ok ? prop.finalPrice : NaN,
                     targetRub: tgtRub,
                     errors: result.errors,
                     counters: result,
                     dryRun,
                 });
                 if (!guard.allow) {
-                    continue;
-                }
-                if (pricesEqual(tgtRub, prop.finalPrice)) {
-                    result.skipped_unchanged += 1;
                     continue;
                 }
                 if (dryRun) {
@@ -1651,8 +1679,8 @@ function networkPricesRouterFactory(db, appSettings) {
         result.duration_sec = Math.round(((Date.now() - started) / 1000) * 100) / 100;
         if (!result.message) {
             result.message = dryRun
-                ? `Пробный прогон: к записи ${result.would_update}, без изменений ${result.skipped_unchanged}, без цены эталона ${result.skipped_no_source_price}`
-                : `Записано ✓ ${result.written}, без изменений ${result.skipped_unchanged}, без цены эталона ${result.skipped_no_source_price}, ошибок CMS × ${result.cms_failed}`;
+                ? `Пробный прогон: к записи ${result.would_update}, без изменений ${result.skipped_unchanged} (в т.ч. расхождение ≤ 3%), без цены эталона ${result.skipped_no_source_price}`
+                : `Записано ✓ ${result.written}, без изменений ${result.skipped_unchanged} (≤ 3% или уже 0), без цены эталона ${result.skipped_no_source_price}, ошибок CMS × ${result.cms_failed}`;
         }
         return result;
     }
@@ -1763,7 +1791,6 @@ networkPricesRouterFactory.triggerNetworkPricesSyncFromSettings = async function
     } = require('../lib/datagonCmsPriceWrite');
     const { getFxRates: getFx, toRub: priceToRub } = require('../lib/datagonFxRates');
     const fx = await getFx();
-    const PRICE_EPS_SYNC = 0.005;
 
     await db.query(`
         CREATE TABLE IF NOT EXISTS network_price_site_settings (
@@ -1817,6 +1844,7 @@ networkPricesRouterFactory.triggerNetworkPricesSyncFromSettings = async function
     const errors = [];
     const counters = {
         skipped_no_source_price: 0,
+        skipped_unchanged: 0,
     };
 
     for (const cfg of cfgRows) {
@@ -1900,6 +1928,7 @@ networkPricesRouterFactory.triggerNetworkPricesSyncFromSettings = async function
                 const guard = await applyNetworkPriceGuard(db, {
                     pair,
                     sourceOk,
+                    sourceRub: sourceOk ? baseRub : NaN,
                     finalPrice,
                     targetRub: tgtRub,
                     errors,
@@ -1907,13 +1936,6 @@ networkPricesRouterFactory.triggerNetworkPricesSyncFromSettings = async function
                     dryRun: false,
                 });
                 if (!guard.allow) {
-                    continue;
-                }
-                if (
-                    Number.isFinite(tgtRub) &&
-                    Math.abs(Number(tgtRub) - finalPrice) < PRICE_EPS_SYNC
-                ) {
-                    skipped += 1;
                     continue;
                 }
                 try {
@@ -1999,6 +2021,7 @@ networkPricesRouterFactory.triggerNetworkPricesSyncFromSettings = async function
         }
     }
 
+    skipped = counters.skipped_unchanged;
     skipped_no_source_price = counters.skipped_no_source_price;
     const cacheFail = (errors || []).some((e) => String(e.error || '').startsWith('cache_clear'));
     const noSrc = skipped_no_source_price ? `, без цены эталона ${skipped_no_source_price}` : '';
@@ -2007,12 +2030,13 @@ networkPricesRouterFactory.triggerNetworkPricesSyncFromSettings = async function
         scanned,
         written,
         skipped,
+        skipped_unchanged: skipped,
         skipped_no_source_price,
         failed,
         errors,
         message: cacheFail
             ? `Цены сети: записано ✓ ${written}, но кэш витрины Bitrix НЕ сброшен (ошибок × ${failed})`
-            : `Цены сети: записано ✓ ${written}, без изменений ${skipped}${noSrc}, ошибок × ${failed}`,
+            : `Цены сети: записано ✓ ${written}, без изменений ${skipped} (≤ 3% или уже 0)${noSrc}, ошибок × ${failed}`,
     };
 };
 
