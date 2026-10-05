@@ -1145,14 +1145,18 @@
       });
   }
 
-  function waitForActivePfSync(seed) {
+  function waitForActivePfSync(seed, opts) {
+    opts = opts || {};
     var startedWait = Date.now();
     if (seed) {
       patchLiveProgress(seed, Number(seed.elapsed_sec) || 0);
     }
     showActionLog(
       "info",
-      "На сервере уже идёт синк Planfix — второй не запускаем, ждём окончания.<br>Фильтры: " +
+      (opts.existing
+        ? "На сервере уже идёт синк Planfix — ждём окончания."
+        : "Синхронизация Planfix запущена, журнал обновляется, пока идёт выборка.") +
+        "<br>Фильтры: " +
         planfixFiltersLine(),
       true
     );
@@ -1167,11 +1171,16 @@
           .then(function (j) {
             patchLiveProgress(j, Number(j.elapsed_sec) || Math.round((Date.now() - startedWait) / 1000));
             if (j && j.success && !j.active) {
+              if (j.stage === "error" || j.last_error) {
+                reject(new Error(j.last_error || j.message || "Синк Planfix завершился с ошибкой"));
+                return;
+              }
               loadPlanfix()
                 .then(function (panel) {
                   resolve({
                     success: true,
-                    attached: true,
+                    attached: !!opts.existing,
+                    started: true,
                     pages: j.pages,
                     stored: j.stored,
                     total: j.fetched,
@@ -1243,11 +1252,13 @@
       }).then(function (r) {
         return r.json().then(function (j) {
           if (r.status === 409 || (j && j.attached && j.active)) {
-            toast("info", "Синк уже идёт — ждём на сервере");
-            return waitForActivePfSync(j);
+            return waitForActivePfSync(j, { existing: true });
           }
           if (!r.ok || !j || j.success === false) {
             throw new Error((j && j.error) || "HTTP " + r.status);
+          }
+          if (j.started) {
+            return waitForActivePfSync(j, { existing: false });
           }
           return j;
         });

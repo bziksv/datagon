@@ -92,6 +92,7 @@ const pfSyncJob = {
     stored: 0,
     started_ms: 0,
     updated_ms: 0,
+    last_error: null,
 };
 
 function markPfSync(patch) {
@@ -117,7 +118,24 @@ function pfSyncPublic() {
         fetched: pfSyncJob.fetched || 0,
         stored: pfSyncJob.stored || 0,
         elapsed_sec: started ? Math.max(0, Math.round((Date.now() - started) / 1000)) : 0,
+        last_error: pfSyncJob.last_error || null,
     };
+}
+
+function formatPlanfixSyncError(e) {
+    let msg = (e && e.message) || 'planfix sync failed';
+    if (/fetch failed/i.test(msg)) {
+        msg =
+            'Planfix оборвал соединение во время выборки (fetch failed). Повторите синк; весь год лучше по месяцам, если снова оборвётся.';
+    }
+    if (/scope denied/i.test(msg) || /method not allowed/i.test(msg)) {
+        msg =
+            'Токену Planfix не хватает прав на задачи (POST /task/list). ' +
+            'В Planfix: Управление аккаунтом → Доступ к API → у этого REST-ключа включите доступ к задачам, сохраните ключ в Настройках Datagon и повторите. ' +
+            'Исходный ответ: ' +
+            msg;
+    }
+    return msg;
 }
 
 const PF_SYNC_STALE_MS = 45 * 60 * 1000;
@@ -1334,6 +1352,7 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
                 dry_run: dryRun,
                 year,
                 month,
+                last_error: null,
                 stage: 'fields',
                 message: dryRun
                     ? `Пробный просмотр (${periodLabel}): справочник полей`
@@ -1344,7 +1363,8 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
                 started_ms: started,
             });
             ownsJob = true;
-
+            setImmediate(() => {
+                (async () => {
             const errors = [];
             const managers = await listSalesManagers(db);
             let pfUsers = [];
@@ -1550,11 +1570,11 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
                 await upsertCatalog(db, field.enumValues || [], 'enum');
             }
 
-            const panel = await loadPlanfixPanel(db, year, managers, month);
             const durationSec = Math.round((Date.now() - started) / 10) / 100;
             markPfSync({
                 active: false,
                 stage: 'done',
+                last_error: null,
                 pages,
                 fetched,
                 stored: dryRun ? 0 : stored,
@@ -1562,65 +1582,57 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
                     ? `Пробный просмотр готов: ${fetched} задач`
                     : `Готово: ${stored} задач за ${durationSec} с`,
             });
-            res.json({
+                })()
+                    .catch((e) => {
+                        const status = e.status && e.status >= 400 && e.status < 600 ? e.status : 500;
+                        if (status >= 500) console.error('[ops-sheet/planfix-sync]', e);
+                        const msg = formatPlanfixSyncError(e);
+                        markPfSync({
+                            active: false,
+                            stage: 'error',
+                            last_error: msg,
+                            message: msg,
+                        });
+                    })
+                    .finally(() => {
+                        if (pfSyncJob.active) {
+                            markPfSync({
+                                active: false,
+                                stage: 'error',
+                                last_error: pfSyncJob.last_error || pfSyncJob.message,
+                                message: pfSyncJob.message || 'Синк остановлен',
+                            });
+                        }
+                    });
+            });
+            return res.json({
                 success: true,
+                started: true,
+                attached: false,
                 dry_run: !!dryRun,
                 year,
                 month,
                 period: periodLabel,
-                field,
-                status_report: field.report || null,
-                with_field_filter: withFieldFilter,
-                date_type: dateType,
-                total: fetched,
-                to_update: dryRun ? fetched : stored,
-                stored: dryRun ? 0 : stored,
-                skipped: skippedNoDate + skippedNoId + skippedNotManager,
-                no_date: skippedNoDate,
-                no_id: skippedNoId,
-                skipped_not_manager: skippedNotManager,
-                assigners_matched: matchedAssigners.ids.length,
-                assigner_names: matchedAssigners.names,
-                empty_status: emptyStatus,
-                pages,
-                duration_sec: durationSec,
-                errors: errors.slice(0, 20),
-                status_values_seen: Object.keys(seenStatuses).sort((a, b) => a.localeCompare(b, 'ru')),
-                sample_assigners: Object.keys(sampleAssigners)
-                    .sort((a, b) => sampleAssigners[b] - sampleAssigners[a])
-                    .slice(0, 20)
-                    .map((name) => ({ name, n: sampleAssigners[name] })),
-                sync_script: getOpsPlanfixSyncMeta(),
-                ...panel,
+                ...pfSyncPublic(),
             });
         } catch (e) {
             const status = e.status && e.status >= 400 && e.status < 600 ? e.status : 500;
             if (status >= 500) console.error('[ops-sheet/planfix-sync]', e);
-            let msg = e.message || 'planfix sync failed';
-            if (/fetch failed/i.test(msg)) {
-                msg =
-                    'Planfix оборвал соединение во время выборки (fetch failed). Повторите синк; весь год лучше по месяцам, если снова оборвётся.';
+            const msg = formatPlanfixSyncError(e);
+            if (ownsJob && pfSyncJob.active) {
+                markPfSync({
+                    active: false,
+                    stage: 'error',
+                    last_error: msg,
+                    message: msg,
+                });
             }
-            if (/scope denied/i.test(msg) || /method not allowed/i.test(msg)) {
-                msg =
-                    'Токену Planfix не хватает прав на задачи (POST /task/list). ' +
-                    'В Planfix: Управление аккаунтом → Доступ к API → у этого REST-ключа включите доступ к задачам, сохраните ключ в Настройках Datagon и повторите. ' +
-                    'Исходный ответ: ' +
-                    msg;
-            }
+            if (res.headersSent) return;
             res.status(status === 405 ? 403 : status).json({
                 success: false,
                 error: msg,
                 duration_sec: Math.round((Date.now() - started) / 10) / 100,
             });
-        } finally {
-            if (ownsJob && pfSyncJob.active) {
-                markPfSync({
-                    active: false,
-                    stage: 'error',
-                    message: pfSyncJob.message || 'Синк остановлен',
-                });
-            }
         }
     });
 
