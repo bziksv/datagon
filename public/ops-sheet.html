@@ -1058,15 +1058,6 @@
                 >
                   Синхронизировать Planfix
                 </button>
-                <button
-                  type="button"
-                  class="btn btn-outline-secondary"
-                  id="dg-ops-pf-report-only"
-                  data-dg-notify-start="Обновляем только гистограмму отчёта Planfix…"
-                  title="Generate отчёта за выбранный период. Задачи листа (десятки тысяч) не качаем заново."
-                >
-                  Только статусы из отчёта
-                </button>
               </div>
               <p class="text-muted small mt-2 mb-0" id="dg-ops-status-hint" style="display: none"></p>
               <div id="dg-ops-action-log" class="alert mt-3 mb-0 d-none" role="status"></div>
@@ -1084,16 +1075,13 @@
             </div>
             <div class="card-body" id="dg-ops-pf-body">
               <p class="text-muted small mb-2">
-                Заявка в листе — задача Planfix, где менеджер <strong>постановщик</strong>, шаблоны заявок/КП
-                <strong>14</strong> и <strong>176404</strong>, месяц в 12 блоках листа — по <strong>дате создания</strong>.
-                <strong>Период «Весь год» + «Синхронизировать Planfix»</strong> — один раз забирает все заявки листа за 12 месяцев.
-                Если заявки уже есть, а цифры «В отчёте Planfix» кривые — в Planfix выставьте период отчёта и нажмите
-                <strong>Только статусы из отчёта</strong> (минуты, без повторной выгрузки десятков тысяч задач).
-                Для 2025 то же: один полный синк года, потом при смене гистограммы — только отчёт.
-                <strong>В заявках листа</strong> — только то, что попадает в операционный лист.
-                Оплаченные заявки по-прежнему из таблиц менеджеров.
-                Привяжите значения поля <strong>Статус Сделки/Письма</strong> к корзинам. Список в порядке Planfix, разделители
-                <code>-----</code>. Колонка <strong>Статус Планфикс</strong> — системный статус задачи, в корзины не идёт.
+                Одна кнопка <strong>Синхронизировать Planfix</strong>: заявки листа (постановщик = менеджер продаж,
+                шаблоны КП <strong>14</strong> и <strong>176404</strong>) + «Статус Сделки/Письма» из отчёта Planfix
+                в ту же таблицу. Сводка по статусам ниже — <strong>COUNT из локальной базы</strong> за выбранный период
+                (месяц или весь год по дате создания), без второй кнопки и без отдельной колонки «как в отчёте».
+                Перед синком года/месяца в Planfix у отчёта «Отчет за месяц по всем» выставьте тот же период —
+                API generate период сам не передаёт. Оплаченные заявки — из таблиц менеджеров.
+                Привяжите статусы к корзинам; разделители <code>-----</code>.
                 Токен — в <a href="/settings.html">Настройки → Planfix</a>.
               </p>
               <div id="dg-ops-pf-insight" class="alert alert-warning py-2 px-3 d-none" role="status"></div>
@@ -1103,15 +1091,14 @@
                     <tr>
                       <th style="width:1.5rem"></th>
                       <th>Значение «Статус Сделки/Письма» из Планфикса</th>
-                      <th>В отчёте Planfix</th>
-                      <th>В заявках листа</th>
+                      <th>Заявок в базе</th>
                       <th>Статусы для Датагона (можно использовать совместно для фильтрации)</th>
                       <th>В кол-во заявок</th>
                     </tr>
                   </thead>
                   <tbody id="dg-ops-pf-map-tbody">
                     <tr>
-                      <td colspan="6" class="text-muted">Порядок как в Planfix. Перетащите строку за ⋮⋮. Разделители — просто -----.</td>
+                      <td colspan="5" class="text-muted">Порядок как в Planfix. Перетащите строку за ⋮⋮. Разделители — просто -----.</td>
                     </tr>
                   </tbody>
                 </table>
@@ -2202,7 +2189,7 @@
         '<td class="dg-ops-pf-grip-td">' +
         grip +
         "</td>" +
-        '<td colspan="5" class="dg-ops-pf-sep-td"><span class="dg-ops-pf-sep-line">-----</span></td></tr>'
+        '<td colspan="4" class="dg-ops-pf-sep-td"><span class="dg-ops-pf-sep-line">-----</span></td></tr>'
       );
     }
     var shownBucket = s.bucket || s.suggested_bucket || "";
@@ -2220,10 +2207,7 @@
         : "без статуса (Planfix не отдал поле)") +
       (s.suggested_bucket && !s.mapped ? ' <span class="text-muted">(предложение)</span>' : "") +
       "</td>" +
-      '<td class="dg-ops-num" title="Сейв отчёта Planfix, без отбора постановщик / шаблон КП">' +
-      (s.tasks_n_report == null ? "—" : escapeHtml(formatInt(s.tasks_n_report))) +
-      "</td>" +
-      '<td class="dg-ops-num" title="Постановщик = менеджер продаж, шаблоны заявок/КП 14 и 176404, дата создания = период фильтра">' +
+      '<td class="dg-ops-num" title="Заявки листа в локальной базе за период фильтра (постановщик = менеджер продаж, шаблоны КП 14 и 176404)">' +
       escapeHtml(formatInt(s.tasks_n != null ? s.tasks_n : s.tasks_in_year || 0)) +
       "</td>" +
       '<td><select class="form-select form-select-sm dg-ops-pf-bucket" data-idx="' +
@@ -2248,7 +2232,7 @@
 
   function renderPlanfixPanel() {
     var write = !!state.can_write;
-    ["dg-ops-pf-sync", "dg-ops-pf-report-only", "dg-ops-pf-save-map"].forEach(function (id) {
+    ["dg-ops-pf-sync", "dg-ops-pf-save-map"].forEach(function (id) {
       var b = el(id);
       if (b) b.disabled = !write || !!state.pf.syncing;
     });
@@ -2263,7 +2247,7 @@
       var list = state.pf.statuses || [];
       if (!list.length) {
         tbody.innerHTML =
-          '<tr><td colspan="6" class="text-muted">Нет строк за период — синхронизируйте выбранный месяц.</td></tr>';
+          '<tr><td colspan="5" class="text-muted">Нет строк за период — синхронизируйте выбранный месяц.</td></tr>';
       } else {
         tbody.innerHTML = list
           .map(function (s, idx) {
@@ -2286,31 +2270,26 @@
           escapeHtml(period || "период") +
           "</strong> в базе <strong>" +
           fmtIntRu(tot) +
-          "</strong> задач без «Статус Сделки/Письма». Поле с карточки задачи токен не отдаёт — берём его из отчёта Planfix «Отчет за месяц по всем». Если в отчёте другой период (не этот месяц), колонка останется пустой: сформируйте отчёт за нужный месяц в Planfix и синхронизируйте снова.";
+          "</strong> задач без «Статус Сделки/Письма». Нажмите <strong>Синхронизировать Planfix</strong> ещё раз " +
+          "(в конце синка статусы дописываются из отчёта). Перед этим в Planfix у отчёта выставьте тот же период.";
       } else if (tot === 0) {
         insight.className = "alert alert-info py-2 px-3";
         insight.classList.remove("d-none");
         insight.textContent =
-          "За " + (period || "период") + " локально 0 задач. Выберите месяц и нажмите «Синхронизировать Planfix».";
+          "За " + (period || "период") + " локально 0 задач. Выберите месяц/год и нажмите «Синхронизировать Planfix».";
       } else {
         insight.className = "alert alert-success py-2 px-3";
         insight.classList.remove("d-none");
-        var repTot = state.pf.report_total;
-        var rm = state.pf.report_meta || {};
         insight.innerHTML =
           "Период <strong>" +
           escapeHtml(period || "") +
-          "</strong>: в заявках листа <strong>" +
+          "</strong>: в локальной базе <strong>" +
           fmtIntRu(tot) +
-          "</strong> (постановщик = менеджер продаж, шаблоны КП 14 и 176404)" +
-          ", со статусом " +
+          "</strong> заявок листа (менеджеры продаж + шаблоны КП), со статусом " +
           fmtIntRu(withN) +
           ", без статуса " +
           fmtIntRu(emptyN) +
-          ".<br>Колонка <strong>В отчёте Planfix</strong> — гистограмма сейва отчёта" +
-          (rm.save_id ? " №" + escapeHtml(String(rm.save_id)) : "") +
-          (repTot != null ? ": <strong>" + fmtIntRu(repTot) + "</strong> задач со статусом сделки" : " (нет данных — нажмите «Только статусы из отчёта»)") +
-          ". Она должна совпадать с Planfix. Колонка <strong>В заявках листа</strong> всегда меньше — там только менеджеры+КП.";
+          ". Колонка <strong>Заявок в базе</strong> — сводка по этим задачам; отдельный повторный забор «только отчёта» не нужен.";
       }
     }
     var um = el("dg-ops-pf-unmatched");
@@ -2545,11 +2524,10 @@
 
   function runPlanfixSync(opts) {
     opts = opts || {};
-    var reportOnly = !!opts.reportOnly;
     var started = Date.now();
     var year = state.year;
     state.pf.syncing = true;
-    patchLiveProgress({ message: reportOnly ? "только отчёт…" : "старт…" }, 0);
+    patchLiveProgress({ message: "старт…" }, 0);
     var lastProg = null;
     var timer = setInterval(function () {
       var sec = Math.round((Date.now() - started) / 1000);
@@ -2566,7 +2544,6 @@
         });
     }, 1000);
     var body = { year: year, month: pfMonthFromUi() };
-    if (reportOnly) body.report_only = 1;
     var run = function () {
       return fetch("/api/ops-sheet/planfix-sync", {
         method: "POST",
@@ -2588,7 +2565,7 @@
         });
       });
     };
-    var btn = el(reportOnly ? "dg-ops-pf-report-only" : "dg-ops-pf-sync");
+    var btn = el("dg-ops-pf-sync");
     var p =
       window.DatagonNotify && window.DatagonNotify.busyRun && btn
         ? window.DatagonNotify.busyRun(btn, run)
@@ -3160,11 +3137,6 @@
             : "Забираем весь год одним прогоном (все 12 месяцев, без помесячных запусков)…"
         );
         runPlanfixSync();
-      });
-    }
-    if (el("dg-ops-pf-report-only")) {
-      el("dg-ops-pf-report-only").addEventListener("click", function () {
-        runPlanfixSync({ reportOnly: true });
       });
     }
     if (el("dg-ops-pf-save-map")) {

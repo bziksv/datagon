@@ -2176,7 +2176,7 @@ Body: `year`, `month`, `manager_user_id` + `coefficient` / `bonus_past` / `salar
 
 ### GET `/api/ops-sheet/planfix`
 
-Query: `year`, `month` (`0` = весь год, `1–12` = месяц). Локальная панель статусов **за период**: `statuses[]` (`status_value`, `tasks_n` / `tasks_in_year` — заявки листа: постановщик=менеджер продаж + шаблоны 14/176404, `tasks_n_report` — гистограмма сейва отчёта Planfix после **generate за месяц** (период из UI Planfix; без отбора постановщик/шаблон), при синке «весь год» — срез по дате создания; `null` до фазы отчёта, `bucket`, `suggested_bucket`, `count_in_apps`, `mapped`), `report_total`, `report_meta`, `buckets`, `unmatched_assigners`, `local_total`, `empty_status`, `with_status`, `period`, `last_synced_at`, `sync_script`.
+Query: `year`, `month` (`0` = весь год, `1–12` = месяц). Локальная панель статусов **за период**: `statuses[]` (`status_value`, `tasks_n` / `tasks_in_year` — заявки листа в локальной БД: постановщик=менеджер продаж + шаблоны 14/176404; `bucket`, `suggested_bucket`, `count_in_apps`, `mapped`), `buckets`, `unmatched_assigners`, `local_total`, `empty_status`, `with_status`, `period`, `last_synced_at`, `sync_script`. Поля `tasks_n_report` / `report_total` / `report_meta` могут ещё приходить с бэка (служебные), UI сводку берёт только из `tasks_n`.
 
 ### GET `/api/ops-sheet/planfix-tasks`
 
@@ -2188,12 +2188,11 @@ Query: `year`, `month`, `q` (номер / постановщик / статус)
 
 ### POST `/api/ops-sheet/planfix-sync`
 
-Только `full`. Body: `{ year, month, report_only? }`. Ответ сразу `{ success: true, started: true, report_only, …planfix-sync-status }` — работа **в фоне**. UI опрашивает `GET /planfix-sync-status` до `active: false`.
+Только `full`. Body: `{ year, month }`. Ответ сразу `{ success: true, started: true, …planfix-sync-status }` — работа **в фоне**. UI опрашивает `GET /planfix-sync-status` до `active: false`.
 
-- **Полный синк** (без `report_only`): сотрудники → постановщики «Менеджер по продажам» → `POST /task/list` за период (шаблоны **14** и **176404** отдельно) → системный статус → отчёт «Статус Сделки/Письма». Год 20–30 мин.
-- **`report_only: 1`**: только generate сейва отчёта и запись статусов/гистограммы; `/task/list` **не** качает. Минуты. Нужно, когда заявки листа уже есть, а колонка «В отчёте Planfix» кривая.
+Один прогон: сотрудники → постановщики «Менеджер по продажам» → `POST /task/list` за период (шаблоны **14** и **176404** отдельно) → системный статус → generate отчёта «Статус Сделки/Письма» и запись статусов в те же задачи. Год 20–30 мин. В UI одна кнопка; отдельный `report_only` больше не предлагается.
 
-Перед синком/отчётом в UI Planfix у отчёта выставьте тот же период (API generate даты не принимает). Обрыв TLS Planfix повторяется до 4 раз.
+Перед синком в UI Planfix у отчёта выставьте тот же период (API generate даты не принимает). Обрыв TLS Planfix повторяется до 4 раз.
 
 Повторный POST, пока синк жив: **409** `{ success: false, error, attached: true, …planfix-sync-status }`. Лок сбрасывается, если нет прогресса **> 45 мин**.
 
