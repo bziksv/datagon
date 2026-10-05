@@ -1458,6 +1458,7 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
                     pageLen = await consume(next, !dryRun);
                     if (pageLen < 100) break;
                     localOffset += pageLen;
+                    await sleep(250);
                     if (pages > 5000) {
                         errors.push({ code: 'limit', error: 'Остановлено: больше 5000 страниц' });
                         break;
@@ -1580,6 +1581,10 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
             const status = e.status && e.status >= 400 && e.status < 600 ? e.status : 500;
             if (status >= 500) console.error('[ops-sheet/planfix-sync]', e);
             let msg = e.message || 'planfix sync failed';
+            if (/fetch failed/i.test(msg)) {
+                msg =
+                    'Planfix оборвал соединение во время выборки (fetch failed). Повторите синк; весь год лучше по месяцам, если снова оборвётся.';
+            }
             if (/scope denied/i.test(msg) || /method not allowed/i.test(msg)) {
                 msg =
                     'Токену Planfix не хватает прав на задачи (POST /task/list). ' +
