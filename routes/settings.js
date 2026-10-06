@@ -42,6 +42,7 @@ module.exports = (db, appSettings) => {
         delete out.finance_tochka_jwt;
         delete out.finance_tochka_credentials;
         delete out.finance_raiffeisen_credentials;
+        delete out.finance_tbank_credentials;
         return res.json(out);
     });
 

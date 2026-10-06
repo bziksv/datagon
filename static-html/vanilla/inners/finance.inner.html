@@ -7,7 +7,7 @@
                 <div>
                   Финансы
                   <div class="page-title-subheading">
-                    Точка и Райффайзен: счета, остатки и движение (только чтение). Ключи — в карточке настроек при полном доступе.
+                    Точка, Райффайзен и Т‑Банк: счета, остатки и движение (только чтение). Ключи — в карточке настроек при полном доступе.
                     Расписание — <a href="/settings.html">Настройки</a> · журнал — <a href="/processes.html">processes</a>.
                   </div>
                 </div>
@@ -30,7 +30,11 @@
               </p>
               <p class="small text-muted mb-3">
                 <strong>Райффайзен:</strong> в RBO «Интеграция банка с учетными системами» → API-оркестратор → refresh_token.
-                В Datagon сохраняются <code>client_id</code>, <code>client_secret</code> и <code>refresh_token</code> (банк ротирует refresh при каждом обновлении).
+                В Datagon сохраняются <code>client_id</code>, <code>client_secret</code> и <code>refresh_token</code>.
+              </p>
+              <p class="small text-muted mb-3">
+                <strong>Т‑Банк:</strong> кабинет Т‑Бизнес → «Интеграции» → T‑API → «Выпустить токен» (Bearer).
+                В токене должен быть IP машины, с которой ходит Datagon.
               </p>
 
               <div class="fw-semibold mb-2">Точка</div>
@@ -81,6 +85,26 @@
                   <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-fin-btn-probe-raiff" data-dg-notify-start="Проверяем Райф…">Проверить Райф</button>
                 </div>
               </div>
+
+              <div class="fw-semibold mb-2 mt-4">Т‑Банк</div>
+              <div id="dg-fin-tbank-list" class="mb-3"></div>
+              <div class="border rounded p-3 bg-light">
+                <div class="fw-semibold mb-2">Добавить токен T‑API</div>
+                <div class="row g-2 align-items-end">
+                  <div class="col-md-4">
+                    <label class="form-label" for="dg-fin-tbank-label">Название</label>
+                    <input type="text" class="form-control" id="dg-fin-tbank-label" placeholder="ООО …" autocomplete="off" />
+                  </div>
+                  <div class="col-md-8">
+                    <label class="form-label" for="dg-fin-tbank-token">Токен T‑API</label>
+                    <input type="password" class="form-control" id="dg-fin-tbank-token" autocomplete="off" placeholder="Из Т‑Бизнес → Интеграции → T‑API" />
+                  </div>
+                </div>
+                <div class="mt-3 d-flex flex-wrap gap-2">
+                  <button type="button" class="btn btn-sm btn-primary" id="dg-fin-btn-save-tbank" data-dg-notify-start="Сохраняем токен Т‑Банка…">Добавить / сохранить</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-fin-btn-probe-tbank" data-dg-notify-start="Проверяем Т‑Банк…">Проверить Т‑Банк</button>
+                </div>
+              </div>
               <div id="dg-fin-bank-save-msg" class="alert mt-3 mb-0 d-none" role="status"></div>
             </div>
           </div>
@@ -119,7 +143,7 @@
                 <canvas id="dg-fin-analytics-chart" height="280" aria-label="График поступлений и списаний по месяцам"></canvas>
                 <div id="dg-fin-analytics-empty" class="dg-fin-analytics-empty d-none">Нет проводок за выбранный период — загрузите выписки.</div>
               </div>
-              <p class="small text-muted mb-0 mt-2">По снимку из БД. Организация и счёт — из применённых фильтров. По умолчанию без <strong>внутреннего оборота</strong>: тело депозита (UNV), «Перевод собственных средств» (расчётный ↔ фонд) и <strong>выплаты дивидендов</strong>. Проценты и реальные платежи из фонда остаются. Зелёный — входящие, красный — исходящие, линия — чистый поток. <strong>Клик по столбцу месяца</strong> подставляет «С даты» / «По дату» (и направление) — остаётся нажать «Применить».</p>
+              <p class="small text-muted mb-0 mt-2">По снимку из БД. Организация и счёт — из применённых фильтров. По умолчанию без <strong>внутреннего оборота</strong>: тело депозита (UNV), «Перевод собственных средств» (расчётный ↔ фонд) и <strong>выплаты дивидендов</strong>. <strong>Капитал / займ учредителей</strong> (галка «займ» в таблице движения) никогда не входит в график: это не деньги фирмы. Проценты и реальные платежи из фонда остаются. Зелёный — входящие, красный — исходящие, линия — чистый поток. <strong>Клик по столбцу месяца</strong> подставляет «С даты» / «По дату» (и направление) — остаётся нажать «Применить».</p>
             </div>
           </div>
 
@@ -211,11 +235,25 @@
                     <option value="1095">1095</option>
                   </select>
                 </div>
-                <div class="col-md-4" data-dg-fin-filter-field="include_internal" data-dg-filter-field-title="Внутренние">
-                  <label class="form-label d-block" for="dg-fin-include-internal">Внутренние операции</label>
-                  <label class="mb-0 small text-muted d-inline-flex align-items-center gap-2" title="Депозиты UNV, переводы расчётный ↔ фонд, выплаты дивидендов. Без галки скрыты в «Движении» и в аналитике.">
+                <div class="col-auto" data-dg-fin-filter-field="include_internal" data-dg-filter-field-title="Внутренние">
+                  <label class="form-label" for="dg-fin-include-internal">Внутренние операции</label>
+                  <label class="dg-fin-check-control" title="Депозиты UNV, переводы расчётный ↔ фонд, выплаты дивидендов. Без галки скрыты в «Движении» и в аналитике.">
                     <input type="checkbox" class="form-check-input m-0" id="dg-fin-include-internal" />
                     <span>Показывать депозиты, фонды и дивиденды</span>
+                  </label>
+                </div>
+                <div class="col-auto" data-dg-fin-filter-field="founder_only" data-dg-filter-field-title="Капитал / займ">
+                  <label class="form-label" for="dg-fin-founder-only">Капитал / займ учредителей</label>
+                  <label class="dg-fin-check-control" title="Показать только проводки, помеченные галкой «займ». Они не входят в график.">
+                    <input type="checkbox" class="form-check-input m-0" id="dg-fin-founder-only" />
+                    <span>Только капитал / займ</span>
+                  </label>
+                </div>
+                <div class="col-auto" data-dg-fin-filter-field="dividend_only" data-dg-filter-field-title="Выплата дивидендов">
+                  <label class="form-label" for="dg-fin-dividend-only">Выплата дивидендов</label>
+                  <label class="dg-fin-check-control" title="Показать только дивиденды: галка «див.» или назначение «Выплата дивидендов». Не входят в график.">
+                    <input type="checkbox" class="form-check-input m-0" id="dg-fin-dividend-only" />
+                    <span>Только дивиденды</span>
                   </label>
                 </div>
               </div>
@@ -225,7 +263,7 @@
                 <button type="button" class="btn btn-sm btn-success" id="dg-fin-load-tx" data-dg-notify-start="Загружаем выписки из банков…">Загрузить выписки</button>
                 <button type="button" class="btn btn-sm btn-outline-success" id="dg-fin-sync" data-dg-notify-start="Обновляем все организации из банков…">Обновить все</button>
               </div>
-              <p class="small text-muted mt-2 mb-0">«Загрузить выписки» берёт период дат, организацию и счёт из фильтров и тянет проводки из Точки и Райфа. Без дат — окно «Выписка, дн.».</p>
+              <p class="small text-muted mt-2 mb-0">«Загрузить выписки» берёт период дат, организацию и счёт из фильтров и тянет проводки из Точки, Райфа и Т‑Банка. Без дат — окно «Выписка, дн.».</p>
               <div id="dg-fin-action-log" class="alert alert-secondary py-2 px-3 mt-3 mb-0 d-none" role="status"></div>
               <p class="small text-muted mt-2 mb-0 d-none" id="dg-fin-status-hint"></p>
             </div>

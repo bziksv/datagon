@@ -4,6 +4,7 @@
     ["booked_date", "Дата"],
     ["direction", "Направление"],
     ["amount", "Сумма"],
+    ["founder", "Займ / див."],
     ["org", "Организация"],
     ["bank", "Банк"],
     ["account_number", "Счёт"],
@@ -17,7 +18,8 @@
   var DEFAULT_WIDTHS = {
     booked_date: 110,
     direction: 120,
-    amount: 130,
+    amount: 140,
+    founder: 132,
     org: 140,
     bank: 110,
     account_number: 150,
@@ -55,6 +57,8 @@
         { key: "page_size", title: "На странице" },
         { key: "sync_days", title: "Выписка, дн." },
         { key: "include_internal", title: "Внутренние (депозиты / фонды / дивиденды)" },
+        { key: "founder_only", title: "Только капитал / займ учредителей" },
+        { key: "dividend_only", title: "Только выплата дивидендов" },
       ],
     },
   ];
@@ -63,6 +67,7 @@
     canWrite: false,
     credentials: [],
     raiffeisenCredentials: [],
+    tbankCredentials: [],
     accounts: [],
     orgAliases: {},
     page: 1,
@@ -72,8 +77,8 @@
     rows: [],
     sortKey: "booked_date",
     sortDir: "desc",
-    pending: { search: "", org: [], date_from: "", date_to: "", direction: "", account_id: "", page_size: 100, sync_days: 30, include_internal: false },
-    applied: { search: "", org: [], date_from: "", date_to: "", direction: "", account_id: "", page_size: 100, sync_days: 30, include_internal: false },
+    pending: { search: "", org: [], date_from: "", date_to: "", direction: "", account_id: "", page_size: 100, sync_days: 30, include_internal: false, founder_only: false, dividend_only: false },
+    applied: { search: "", org: [], date_from: "", date_to: "", direction: "", account_id: "", page_size: 100, sync_days: 30, include_internal: false, founder_only: false, dividend_only: false },
     analyticsMonths: 12,
   };
 
@@ -130,12 +135,18 @@
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;");
   }
+  function normalizeCurrency(code) {
+    var s = String(code == null ? "" : code).trim().toUpperCase() || "RUB";
+    if (s === "RUR" || s === "810" || s === "643") return "RUB";
+    return s;
+  }
   function fmtMoney(n, cur) {
     var F = window.DatagonFmt;
     var num = Number(n);
     if (!Number.isFinite(num)) return "—";
     var t = F && F.formatNumber ? F.formatNumber(num, { maxFractionDigits: 2, minFractionDigits: 2 }) : String(num);
-    return t + (cur ? " " + cur : "");
+    var c = cur ? normalizeCurrency(cur) : "";
+    return t + (c ? " " + c : "");
   }
   /** Маска р/с: «номер/БИК» — берём хвост номера, не БИК (иначе у всех …5104). */
   function maskAcc(num) {
@@ -197,6 +208,11 @@
           if (at >= 0) filtered.splice(at, 0, "org");
           else filtered.push("org");
         }
+        if (filtered.indexOf("founder") < 0) {
+          var atAmt = filtered.indexOf("amount");
+          if (atAmt >= 0) filtered.splice(atAmt + 1, 0, "founder");
+          else filtered.splice(0, 0, "founder");
+        }
         return filtered.length ? filtered : DEFAULT_VISIBLE.slice();
       }
     } catch (e) {}
@@ -245,6 +261,8 @@
     state.pending.page_size = parseInt(String((el("dg-fin-page-size") && el("dg-fin-page-size").value) || "100"), 10) || 100;
     state.pending.sync_days = parseInt(String((el("dg-fin-sync-days") && el("dg-fin-sync-days").value) || "30"), 10) || 30;
     state.pending.include_internal = !!(el("dg-fin-include-internal") && el("dg-fin-include-internal").checked);
+    state.pending.founder_only = !!(el("dg-fin-founder-only") && el("dg-fin-founder-only").checked);
+    state.pending.dividend_only = !!(el("dg-fin-dividend-only") && el("dg-fin-dividend-only").checked);
   }
   function writeFormFromPending() {
     if (el("dg-fin-search")) el("dg-fin-search").value = state.pending.search;
@@ -258,6 +276,8 @@
     if (el("dg-fin-page-size-foot")) el("dg-fin-page-size-foot").value = String(state.pending.page_size);
     if (el("dg-fin-sync-days")) el("dg-fin-sync-days").value = String(state.pending.sync_days);
     if (el("dg-fin-include-internal")) el("dg-fin-include-internal").checked = !!state.pending.include_internal;
+    if (el("dg-fin-founder-only")) el("dg-fin-founder-only").checked = !!state.pending.founder_only;
+    if (el("dg-fin-dividend-only")) el("dg-fin-dividend-only").checked = !!state.pending.dividend_only;
     if (el("dg-fin-analytics-deposits")) el("dg-fin-analytics-deposits").checked = !!state.pending.include_internal;
     markDirty();
   }
@@ -272,7 +292,9 @@
       state.pending.direction !== state.applied.direction ||
       state.pending.account_id !== state.applied.account_id ||
       Number(state.pending.page_size) !== Number(state.applied.page_size) ||
-      !!state.pending.include_internal !== !!state.applied.include_internal;
+      !!state.pending.include_internal !== !!state.applied.include_internal ||
+      !!state.pending.founder_only !== !!state.applied.founder_only ||
+      !!state.pending.dividend_only !== !!state.applied.dividend_only;
     btn.classList.toggle("dg-flt-dirty", dirty);
     btn.textContent = dirty ? "Применить •" : "Применить";
   }
@@ -1033,6 +1055,7 @@
 
   function cellValue(row, key) {
     if (key === "amount") return Number(row.amount);
+    if (key === "founder") return row.founder_capital ? 2 : row.dividend_payout || row.chart_tag === "dividend" ? 1 : 0;
     if (key === "booked_date") return String(row.booked_date || row.booked_at || "");
     if (key === "org") return rowOrgLabel(row);
     if (key === "bank") return BANK_LABELS[String(row.bank || "tochka").toLowerCase()] || String(row.bank || "");
@@ -1048,11 +1071,30 @@
     if (fromApi) return fromApi;
     return code ? orgFullName(code, code) : "";
   }
+  function finTagToggle(row, tag, label, checked) {
+    return (
+      '<label class="dg-fin-founder-toggle' +
+      (tag === "dividend" ? " is-div" : "") +
+      '">' +
+      '<input type="checkbox" class="form-check-input dg-fin-tag-cb" data-chart-tag="' +
+      esc(tag) +
+      '" data-tx-id="' +
+      esc(row.tx_id) +
+      '" data-tx-bank="' +
+      esc(row.bank || "tochka") +
+      '" ' +
+      (checked ? "checked " : "") +
+      "/>" +
+      "<span>" +
+      esc(label) +
+      "</span></label>"
+    );
+  }
   function renderCell(row, key) {
     if (key === "amount") {
       var cls = row.direction === "out" ? "dg-fin-dir-out" : "dg-fin-dir-in";
-      var mark =
-        row.chart_excluded
+      var autoMark =
+        row.chart_excluded && !row.founder_capital && row.chart_tag !== "dividend"
           ? '<span class="dg-fin-chart-excl" title="Не входит в график и аналитику по умолчанию (внутренний оборот: ' +
             esc(row.chart_exclude_reason || "внутр.") +
             ')">не в графике</span>'
@@ -1063,16 +1105,46 @@
         '">' +
         esc(fmtMoney(row.amount, row.currency)) +
         "</span>" +
-        (mark ? " " + mark : "")
+        (autoMark ? " " + autoMark : "")
+      );
+    }
+    if (key === "founder") {
+      var tag = row.chart_tag === "dividend" || row.chart_tag === "founder"
+        ? row.chart_tag
+        : row.founder_capital
+          ? "founder"
+          : "";
+      if (!state.canWrite) {
+        if (tag === "founder") return '<span class="small text-muted">займ</span>';
+        if (tag === "dividend") return '<span class="small text-muted">див.</span>';
+        return "—";
+      }
+      return (
+        '<div class="dg-fin-tag-toggles">' +
+        finTagToggle(row, "founder", "займ", tag === "founder") +
+        finTagToggle(row, "dividend", "див.", tag === "dividend") +
+        "</div>"
       );
     }
     if (key === "direction") {
       var dirTxt = row.direction === "out" ? "Исходящий" : "Входящий";
       if (row.chart_excluded) {
+        var why = row.founder_capital
+          ? "капитал/займ учредителей"
+          : row.chart_tag === "dividend" || row.chart_exclude_reason === "дивиденды"
+            ? "выплата дивидендов"
+            : row.chart_exclude_reason || "внутр.";
+        var extraCls = row.founder_capital
+          ? " is-founder"
+          : row.chart_tag === "dividend" || row.chart_exclude_reason === "дивиденды"
+            ? " is-dividend"
+            : "";
         return (
           esc(dirTxt) +
-          ' <span class="dg-fin-chart-excl-dot" title="Не в графике: ' +
-          esc(row.chart_exclude_reason || "внутр.") +
+          ' <span class="dg-fin-chart-excl-dot' +
+          extraCls +
+          '" title="Не в графике: ' +
+          esc(why) +
           '" aria-label="Не в графике">●</span>'
         );
       }
@@ -1109,7 +1181,7 @@
       tb.innerHTML = '<tr><td colspan="' + Math.max(1, cols.length) + '" class="text-muted">Нет проводок по фильтрам. Обновите из банка, если снимок пуст.</td></tr>';
     } else {
       tb.innerHTML = rows.map(function (r) {
-        var trCls = r.chart_excluded ? ' class="dg-fin-row-chart-excl"' : "";
+        var trCls = r.chart_excluded || r.founder_capital ? ' class="dg-fin-row-chart-excl"' : "";
         return "<tr" + trCls + ">" + cols.map(function (c) { return "<td>" + renderCell(r, c[0]) + "</td>"; }).join("") + "</tr>";
       }).join("");
     }
@@ -1119,7 +1191,7 @@
     }
   }
 
-  var BANK_LABELS = { tochka: "Точка", raiffeisen: "Райффайзен" };
+  var BANK_LABELS = { tochka: "Точка", raiffeisen: "Райффайзен", tbank: "Т‑Банк" };
 
   function accountAvailable(a) {
     var n = a && a.available != null ? Number(a.available) : Number(a && a.balance);
@@ -1134,7 +1206,7 @@
     (list || []).forEach(function (a) {
       var n = pick(a);
       if (n == null) return;
-      var cur = String(a.currency || "RUB").toUpperCase() || "RUB";
+      var cur = normalizeCurrency(a.currency);
       map[cur] = (map[cur] || 0) + n;
     });
     return map;
@@ -1415,7 +1487,7 @@
           '<div class="dg-fin-bank-head">' +
           '<div class="dg-fin-bank-head-left">' +
           '<span class="dg-fin-bank-pill dg-fin-bank-pill-lg' +
-          (g.bank_code === "raiffeisen" ? " is-raiffeisen" : "") +
+          (g.bank_code === "raiffeisen" ? " is-raiffeisen" : g.bank_code === "tbank" ? " is-tbank" : "") +
           '">' +
           esc(g.bank_label) +
           "</span>" +
@@ -1439,11 +1511,9 @@
             : '<p class="dg-fin-bank-title">' + esc(g.display_short || g.org_label || "Организация") + "</p>") +
           '<p class="dg-fin-bank-meta mb-0">' +
           esc(metaBits.join(" · ") || g.accounts.length + " счёт(а)") +
-          (g.org_label && g.display_full && g.display_full !== g.org_label
-            ? " · в банке: " + esc(g.org_label)
-            : g.display_full && g.display_short && g.display_full !== g.display_short
-              ? " · полное: " + esc(g.display_full)
-              : "") +
+          (g.display_full && g.display_short && g.display_full !== g.display_short
+            ? " · полное: " + esc(g.display_full)
+            : "") +
           "</p>" +
           "</div></div>" +
           '<p class="dg-fin-bank-sum">' +
@@ -1693,6 +1763,61 @@
     return run();
   }
 
+  function saveTxChartTag(txId, bank, tag, cbEl) {
+    var payload = {
+      tx_id: txId,
+      bank: bank || "tochka",
+      chart_tag: tag || "",
+    };
+    var run = function () {
+      return fetch("/api/finance/tx-meta", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+        .then(function (r) {
+          return r.json().then(function (j) {
+            return { ok: r.ok, j: j };
+          });
+        })
+        .then(function (x) {
+          if (!x.ok || !x.j || !x.j.success) {
+            throw new Error((x.j && x.j.error) || "Не удалось сохранить пометку");
+          }
+          var upd = x.j.tx || {};
+          state.rows = (state.rows || []).map(function (row) {
+            if (String(row.tx_id) !== String(txId) || String(row.bank || "tochka") !== String(bank || "tochka")) {
+              return row;
+            }
+            return Object.assign({}, row, {
+              chart_tag: upd.chart_tag || "",
+              exclude_chart: !!upd.exclude_chart,
+              founder_capital: !!upd.founder_capital,
+              dividend_payout: !!upd.dividend_payout,
+              chart_excluded: !!upd.chart_excluded,
+              chart_exclude_reason: upd.chart_exclude_reason || null,
+            });
+          });
+          renderTable();
+          loadMonthlyAnalytics();
+          loadCounterparties();
+          if (state.applied.founder_only || state.applied.dividend_only) loadTx();
+          var msg =
+            tag === "founder"
+              ? "Не в графике: капитал/займ"
+              : tag === "dividend"
+                ? "Не в графике: дивиденды"
+                : "Пометка снята";
+          toast("success", msg);
+        });
+    };
+    if (window.DatagonNotify && window.DatagonNotify.busyRun && cbEl) {
+      return window.DatagonNotify.busyRun(cbEl, run);
+    }
+    return run();
+  }
+
   function beginOrgNamesEdit(viewEl) {
     if (!viewEl || viewEl.querySelector(".dg-fin-name-editor")) return;
     var code = viewEl.getAttribute("data-customer-code");
@@ -1859,6 +1984,8 @@
     q.set("page", String(state.page));
     q.set("page_size", String(state.applied.page_size || 100));
     if (state.applied.include_internal) q.set("include_internal", "1");
+    if (state.applied.founder_only) q.set("founder_capital", "1");
+    if (state.applied.dividend_only) q.set("dividend", "1");
     return fetch("/api/finance/transactions?" + q.toString(), { credentials: "same-origin" })
       .then(function (r) { return r.json(); })
       .then(function (j) {
@@ -1985,6 +2112,58 @@
       "</tbody></table></div>";
   }
 
+  function renderTbankList() {
+    var root = el("dg-fin-tbank-list");
+    if (!root) return;
+    var list = state.tbankCredentials || [];
+    if (!list.length) {
+      root.innerHTML = '<p class="small text-muted mb-0">Токены T‑API пока не добавлены. Вставьте токен ниже.</p>';
+      return;
+    }
+    root.innerHTML =
+      '<div class="table-responsive"><table class="table table-sm align-middle mb-0">' +
+      "<thead><tr><th>Организация</th><th>Токен</th><th>Вкл.</th><th></th></tr></thead><tbody>" +
+      list
+        .map(function (c) {
+          var names = (c.customer_names || []).join(", ") || (c.customer_codes || []).join(", ") || "—";
+          return (
+            "<tr data-tbank-id=\"" +
+            esc(c.id) +
+            "\">" +
+            "<td><strong>" +
+            esc(c.label || "Т‑Банк") +
+            "</strong><div class=\"small text-muted\">" +
+            esc(names) +
+            "</div></td>" +
+            "<td class=\"small text-muted\">" +
+            esc(c.token_mask || "—") +
+            "</td>" +
+            "<td><input type=\"checkbox\" class=\"form-check-input dg-fin-tbank-en\" " +
+            (c.enabled ? "checked " : "") +
+            "data-tbank-id=\"" +
+            esc(c.id) +
+            "\" /></td>" +
+            "<td class=\"text-nowrap\">" +
+            '<button type="button" class="btn btn-sm btn-outline-success dg-fin-tbank-sync" data-tbank-id="' +
+            esc(c.id) +
+            '" data-tbank-label="' +
+            esc(c.label || "Т‑Банк") +
+            '" data-dg-notify-start="Обновляем Т‑Банк…"' +
+            (c.enabled === false ? " disabled" : "") +
+            ">Обновить</button> " +
+            '<button type="button" class="btn btn-sm btn-outline-secondary dg-fin-tbank-probe" data-tbank-id="' +
+            esc(c.id) +
+            '" data-dg-notify-start="Проверяем Т‑Банк…">Проверить</button> ' +
+            '<button type="button" class="btn btn-sm btn-outline-danger dg-fin-tbank-del" data-tbank-id="' +
+            esc(c.id) +
+            '" data-dg-notify-start="Удаляем токен Т‑Банка…">Удалить</button>' +
+            "</td></tr>"
+          );
+        })
+        .join("") +
+      "</tbody></table></div>";
+  }
+
   function loadConfig() {
     return fetch("/api/finance/config", { credentials: "same-origin" })
       .then(function (r) { return r.json(); })
@@ -1993,10 +2172,12 @@
         state.canWrite = !!j.can_write;
         state.credentials = Array.isArray(j.credentials) ? j.credentials : [];
         state.raiffeisenCredentials = Array.isArray(j.raiffeisen_credentials) ? j.raiffeisen_credentials : [];
+        state.tbankCredentials = Array.isArray(j.tbank_credentials) ? j.tbank_credentials : [];
         var card = el("dg-fin-bank-card");
         if (card) card.style.display = state.canWrite ? "" : "none";
         renderCredList();
         renderRaiffList();
+        renderTbankList();
         var inp = el("dg-fin-jwt");
         if (inp) {
           inp.value = "";
@@ -2081,6 +2262,7 @@
     if (title) title.textContent = opts.title || "Подтверждение";
     if (text) text.textContent = opts.text || "";
     okBtn.textContent = opts.okLabel || "Удалить";
+    okBtn.className = "btn btn-sm " + (opts.okClass || "btn-danger");
     overlay.classList.remove("d-none");
     return new Promise(function (resolve) {
       function close(v) {
@@ -2204,10 +2386,95 @@
     });
   }
 
+  function saveTbank() {
+    var lab = el("dg-fin-tbank-label");
+    var tok = el("dg-fin-tbank-token");
+    var token = String((tok && tok.value) || "").trim();
+    var label = String((lab && lab.value) || "").trim();
+    if (!token) {
+      setBankMsg("danger", "<strong>Вставьте токен T‑API</strong>.");
+      return Promise.resolve();
+    }
+    var btn = el("dg-fin-btn-save-tbank");
+    var run = function () {
+      setBankMsg("warning", "Сохраняем Т‑Банк…");
+      return postConfig({
+        bank: "tbank",
+        action: "upsert",
+        label: label || "Т‑Банк",
+        token: token,
+      })
+        .then(function (x) {
+          if (!x.r.ok || !x.j.success) throw new Error((x.j && x.j.error) || ("HTTP " + x.r.status));
+          return fetch("/api/finance/config", { credentials: "same-origin" }).then(function (r) {
+            return r.json();
+          });
+        })
+        .then(function (cfg) {
+          state.tbankCredentials = Array.isArray(cfg.tbank_credentials) ? cfg.tbank_credentials : [];
+          renderTbankList();
+          var added = state.tbankCredentials.filter(function (c) {
+            return Number(c.token_len || 0) === token.length;
+          });
+          var html = "<strong>Токен Т‑Банка сохранён.</strong>";
+          if (added[0]) html += "<br>" + esc(added[0].label) + ": " + esc(added[0].token_mask || "—");
+          setBankMsg("success", html);
+          if (tok) tok.value = "";
+          if (lab) lab.value = "";
+        })
+        .catch(function (e) {
+          setBankMsg("danger", "<strong>Ошибка сохранения Т‑Банка.</strong> " + esc(e.message || String(e)));
+        });
+    };
+    if (window.DatagonNotify && window.DatagonNotify.busyRun && btn) return window.DatagonNotify.busyRun(btn, run);
+    return run();
+  }
+
+  function deleteTbank(id) {
+    return openFinConfirm({
+      title: "Удалить токен Т‑Банка?",
+      text: "Токен будет удалён из настроек. Снимок счетов в БД останется.",
+      okLabel: "Удалить",
+    }).then(function (ok) {
+      if (!ok) return null;
+      return postConfig({ bank: "tbank", action: "delete", id: id }).then(function (x) {
+        if (!x.r.ok || !x.j.success) throw new Error((x.j && x.j.error) || ("HTTP " + x.r.status));
+        state.tbankCredentials = Array.isArray(x.j.tbank_credentials) ? x.j.tbank_credentials : [];
+        renderTbankList();
+        setBankMsg("success", "<strong>Токен Т‑Банка удалён.</strong>");
+        toast("success", "Токен Т‑Банка удалён");
+      });
+    });
+  }
+
+  function toggleTbank(id, enabled) {
+    return postConfig({ bank: "tbank", action: "toggle", id: id, enabled: !!enabled }).then(function (x) {
+      if (!x.r.ok || !x.j.success) throw new Error((x.j && x.j.error) || ("HTTP " + x.r.status));
+      state.tbankCredentials = Array.isArray(x.j.tbank_credentials) ? x.j.tbank_credentials : [];
+      renderTbankList();
+    });
+  }
+
   function probe(credentialId, bank) {
-    var btn = bank === "raiffeisen" ? el("dg-fin-btn-probe-raiff") : el("dg-fin-btn-probe");
+    var btn =
+      bank === "raiffeisen"
+        ? el("dg-fin-btn-probe-raiff")
+        : bank === "tbank"
+          ? el("dg-fin-btn-probe-tbank")
+          : el("dg-fin-btn-probe");
     var t0 = Date.now();
-    showActionLog("info", credentialId ? "Проверка ключа…" : bank === "raiffeisen" ? "Проверка Райфа…" : bank === "tochka" ? "Проверка Точки…" : "Проверка банков…");
+    showActionLog(
+      "info",
+      credentialId
+        ? "Проверка ключа…"
+        : bank === "raiffeisen"
+          ? "Проверка Райфа…"
+          : bank === "tbank"
+            ? "Проверка Т‑Банка…"
+            : bank === "tochka"
+              ? "Проверка Точки…"
+              : "Проверка банков…"
+    );
     var run = function () {
       var url = "/api/finance/probe";
       var qs = [];
@@ -2338,7 +2605,7 @@
           var msg = String(sync.message || "Обновление…");
           showActionLog(
             "info",
-            "Обновляем счета и выписку (Точка / Райф) за " +
+            "Обновляем счета и выписку (Точка / Райф / Т‑Банк) за " +
               days +
               " дн.<br><span class=\"small\">Фильтры: " +
               esc(filtersTxt) +
@@ -2382,6 +2649,7 @@
     if (credId && !orgTxt) {
       var found = (state.credentials || []).find(function (c) { return c.id === credId; });
       if (!found) found = (state.raiffeisenCredentials || []).find(function (c) { return c.id === credId; });
+      if (!found) found = (state.tbankCredentials || []).find(function (c) { return c.id === credId; });
       if (found) orgTxt = found.label || "";
     }
     var useFilters = !!opts.useFilters;
@@ -2421,7 +2689,7 @@
     var tick = null;
     showActionLog(
       "info",
-      "Загружаем выписки (Точка / Райф) (" +
+      "Загружаем выписки (Точка / Райф / Т‑Банк) (" +
         esc(scopeTxt) +
         ")<br><span class=\"small\">" +
         esc(filtersTxt) +
@@ -2432,7 +2700,7 @@
       var s = Math.round((Date.now() - t0) / 1000);
       showActionLog(
         "info",
-        "Загружаем выписки (Точка / Райф) (" +
+        "Загружаем выписки (Точка / Райф / Т‑Банк) (" +
           esc(scopeTxt) +
           ")<br><span class=\"small\">" +
           esc(filtersTxt) +
@@ -2446,6 +2714,7 @@
     var body = { days: days };
     if (credId) body.credential_id = credId;
     if (credId && String(credId).indexOf("rf_") === 0) body.bank = "raiffeisen";
+    if (credId && String(credId).indexOf("tb_") === 0) body.bank = "tbank";
     if (customerCodes.length) body.customer_codes = customerCodes;
     if (accountId) body.account_id = accountId;
     if (dateFrom) body.date_from = dateFrom;
@@ -2488,7 +2757,7 @@
   el("dg-fin-apply").addEventListener("click", commitFilters);
   el("dg-fin-reset").addEventListener("click", function () {
     hideActionLog();
-    state.pending = { search: "", org: [], date_from: "", date_to: "", direction: "", account_id: "", page_size: 100, sync_days: 30, include_internal: false };
+    state.pending = { search: "", org: [], date_from: "", date_to: "", direction: "", account_id: "", page_size: 100, sync_days: 30, include_internal: false, founder_only: false, dividend_only: false };
     writeFormFromPending();
     commitFilters();
   });
@@ -2502,6 +2771,14 @@
   if (probeRaiffBtn) {
     probeRaiffBtn.addEventListener("click", function () {
       probe("", "raiffeisen");
+    });
+  }
+  var saveTbankBtn = el("dg-fin-btn-save-tbank");
+  if (saveTbankBtn) saveTbankBtn.addEventListener("click", saveTbank);
+  var probeTbankBtn = el("dg-fin-btn-probe-tbank");
+  if (probeTbankBtn) {
+    probeTbankBtn.addEventListener("click", function () {
+      probe("", "tbank");
     });
   }
   var credList = el("dg-fin-cred-list");
@@ -2584,6 +2861,46 @@
       });
     });
   }
+  var tbankList = el("dg-fin-tbank-list");
+  if (tbankList) {
+    tbankList.addEventListener("click", function (ev) {
+      var t = ev.target;
+      if (!t) return;
+      var del = t.closest && t.closest(".dg-fin-tbank-del");
+      var pr = t.closest && t.closest(".dg-fin-tbank-probe");
+      var syn = t.closest && t.closest(".dg-fin-tbank-sync");
+      if (del) {
+        var idDel = del.getAttribute("data-tbank-id");
+        if (!idDel) return;
+        deleteTbank(idDel).catch(function (e) {
+          setBankMsg("danger", esc(e.message || String(e)));
+        });
+        return;
+      }
+      if (pr) {
+        var idPr = pr.getAttribute("data-tbank-id");
+        if (!idPr) return;
+        probe(idPr, "tbank");
+        return;
+      }
+      if (syn) {
+        var idSyn = syn.getAttribute("data-tbank-id");
+        var labSyn = syn.getAttribute("data-tbank-label") || "";
+        if (!idSyn) return;
+        syncFromBank({ credentialId: idSyn, triggerBtn: syn, orgLabel: labSyn });
+      }
+    });
+    tbankList.addEventListener("change", function (ev) {
+      var t = ev.target;
+      if (!t || !t.classList || !t.classList.contains("dg-fin-tbank-en")) return;
+      var id = t.getAttribute("data-tbank-id");
+      if (!id) return;
+      toggleTbank(id, t.checked).catch(function (e) {
+        setBankMsg("danger", esc(e.message || String(e)));
+        t.checked = !t.checked;
+      });
+    });
+  }
   var loadTxBtn = el("dg-fin-load-tx");
   if (loadTxBtn) {
     loadTxBtn.addEventListener("click", function () {
@@ -2643,7 +2960,7 @@
       }
     });
   }
-  ["dg-fin-search", "dg-fin-date-from", "dg-fin-date-to", "dg-fin-direction", "dg-fin-account", "dg-fin-page-size", "dg-fin-sync-days", "dg-fin-include-internal"].forEach(function (id) {
+  ["dg-fin-search", "dg-fin-date-from", "dg-fin-date-to", "dg-fin-direction", "dg-fin-account", "dg-fin-page-size", "dg-fin-sync-days", "dg-fin-include-internal", "dg-fin-founder-only", "dg-fin-dividend-only"].forEach(function (id) {
     var n = el(id);
     if (!n) return;
     n.addEventListener("input", function () { readPendingFromForm(); markDirty(); });
@@ -2689,6 +3006,51 @@
     state.page += 1;
     loadTx();
   });
+  var txTbody = el("dg-fin-tbody");
+  if (txTbody) {
+    txTbody.addEventListener("change", function (ev) {
+      var t = ev.target;
+      if (!t || !t.classList || !t.classList.contains("dg-fin-tag-cb")) return;
+      var id = t.getAttribute("data-tx-id");
+      var bank = t.getAttribute("data-tx-bank") || "tochka";
+      var tag = t.getAttribute("data-chart-tag") || "";
+      if (!id || (tag !== "founder" && tag !== "dividend")) return;
+      var want = !!t.checked;
+      t.checked = !want;
+      var nextTag = want ? tag : "";
+      var title;
+      var text;
+      var okLabel;
+      if (nextTag === "founder") {
+        title = "Пометить как капитал / займ?";
+        text = "Проводка не будет учитываться в графике и у контрагентов: это не операционные деньги фирмы.";
+        okLabel = "Пометить";
+      } else if (nextTag === "dividend") {
+        title = "Пометить как выплату дивидендов?";
+        text = "Проводка не будет учитываться в графике и у контрагентов.";
+        okLabel = "Пометить";
+      } else if (tag === "founder") {
+        title = "Снять пометку капитал / займ?";
+        text = "Проводка снова попадёт в график и топ контрагентов, если это не внутренний оборот.";
+        okLabel = "Снять пометку";
+      } else {
+        title = "Снять пометку дивидендов?";
+        text = "Проводка снова попадёт в график и топ контрагентов, если назначение не «Выплата дивидендов».";
+        okLabel = "Снять пометку";
+      }
+      openFinConfirm({
+        title: title,
+        text: text,
+        okLabel: okLabel,
+        okClass: nextTag ? "btn-primary" : "btn-warning",
+      }).then(function (ok) {
+        if (!ok) return null;
+        return saveTxChartTag(id, bank, nextTag, t);
+      }).catch(function (e) {
+        toast("danger", e.message || String(e));
+      });
+    });
+  }
 
   bindCollapse("dg-fin-bank-toggle", "dg-fin-bank-body", BANK_KEY);
   bindCollapse("dg-fin-filters-toggle", "dg-fin-filters-body", FILTERS_KEY);

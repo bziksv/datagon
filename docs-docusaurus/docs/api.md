@@ -89,7 +89,7 @@ description: Справочник REST-эндпоинтов p.datagon.ru (осн
 - `/api/product` -> `routes/product.js` (Карточка товара: `ms_export` + `ms_entity_details` + продажи + `dg_bundle_components`; лог отсутствий — пакетно после синка МС: `stock≤0` или для базового кода `stock` < min суффикса в `код-число`, см. `syncZeroStockLogAfterMoyskladExport`; снимки остатка по дням — `dg_product_stock_snapshot`, см. `syncProductStockSnapshotsAfterMoyskladExport` — оба вызываются из `routes/moysklad.js` после сохранения `ms_export`)
 - `/api/activity` -> `routes/activity.js`
 - `/api/db-admin` -> `routes/dbAdmin.js` (Управление БД: размеры таблиц, связи, превью, ANALYZE/OPTIMIZE)
-- `/api/finance` -> `routes/finance.js` (Финансы: Точка JWT + Райф Open API, счета, балансы, проводки; только чтение)
+- `/api/finance` -> `routes/finance.js` (Финансы: Точка JWT + Райф Open API + Т‑Банк T‑API, счета, балансы, проводки; только чтение)
 - `/api/manager-sales` -> `routes/managerSales.js` (Таблицы менеджеров: годовой журнал оплат `dg_manager_sales_rows`)
 - `/api/ops-sheet` -> `routes/opsSheet.js` (Операционный лист: свод + Planfix-заявки `dg_ops_planfix_tasks`)
 - `GET /api/processes/overview`, `POST /api/sync-all-start`, `POST /api/sync-site-start`, `GET /api/sync-status` -> `server.js`
@@ -2206,11 +2206,15 @@ Query: `year`, `month`, `q` (номер / постановщик / статус)
 
 ## Финансы
 
-Страница `/finance.html`, роутер `routes/finance.js`, клиенты `lib/datagonTochkaClient.js` и `lib/datagonRaiffeisenClient.js`, учётные записи `lib/datagonFinanceCredentials.js`. Банки **Точка** (JWT) и **Райффайзен** (`client_id` / `client_secret` / `refresh_token`). Только чтение. Матрица: ключ **`finance`**. POST config/sync — только **`full`**.
+Страница `/finance.html`, роутер `routes/finance.js`, клиенты `lib/datagonTochkaClient.js`, `lib/datagonRaiffeisenClient.js`, `lib/datagonTbankClient.js`, учётные записи `lib/datagonFinanceCredentials.js`. Банки **Точка** (JWT), **Райффайзен** (`client_id` / `client_secret` / `refresh_token`) и **Т‑Банк** (Bearer T‑API). Только чтение. Матрица: ключ **`finance`**. POST config/sync — только **`full`**.
 
 **Несколько организаций Точки:** `app_settings.finance_tochka_credentials` (JSON). Legacy `finance_tochka_jwt` мигрирует в первую запись. Синк идёт по всем `enabled` ключам. JWT **не** в `GET /api/settings`.
 
-**Райффайзен:** `app_settings.finance_raiffeisen_credentials`. Refresh обменивается на access/id token через `sso.rbo.raiffeisen.ru`; новый refresh сохраняется. Счета и проводки в тех же таблицах с `bank='raiffeisen'`. «Обновить все» тянет оба банка.
+**Райффайзен:** `app_settings.finance_raiffeisen_credentials`. Refresh обменивается на access/id token через `sso.rbo.raiffeisen.ru`; новый refresh сохраняется. Счета и проводки в тех же таблицах с `bank='raiffeisen'`.
+
+**Т‑Банк:** `app_settings.finance_tbank_credentials`. Bearer из кабинета Т‑Бизнес → Интеграции → T‑API. Клиент `lib/datagonTbankClient.js`: `GET /api/v1/bank-accounts` (fallback v2/v3) и `GET /api/v1/statement` (`https://business.tbank.ru/openapi`). Токен **не** в `GET /api/settings`. Счета и проводки с `bank='tbank'`, `customer_code` вида `tb:{inn}`. Банк может требовать белый список IP (и для части методов — mTLS).
+
+«Обновить все» / автосинк `finance_tochka` тянет включённые ключи всех трёх банков.
 
 **Ограничение:** Open Banking Точки отдаёт только банковские счета. Фонды без API — ручная пометка на карточке (`is_fund`, `custom_name`).
 
@@ -2218,7 +2222,7 @@ Query: `year`, `month`, `q` (номер / постановщик / статус)
 
 ### GET `/api/finance/config`
 
-`{ success, configured, credentials: [{ id, label, enabled, jwt_mask, jwt_len, customer_codes, customer_names }], raiffeisen_credentials: [{ id, label, enabled, client_id, client_secret_mask, refresh_token_mask, configured, customer_codes, customer_names }], can_write, sync }`.
+`{ success, configured, credentials: [{ id, label, enabled, jwt_mask, jwt_len, customer_codes, customer_names }], raiffeisen_credentials: [{ id, label, enabled, client_id, client_secret_mask, refresh_token_mask, configured, customer_codes, customer_names }], tbank_credentials: [{ id, label, enabled, token_mask, token_len, configured, customer_codes, customer_names }], can_write, sync }`.
 
 ### POST `/api/finance/config`
 
@@ -2232,9 +2236,11 @@ Query: `year`, `month`, `q` (номер / постановщик / статус)
 
 Райф: `{ "bank": "raiffeisen", "action": "upsert"|"delete"|"toggle", … }` (`client_id`, `client_secret`, `refresh_token`, `label`, `id`).
 
+Т‑Банк: `{ "bank": "tbank", "action": "upsert"|"delete"|"toggle", … }` (`token`, `label`, `id`).
+
 ### GET `/api/finance/probe`
 
-Опционально `?credential_id=` и `?bank=tochka|raiffeisen`. Ответ: `{ count, credentials_probed, results[], consent_gaps, api_note }`.
+Опционально `?credential_id=` и `?bank=tochka|raiffeisen|tbank`. Ответ: `{ count, credentials_probed, results[], consent_gaps, api_note }`.
 
 ### GET `/api/finance/accounts`
 
@@ -2252,23 +2258,27 @@ Query: `year`, `month`, `q` (номер / постановщик / статус)
 
 Только `full`. Body: `{ "account_id", "bank?", "is_fund?", "custom_name?" }`. Ручная пометка фонда и названия; синк из банка эти поля не затирает. Ответ: `{ success, account }`.
 
+### POST `/api/finance/tx-meta`
+
+Только `full`. Body: `{ "tx_id", "bank?", "chart_tag": ""|"founder"|"dividend" }` (или устаревшее `exclude_chart: true|false` = займ). Ручные пометки **капитал / займ учредителей** и **выплата дивидендов**. Синк выписки **не** затирает. Помеченные проводки **не** входят в график и топ контрагентов. Ответ: `{ success, tx: { bank, tx_id, chart_tag, exclude_chart, founder_capital, dividend_payout, chart_excluded, chart_exclude_reason } }`.
+
 ### GET `/api/finance/transactions`
 
-Query: `search`, `customer_code` (повторяемый или через запятую; также `customer_codes` / `org`) — несколько организаций, `direction`, `account_id`, `date_from`, `date_to`, `page`, `page_size`, `include_internal=1` (или `include_deposits=1`; по умолчанию **выкл.** — без тела депозита UNV, без «Перевод собственных средств» и без «Выплата дивидендов»).
+Query: `search`, `customer_code` (повторяемый или через запятую; также `customer_codes` / `org`) — несколько организаций, `direction`, `account_id`, `date_from`, `date_to`, `page`, `page_size`, `include_internal=1` (или `include_deposits=1`; по умолчанию **выкл.** — без тела депозита UNV, без «Перевод собственных средств» и без «Выплата дивидендов»), `founder_capital=1` / `founder_only=1` — только ручная пометка займ, `dividend=1` / `dividend_only=1` — галка «див.» **или** назначение «Выплата дивидендов».
 
-В строках: `customer_code`, `org_label`, **`org`** — **полное** имя организации (alias `full`, иначе `org_label`), **`org_short`** — короткое. **`chart_excluded`** / **`chart_exclude_reason`** — операция не входит в график/аналитику по умолчанию (депозит UNV, «Перевод собственных средств», «Выплата дивидендов»). Умный поиск матчит оба alias.
+В строках: `customer_code`, `org_label`, **`org`** — **полное** имя организации (alias `full`, иначе `org_label`), **`org_short`** — короткое. **`chart_excluded`** / **`chart_exclude_reason`** — операция не входит в график/аналитику по умолчанию (депозит UNV, «Перевод собственных средств», «Выплата дивидендов» **или** ручная пометка займ/дивиденды). **`chart_tag`**: `founder` | `dividend` | `""`. **`founder_capital`** / **`dividend_payout`**. Умный поиск матчит оба alias.
 
-Ответ дополнительно: `include_internal`.
+Ответ дополнительно: `include_internal`, `founder_capital`, `dividend`.
 
 ### GET `/api/finance/analytics/monthly`
 
-Помесячная агрегация из `dg_finance_tx` (снимок). Query: `months` (1…36, по умолчанию **12**), `customer_code` / `customer_codes` / `org` (несколько), `account_id`, `currency` (по умолчанию `RUB`), `include_deposits=1` / `include_internal=1` (по умолчанию **выкл.** — без тела депозита UNV, без «Перевод собственных средств» и без «Выплата дивидендов»; проценты и внешние платежи входят).
+Помесячная агрегация из `dg_finance_tx` (снимок). Query: `months` (1…36, по умолчанию **12**), `customer_code` / `customer_codes` / `org` (несколько), `account_id`, `currency` (по умолчанию `RUB`), `include_deposits=1` / `include_internal=1` (по умолчанию **выкл.** — без тела депозита UNV, без «Перевод собственных средств» и без «Выплата дивидендов»; проценты и внешние платежи входят). Проводки с `exclude_chart=1` (займ или дивиденды вручную) **всегда** вне графика.
 
 Ответ: `{ success, months, currency, date_from, date_to, include_deposits, series: [{ month, in, out, net, count_in, count_out }], totals: { in, out, net, count } }`. Пустые месяцы в окне заполняются нулями.
 
 ### GET `/api/finance/analytics/counterparties`
 
-Топ контрагентов по сумме входящих / исходящих. Query: `limit` (3…20, по умолчанию **8**), `months` (если нет `date_from`/`date_to`), `date_from`, `date_to`, `customer_code` / `customer_codes` / `org`, `account_id`, `currency`, `include_internal=1` / `include_deposits=1` (по умолчанию **выкл.**, те же исключения, что у monthly).
+Топ контрагентов по сумме входящих / исходящих. Query: `limit` (3…20, по умолчанию **8**), `months` (если нет `date_from`/`date_to`), `date_from`, `date_to`, `customer_code` / `customer_codes` / `org`, `account_id`, `currency`, `include_internal=1` / `include_deposits=1` (по умолчанию **выкл.**, те же исключения, что у monthly). Займ и ручные дивиденды (`exclude_chart`) **всегда** вне топа.
 
 Ответ: `{ success, limit, currency, date_from, date_to, include_internal, top_in: [{ rank, name, inn, amount, count, share }], top_out: […], totals: { in, out, counterparties_in, counterparties_out } }`. Группировка по **ИНН** (если есть) — разные написания названия одной конторы сливаются; без ИНН — по имени.
 
@@ -2276,8 +2286,8 @@ Query: `search`, `customer_code` (повторяемый или через за�
 
 ### POST `/api/finance/sync`
 
-Body: `{ "days": 30, "date_from?", "date_to?", "customer_code?", "customer_codes?", "account_id?", "balances_only": false, "credential_id?" }`.
-Период: либо `date_from`/`date_to` (не больше 1095 дн.), либо `days` (1…1095). Без `credential_id` — все включённые JWT; `customer_codes` / `account_id` сужают счета внутри ключей. Асинхронно (`queued: true`); итог в `sync-status → last_result`.
+Body: `{ "days": 30, "date_from?", "date_to?", "customer_code?", "customer_codes?", "account_id?", "balances_only": false, "credential_id?", "bank?": "tochka"|"raiffeisen"|"tbank" }`.
+Период: либо `date_from`/`date_to` (не больше 1095 дн.), либо `days` (1…1095). Без `credential_id` / `bank` — все включённые ключи трёх банков. Асинхронно (`queued: true`); итог в `sync-status → last_result`.
 
 Автосинк: `task: "finance_tochka"`. Сценарий: [Финансы](/docs/finance).
 
