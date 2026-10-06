@@ -37,6 +37,7 @@
   var ANALYTICS_DEPOSITS_KEY = "dg.finance.analytics.include_deposits.v1";
   var CP_KEY = "dg.finance.counterparties-card.collapsed.v1";
   var CP_LIMIT_KEY = "dg.finance.counterparties.limit.v1";
+  var CASH_KEY = "dg.finance.cash-card.collapsed.v1";
   var COLS_KEY = "datagon_finance_visible_cols_v1";
   var WIDTHS_KEY = "datagon_finance_col_widths_v1";
   var FIELD_GROUPS = [
@@ -48,6 +49,7 @@
         { key: "date_from", title: "С даты" },
         { key: "date_to", title: "По дату" },
         { key: "direction", title: "Направление" },
+        { key: "source", title: "Источник" },
         { key: "account", title: "Счёт" },
       ],
     },
@@ -59,9 +61,28 @@
         { key: "include_internal", title: "Внутренние (депозиты / фонды / дивиденды)" },
         { key: "founder_only", title: "Только капитал / займ учредителей" },
         { key: "dividend_only", title: "Только выплата дивидендов" },
+        { key: "exclude_chart_inn", title: "Не учитывать расход на ИНН 362903774541 в графике" },
       ],
     },
   ];
+
+  function emptyFilters() {
+    return {
+      search: "",
+      org: [],
+      date_from: "",
+      date_to: "",
+      direction: "",
+      source: "all",
+      account_id: "",
+      page_size: 100,
+      sync_days: 30,
+      include_internal: false,
+      founder_only: false,
+      dividend_only: false,
+      exclude_chart_inn: true,
+    };
+  }
 
   var state = {
     canWrite: false,
@@ -77,13 +98,23 @@
     rows: [],
     sortKey: "booked_date",
     sortDir: "desc",
-    pending: { search: "", org: [], date_from: "", date_to: "", direction: "", account_id: "", page_size: 100, sync_days: 30, include_internal: false, founder_only: false, dividend_only: false },
-    applied: { search: "", org: [], date_from: "", date_to: "", direction: "", account_id: "", page_size: 100, sync_days: 30, include_internal: false, founder_only: false, dividend_only: false },
+    pending: emptyFilters(),
+    applied: emptyFilters(),
     analyticsMonths: 12,
+    cashTemplates: [],
+    cashOnce: [],
+    cashSearch: "",
+    cashOrgCodes: [],
+    cashOnceEditId: null,
+    cashTmplEditId: null,
+    cashMonthEdit: null,
   };
 
   var chartJsPromise = null;
   var monthlyChart = null;
+  var txLoadSeq = 0;
+  var analyticsLoadSeq = 0;
+  var cpLoadSeq = 0;
 
   function loadChartJs() {
     if (window.Chart && typeof window.Chart === "function") return Promise.resolve(window.Chart);
@@ -257,12 +288,15 @@
     state.pending.date_from = String((el("dg-fin-date-from") && el("dg-fin-date-from").value) || "");
     state.pending.date_to = String((el("dg-fin-date-to") && el("dg-fin-date-to").value) || "");
     state.pending.direction = String((el("dg-fin-direction") && el("dg-fin-direction").value) || "");
+    var src = String((el("dg-fin-source") && el("dg-fin-source").value) || "all").toLowerCase();
+    state.pending.source = src === "bank" || src === "cash" ? src : "all";
     state.pending.account_id = String((el("dg-fin-account") && el("dg-fin-account").value) || "");
     state.pending.page_size = parseInt(String((el("dg-fin-page-size") && el("dg-fin-page-size").value) || "100"), 10) || 100;
     state.pending.sync_days = parseInt(String((el("dg-fin-sync-days") && el("dg-fin-sync-days").value) || "30"), 10) || 30;
     state.pending.include_internal = !!(el("dg-fin-include-internal") && el("dg-fin-include-internal").checked);
     state.pending.founder_only = !!(el("dg-fin-founder-only") && el("dg-fin-founder-only").checked);
     state.pending.dividend_only = !!(el("dg-fin-dividend-only") && el("dg-fin-dividend-only").checked);
+    state.pending.exclude_chart_inn = !!(el("dg-fin-exclude-chart-inn") && el("dg-fin-exclude-chart-inn").checked);
   }
   function writeFormFromPending() {
     if (el("dg-fin-search")) el("dg-fin-search").value = state.pending.search;
@@ -271,6 +305,7 @@
     if (el("dg-fin-date-from")) el("dg-fin-date-from").value = state.pending.date_from;
     if (el("dg-fin-date-to")) el("dg-fin-date-to").value = state.pending.date_to;
     if (el("dg-fin-direction")) el("dg-fin-direction").value = state.pending.direction;
+    if (el("dg-fin-source")) el("dg-fin-source").value = state.pending.source === "bank" || state.pending.source === "cash" ? state.pending.source : "all";
     if (el("dg-fin-account")) el("dg-fin-account").value = state.pending.account_id;
     if (el("dg-fin-page-size")) el("dg-fin-page-size").value = String(state.pending.page_size);
     if (el("dg-fin-page-size-foot")) el("dg-fin-page-size-foot").value = String(state.pending.page_size);
@@ -278,6 +313,7 @@
     if (el("dg-fin-include-internal")) el("dg-fin-include-internal").checked = !!state.pending.include_internal;
     if (el("dg-fin-founder-only")) el("dg-fin-founder-only").checked = !!state.pending.founder_only;
     if (el("dg-fin-dividend-only")) el("dg-fin-dividend-only").checked = !!state.pending.dividend_only;
+    if (el("dg-fin-exclude-chart-inn")) el("dg-fin-exclude-chart-inn").checked = !!state.pending.exclude_chart_inn;
     if (el("dg-fin-analytics-deposits")) el("dg-fin-analytics-deposits").checked = !!state.pending.include_internal;
     markDirty();
   }
@@ -290,14 +326,191 @@
       state.pending.date_from !== state.applied.date_from ||
       state.pending.date_to !== state.applied.date_to ||
       state.pending.direction !== state.applied.direction ||
+      String(state.pending.source || "all") !== String(state.applied.source || "all") ||
       state.pending.account_id !== state.applied.account_id ||
       Number(state.pending.page_size) !== Number(state.applied.page_size) ||
       !!state.pending.include_internal !== !!state.applied.include_internal ||
       !!state.pending.founder_only !== !!state.applied.founder_only ||
-      !!state.pending.dividend_only !== !!state.applied.dividend_only;
+      !!state.pending.dividend_only !== !!state.applied.dividend_only ||
+      !!state.pending.exclude_chart_inn !== !!state.applied.exclude_chart_inn;
     btn.classList.toggle("dg-flt-dirty", dirty);
     btn.textContent = dirty ? "Применить •" : "Применить";
   }
+
+  var URL_FILTER_KEYS = [
+    "search",
+    "q",
+    "org",
+    "customer_code",
+    "customer_codes",
+    "date_from",
+    "date_to",
+    "direction",
+    "source",
+    "account_id",
+    "page_size",
+    "limit",
+    "page",
+    "sync_days",
+    "include_internal",
+    "include_deposits",
+    "founder_capital",
+    "founder_only",
+    "dividend",
+    "dividend_only",
+    "exclude_chart_inn",
+    "sort",
+    "sort_key",
+    "sort_dir",
+  ];
+  var urlSyncTimer = null;
+
+  function truthyUrlFlag(v) {
+    return ["1", "true", "yes", "on"].indexOf(String(v == null ? "" : v).trim().toLowerCase()) >= 0;
+  }
+
+  function parseUrlIntoPending() {
+    var p;
+    try {
+      p = new URLSearchParams(window.location.search);
+    } catch (e) {
+      return false;
+    }
+    var touched = false;
+    if (p.has("search") || p.has("q")) {
+      state.pending.search = String(p.get("search") || p.get("q") || "").trim();
+      touched = true;
+    }
+    var orgBits = [];
+    p.getAll("customer_code").forEach(function (x) {
+      orgBits.push(x);
+    });
+    p.getAll("org").forEach(function (x) {
+      orgBits.push(x);
+    });
+    if (p.has("customer_codes")) orgBits.push(p.get("customer_codes"));
+    if (orgBits.length) {
+      state.pending.org = normalizeOrgs(orgBits);
+      touched = true;
+    }
+    if (p.has("date_from")) {
+      state.pending.date_from = String(p.get("date_from") || "").trim();
+      touched = true;
+    }
+    if (p.has("date_to")) {
+      state.pending.date_to = String(p.get("date_to") || "").trim();
+      touched = true;
+    }
+    if (p.has("direction")) {
+      var dir = String(p.get("direction") || "").trim().toLowerCase();
+      state.pending.direction = dir === "in" || dir === "out" ? dir : "";
+      touched = true;
+    }
+    if (p.has("source")) {
+      var srcUrl = String(p.get("source") || "").trim().toLowerCase();
+      state.pending.source = srcUrl === "bank" || srcUrl === "cash" ? srcUrl : "all";
+      touched = true;
+    }
+    if (p.has("account_id")) {
+      state.pending.account_id = String(p.get("account_id") || "").trim();
+      touched = true;
+    }
+    if (p.has("page_size") || p.has("limit")) {
+      var ps = parseInt(String(p.get("page_size") || p.get("limit") || "100"), 10);
+      if ([50, 100, 200].indexOf(ps) >= 0) state.pending.page_size = ps;
+      touched = true;
+    }
+    if (p.has("sync_days")) {
+      var sd = parseInt(String(p.get("sync_days") || "30"), 10);
+      if (Number.isFinite(sd) && sd > 0) state.pending.sync_days = sd;
+      touched = true;
+    }
+    if (p.has("include_internal") || p.has("include_deposits")) {
+      state.pending.include_internal = truthyUrlFlag(
+        p.get("include_internal") != null ? p.get("include_internal") : p.get("include_deposits")
+      );
+      touched = true;
+    }
+    if (p.has("founder_capital") || p.has("founder_only")) {
+      state.pending.founder_only = truthyUrlFlag(
+        p.get("founder_capital") != null ? p.get("founder_capital") : p.get("founder_only")
+      );
+      touched = true;
+    }
+    if (p.has("dividend") || p.has("dividend_only")) {
+      state.pending.dividend_only = truthyUrlFlag(
+        p.get("dividend") != null ? p.get("dividend") : p.get("dividend_only")
+      );
+      touched = true;
+    }
+    if (p.has("exclude_chart_inn")) {
+      state.pending.exclude_chart_inn = truthyUrlFlag(p.get("exclude_chart_inn"));
+      touched = true;
+    }
+    if (p.has("page")) {
+      var pg = parseInt(String(p.get("page") || "1"), 10);
+      if (Number.isFinite(pg) && pg > 0) state.page = pg;
+      touched = true;
+    }
+    if (p.has("sort") || p.has("sort_key")) {
+      var sk = String(p.get("sort") || p.get("sort_key") || "").trim();
+      if (sk) state.sortKey = sk;
+      touched = true;
+    }
+    if (p.has("sort_dir")) {
+      var sdir = String(p.get("sort_dir") || "").trim().toLowerCase();
+      if (sdir === "asc" || sdir === "desc") state.sortDir = sdir;
+      touched = true;
+    }
+    return touched;
+  }
+
+  function syncUrlFromApplied() {
+    var keep = new URLSearchParams();
+    try {
+      var cur = new URLSearchParams(window.location.search);
+      cur.forEach(function (v, k) {
+        if (URL_FILTER_KEYS.indexOf(k) >= 0) return;
+        keep.append(k, v);
+      });
+    } catch (e) {}
+    var a = state.applied || {};
+    if (a.search) keep.set("search", String(a.search));
+    normalizeOrgs(a.org).forEach(function (c) {
+      keep.append("customer_code", c);
+    });
+    if (a.date_from) keep.set("date_from", String(a.date_from));
+    if (a.date_to) keep.set("date_to", String(a.date_to));
+    if (a.direction) keep.set("direction", String(a.direction));
+    if (a.source && a.source !== "all") keep.set("source", String(a.source));
+    if (a.account_id) keep.set("account_id", String(a.account_id));
+    if (Number(a.page_size) && Number(a.page_size) !== 100) keep.set("page_size", String(a.page_size));
+    if (Number(a.sync_days) && Number(a.sync_days) !== 30) keep.set("sync_days", String(a.sync_days));
+    if (a.include_internal) keep.set("include_internal", "1");
+    if (a.founder_only) keep.set("founder_capital", "1");
+    if (a.dividend_only) keep.set("dividend", "1");
+    // По умолчанию исключение ИНН включено — в URL пишем только выключение.
+    if (a.exclude_chart_inn === false) keep.set("exclude_chart_inn", "0");
+    if (Number(state.page) > 1) keep.set("page", String(state.page));
+    if (state.sortKey && state.sortKey !== "booked_date") keep.set("sort", String(state.sortKey));
+    if (state.sortDir && state.sortDir !== "desc") keep.set("sort_dir", String(state.sortDir));
+    var qs = keep.toString();
+    var next = window.location.pathname + (qs ? "?" + qs : "") + (window.location.hash || "");
+    try {
+      if (next !== window.location.pathname + window.location.search + window.location.hash) {
+        window.history.replaceState(null, "", next);
+      }
+    } catch (e2) {}
+  }
+
+  function scheduleUrlSync() {
+    if (urlSyncTimer) clearTimeout(urlSyncTimer);
+    urlSyncTimer = setTimeout(function () {
+      urlSyncTimer = null;
+      syncUrlFromApplied();
+    }, 150);
+  }
+
   function commitFilters() {
     readPendingFromForm();
     // если счёт не из выбранной орг — сбросить
@@ -318,6 +531,7 @@
     loadTx();
     loadMonthlyAnalytics();
     loadCounterparties();
+    scheduleUrlSync();
   }
 
   function fmtMonthLabel(ym) {
@@ -329,32 +543,64 @@
     return months[mIdx] + " " + String(p[0]).slice(2);
   }
 
-  function readAnalyticsMonths() {
-    var sel = el("dg-fin-analytics-months");
-    var n = sel ? parseInt(String(sel.value || "12"), 10) : state.analyticsMonths;
-    if (![6, 12, 24].includes(n)) n = 12;
-    state.analyticsMonths = n;
-    try { localStorage.setItem(ANALYTICS_MONTHS_KEY, String(n)); } catch (e) {}
-    return n;
-  }
-
-  function currentAnalyticsYm() {
+  function moscowNowParts() {
     try {
       var parts = new Intl.DateTimeFormat("en-CA", {
         timeZone: "Europe/Moscow",
         year: "numeric",
         month: "2-digit",
+        day: "2-digit",
       }).formatToParts(new Date());
       var y = "";
       var m = "";
+      var d = "";
       parts.forEach(function (p) {
         if (p.type === "year") y = p.value;
         if (p.type === "month") m = p.value;
+        if (p.type === "day") d = p.value;
       });
-      if (y && m) return y + "-" + m;
+      if (y && m && d) return { y: Number(y), m: m, d: d, ymd: y + "-" + m + "-" + d };
     } catch (e) {}
-    var d = new Date();
-    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
+    var now = new Date();
+    var yy = now.getFullYear();
+    var mm = String(now.getMonth() + 1).padStart(2, "0");
+    var dd = String(now.getDate()).padStart(2, "0");
+    return { y: yy, m: mm, d: dd, ymd: yy + "-" + mm + "-" + dd };
+  }
+  function readAnalyticsPeriod() {
+    var sel = el("dg-fin-analytics-months");
+    var raw = sel ? String(sel.value || "12") : String(state.analyticsMonths || 12);
+    if (raw !== "6" && raw !== "12" && raw !== "24" && raw !== "y0" && raw !== "y-1") raw = "12";
+    state.analyticsMonths = raw;
+    try { localStorage.setItem(ANALYTICS_MONTHS_KEY, raw); } catch (e) {}
+    var now = moscowNowParts();
+    if (raw === "y0") {
+      return { key: raw, date_from: now.y + "-01-01", date_to: now.ymd };
+    }
+    if (raw === "y-1") {
+      var y = now.y - 1;
+      return { key: raw, date_from: y + "-01-01", date_to: y + "-12-31" };
+    }
+    return { key: raw, months: parseInt(raw, 10) };
+  }
+  function applyAnalyticsPeriodQuery(q, forCounterparties) {
+    var per = readAnalyticsPeriod();
+    if (forCounterparties && state.applied.date_from && state.applied.date_to) {
+      q.set("date_from", state.applied.date_from);
+      q.set("date_to", state.applied.date_to);
+      return per;
+    }
+    if (per.date_from && per.date_to) {
+      q.set("date_from", per.date_from);
+      q.set("date_to", per.date_to);
+    } else {
+      q.set("months", String(per.months || 12));
+    }
+    return per;
+  }
+  function currentAnalyticsYm() {
+    var p = moscowNowParts();
+    return p.y + "-" + p.m;
   }
 
   function completedNetSeries(series) {
@@ -669,7 +915,7 @@
   }
 
   function loadMonthlyAnalytics() {
-    var months = readAnalyticsMonths();
+    var seq = ++analyticsLoadSeq;
     var scope = el("dg-fin-analytics-scope");
     var org = normalizeOrgs(state.applied.org);
     var acc = state.applied.account_id;
@@ -683,19 +929,23 @@
       scope.textContent = bits.length ? bits.join(" · ") : "Все организации";
     }
     var q = new URLSearchParams();
-    q.set("months", String(months));
+    applyAnalyticsPeriodQuery(q, false);
     appendOrgQuery(q, org);
     if (acc) q.set("account_id", acc);
     if (state.applied.include_internal) q.set("include_internal", "1");
+    if (state.applied.source && state.applied.source !== "all") q.set("source", String(state.applied.source));
+    q.set("exclude_chart_inn", state.applied.exclude_chart_inn ? "1" : "0");
     return fetch("/api/finance/analytics/monthly?" + q.toString(), { credentials: "same-origin" })
       .then(function (r) { return r.json(); })
       .then(function (j) {
+        if (seq !== analyticsLoadSeq) return null;
         if (!j || !j.success) throw new Error((j && j.error) || "analytics");
         renderAnalyticsKpis(j.totals, j.currency, j.series || []);
         renderMonthlyChart(j.series || [], j.currency);
         return j;
       })
       .catch(function (e) {
+        if (seq !== analyticsLoadSeq) return null;
         var emptyEl = el("dg-fin-analytics-empty");
         var canvas = el("dg-fin-analytics-chart");
         if (canvas) canvas.style.display = "none";
@@ -817,22 +1067,24 @@
   }
 
   function loadCounterparties() {
+    var seq = ++cpLoadSeq;
     var limit = readCpLimit();
     var org = normalizeOrgs(state.applied.org);
     var acc = state.applied.account_id;
     var scope = el("dg-fin-cp-scope");
     var q = new URLSearchParams();
     q.set("limit", String(limit));
-    q.set("months", String(readAnalyticsMonths()));
+    applyAnalyticsPeriodQuery(q, true);
     appendOrgQuery(q, org);
     if (acc) q.set("account_id", acc);
-    if (state.applied.date_from) q.set("date_from", state.applied.date_from);
-    if (state.applied.date_to) q.set("date_to", state.applied.date_to);
     if (state.applied.include_internal) q.set("include_internal", "1");
+    if (state.applied.source && state.applied.source !== "all") q.set("source", String(state.applied.source));
+    q.set("exclude_chart_inn", state.applied.exclude_chart_inn !== false ? "1" : "0");
 
     return fetch("/api/finance/analytics/counterparties?" + q.toString(), { credentials: "same-origin" })
       .then(function (r) { return r.json(); })
       .then(function (j) {
+        if (seq !== cpLoadSeq) return null;
         if (!j || !j.success) throw new Error((j && j.error) || "counterparties");
         var cur = j.currency || "RUB";
         if (scope) {
@@ -863,6 +1115,7 @@
         return j;
       })
       .catch(function (e) {
+        if (seq !== cpLoadSeq) return null;
         if (scope) scope.textContent = "ошибка загрузки";
         renderCpList(el("dg-fin-cp-in-list"), [], "in", "RUB");
         renderCpList(el("dg-fin-cp-out-list"), [], "out", "RUB");
@@ -1040,17 +1293,45 @@
       }).join("");
     }
     thead.innerHTML = "<tr>" + cols.map(function (c) {
-      return '<th class="dg-fin-sortable" data-fin-sort="' + esc(c[0]) + '">' + esc(c[1]) + "</th>";
+      var key = c[0];
+      var mark = "";
+      var aria = "none";
+      if (state.sortKey === key) {
+        mark = state.sortDir === "asc" ? " ↑" : " ↓";
+        aria = state.sortDir === "asc" ? "ascending" : "descending";
+      }
+      return (
+        '<th class="dg-fin-sortable" data-fin-sort="' +
+        esc(key) +
+        '" aria-sort="' +
+        aria +
+        '" title="Сортировка по всей выборке (не только текущая страница)">' +
+        esc(c[1]) +
+        '<span class="dg-fin-sort-mark text-muted">' +
+        mark +
+        "</span></th>"
+      );
     }).join("") + "</tr>";
-    thead.querySelectorAll("th.dg-fin-sortable").forEach(function (th) {
-      th.addEventListener("click", function () {
+    if (!thead.getAttribute("data-fin-sort-bound")) {
+      thead.setAttribute("data-fin-sort-bound", "1");
+      thead.addEventListener("click", function (ev) {
+        var th = ev.target && ev.target.closest ? ev.target.closest("th.dg-fin-sortable") : null;
+        if (!th || !thead.contains(th)) return;
         if (hasTextSelection()) return;
         var k = th.getAttribute("data-fin-sort");
+        if (!k) return;
         if (state.sortKey === k) state.sortDir = state.sortDir === "asc" ? "desc" : "asc";
-        else { state.sortKey = k; state.sortDir = "asc"; }
-        renderTable();
+        else {
+          state.sortKey = k;
+          // Дата по умолчанию от новых к старым; остальные колонки — по возрастанию.
+          state.sortDir = k === "booked_date" || k === "amount" ? "desc" : "asc";
+        }
+        state.page = 1;
+        buildThead();
+        loadTx();
+        scheduleUrlSync();
       });
-    });
+    }
   }
 
   function cellValue(row, key) {
@@ -1090,6 +1371,36 @@
       "</span></label>"
     );
   }
+  function isCashRow(row) {
+    return row && (row.source === "cash" || String(row.bank || "").toLowerCase() === "cash" || String(row.tx_id || "").indexOf("cash:") === 0);
+  }
+  function cashBadgeHtml(row) {
+    if (!isCashRow(row)) return "";
+    if (row.cash_kind === "recurring") {
+      return ' <span class="badge bg-warning text-dark border" title="Ежемесячный шаблон">ежемес.</span>';
+    }
+    return ' <span class="badge bg-success-subtle text-success border" title="Разовая наличная">нал</span>';
+  }
+  function finCashChartToggle(row) {
+    var checked = !row.chart_excluded && Number(row.include_chart) !== 0;
+    return (
+      '<label class="dg-fin-founder-toggle is-cash-chart">' +
+      '<input type="checkbox" class="form-check-input dg-fin-cash-chart-cb" data-tx-id="' +
+      esc(row.tx_id) +
+      '" data-cash-kind="' +
+      esc(row.cash_kind || "once") +
+      '" data-template-id="' +
+      esc(row.template_id || "") +
+      '" data-ym="' +
+      esc(row.ym || "") +
+      '" data-cash-id="' +
+      esc(row.cash_id || "") +
+      '" ' +
+      (checked ? "checked " : "") +
+      "/>" +
+      "<span>в графике</span></label>"
+    );
+  }
   function renderCell(row, key) {
     if (key === "amount") {
       var cls = row.direction === "out" ? "dg-fin-dir-out" : "dg-fin-dir-in";
@@ -1099,16 +1410,36 @@
             esc(row.chart_exclude_reason || "внутр.") +
             ')">не в графике</span>'
           : "";
+      var premHint = "";
+      if (isCashRow(row) && row.cash_kind === "recurring") {
+        var fix = row.amount_fix != null ? Number(row.amount_fix) : null;
+        var prem = row.amount_premium != null ? Number(row.amount_premium) : null;
+        if (fix != null || prem != null) {
+          premHint =
+            '<div class="small text-muted">фикс ' +
+            esc(fmtMoney(fix || 0, "RUB")) +
+            (prem != null && Number.isFinite(prem) ? " + прем. " + esc(fmtMoney(prem, "RUB")) : "") +
+            "</div>";
+        }
+      }
       return (
         '<span class="' +
         cls +
         '">' +
         esc(fmtMoney(row.amount, row.currency)) +
         "</span>" +
-        (autoMark ? " " + autoMark : "")
+        cashBadgeHtml(row) +
+        (autoMark ? " " + autoMark : "") +
+        premHint
       );
     }
     if (key === "founder") {
+      if (isCashRow(row)) {
+        if (!state.canWrite) {
+          return row.chart_excluded ? '<span class="small text-muted">не в графике</span>' : '<span class="small text-muted">в графике</span>';
+        }
+        return '<div class="dg-fin-tag-toggles">' + finCashChartToggle(row) + "</div>";
+      }
       var tag = row.chart_tag === "dividend" || row.chart_tag === "founder"
         ? row.chart_tag
         : row.founder_capital
@@ -1154,10 +1485,32 @@
       return esc(rowOrgLabel(row) || "—");
     }
     if (key === "bank") {
+      if (isCashRow(row)) {
+        return (
+          "Наличные" +
+          (row.cash_kind === "recurring"
+            ? ' <span class="badge bg-light text-muted border">ежемес.</span>'
+            : ' <span class="badge bg-light text-muted border">нал</span>')
+        );
+      }
       return esc(BANK_LABELS[String(row.bank || "tochka").toLowerCase()] || row.bank || "—");
     }
     if (key === "account_number") {
+      if (isCashRow(row)) return "—";
       return esc(maskAcc(row.account_number || row.account_id));
+    }
+    if (key === "purpose") {
+      var purpose = esc(row.purpose || "");
+      if (isCashRow(row) && row.cash_kind === "recurring" && state.canWrite) {
+        return (
+          '<button type="button" class="btn btn-link btn-sm p-0 text-start dg-fin-cash-month-open" data-tx-id="' +
+          esc(row.tx_id) +
+          '">' +
+          (purpose || "—") +
+          "</button>"
+        );
+      }
+      return purpose || "—";
     }
     if (key === "booked_date") {
       return esc(row.booked_date || String(row.booked_at || "").slice(0, 10));
@@ -1168,20 +1521,15 @@
     var tb = el("dg-fin-tbody");
     if (!tb) return;
     var cols = FIN_COLS.filter(function (c) { return visibleCols.indexOf(c[0]) >= 0; });
-    var rows = state.rows.slice();
-    var sk = state.sortKey;
-    var dir = state.sortDir === "asc" ? 1 : -1;
-    rows.sort(function (a, b) {
-      var va = cellValue(a, sk);
-      var vb = cellValue(b, sk);
-      if (typeof va === "number" && typeof vb === "number") return (va - vb) * dir;
-      return String(va).localeCompare(String(vb), "ru") * dir;
-    });
+    var rows = state.rows || [];
     if (!rows.length) {
       tb.innerHTML = '<tr><td colspan="' + Math.max(1, cols.length) + '" class="text-muted">Нет проводок по фильтрам. Обновите из банка, если снимок пуст.</td></tr>';
     } else {
       tb.innerHTML = rows.map(function (r) {
         var trCls = r.chart_excluded || r.founder_capital ? ' class="dg-fin-row-chart-excl"' : "";
+        if (isCashRow(r) && r.cash_kind === "recurring") {
+          trCls = trCls ? trCls.replace('"', ' dg-fin-cash-recurring"') : ' class="dg-fin-cash-recurring"';
+        }
         return "<tr" + trCls + ">" + cols.map(function (c) { return "<td>" + renderCell(r, c[0]) + "</td>"; }).join("") + "</tr>";
       }).join("");
     }
@@ -1191,7 +1539,7 @@
     }
   }
 
-  var BANK_LABELS = { tochka: "Точка", raiffeisen: "Райффайзен", tbank: "Т‑Банк" };
+  var BANK_LABELS = { tochka: "Точка", raiffeisen: "Райффайзен", tbank: "Т‑Банк", cash: "Наличные" };
 
   function accountAvailable(a) {
     var n = a && a.available != null ? Number(a.available) : Number(a && a.balance);
@@ -1511,9 +1859,6 @@
             : '<p class="dg-fin-bank-title">' + esc(g.display_short || g.org_label || "Организация") + "</p>") +
           '<p class="dg-fin-bank-meta mb-0">' +
           esc(metaBits.join(" · ") || g.accounts.length + " счёт(а)") +
-          (g.display_full && g.display_short && g.display_full !== g.display_short
-            ? " · полное: " + esc(g.display_full)
-            : "") +
           "</p>" +
           "</div></div>" +
           '<p class="dg-fin-bank-sum">' +
@@ -1631,6 +1976,7 @@
     if (!opt.codes.length) {
       menu.innerHTML = '<div class="small text-muted px-1 py-1">Нет организаций</div>';
       updateOrgBtnLabel();
+      fillCashOrgSelects(opt.codes);
       return;
     }
     menu.innerHTML =
@@ -1653,6 +1999,59 @@
         })
         .join("");
     updateOrgBtnLabel();
+    fillCashOrgSelects(opt.codes);
+  }
+  function fillCashOrgSelects(codes, keepQuery) {
+    var list = codes || collectOrgOptions().codes || [];
+    state.cashOrgCodes = list.slice();
+    ["once", "tmpl"].forEach(function (prefix) {
+      renderCashOrgSelect(prefix, keepQuery);
+    });
+  }
+  function renderCashOrgSelect(prefix, keepQuery) {
+    var sel = el("dg-fin-cash-" + prefix + "-org");
+    var qEl = el("dg-fin-cash-" + prefix + "-org-q");
+    if (!sel) return;
+    var cur = sel.value;
+    var q = keepQuery && qEl ? String(qEl.value || "").trim().toLowerCase() : "";
+    if (!keepQuery && qEl) qEl.value = "";
+    var list = state.cashOrgCodes || [];
+    var filtered = !q
+      ? list
+      : list.filter(function (code) {
+          var lab = String(orgOptionLabel(code) || code).toLowerCase();
+          return lab.indexOf(q) >= 0 || String(code).toLowerCase().indexOf(q) >= 0;
+        });
+    sel.innerHTML =
+      '<option value="">— выберите —</option>' +
+      filtered
+        .map(function (code) {
+          return '<option value="' + esc(code) + '">' + esc(orgOptionLabel(code) || code) + "</option>";
+        })
+        .join("");
+    if (cur && filtered.indexOf(cur) >= 0) sel.value = cur;
+    else if (cur && list.indexOf(cur) >= 0 && q) {
+      // Выбранная орг вне фильтра — оставляем в списке первой.
+      sel.insertAdjacentHTML(
+        "afterbegin",
+        '<option value="' + esc(cur) + '" selected>' + esc(orgOptionLabel(cur) || cur) + "</option>"
+      );
+      sel.value = cur;
+    }
+  }
+  function cashListQuery() {
+    return String((el("dg-fin-cash-search") && el("dg-fin-cash-search").value) || state.cashSearch || "")
+      .trim()
+      .toLowerCase();
+  }
+  function cashRowMatchesSearch(hayParts, q) {
+    if (!q) return true;
+    var hay = hayParts
+      .map(function (x) {
+        return String(x == null ? "" : x).toLowerCase();
+      })
+      .join(" ");
+    return hay.indexOf(q) >= 0;
   }
   function fillAccountSelect() {
     var sel = el("dg-fin-account");
@@ -1970,10 +2369,17 @@
         fillOrgSelect();
         fillAccountSelect();
         renderBalances();
+        var onceSave = el("dg-fin-cash-once-save");
+        var tmplSave = el("dg-fin-cash-tmpl-save");
+        if (onceSave) onceSave.disabled = !state.canWrite;
+        if (tmplSave) tmplSave.disabled = !state.canWrite;
+        renderCashOnceList();
+        renderCashTmplList();
       });
   }
 
   function loadTx() {
+    var seq = ++txLoadSeq;
     var q = new URLSearchParams();
     q.set("search", state.applied.search || "");
     appendOrgQuery(q, state.applied.org);
@@ -1986,18 +2392,27 @@
     if (state.applied.include_internal) q.set("include_internal", "1");
     if (state.applied.founder_only) q.set("founder_capital", "1");
     if (state.applied.dividend_only) q.set("dividend", "1");
+    if (state.applied.source && state.applied.source !== "all") q.set("source", String(state.applied.source));
+    if (state.sortKey) q.set("sort_by", String(state.sortKey));
+    if (state.sortDir) q.set("sort_dir", String(state.sortDir));
     return fetch("/api/finance/transactions?" + q.toString(), { credentials: "same-origin" })
       .then(function (r) { return r.json(); })
       .then(function (j) {
+        if (seq !== txLoadSeq) return null;
         if (!j || !j.success) throw new Error((j && j.error) || "transactions");
         state.total = Number(j.total || 0);
         state.page = Number(j.page || 1);
         state.pages = Number(j.pages || 1);
         state.shown = Number(j.shown || 0);
+        if (j.sort_by) state.sortKey = String(j.sort_by);
+        if (j.sort_dir === "asc" || j.sort_dir === "desc") state.sortDir = j.sort_dir;
         state.rows = j.rows || [];
+        buildThead();
         renderTable();
+        return j;
       })
       .catch(function (e) {
+        if (seq !== txLoadSeq) return null;
         toast("danger", e.message || String(e));
       });
   }
@@ -2282,6 +2697,786 @@
       overlay.addEventListener("click", onBackdrop);
       document.addEventListener("keydown", onKey);
     });
+  }
+
+  function parseCashMoney(v) {
+    if (v == null || v === "") return null;
+    var n = Number(String(v).replace(/\s/g, "").replace(",", "."));
+    return Number.isFinite(n) ? Math.round(n * 100) / 100 : null;
+  }
+  function formatCashMoneyInput(n) {
+    var num = Number(n);
+    if (!Number.isFinite(num)) return "";
+    var F = window.DatagonFmt;
+    if (F && F.formatNumber) {
+      return F.formatNumber(num, { maxFractionDigits: 2, minFractionDigits: 0 });
+    }
+    return String(num);
+  }
+  function syncCashOnceSaveUi() {
+    var btn = el("dg-fin-cash-once-save");
+    var cancel = el("dg-fin-cash-once-cancel");
+    var editing = !!state.cashOnceEditId;
+    if (btn) {
+      btn.textContent = editing ? "Сохранить изменения" : "Добавить разовую";
+      btn.setAttribute(
+        "data-dg-notify-start",
+        editing ? "Сохраняем изменения разовой…" : "Сохраняем разовую…"
+      );
+    }
+    if (cancel) cancel.classList.toggle("d-none", !editing);
+  }
+  function syncCashTmplSaveUi() {
+    var btn = el("dg-fin-cash-tmpl-save");
+    var cancel = el("dg-fin-cash-tmpl-cancel");
+    var editing = !!state.cashTmplEditId;
+    if (btn) {
+      btn.textContent = editing ? "Сохранить изменения" : "Добавить шаблон";
+      btn.setAttribute(
+        "data-dg-notify-start",
+        editing ? "Сохраняем изменения шаблона…" : "Сохраняем шаблон…"
+      );
+    }
+    if (cancel) cancel.classList.toggle("d-none", !editing);
+  }
+  function beginEditCashOnce(id) {
+    var row = (state.cashOnce || []).find(function (r) {
+      return String(r.id) === String(id);
+    });
+    if (!row) {
+      toast("warning", "Строка не найдена");
+      return;
+    }
+    setCashTab("once");
+    state.cashOnceEditId = row.id;
+    if (el("dg-fin-cash-once-date")) el("dg-fin-cash-once-date").value = String(row.booked_date || "").slice(0, 10);
+    if (el("dg-fin-cash-once-dir")) el("dg-fin-cash-once-dir").value = row.direction === "in" ? "in" : "out";
+    if (el("dg-fin-cash-once-amount")) el("dg-fin-cash-once-amount").value = formatCashMoneyInput(row.amount);
+    if (el("dg-fin-cash-once-purpose")) el("dg-fin-cash-once-purpose").value = row.purpose || "";
+    if (el("dg-fin-cash-once-chart")) el("dg-fin-cash-once-chart").checked = Number(row.include_chart) !== 0;
+    if (el("dg-fin-cash-once-scope")) el("dg-fin-cash-once-scope").value = row.scope === "org" ? "org" : "all";
+    syncCashScopeUi("once");
+    if (row.scope === "org") {
+      renderCashOrgSelect("once", false);
+      if (el("dg-fin-cash-once-org") && row.customer_code) {
+        var sel = el("dg-fin-cash-once-org");
+        var code = String(row.customer_code);
+        if (![].slice.call(sel.options).some(function (o) { return o.value === code; })) {
+          sel.insertAdjacentHTML(
+            "beforeend",
+            '<option value="' + esc(code) + '">' + esc(orgOptionLabel(code) || code) + "</option>"
+          );
+        }
+        sel.value = code;
+      }
+    }
+    syncCashOnceSaveUi();
+    setCashMsg("info", "Редактирование разовой №" + esc(row.id) + ". Измените поля и нажмите «Сохранить изменения».");
+    var card = el("dg-fin-cash-card");
+    if (card && card.scrollIntoView) card.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+  function cancelEditCashOnce() {
+    state.cashOnceEditId = null;
+    syncCashOnceSaveUi();
+    hideCashMsg();
+  }
+  function beginEditCashTemplate(id) {
+    var row = (state.cashTemplates || []).find(function (r) {
+      return String(r.id) === String(id);
+    });
+    if (!row) {
+      toast("warning", "Шаблон не найден");
+      return;
+    }
+    setCashTab("tmpl");
+    state.cashTmplEditId = row.id;
+    if (el("dg-fin-cash-tmpl-day")) el("dg-fin-cash-tmpl-day").value = String(row.day_of_month || 1);
+    if (el("dg-fin-cash-tmpl-dir")) el("dg-fin-cash-tmpl-dir").value = row.direction === "in" ? "in" : "out";
+    if (el("dg-fin-cash-tmpl-fix")) el("dg-fin-cash-tmpl-fix").value = formatCashMoneyInput(row.amount_fix);
+    if (el("dg-fin-cash-tmpl-prem")) {
+      el("dg-fin-cash-tmpl-prem").value =
+        row.amount_premium == null || row.amount_premium === "" ? "" : formatCashMoneyInput(row.amount_premium);
+    }
+    if (el("dg-fin-cash-tmpl-purpose")) el("dg-fin-cash-tmpl-purpose").value = row.purpose || "";
+    if (el("dg-fin-cash-tmpl-chart")) el("dg-fin-cash-tmpl-chart").checked = Number(row.include_chart) !== 0;
+    if (el("dg-fin-cash-tmpl-scope")) el("dg-fin-cash-tmpl-scope").value = row.scope === "org" ? "org" : "all";
+    syncCashScopeUi("tmpl");
+    if (row.scope === "org") {
+      renderCashOrgSelect("tmpl", false);
+      if (el("dg-fin-cash-tmpl-org") && row.customer_code) {
+        var sel = el("dg-fin-cash-tmpl-org");
+        var code = String(row.customer_code);
+        if (![].slice.call(sel.options).some(function (o) { return o.value === code; })) {
+          sel.insertAdjacentHTML(
+            "beforeend",
+            '<option value="' + esc(code) + '">' + esc(orgOptionLabel(code) || code) + "</option>"
+          );
+        }
+        sel.value = code;
+      }
+    }
+    syncCashTmplSaveUi();
+    setCashMsg("info", "Редактирование шаблона №" + esc(row.id) + ". Измените поля и нажмите «Сохранить изменения».");
+    var card = el("dg-fin-cash-card");
+    if (card && card.scrollIntoView) card.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+  function cancelEditCashTemplate() {
+    state.cashTmplEditId = null;
+    syncCashTmplSaveUi();
+    hideCashMsg();
+  }
+  function setCashMsg(type, html) {
+    var box = el("dg-fin-cash-msg");
+    if (!box) return;
+    box.className = "alert mt-3 mb-0 alert-" + (type || "secondary");
+    box.innerHTML = html || "";
+    box.classList.remove("d-none");
+  }
+  function hideCashMsg() {
+    var box = el("dg-fin-cash-msg");
+    if (box) box.classList.add("d-none");
+  }
+  function setCashTab(tab) {
+    var oncePane = el("dg-fin-cash-pane-once");
+    var tmplPane = el("dg-fin-cash-pane-tmpl");
+    var onceTab = el("dg-fin-cash-tab-once");
+    var tmplTab = el("dg-fin-cash-tab-tmpl");
+    var isOnce = tab !== "tmpl";
+    if (oncePane) oncePane.classList.toggle("d-none", !isOnce);
+    if (tmplPane) tmplPane.classList.toggle("d-none", isOnce);
+    if (onceTab) onceTab.classList.toggle("active", isOnce);
+    if (tmplTab) tmplTab.classList.toggle("active", !isOnce);
+  }
+  function syncCashScopeUi(prefix) {
+    var scopeEl = el("dg-fin-cash-" + prefix + "-scope");
+    var wrap = el("dg-fin-cash-" + prefix + "-org-wrap");
+    if (!scopeEl || !wrap) return;
+    wrap.classList.toggle("d-none", String(scopeEl.value) !== "org");
+  }
+  function renderCashOnceList() {
+    var tb = el("dg-fin-cash-once-tbody");
+    if (!tb) return;
+    var q = cashListQuery();
+    var rows = (state.cashOnce || []).filter(function (r) {
+      return cashRowMatchesSearch(
+        [
+          r.booked_date,
+          r.amount,
+          r.purpose,
+          r.direction,
+          r.scope,
+          r.customer_code,
+          orgOptionLabel(r.customer_code),
+          Number(r.include_chart) !== 0 ? "график" : "не в графике",
+        ],
+        q
+      );
+    });
+    if (!(state.cashOnce || []).length) {
+      tb.innerHTML = '<tr><td colspan="7" class="text-muted small">Разовых проводок пока нет.</td></tr>';
+      return;
+    }
+    if (!rows.length) {
+      tb.innerHTML =
+        '<tr><td colspan="7" class="text-muted small">Ничего не найдено по запросу «' + esc(q) + '».</td></tr>';
+      return;
+    }
+    tb.innerHTML = rows
+      .map(function (r) {
+        var dirOut = r.direction === "out";
+        var amt = Number(r.amount) || 0;
+        if (dirOut) amt = -Math.abs(amt);
+        var scopeLab =
+          r.scope === "org" ? orgOptionLabel(r.customer_code) || r.customer_code || "орг" : "все компании";
+        return (
+          "<tr>" +
+          "<td>" +
+          esc(String(r.booked_date || "").slice(0, 10)) +
+          "</td>" +
+          "<td>" +
+          esc(dirOut ? "Исходящий" : "Входящий") +
+          "</td>" +
+          "<td>" +
+          '<span class="' +
+          (dirOut ? "dg-fin-dir-out" : "dg-fin-dir-in") +
+          '">' +
+          esc(fmtMoney(amt, "RUB")) +
+          "</span>" +
+          "</td>" +
+          "<td>" +
+          esc(r.purpose || "—") +
+          "</td>" +
+          "<td>" +
+          esc(scopeLab) +
+          "</td>" +
+          "<td>" +
+          (Number(r.include_chart) !== 0 ? "да" : "нет") +
+          "</td>" +
+          '<td class="dg-fin-cash-actions">' +
+          (state.canWrite
+            ? '<button type="button" class="btn btn-sm btn-outline-primary me-1 dg-fin-cash-once-edit" data-id="' +
+              esc(r.id) +
+              '" data-dg-notify-start="Открываем редактирование…">Изменить</button>' +
+              '<button type="button" class="btn btn-sm btn-outline-danger dg-fin-cash-once-del" data-id="' +
+              esc(r.id) +
+              '" data-dg-notify-start="Удаляем разовую…">Удалить</button>'
+            : "") +
+          "</td>" +
+          "</tr>"
+        );
+      })
+      .join("");
+  }
+  function renderCashTmplList() {
+    var tb = el("dg-fin-cash-tmpl-tbody");
+    if (!tb) return;
+    var q = cashListQuery();
+    var rows = (state.cashTemplates || []).filter(function (r) {
+      return cashRowMatchesSearch(
+        [
+          r.day_of_month,
+          r.amount_fix,
+          r.amount_premium,
+          r.purpose,
+          r.direction,
+          r.scope,
+          r.customer_code,
+          orgOptionLabel(r.customer_code),
+          Number(r.active) !== 0 ? "вкл" : "выкл",
+        ],
+        q
+      );
+    });
+    if (!(state.cashTemplates || []).length) {
+      tb.innerHTML = '<tr><td colspan="8" class="text-muted small">Шаблонов пока нет.</td></tr>';
+      return;
+    }
+    if (!rows.length) {
+      tb.innerHTML =
+        '<tr><td colspan="8" class="text-muted small">Ничего не найдено по запросу «' + esc(q) + '».</td></tr>';
+      return;
+    }
+    tb.innerHTML = rows
+      .map(function (r) {
+        var dirOut = r.direction === "out";
+        var fix = Number(r.amount_fix) || 0;
+        if (dirOut) fix = -Math.abs(fix);
+        var premCell = "—";
+        if (r.amount_premium != null && r.amount_premium !== "") {
+          var prem = Number(r.amount_premium) || 0;
+          if (dirOut) prem = -Math.abs(prem);
+          premCell =
+            '<span class="' +
+            (dirOut ? "dg-fin-dir-out" : "dg-fin-dir-in") +
+            '">' +
+            esc(fmtMoney(prem, "RUB")) +
+            "</span>";
+        }
+        var scopeLab =
+          r.scope === "org" ? orgOptionLabel(r.customer_code) || r.customer_code || "орг" : "все компании";
+        return (
+          "<tr>" +
+          "<td>" +
+          esc(r.day_of_month) +
+          "</td>" +
+          "<td>" +
+          esc(dirOut ? "Исходящий" : "Входящий") +
+          "</td>" +
+          "<td>" +
+          '<span class="' +
+          (dirOut ? "dg-fin-dir-out" : "dg-fin-dir-in") +
+          '">' +
+          esc(fmtMoney(fix, "RUB")) +
+          "</span>" +
+          "</td>" +
+          "<td>" +
+          premCell +
+          "</td>" +
+          "<td>" +
+          esc(r.purpose || "—") +
+          "</td>" +
+          "<td>" +
+          esc(scopeLab) +
+          "</td>" +
+          "<td>" +
+          (Number(r.active) !== 0 ? "да" : "нет") +
+          "</td>" +
+          '<td class="dg-fin-cash-actions">' +
+          (state.canWrite
+            ? '<button type="button" class="btn btn-sm btn-outline-primary me-1 dg-fin-cash-tmpl-edit" data-id="' +
+              esc(r.id) +
+              '" data-dg-notify-start="Открываем редактирование…">Изменить</button>' +
+              '<button type="button" class="btn btn-sm btn-outline-danger dg-fin-cash-tmpl-del" data-id="' +
+              esc(r.id) +
+              '" data-dg-notify-start="Удаляем шаблон…">Удалить</button>'
+            : "") +
+          "</td>" +
+          "</tr>"
+        );
+      })
+      .join("");
+  }
+  function loadCashLists() {
+    return Promise.all([
+      fetch("/api/finance/cash/tx", { credentials: "same-origin" }).then(function (r) {
+        return r.json();
+      }),
+      fetch("/api/finance/cash/templates", { credentials: "same-origin" }).then(function (r) {
+        return r.json();
+      }),
+    ]).then(function (pair) {
+      var onceJ = pair[0];
+      var tmplJ = pair[1];
+      if (onceJ && onceJ.success) state.cashOnce = onceJ.rows || [];
+      else state.cashOnce = [];
+      if (tmplJ && tmplJ.success) state.cashTemplates = tmplJ.rows || [];
+      else state.cashTemplates = [];
+      renderCashOnceList();
+      renderCashTmplList();
+    }).catch(function (e) {
+      setCashMsg("danger", "Не удалось загрузить наличные: " + esc(e.message || String(e)));
+    });
+  }
+  function saveCashOnce() {
+    if (!state.canWrite) {
+      toast("warning", "Нет прав на запись");
+      return Promise.resolve();
+    }
+    var amount = parseCashMoney(el("dg-fin-cash-once-amount") && el("dg-fin-cash-once-amount").value);
+    var booked = String((el("dg-fin-cash-once-date") && el("dg-fin-cash-once-date").value) || "").trim();
+    var purpose = String((el("dg-fin-cash-once-purpose") && el("dg-fin-cash-once-purpose").value) || "").trim();
+    var scope = String((el("dg-fin-cash-once-scope") && el("dg-fin-cash-once-scope").value) || "all");
+    var org = String((el("dg-fin-cash-once-org") && el("dg-fin-cash-once-org").value) || "").trim();
+    if (!booked || amount == null || amount <= 0) {
+      setCashMsg("danger", "Укажите дату и сумму больше 0.");
+      return Promise.resolve();
+    }
+    if (!purpose) {
+      setCashMsg("danger", "Укажите назначение.");
+      return Promise.resolve();
+    }
+    if (scope === "org" && !org) {
+      setCashMsg("danger", "Выберите организацию или «Все компании».");
+      return Promise.resolve();
+    }
+    var body = {
+      booked_date: booked,
+      direction: String((el("dg-fin-cash-once-dir") && el("dg-fin-cash-once-dir").value) || "out"),
+      amount: amount,
+      purpose: purpose,
+      scope: scope === "org" ? "org" : "all",
+      customer_code: scope === "org" ? org : "",
+      include_chart: !!(el("dg-fin-cash-once-chart") && el("dg-fin-cash-once-chart").checked),
+    };
+    var editId = state.cashOnceEditId;
+    var btn = el("dg-fin-cash-once-save");
+    var run = function () {
+      setCashMsg("warning", editId ? "Сохраняем изменения…" : "Сохраняем разовую…");
+      var url = editId
+        ? "/api/finance/cash/tx/" + encodeURIComponent(editId)
+        : "/api/finance/cash/tx";
+      return fetch(url, {
+        method: editId ? "PATCH" : "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
+        .then(function (r) {
+          return r.json().then(function (j) {
+            return { ok: r.ok, j: j };
+          });
+        })
+        .then(function (x) {
+          if (!x.ok || !x.j || !x.j.success) throw new Error((x.j && x.j.error) || "Не удалось сохранить");
+          if (editId) {
+            state.cashOnceEditId = null;
+            syncCashOnceSaveUi();
+            setCashMsg("success", "<strong>Разовая обновлена.</strong> Поля формы оставлены — можно править дальше или добавить копию.");
+            toast("success", "Разовая обновлена");
+          } else {
+            setCashMsg("success", "<strong>Разовая добавлена.</strong> Поля формы не сброшены — можно добавить ещё с теми же значениями.");
+            toast("success", "Разовая наличная сохранена");
+          }
+          return Promise.all([loadCashLists(), loadTx(), loadMonthlyAnalytics(), loadCounterparties()]);
+        })
+        .catch(function (e) {
+          setCashMsg("danger", esc(e.message || String(e)));
+          toast("danger", e.message || String(e));
+        });
+    };
+    if (window.DatagonNotify && window.DatagonNotify.busyRun && btn) return window.DatagonNotify.busyRun(btn, run);
+    return run();
+  }
+  function saveCashTemplate() {
+    if (!state.canWrite) {
+      toast("warning", "Нет прав на запись");
+      return Promise.resolve();
+    }
+    var fix = parseCashMoney(el("dg-fin-cash-tmpl-fix") && el("dg-fin-cash-tmpl-fix").value);
+    var premRaw = el("dg-fin-cash-tmpl-prem") && el("dg-fin-cash-tmpl-prem").value;
+    var prem = String(premRaw || "").trim() === "" ? null : parseCashMoney(premRaw);
+    var purpose = String((el("dg-fin-cash-tmpl-purpose") && el("dg-fin-cash-tmpl-purpose").value) || "").trim();
+    var day = parseInt(String((el("dg-fin-cash-tmpl-day") && el("dg-fin-cash-tmpl-day").value) || "1"), 10) || 1;
+    var scope = String((el("dg-fin-cash-tmpl-scope") && el("dg-fin-cash-tmpl-scope").value) || "all");
+    var org = String((el("dg-fin-cash-tmpl-org") && el("dg-fin-cash-tmpl-org").value) || "").trim();
+    if (fix == null || fix < 0) {
+      setCashMsg("danger", "Укажите фикс (≥ 0).");
+      return Promise.resolve();
+    }
+    if (!purpose) {
+      setCashMsg("danger", "Укажите назначение.");
+      return Promise.resolve();
+    }
+    if (scope === "org" && !org) {
+      setCashMsg("danger", "Выберите организацию или «Все компании».");
+      return Promise.resolve();
+    }
+    var body = {
+      day_of_month: day,
+      direction: String((el("dg-fin-cash-tmpl-dir") && el("dg-fin-cash-tmpl-dir").value) || "out"),
+      amount_fix: fix,
+      amount_premium: prem,
+      purpose: purpose,
+      scope: scope === "org" ? "org" : "all",
+      customer_code: scope === "org" ? org : "",
+      include_chart: !!(el("dg-fin-cash-tmpl-chart") && el("dg-fin-cash-tmpl-chart").checked),
+      active: true,
+    };
+    var editId = state.cashTmplEditId;
+    var btn = el("dg-fin-cash-tmpl-save");
+    var run = function () {
+      setCashMsg("warning", editId ? "Сохраняем изменения шаблона…" : "Сохраняем шаблон…");
+      var url = editId
+        ? "/api/finance/cash/templates/" + encodeURIComponent(editId)
+        : "/api/finance/cash/templates";
+      return fetch(url, {
+        method: editId ? "PATCH" : "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
+        .then(function (r) {
+          return r.json().then(function (j) {
+            return { ok: r.ok, j: j };
+          });
+        })
+        .then(function (x) {
+          if (!x.ok || !x.j || !x.j.success) throw new Error((x.j && x.j.error) || "Не удалось сохранить");
+          if (editId) {
+            state.cashTmplEditId = null;
+            syncCashTmplSaveUi();
+            setCashMsg("success", "<strong>Шаблон обновлён.</strong> Поля формы оставлены.");
+            toast("success", "Шаблон обновлён");
+          } else {
+            setCashMsg("success", "<strong>Шаблон добавлен.</strong> Поля формы не сброшены — можно добавить ещё.");
+            toast("success", "Ежемесячный шаблон сохранён");
+          }
+          return Promise.all([loadCashLists(), loadTx(), loadMonthlyAnalytics(), loadCounterparties()]);
+        })
+        .catch(function (e) {
+          setCashMsg("danger", esc(e.message || String(e)));
+          toast("danger", e.message || String(e));
+        });
+    };
+    if (window.DatagonNotify && window.DatagonNotify.busyRun && btn) return window.DatagonNotify.busyRun(btn, run);
+    return run();
+  }
+  function deleteCashOnce(id) {
+    return openFinConfirm({
+      title: "Удалить разовую?",
+      text: "Наличная проводка будет удалена без возможности восстановления.",
+      okLabel: "Удалить",
+    }).then(function (ok) {
+      if (!ok) return null;
+      return fetch("/api/finance/cash/tx/" + encodeURIComponent(id), {
+        method: "DELETE",
+        credentials: "same-origin",
+      })
+        .then(function (r) {
+          return r.json().then(function (j) {
+            return { ok: r.ok, j: j };
+          });
+        })
+        .then(function (x) {
+          if (!x.ok || !x.j || !x.j.success) throw new Error((x.j && x.j.error) || "Ошибка удаления");
+          toast("success", "Разовая удалена");
+          return Promise.all([loadCashLists(), loadTx(), loadMonthlyAnalytics(), loadCounterparties()]);
+        });
+    });
+  }
+  function deleteCashTemplate(id) {
+    return openFinConfirm({
+      title: "Удалить шаблон?",
+      text: "Ежемесячный шаблон и его помесячные правки будут удалены. Уже показанные в списке инстансы пропадут после обновления.",
+      okLabel: "Удалить",
+    }).then(function (ok) {
+      if (!ok) return null;
+      return fetch("/api/finance/cash/templates/" + encodeURIComponent(id), {
+        method: "DELETE",
+        credentials: "same-origin",
+      })
+        .then(function (r) {
+          return r.json().then(function (j) {
+            return { ok: r.ok, j: j };
+          });
+        })
+        .then(function (x) {
+          if (!x.ok || !x.j || !x.j.success) throw new Error((x.j && x.j.error) || "Ошибка удаления");
+          toast("success", "Шаблон удалён");
+          return Promise.all([loadCashLists(), loadTx(), loadMonthlyAnalytics(), loadCounterparties()]);
+        });
+    });
+  }
+  function saveCashIncludeChart(cbEl, want) {
+    var kind = cbEl.getAttribute("data-cash-kind") || "once";
+    var run;
+    if (kind === "recurring") {
+      var tid = cbEl.getAttribute("data-template-id");
+      var ym = cbEl.getAttribute("data-ym");
+      if (!tid || !ym) return Promise.resolve();
+      run = function () {
+        return fetch("/api/finance/cash/templates/" + encodeURIComponent(tid) + "/months/" + encodeURIComponent(ym), {
+          method: "PUT",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ include_chart: !!want }),
+        })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { ok: r.ok, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.ok || !x.j || !x.j.success) throw new Error((x.j && x.j.error) || "Не удалось сохранить");
+            cbEl.checked = !!want;
+            toast("success", want ? "Нал в графике" : "Нал вне графика");
+            return Promise.all([loadTx(), loadMonthlyAnalytics(), loadCounterparties()]);
+          });
+      };
+    } else {
+      var cid = cbEl.getAttribute("data-cash-id");
+      if (!cid) {
+        var txId = String(cbEl.getAttribute("data-tx-id") || "");
+        var m = /^cash:o:(\d+)$/.exec(txId);
+        cid = m ? m[1] : "";
+      }
+      if (!cid) return Promise.resolve();
+      run = function () {
+        return fetch("/api/finance/cash/tx/" + encodeURIComponent(cid), {
+          method: "PATCH",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ include_chart: !!want }),
+        })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { ok: r.ok, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.ok || !x.j || !x.j.success) throw new Error((x.j && x.j.error) || "Не удалось сохранить");
+            cbEl.checked = !!want;
+            toast("success", want ? "Нал в графике" : "Нал вне графика");
+            return Promise.all([loadTx(), loadMonthlyAnalytics(), loadCounterparties()]);
+          });
+      };
+    }
+    if (window.DatagonNotify && window.DatagonNotify.busyRun && cbEl) {
+      return window.DatagonNotify.busyRun(cbEl, run).catch(function (e) {
+        toast("danger", e.message || String(e));
+      });
+    }
+    return run().catch(function (e) {
+      toast("danger", e.message || String(e));
+    });
+  }
+  function findCashRowByTxId(txId) {
+    var id = String(txId || "");
+    return (state.rows || []).find(function (r) {
+      return String(r.tx_id) === id;
+    });
+  }
+  function openCashMonthEditor(txId) {
+    var row = findCashRowByTxId(txId);
+    if (!row || row.cash_kind !== "recurring") return;
+    if (!state.canWrite) {
+      toast("warning", "Нет прав на запись");
+      return;
+    }
+    state.cashMonthEdit = {
+      template_id: row.template_id,
+      ym: row.ym,
+      tx_id: row.tx_id,
+    };
+    var overlay = el("dg-fin-cash-month-overlay");
+    var sub = el("dg-fin-cash-month-sub");
+    if (sub) sub.textContent = (row.purpose || "Шаблон") + " · " + String(row.ym || "");
+    if (el("dg-fin-cash-month-fix")) el("dg-fin-cash-month-fix").value = row.amount_fix != null ? String(row.amount_fix) : "";
+    if (el("dg-fin-cash-month-prem")) {
+      el("dg-fin-cash-month-prem").value =
+        row.amount_premium != null && row.amount_premium !== "" ? String(row.amount_premium) : "";
+    }
+    if (el("dg-fin-cash-month-purpose")) el("dg-fin-cash-month-purpose").value = row.purpose || "";
+    if (el("dg-fin-cash-month-chart")) el("dg-fin-cash-month-chart").checked = !row.chart_excluded;
+    if (el("dg-fin-cash-month-skip")) el("dg-fin-cash-month-skip").checked = false;
+    if (overlay) overlay.classList.remove("d-none");
+  }
+  function closeCashMonthEditor() {
+    var overlay = el("dg-fin-cash-month-overlay");
+    if (overlay) overlay.classList.add("d-none");
+    state.cashMonthEdit = null;
+  }
+  function saveCashMonthOverride() {
+    var edit = state.cashMonthEdit;
+    if (!edit || !edit.template_id || !edit.ym) return Promise.resolve();
+    var fix = parseCashMoney(el("dg-fin-cash-month-fix") && el("dg-fin-cash-month-fix").value);
+    var premRaw = el("dg-fin-cash-month-prem") && el("dg-fin-cash-month-prem").value;
+    var premEmpty = String(premRaw || "").trim() === "";
+    var prem = premEmpty ? null : parseCashMoney(premRaw);
+    var body = {
+      amount_fix: fix,
+      amount_premium: prem,
+      purpose: String((el("dg-fin-cash-month-purpose") && el("dg-fin-cash-month-purpose").value) || "").trim(),
+      include_chart: !!(el("dg-fin-cash-month-chart") && el("dg-fin-cash-month-chart").checked),
+      skipped: !!(el("dg-fin-cash-month-skip") && el("dg-fin-cash-month-skip").checked),
+      clear_premium: premEmpty,
+    };
+    var btn = el("dg-fin-cash-month-ok");
+    var run = function () {
+      return fetch(
+        "/api/finance/cash/templates/" + encodeURIComponent(edit.template_id) + "/months/" + encodeURIComponent(edit.ym),
+        {
+          method: "PUT",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        }
+      )
+        .then(function (r) {
+          return r.json().then(function (j) {
+            return { ok: r.ok, j: j };
+          });
+        })
+        .then(function (x) {
+          if (!x.ok || !x.j || !x.j.success) throw new Error((x.j && x.j.error) || "Не удалось сохранить");
+          closeCashMonthEditor();
+          toast("success", "Месяц обновлён");
+          return Promise.all([loadTx(), loadMonthlyAnalytics(), loadCounterparties()]);
+        });
+    };
+    if (window.DatagonNotify && window.DatagonNotify.busyRun && btn) {
+      return window.DatagonNotify.busyRun(btn, run).catch(function (e) {
+        toast("danger", e.message || String(e));
+      });
+    }
+    return run().catch(function (e) {
+      toast("danger", e.message || String(e));
+    });
+  }
+  function bindCashUi() {
+    var onceTab = el("dg-fin-cash-tab-once");
+    var tmplTab = el("dg-fin-cash-tab-tmpl");
+    if (onceTab) onceTab.addEventListener("click", function () { setCashTab("once"); });
+    if (tmplTab) tmplTab.addEventListener("click", function () { setCashTab("tmpl"); });
+    ["once", "tmpl"].forEach(function (prefix) {
+      var scopeEl = el("dg-fin-cash-" + prefix + "-scope");
+      if (scopeEl) {
+        scopeEl.addEventListener("change", function () {
+          syncCashScopeUi(prefix);
+          if (String(scopeEl.value) === "org") {
+            renderCashOrgSelect(prefix, true);
+          }
+        });
+        syncCashScopeUi(prefix);
+      }
+      var orgQ = el("dg-fin-cash-" + prefix + "-org-q");
+      if (orgQ) {
+        orgQ.addEventListener("input", function () {
+          renderCashOrgSelect(prefix, true);
+        });
+      }
+    });
+    var cashSearch = el("dg-fin-cash-search");
+    if (cashSearch) {
+      cashSearch.addEventListener("input", function () {
+        state.cashSearch = String(cashSearch.value || "").trim();
+        renderCashOnceList();
+        renderCashTmplList();
+      });
+      cashSearch.addEventListener("keydown", function (ev) {
+        if (ev.key === "Escape") {
+          cashSearch.value = "";
+          state.cashSearch = "";
+          renderCashOnceList();
+          renderCashTmplList();
+        }
+      });
+    }
+    var onceSave = el("dg-fin-cash-once-save");
+    if (onceSave) onceSave.addEventListener("click", saveCashOnce);
+    var tmplSave = el("dg-fin-cash-tmpl-save");
+    if (tmplSave) tmplSave.addEventListener("click", saveCashTemplate);
+    var onceCancel = el("dg-fin-cash-once-cancel");
+    if (onceCancel) onceCancel.addEventListener("click", cancelEditCashOnce);
+    var tmplCancel = el("dg-fin-cash-tmpl-cancel");
+    if (tmplCancel) tmplCancel.addEventListener("click", cancelEditCashTemplate);
+    syncCashOnceSaveUi();
+    syncCashTmplSaveUi();
+    var onceTb = el("dg-fin-cash-once-tbody");
+    if (onceTb) {
+      onceTb.addEventListener("click", function (ev) {
+        var editBtn = ev.target && ev.target.closest ? ev.target.closest(".dg-fin-cash-once-edit") : null;
+        if (editBtn) {
+          beginEditCashOnce(editBtn.getAttribute("data-id"));
+          return;
+        }
+        var btn = ev.target && ev.target.closest ? ev.target.closest(".dg-fin-cash-once-del") : null;
+        if (!btn) return;
+        deleteCashOnce(btn.getAttribute("data-id")).catch(function (e) {
+          toast("danger", e.message || String(e));
+        });
+      });
+    }
+    var tmplTb = el("dg-fin-cash-tmpl-tbody");
+    if (tmplTb) {
+      tmplTb.addEventListener("click", function (ev) {
+        var editBtn = ev.target && ev.target.closest ? ev.target.closest(".dg-fin-cash-tmpl-edit") : null;
+        if (editBtn) {
+          beginEditCashTemplate(editBtn.getAttribute("data-id"));
+          return;
+        }
+        var btn = ev.target && ev.target.closest ? ev.target.closest(".dg-fin-cash-tmpl-del") : null;
+        if (!btn) return;
+        deleteCashTemplate(btn.getAttribute("data-id")).catch(function (e) {
+          toast("danger", e.message || String(e));
+        });
+      });
+    }
+    var monthCancel = el("dg-fin-cash-month-cancel");
+    var monthOk = el("dg-fin-cash-month-ok");
+    var monthOverlay = el("dg-fin-cash-month-overlay");
+    if (monthCancel) monthCancel.addEventListener("click", closeCashMonthEditor);
+    if (monthOk) monthOk.addEventListener("click", saveCashMonthOverride);
+    if (monthOverlay) {
+      monthOverlay.addEventListener("click", function (ev) {
+        if (ev.target === monthOverlay) closeCashMonthEditor();
+      });
+      document.addEventListener("keydown", function (ev) {
+        if (ev.key === "Escape" && monthOverlay && !monthOverlay.classList.contains("d-none")) {
+          closeCashMonthEditor();
+        }
+      });
+    }
+    var onceDate = el("dg-fin-cash-once-date");
+    if (onceDate && !onceDate.value) {
+      var n = new Date();
+      onceDate.value =
+        n.getFullYear() +
+        "-" +
+        String(n.getMonth() + 1).padStart(2, "0") +
+        "-" +
+        String(n.getDate()).padStart(2, "0");
+    }
   }
 
   function deleteCred(id) {
@@ -2757,7 +3952,7 @@
   el("dg-fin-apply").addEventListener("click", commitFilters);
   el("dg-fin-reset").addEventListener("click", function () {
     hideActionLog();
-    state.pending = { search: "", org: [], date_from: "", date_to: "", direction: "", account_id: "", page_size: 100, sync_days: 30, include_internal: false, founder_only: false, dividend_only: false };
+    state.pending = emptyFilters();
     writeFormFromPending();
     commitFilters();
   });
@@ -3000,17 +4195,26 @@
     if (state.page <= 1) return;
     state.page -= 1;
     loadTx();
+    scheduleUrlSync();
   });
   el("dg-fin-next").addEventListener("click", function () {
     if (state.page >= state.pages) return;
     state.page += 1;
     loadTx();
+    scheduleUrlSync();
   });
   var txTbody = el("dg-fin-tbody");
   if (txTbody) {
     txTbody.addEventListener("change", function (ev) {
       var t = ev.target;
-      if (!t || !t.classList || !t.classList.contains("dg-fin-tag-cb")) return;
+      if (!t || !t.classList) return;
+      if (t.classList.contains("dg-fin-cash-chart-cb")) {
+        var wantCash = !!t.checked;
+        t.checked = !wantCash;
+        saveCashIncludeChart(t, wantCash);
+        return;
+      }
+      if (!t.classList.contains("dg-fin-tag-cb")) return;
       var id = t.getAttribute("data-tx-id");
       var bank = t.getAttribute("data-tx-bank") || "tochka";
       var tag = t.getAttribute("data-chart-tag") || "";
@@ -3050,6 +4254,12 @@
         toast("danger", e.message || String(e));
       });
     });
+    txTbody.addEventListener("click", function (ev) {
+      var btn = ev.target && ev.target.closest ? ev.target.closest(".dg-fin-cash-month-open") : null;
+      if (!btn || !txTbody.contains(btn)) return;
+      ev.preventDefault();
+      openCashMonthEditor(btn.getAttribute("data-tx-id"));
+    });
   }
 
   bindCollapse("dg-fin-bank-toggle", "dg-fin-bank-body", BANK_KEY);
@@ -3057,11 +4267,14 @@
   bindCollapse("dg-fin-table-toggle", "dg-fin-table-body", TABLE_KEY);
   bindCollapse("dg-fin-analytics-toggle", "dg-fin-analytics-body", ANALYTICS_KEY);
   bindCollapse("dg-fin-cp-toggle", "dg-fin-cp-body", CP_KEY);
+  bindCollapse("dg-fin-cash-toggle", "dg-fin-cash-body", CASH_KEY);
   try {
     var savedMonths = localStorage.getItem(ANALYTICS_MONTHS_KEY);
     if (savedMonths && el("dg-fin-analytics-months")) {
-      el("dg-fin-analytics-months").value = savedMonths;
-      state.analyticsMonths = parseInt(savedMonths, 10) || 12;
+      if (savedMonths === "6" || savedMonths === "12" || savedMonths === "24" || savedMonths === "y0" || savedMonths === "y-1") {
+        el("dg-fin-analytics-months").value = savedMonths;
+        state.analyticsMonths = savedMonths;
+      }
     }
     var savedDep = localStorage.getItem(ANALYTICS_DEPOSITS_KEY);
     if (savedDep === "1") {
@@ -3070,6 +4283,9 @@
       if (el("dg-fin-include-internal")) el("dg-fin-include-internal").checked = true;
       if (el("dg-fin-analytics-deposits")) el("dg-fin-analytics-deposits").checked = true;
     }
+  } catch (e) {}
+  parseUrlIntoPending();
+  try {
     var savedCpLimit = localStorage.getItem(CP_LIMIT_KEY);
     if (savedCpLimit && el("dg-fin-cp-limit")) el("dg-fin-cp-limit").value = savedCpLimit;
   } catch (e) {}
@@ -3090,6 +4306,7 @@
       state.applied.include_internal = !!on;
       state.page = 1;
       markDirty();
+      scheduleUrlSync();
       return Promise.all([loadTx(), loadMonthlyAnalytics(), loadCounterparties()]);
     }
     return Promise.resolve();
@@ -3149,6 +4366,7 @@
   bindHeaderSearchMirror();
   columnControls();
   buildThead();
+  bindCashUi();
   if (window.DatagonFilterFieldsVisibility && window.DatagonFilterFieldsVisibility.init) {
     window.DatagonFilterFieldsVisibility.init({
       storageKeyPrefix: "datagon_finance_filter_fields_v1",
@@ -3162,9 +4380,11 @@
   loadConfig()
     .then(loadAccounts)
     .then(function () {
+      writeFormFromPending();
       state.applied = Object.assign({}, state.pending);
       markDirty();
-      return Promise.all([loadTx(), loadMonthlyAnalytics(), loadCounterparties()]);
+      scheduleUrlSync();
+      return Promise.all([loadTx(), loadMonthlyAnalytics(), loadCounterparties(), loadCashLists()]);
     })
     .catch(function (e) {
       toast("danger", e.message || String(e));

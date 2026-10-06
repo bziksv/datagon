@@ -6,6 +6,7 @@ const tochka = require('../lib/datagonTochkaClient');
 const raiff = require('../lib/datagonRaiffeisenClient');
 const tbank = require('../lib/datagonTbankClient');
 const finCred = require('../lib/datagonFinanceCredentials');
+const finCash = require('../lib/datagonFinanceCash');
 
 const DEFAULT_TX_DAYS = 30;
 const MAX_TX_DAYS = 1095; // до ~3 лет (1 + 2)
@@ -104,6 +105,7 @@ async function ensureFinanceTables(db) {
                 KEY idx_fin_tx_date (booked_date)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         `);
+        await finCash.ensureCashTables(db);
     })();
     return tablesReady;
 }
@@ -345,6 +347,38 @@ function parseYmd(s) {
     return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : '';
 }
 
+function analyticsDateWindow(req) {
+    const dateFrom = parseYmd(req.query.date_from);
+    const dateTo = parseYmd(req.query.date_to);
+    if (dateFrom && dateTo && dateFrom <= dateTo) {
+        const start = new Date(Number(dateFrom.slice(0, 4)), Number(dateFrom.slice(5, 7)) - 1, 1);
+        const end = new Date(Number(dateTo.slice(0, 4)), Number(dateTo.slice(5, 7)) - 1, Number(dateTo.slice(8, 10)));
+        return { start, end, startYmd: dateFrom, endYmd: dateTo };
+    }
+    const months = Math.max(1, Math.min(36, parseInt(String(req.query.months || '12'), 10) || 12));
+    const end = new Date();
+    const start = new Date(end.getFullYear(), end.getMonth() - (months - 1), 1);
+    return { start, end, startYmd: tochka.ymd(start), endYmd: tochka.ymd(end) };
+}
+
+function monthKeysInclusive(start, end) {
+    const keys = [];
+    let y = start.getFullYear();
+    let m = start.getMonth();
+    const ey = end.getFullYear();
+    const em = end.getMonth();
+    while (y < ey || (y === ey && m <= em)) {
+        keys.push(y + '-' + String(m + 1).padStart(2, '0'));
+        m += 1;
+        if (m > 11) {
+            m = 0;
+            y += 1;
+        }
+        if (keys.length >= 36) break;
+    }
+    return keys.length ? keys : [tochka.ymd(end).slice(0, 7)];
+}
+
 function truthyQueryFlag(v) {
     return ['1', 'true', 'yes', 'on'].includes(String(v == null ? '' : v).trim().toLowerCase());
 }
@@ -384,6 +418,21 @@ function isDividendPurpose(purpose) {
 function sqlExcludeManualChartTags(alias) {
     const col = (alias ? alias + '.' : '') + 'exclude_chart';
     return `(${col} IS NULL OR ${col} = 0)`;
+}
+
+/** Личные расходные платежи на ИНН (не операционный оборот в графике). */
+const FINANCE_CHART_EXCLUDE_OUT_INN = '362903774541';
+
+function normalizeInnDigits(raw) {
+    return String(raw || '').replace(/\D+/g, '');
+}
+
+function sqlExcludeOutgoingToInn(alias, inn) {
+    const a = alias ? alias + '.' : '';
+    const target = normalizeInnDigits(inn || FINANCE_CHART_EXCLUDE_OUT_INN);
+    if (!target) return '1=1';
+    // Сравниваем цифры ИНН без пробелов/дефисов; только исходящие.
+    return `(${a}direction <> 'out' OR REPLACE(REPLACE(IFNULL(${a}counterparty_inn,''), ' ', ''), '-', '') <> ?)`;
 }
 
 function normalizeChartTag(raw) {
@@ -1928,6 +1977,367 @@ function factory(db, appSettings) {
         }
     });
 
+    function actorName(req) {
+        const a = req.datagonActor || {};
+        return String(a.username || a.login || '').slice(0, 64);
+    }
+
+    router.get('/cash/templates', async (req, res) => {
+        if (!requireFinanceAccess(req, res, false)) return;
+        try {
+            await ensureFinanceTables(db);
+            const [rows] = await db.query(
+                `SELECT id, purpose, direction, day_of_month, amount_fix, amount_premium,
+                        scope, customer_code, bank, account_id, include_chart, active,
+                        DATE_FORMAT(valid_from, '%Y-%m-%d') AS valid_from,
+                        DATE_FORMAT(valid_to, '%Y-%m-%d') AS valid_to,
+                        created_by, created_at, updated_at
+                 FROM dg_finance_cash_templates
+                 ORDER BY active DESC, id DESC`
+            );
+            res.json({ success: true, rows: rows || [] });
+        } catch (e) {
+            res.status(500).json({ success: false, error: e.message || String(e) });
+        }
+    });
+
+    router.post('/cash/templates', async (req, res) => {
+        if (!requireFinanceAccess(req, res, true)) return;
+        try {
+            await ensureFinanceTables(db);
+            const body = req.body && typeof req.body === 'object' ? req.body : {};
+            const purpose = String(body.purpose || '').trim().slice(0, 512);
+            if (!purpose) return res.status(400).json({ success: false, error: 'Укажите назначение' });
+            const direction = String(body.direction || 'out').toLowerCase() === 'in' ? 'in' : 'out';
+            const day = finCash.clampDay(body.day_of_month);
+            const amountFix = finCash.parseMoney(body.amount_fix);
+            if (amountFix == null || amountFix < 0) {
+                return res.status(400).json({ success: false, error: 'Укажите сумму фикса' });
+            }
+            const amountPremium = finCash.parseMoney(body.amount_premium);
+            const sc = finCash.normalizeScope(body.scope, body.customer_code);
+            if (sc.scope === 'org' && !sc.customer_code) {
+                return res.status(400).json({ success: false, error: 'Для scope=org укажите организацию' });
+            }
+            const includeChart =
+                body.include_chart === false || body.include_chart === 0 || body.include_chart === '0' ? 0 : 1;
+            const active = body.active === false || body.active === 0 || body.active === '0' ? 0 : 1;
+            const validFrom = parseYmd(body.valid_from) || null;
+            const validTo = parseYmd(body.valid_to) || null;
+            const [r] = await db.query(
+                `INSERT INTO dg_finance_cash_templates
+                    (purpose, direction, day_of_month, amount_fix, amount_premium, scope, customer_code,
+                     bank, account_id, include_chart, active, valid_from, valid_to, created_by)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [
+                    purpose,
+                    direction,
+                    day,
+                    amountFix,
+                    amountPremium,
+                    sc.scope,
+                    sc.customer_code,
+                    String(body.bank || '').slice(0, 32),
+                    String(body.account_id || '').slice(0, 64),
+                    includeChart,
+                    active,
+                    validFrom,
+                    validTo,
+                    actorName(req),
+                ]
+            );
+            res.json({ success: true, id: r && r.insertId });
+        } catch (e) {
+            res.status(500).json({ success: false, error: e.message || String(e) });
+        }
+    });
+
+    router.patch('/cash/templates/:id', async (req, res) => {
+        if (!requireFinanceAccess(req, res, true)) return;
+        try {
+            await ensureFinanceTables(db);
+            const id = parseInt(String(req.params.id || ''), 10);
+            if (!Number.isFinite(id) || id < 1) {
+                return res.status(400).json({ success: false, error: 'Некорректный id' });
+            }
+            const [exist] = await db.query('SELECT id FROM dg_finance_cash_templates WHERE id = ? LIMIT 1', [id]);
+            if (!exist || !exist[0]) return res.status(404).json({ success: false, error: 'Шаблон не найден' });
+            const body = req.body && typeof req.body === 'object' ? req.body : {};
+            const sets = [];
+            const params = [];
+            if (body.purpose != null) {
+                sets.push('purpose = ?');
+                params.push(String(body.purpose || '').trim().slice(0, 512));
+            }
+            if (body.direction != null) {
+                sets.push('direction = ?');
+                params.push(String(body.direction).toLowerCase() === 'in' ? 'in' : 'out');
+            }
+            if (body.day_of_month != null) {
+                sets.push('day_of_month = ?');
+                params.push(finCash.clampDay(body.day_of_month));
+            }
+            if (body.amount_fix != null) {
+                const v = finCash.parseMoney(body.amount_fix);
+                if (v == null || v < 0) return res.status(400).json({ success: false, error: 'Некорректный фикс' });
+                sets.push('amount_fix = ?');
+                params.push(v);
+            }
+            if (Object.prototype.hasOwnProperty.call(body, 'amount_premium')) {
+                sets.push('amount_premium = ?');
+                params.push(finCash.parseMoney(body.amount_premium));
+            }
+            if (body.scope != null || body.customer_code != null) {
+                const sc = finCash.normalizeScope(body.scope, body.customer_code);
+                sets.push('scope = ?', 'customer_code = ?');
+                params.push(sc.scope, sc.customer_code);
+            }
+            if (body.bank != null) {
+                sets.push('bank = ?');
+                params.push(String(body.bank || '').slice(0, 32));
+            }
+            if (body.account_id != null) {
+                sets.push('account_id = ?');
+                params.push(String(body.account_id || '').slice(0, 64));
+            }
+            if (body.include_chart != null) {
+                sets.push('include_chart = ?');
+                params.push(
+                    body.include_chart === false || body.include_chart === 0 || body.include_chart === '0' ? 0 : 1
+                );
+            }
+            if (body.active != null) {
+                sets.push('active = ?');
+                params.push(body.active === false || body.active === 0 || body.active === '0' ? 0 : 1);
+            }
+            if (Object.prototype.hasOwnProperty.call(body, 'valid_from')) {
+                sets.push('valid_from = ?');
+                params.push(parseYmd(body.valid_from) || null);
+            }
+            if (Object.prototype.hasOwnProperty.call(body, 'valid_to')) {
+                sets.push('valid_to = ?');
+                params.push(parseYmd(body.valid_to) || null);
+            }
+            if (!sets.length) return res.status(400).json({ success: false, error: 'Нет полей для обновления' });
+            params.push(id);
+            await db.query(`UPDATE dg_finance_cash_templates SET ${sets.join(', ')} WHERE id = ?`, params);
+            res.json({ success: true, id });
+        } catch (e) {
+            res.status(500).json({ success: false, error: e.message || String(e) });
+        }
+    });
+
+    router.delete('/cash/templates/:id', async (req, res) => {
+        if (!requireFinanceAccess(req, res, true)) return;
+        try {
+            await ensureFinanceTables(db);
+            const id = parseInt(String(req.params.id || ''), 10);
+            if (!Number.isFinite(id) || id < 1) {
+                return res.status(400).json({ success: false, error: 'Некорректный id' });
+            }
+            await db.query('DELETE FROM dg_finance_cash_overrides WHERE template_id = ?', [id]);
+            const [r] = await db.query('DELETE FROM dg_finance_cash_templates WHERE id = ?', [id]);
+            res.json({ success: true, deleted: Number(r && r.affectedRows) || 0 });
+        } catch (e) {
+            res.status(500).json({ success: false, error: e.message || String(e) });
+        }
+    });
+
+    router.put('/cash/templates/:id/months/:ym', async (req, res) => {
+        if (!requireFinanceAccess(req, res, true)) return;
+        try {
+            await ensureFinanceTables(db);
+            const id = parseInt(String(req.params.id || ''), 10);
+            const ym = String(req.params.ym || '').trim();
+            if (!Number.isFinite(id) || id < 1 || !/^\d{4}-\d{2}$/.test(ym)) {
+                return res.status(400).json({ success: false, error: 'Некорректный id или месяц' });
+            }
+            const [exist] = await db.query('SELECT id FROM dg_finance_cash_templates WHERE id = ? LIMIT 1', [id]);
+            if (!exist || !exist[0]) return res.status(404).json({ success: false, error: 'Шаблон не найден' });
+            const body = req.body && typeof req.body === 'object' ? req.body : {};
+            const [prevRows] = await db.query(
+                'SELECT * FROM dg_finance_cash_overrides WHERE template_id = ? AND ym = ? LIMIT 1',
+                [id, ym]
+            );
+            const prev = (prevRows && prevRows[0]) || null;
+            let amountFix = prev ? prev.amount_fix : null;
+            let amountPremium = prev ? prev.amount_premium : null;
+            let purpose = prev ? prev.purpose : null;
+            let includeChart = prev ? prev.include_chart : null;
+            let skipped = prev ? Number(prev.skipped) || 0 : 0;
+            if (Object.prototype.hasOwnProperty.call(body, 'amount_fix')) {
+                amountFix = finCash.parseMoney(body.amount_fix);
+            }
+            if (body.clear_premium === true || body.clear_premium === 1 || body.clear_premium === '1') {
+                amountPremium = null;
+            } else if (Object.prototype.hasOwnProperty.call(body, 'amount_premium')) {
+                amountPremium = finCash.parseMoney(body.amount_premium);
+            }
+            if (Object.prototype.hasOwnProperty.call(body, 'purpose')) {
+                purpose = String(body.purpose || '').trim().slice(0, 512);
+            }
+            if (body.include_chart != null) {
+                includeChart =
+                    body.include_chart === false || body.include_chart === 0 || body.include_chart === '0' ? 0 : 1;
+            }
+            if (body.skipped != null) {
+                skipped = body.skipped === true || body.skipped === 1 || body.skipped === '1' ? 1 : 0;
+            }
+            await db.query(
+                `INSERT INTO dg_finance_cash_overrides
+                    (template_id, ym, amount_fix, amount_premium, purpose, include_chart, skipped)
+                 VALUES (?, ?, ?, ?, ?, ?, ?)
+                 ON DUPLICATE KEY UPDATE
+                    amount_fix = VALUES(amount_fix),
+                    amount_premium = VALUES(amount_premium),
+                    purpose = VALUES(purpose),
+                    include_chart = VALUES(include_chart),
+                    skipped = VALUES(skipped)`,
+                [id, ym, amountFix, amountPremium, purpose, includeChart, skipped]
+            );
+            res.json({ success: true, template_id: id, ym });
+        } catch (e) {
+            res.status(500).json({ success: false, error: e.message || String(e) });
+        }
+    });
+
+    router.get('/cash/tx', async (req, res) => {
+        if (!requireFinanceAccess(req, res, false)) return;
+        try {
+            await ensureFinanceTables(db);
+            const dateFrom = parseYmd(req.query.date_from) || '2000-01-01';
+            const dateTo = parseYmd(req.query.date_to) || '2099-12-31';
+            const [rows] = await db.query(
+                `SELECT id, DATE_FORMAT(booked_date, '%Y-%m-%d') AS booked_date,
+                        direction, amount, purpose, counterparty, scope, customer_code,
+                        bank, account_id, include_chart, created_by, created_at, updated_at
+                 FROM dg_finance_cash_tx
+                 WHERE booked_date >= ? AND booked_date <= ?
+                 ORDER BY booked_date DESC, id DESC
+                 LIMIT 500`,
+                [dateFrom, dateTo]
+            );
+            res.json({ success: true, rows: rows || [] });
+        } catch (e) {
+            res.status(500).json({ success: false, error: e.message || String(e) });
+        }
+    });
+
+    router.post('/cash/tx', async (req, res) => {
+        if (!requireFinanceAccess(req, res, true)) return;
+        try {
+            await ensureFinanceTables(db);
+            const body = req.body && typeof req.body === 'object' ? req.body : {};
+            const booked = parseYmd(body.booked_date);
+            if (!booked) return res.status(400).json({ success: false, error: 'Укажите дату' });
+            const amount = finCash.parseMoney(body.amount);
+            if (amount == null || amount <= 0) {
+                return res.status(400).json({ success: false, error: 'Укажите сумму > 0' });
+            }
+            const purpose = String(body.purpose || '').trim().slice(0, 512);
+            if (!purpose) return res.status(400).json({ success: false, error: 'Укажите назначение' });
+            const direction = String(body.direction || 'out').toLowerCase() === 'in' ? 'in' : 'out';
+            const sc = finCash.normalizeScope(body.scope, body.customer_code);
+            if (sc.scope === 'org' && !sc.customer_code) {
+                return res.status(400).json({ success: false, error: 'Для scope=org укажите организацию' });
+            }
+            const includeChart =
+                body.include_chart === false || body.include_chart === 0 || body.include_chart === '0' ? 0 : 1;
+            const [r] = await db.query(
+                `INSERT INTO dg_finance_cash_tx
+                    (booked_date, direction, amount, purpose, counterparty, scope, customer_code,
+                     bank, account_id, include_chart, created_by)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [
+                    booked,
+                    direction,
+                    amount,
+                    purpose,
+                    String(body.counterparty || '').trim().slice(0, 512),
+                    sc.scope,
+                    sc.customer_code,
+                    String(body.bank || '').slice(0, 32),
+                    String(body.account_id || '').slice(0, 64),
+                    includeChart,
+                    actorName(req),
+                ]
+            );
+            res.json({ success: true, id: r && r.insertId });
+        } catch (e) {
+            res.status(500).json({ success: false, error: e.message || String(e) });
+        }
+    });
+
+    router.patch('/cash/tx/:id', async (req, res) => {
+        if (!requireFinanceAccess(req, res, true)) return;
+        try {
+            await ensureFinanceTables(db);
+            const id = parseInt(String(req.params.id || ''), 10);
+            if (!Number.isFinite(id) || id < 1) {
+                return res.status(400).json({ success: false, error: 'Некорректный id' });
+            }
+            const body = req.body && typeof req.body === 'object' ? req.body : {};
+            const sets = [];
+            const params = [];
+            if (body.booked_date != null) {
+                const d = parseYmd(body.booked_date);
+                if (!d) return res.status(400).json({ success: false, error: 'Некорректная дата' });
+                sets.push('booked_date = ?');
+                params.push(d);
+            }
+            if (body.direction != null) {
+                sets.push('direction = ?');
+                params.push(String(body.direction).toLowerCase() === 'in' ? 'in' : 'out');
+            }
+            if (body.amount != null) {
+                const a = finCash.parseMoney(body.amount);
+                if (a == null || a <= 0) return res.status(400).json({ success: false, error: 'Некорректная сумма' });
+                sets.push('amount = ?');
+                params.push(a);
+            }
+            if (body.purpose != null) {
+                sets.push('purpose = ?');
+                params.push(String(body.purpose || '').trim().slice(0, 512));
+            }
+            if (body.counterparty != null) {
+                sets.push('counterparty = ?');
+                params.push(String(body.counterparty || '').trim().slice(0, 512));
+            }
+            if (body.scope != null || body.customer_code != null) {
+                const sc = finCash.normalizeScope(body.scope, body.customer_code);
+                sets.push('scope = ?', 'customer_code = ?');
+                params.push(sc.scope, sc.customer_code);
+            }
+            if (body.include_chart != null) {
+                sets.push('include_chart = ?');
+                params.push(
+                    body.include_chart === false || body.include_chart === 0 || body.include_chart === '0' ? 0 : 1
+                );
+            }
+            if (!sets.length) return res.status(400).json({ success: false, error: 'Нет полей' });
+            params.push(id);
+            const [r] = await db.query(`UPDATE dg_finance_cash_tx SET ${sets.join(', ')} WHERE id = ?`, params);
+            res.json({ success: true, updated: Number(r && r.affectedRows) || 0 });
+        } catch (e) {
+            res.status(500).json({ success: false, error: e.message || String(e) });
+        }
+    });
+
+    router.delete('/cash/tx/:id', async (req, res) => {
+        if (!requireFinanceAccess(req, res, true)) return;
+        try {
+            await ensureFinanceTables(db);
+            const id = parseInt(String(req.params.id || ''), 10);
+            if (!Number.isFinite(id) || id < 1) {
+                return res.status(400).json({ success: false, error: 'Некорректный id' });
+            }
+            const [r] = await db.query('DELETE FROM dg_finance_cash_tx WHERE id = ?', [id]);
+            res.json({ success: true, deleted: Number(r && r.affectedRows) || 0 });
+        } catch (e) {
+            res.status(500).json({ success: false, error: e.message || String(e) });
+        }
+    });
+
     router.get('/transactions', async (req, res) => {
         if (!requireFinanceAccess(req, res, false)) return;
         try {
@@ -1945,6 +2355,58 @@ function factory(db, appSettings) {
             const pageSize = Math.min(200, Math.max(20, parseInt(String(req.query.page_size || '100'), 10) || 100));
             const orgAliases = await finCred.loadOrgAliases(db, appSettings);
             const bankFilter = String(req.query.bank || '').trim().toLowerCase();
+            const source = finCash.parseSource(req.query.source);
+            const founderOnly = truthyQueryFlag(
+                req.query.founder_capital != null ? req.query.founder_capital : req.query.founder_only
+            );
+            const dividendOnly = truthyQueryFlag(
+                req.query.dividend != null ? req.query.dividend : req.query.dividend_only
+            );
+            const sortKeyRaw = String(req.query.sort_by || req.query.sort || '')
+                .trim()
+                .toLowerCase();
+            const sortDirRaw = String(req.query.sort_dir || '')
+                .trim()
+                .toLowerCase();
+            const sortKey = sortKeyRaw || 'booked_date';
+            const sortDir = sortDirRaw === 'asc' ? 'asc' : 'desc';
+
+            let cashRows = [];
+            if (source !== 'bank' && !founderOnly && !dividendOnly) {
+                cashRows = await finCash.loadExpandedCashRows(db, finCred, orgAliases, {
+                    dateFrom: /^\d{4}-\d{2}-\d{2}$/.test(dateFrom) ? dateFrom : undefined,
+                    dateTo: /^\d{4}-\d{2}-\d{2}$/.test(dateTo) ? dateTo : undefined,
+                    customerCodes,
+                    accountId,
+                    search,
+                    direction,
+                    chartOnly: false,
+                });
+            }
+
+            if (source === 'cash') {
+                const sorted = finCash.sortCashLikeRows(cashRows, sortKey, sortDir);
+                const total = sorted.length;
+                const offset = (page - 1) * pageSize;
+                const pageRows = sorted.slice(offset, offset + pageSize);
+                const pages = Math.max(1, Math.ceil(total / pageSize));
+                return res.json({
+                    success: true,
+                    total,
+                    page,
+                    page_size: pageSize,
+                    pages,
+                    shown: pageRows.length,
+                    include_internal: includeInternal,
+                    founder_capital: founderOnly,
+                    dividend: dividendOnly,
+                    source,
+                    sort_by: sortKey,
+                    sort_dir: sortDir,
+                    rows: pageRows,
+                });
+            }
+
             const where = [];
             const params = [];
             if (bankFilter === 'tochka' || bankFilter === 'raiffeisen' || bankFilter === 'tbank') {
@@ -1968,12 +2430,6 @@ function factory(db, appSettings) {
                 where.push('t.booked_date <= ?');
                 params.push(dateTo);
             }
-            const founderOnly = truthyQueryFlag(
-                req.query.founder_capital != null ? req.query.founder_capital : req.query.founder_only
-            );
-            const dividendOnly = truthyQueryFlag(
-                req.query.dividend != null ? req.query.dividend : req.query.dividend_only
-            );
             if (!includeInternal && !dividendOnly) {
                 where.push(sqlExcludeInternalTransfers('t'));
             }
@@ -1999,12 +2455,16 @@ function factory(db, appSettings) {
                     );
                 });
                 if (aliasCodes.length) {
-                    const ph = aliasCodes.map(function () { return '?'; }).join(',');
+                    const ph = aliasCodes.map(function () {
+                        return '?';
+                    }).join(',');
                     where.push(
                         `(t.purpose LIKE ? OR t.counterparty LIKE ? OR t.counterparty_inn LIKE ? OR t.document_number LIKE ? OR t.tx_id LIKE ? OR a.account_number LIKE ? OR a.org_label LIKE ? OR a.custom_name LIKE ? OR a.customer_code IN (${ph}))`
                     );
                     params.push(like, like, like, like, like, like, like, like);
-                    aliasCodes.forEach(function (c) { params.push(c); });
+                    aliasCodes.forEach(function (c) {
+                        params.push(c);
+                    });
                 } else {
                     where.push(
                         '(t.purpose LIKE ? OR t.counterparty LIKE ? OR t.counterparty_inn LIKE ? OR t.document_number LIKE ? OR t.tx_id LIKE ? OR a.account_number LIKE ? OR a.org_label LIKE ? OR a.custom_name LIKE ?)'
@@ -2013,16 +2473,137 @@ function factory(db, appSettings) {
                 }
             }
             const whereSql = where.length ? where.join(' AND ') : '1=1';
-            const [cntRows] = await db.query(
-                `SELECT COUNT(*) AS n
-                 FROM dg_finance_tx t
-                 LEFT JOIN dg_finance_accounts a ON a.bank = t.bank AND a.account_id = t.account_id
-                 WHERE ${whereSql}`,
-                params
-            );
-            const total = Number((cntRows && cntRows[0] && cntRows[0].n) || 0);
-            const offset = (page - 1) * pageSize;
-            const [rows] = await db.query(
+            const TX_SORT_SQL = {
+                booked_date: 't.booked_date',
+                direction: 't.direction',
+                amount: 't.amount_abs',
+                founder: "IFNULL(NULLIF(t.chart_tag,''), IF(t.exclude_chart=1,'founder',''))",
+                org: "COALESCE(NULLIF(a.custom_name,''), a.org_label, a.name)",
+                bank: 't.bank',
+                account_number: 'a.account_number',
+                counterparty: 't.counterparty',
+                counterparty_inn: 't.counterparty_inn',
+                purpose: 't.purpose',
+                document_number: 't.document_number',
+                tx_id: 't.tx_id',
+            };
+
+            function mapBankRow(r) {
+                const code = String(r.customer_code || '').trim();
+                const entry = code && orgAliases ? orgAliases[code] : null;
+                const bankLabel = String(r.org_label || '').trim();
+                const flags = txChartFlags(r);
+                return Object.assign({}, r, {
+                    source: 'bank',
+                    org: finCred.orgAliasFull(entry, bankLabel || code || ''),
+                    org_short: finCred.orgAliasShort(entry, bankLabel || code || ''),
+                    chart_tag: flags.chart_tag,
+                    exclude_chart: Boolean(flags.chart_tag),
+                    founder_capital: flags.founder_capital,
+                    dividend_payout: flags.dividend_payout,
+                    chart_excluded: flags.chart_excluded,
+                    chart_exclude_reason: flags.chart_exclude_reason,
+                });
+            }
+
+            if (source === 'bank' || !cashRows.length) {
+                const [cntRows] = await db.query(
+                    `SELECT COUNT(*) AS n
+                     FROM dg_finance_tx t
+                     LEFT JOIN dg_finance_accounts a ON a.bank = t.bank AND a.account_id = t.account_id
+                     WHERE ${whereSql}`,
+                    params
+                );
+                const total = Number((cntRows && cntRows[0] && cntRows[0].n) || 0) + (source === 'all' ? cashRows.length : 0);
+                if (source === 'all' && cashRows.length) {
+                    const sortCol = TX_SORT_SQL[sortKey] || TX_SORT_SQL.booked_date;
+                    const orderSql =
+                        `${sortCol} ${sortDir === 'asc' ? 'ASC' : 'DESC'}, t.booked_date DESC, t.booked_at DESC, t.tx_id DESC`;
+                    const [bankAll] = await db.query(
+                        `SELECT t.bank, t.tx_id, t.account_id, t.booked_at,
+                                DATE_FORMAT(t.booked_date, '%Y-%m-%d') AS booked_date,
+                                t.amount, t.amount_abs,
+                                t.direction, t.currency, t.purpose, t.counterparty, t.counterparty_inn, t.document_number,
+                                t.exclude_chart, t.chart_tag,
+                                a.account_number,
+                                COALESCE(NULLIF(a.custom_name, ''), a.name) AS account_name,
+                                a.customer_code, a.org_label, a.is_fund, a.custom_name
+                         FROM dg_finance_tx t
+                         LEFT JOIN dg_finance_accounts a ON a.bank = t.bank AND a.account_id = t.account_id
+                         WHERE ${whereSql}
+                         ORDER BY ${orderSql}
+                         LIMIT 50000`,
+                        params
+                    );
+                    const merged = finCash.sortCashLikeRows(
+                        (bankAll || []).map(mapBankRow).concat(cashRows),
+                        sortKey,
+                        sortDir
+                    );
+                    const offset = (page - 1) * pageSize;
+                    const pageRows = merged.slice(offset, offset + pageSize);
+                    const pages = Math.max(1, Math.ceil(merged.length / pageSize));
+                    return res.json({
+                        success: true,
+                        total: merged.length,
+                        page,
+                        page_size: pageSize,
+                        pages,
+                        shown: pageRows.length,
+                        include_internal: includeInternal,
+                        founder_capital: founderOnly,
+                        dividend: dividendOnly,
+                        source,
+                        sort_by: sortKey,
+                        sort_dir: sortDir,
+                        rows: pageRows,
+                    });
+                }
+                const offset = (page - 1) * pageSize;
+                const sortCol = TX_SORT_SQL[sortKey] || TX_SORT_SQL.booked_date;
+                const orderSql =
+                    TX_SORT_SQL[sortKey]
+                        ? `${sortCol} ${sortDir === 'asc' ? 'ASC' : 'DESC'}, t.booked_date DESC, t.booked_at DESC, t.tx_id DESC`
+                        : 't.booked_date DESC, t.booked_at DESC, t.tx_id DESC';
+                const [rows] = await db.query(
+                    `SELECT t.bank, t.tx_id, t.account_id, t.booked_at,
+                            DATE_FORMAT(t.booked_date, '%Y-%m-%d') AS booked_date,
+                            t.amount, t.amount_abs,
+                            t.direction, t.currency, t.purpose, t.counterparty, t.counterparty_inn, t.document_number,
+                            t.exclude_chart, t.chart_tag,
+                            a.account_number,
+                            COALESCE(NULLIF(a.custom_name, ''), a.name) AS account_name,
+                            a.customer_code, a.org_label, a.is_fund, a.custom_name
+                     FROM dg_finance_tx t
+                     LEFT JOIN dg_finance_accounts a ON a.bank = t.bank AND a.account_id = t.account_id
+                     WHERE ${whereSql}
+                     ORDER BY ${orderSql}
+                     LIMIT ? OFFSET ?`,
+                    params.concat([pageSize, offset])
+                );
+                const enriched = (rows || []).map(mapBankRow);
+                const pages = Math.max(1, Math.ceil(total / pageSize));
+                return res.json({
+                    success: true,
+                    total,
+                    page,
+                    page_size: pageSize,
+                    pages,
+                    shown: enriched.length,
+                    include_internal: includeInternal,
+                    founder_capital: founderOnly,
+                    dividend: dividendOnly,
+                    source,
+                    sort_by: TX_SORT_SQL[sortKey] ? sortKey : 'booked_date',
+                    sort_dir: sortDir,
+                    rows: enriched,
+                });
+            }
+
+            const sortColMerge = TX_SORT_SQL[sortKey] || TX_SORT_SQL.booked_date;
+            const orderSqlMerge =
+                `${sortColMerge} ${sortDir === 'asc' ? 'ASC' : 'DESC'}, t.booked_date DESC, t.booked_at DESC, t.tx_id DESC`;
+            const [bankAll] = await db.query(
                 `SELECT t.bank, t.tx_id, t.account_id, t.booked_at,
                         DATE_FORMAT(t.booked_date, '%Y-%m-%d') AS booked_date,
                         t.amount, t.amount_abs,
@@ -2034,38 +2615,32 @@ function factory(db, appSettings) {
                  FROM dg_finance_tx t
                  LEFT JOIN dg_finance_accounts a ON a.bank = t.bank AND a.account_id = t.account_id
                  WHERE ${whereSql}
-                 ORDER BY t.booked_date DESC, t.booked_at DESC, t.tx_id DESC
-                 LIMIT ? OFFSET ?`,
-                params.concat([pageSize, offset])
+                 ORDER BY ${orderSqlMerge}
+                 LIMIT 50000`,
+                params
             );
-            const enriched = (rows || []).map(function (r) {
-                const code = String(r.customer_code || '').trim();
-                const entry = code && orgAliases ? orgAliases[code] : null;
-                const bankLabel = String(r.org_label || '').trim();
-                const flags = txChartFlags(r);
-                return Object.assign({}, r, {
-                    org: finCred.orgAliasFull(entry, bankLabel || code || ''),
-                    org_short: finCred.orgAliasShort(entry, bankLabel || code || ''),
-                    chart_tag: flags.chart_tag,
-                    exclude_chart: Boolean(flags.chart_tag),
-                    founder_capital: flags.founder_capital,
-                    dividend_payout: flags.dividend_payout,
-                    chart_excluded: flags.chart_excluded,
-                    chart_exclude_reason: flags.chart_exclude_reason,
-                });
-            });
-            const pages = Math.max(1, Math.ceil(total / pageSize));
+            const merged = finCash.sortCashLikeRows(
+                (bankAll || []).map(mapBankRow).concat(cashRows),
+                sortKey,
+                sortDir
+            );
+            const offset = (page - 1) * pageSize;
+            const pageRows = merged.slice(offset, offset + pageSize);
+            const pages = Math.max(1, Math.ceil(merged.length / pageSize));
             res.json({
                 success: true,
-                total,
+                total: merged.length,
                 page,
                 page_size: pageSize,
                 pages,
-                shown: enriched.length,
+                shown: pageRows.length,
                 include_internal: includeInternal,
                 founder_capital: founderOnly,
                 dividend: dividendOnly,
-                rows: enriched,
+                source,
+                sort_by: sortKey,
+                sort_dir: sortDir,
+                rows: pageRows,
             });
         } catch (e) {
             res.status(500).json({ success: false, error: e.message || String(e) });
@@ -2077,71 +2652,96 @@ function factory(db, appSettings) {
         if (!requireFinanceAccess(req, res, false)) return;
         try {
             await ensureFinanceTables(db);
-            const months = Math.max(1, Math.min(36, parseInt(String(req.query.months || '12'), 10) || 12));
+            const win = analyticsDateWindow(req);
+            const startYmd = win.startYmd;
+            const endYmd = win.endYmd;
+            const monthKeys = monthKeysInclusive(win.start, win.end);
+            const months = monthKeys.length;
             const accountId = String(req.query.account_id || '').trim();
             const customerCodes = parseCustomerCodes(req.query);
             const currency = finCred.normalizeCurrency(req.query.currency || 'RUB');
             const includeDeposits = truthyQueryFlag(
                 req.query.include_deposits != null ? req.query.include_deposits : req.query.include_internal
             );
+            const source = finCash.parseSource(req.query.source);
+            // По умолчанию исключаем личные исходящие на заданный ИНН из графика.
+            const excludeChartInn =
+                req.query.exclude_chart_inn == null
+                    ? true
+                    : truthyQueryFlag(req.query.exclude_chart_inn);
 
-            const end = new Date();
-            const endYm = end.getFullYear() * 100 + (end.getMonth() + 1);
-            const start = new Date(end.getFullYear(), end.getMonth() - (months - 1), 1);
-            const startYmd = tochka.ymd(start);
-            const endYmd = tochka.ymd(end);
-
-            const where = ['t.booked_date IS NOT NULL', 't.booked_date >= ?', 't.booked_date <= ?', 't.currency = ?'];
-            const params = [startYmd, endYmd, currency];
-            if (accountId) {
-                where.push('t.account_id = ?');
-                params.push(accountId);
-            }
-            sqlCustomerCodeIn('a', customerCodes, where, params);
-            if (!includeDeposits) {
-                where.push(sqlExcludeInternalTransfers('t'));
-            }
-            where.push(sqlExcludeManualChartTags('t'));
-            const whereSql = where.join(' AND ');
-            const [rows] = await db.query(
-                `SELECT DATE_FORMAT(t.booked_date, '%Y-%m') AS ym,
-                        t.direction,
-                        SUM(t.amount_abs) AS sum_abs,
-                        COUNT(*) AS cnt
-                 FROM dg_finance_tx t
-                 LEFT JOIN dg_finance_accounts a ON a.bank = t.bank AND a.account_id = t.account_id
-                 WHERE ${whereSql}
-                 GROUP BY ym, t.direction
-                 ORDER BY ym ASC`,
-                params
-            );
+            const endYm = Number(String(endYmd).slice(0, 4)) * 100 + Number(String(endYmd).slice(5, 7));
 
             const byYm = Object.create(null);
-            (rows || []).forEach(function (r) {
-                const ym = String(r.ym || '');
-                if (!/^\d{4}-\d{2}$/.test(ym)) return;
+            function addCell(ym, direction, abs, cnt) {
                 if (!byYm[ym]) byYm[ym] = { in: 0, out: 0, count_in: 0, count_out: 0 };
-                const abs = Number(r.sum_abs) || 0;
-                const cnt = Number(r.cnt) || 0;
-                if (String(r.direction) === 'out') {
+                if (String(direction) === 'out') {
                     byYm[ym].out += abs;
                     byYm[ym].count_out += cnt;
                 } else {
                     byYm[ym].in += abs;
                     byYm[ym].count_in += cnt;
                 }
-            });
+            }
+
+            if (source !== 'cash') {
+                const where = ['t.booked_date IS NOT NULL', 't.booked_date >= ?', 't.booked_date <= ?', 't.currency = ?'];
+                const params = [startYmd, endYmd, currency];
+                if (accountId) {
+                    where.push('t.account_id = ?');
+                    params.push(accountId);
+                }
+                sqlCustomerCodeIn('a', customerCodes, where, params);
+                if (!includeDeposits) {
+                    where.push(sqlExcludeInternalTransfers('t'));
+                }
+                where.push(sqlExcludeManualChartTags('t'));
+                if (excludeChartInn) {
+                    where.push(sqlExcludeOutgoingToInn('t', FINANCE_CHART_EXCLUDE_OUT_INN));
+                    params.push(FINANCE_CHART_EXCLUDE_OUT_INN);
+                }
+                const whereSql = where.join(' AND ');
+                const [rows] = await db.query(
+                    `SELECT DATE_FORMAT(t.booked_date, '%Y-%m') AS ym,
+                            t.direction,
+                            SUM(t.amount_abs) AS sum_abs,
+                            COUNT(*) AS cnt
+                     FROM dg_finance_tx t
+                     LEFT JOIN dg_finance_accounts a ON a.bank = t.bank AND a.account_id = t.account_id
+                     WHERE ${whereSql}
+                     GROUP BY ym, t.direction
+                     ORDER BY ym ASC`,
+                    params
+                );
+                (rows || []).forEach(function (r) {
+                    const ym = String(r.ym || '');
+                    if (!/^\d{4}-\d{2}$/.test(ym)) return;
+                    addCell(ym, r.direction, Number(r.sum_abs) || 0, Number(r.cnt) || 0);
+                });
+            }
+
+            if (source !== 'bank') {
+                const orgAliases = await finCred.loadOrgAliases(db, appSettings);
+                const cashRows = await finCash.loadExpandedCashRows(db, finCred, orgAliases, {
+                    dateFrom: startYmd,
+                    dateTo: endYmd,
+                    customerCodes,
+                    accountId,
+                    chartOnly: true,
+                });
+                const cashBy = finCash.aggregateCashByMonth(cashRows);
+                Object.keys(cashBy).forEach(function (ym) {
+                    const c = cashBy[ym];
+                    addCell(ym, 'in', c.in, c.count_in);
+                    addCell(ym, 'out', c.out, c.count_out);
+                });
+            }
 
             const series = [];
             let totIn = 0;
             let totOut = 0;
             let totCnt = 0;
-            for (let i = 0; i < months; i++) {
-                const d = new Date(start.getFullYear(), start.getMonth() + i, 1);
-                const ym =
-                    d.getFullYear() +
-                    '-' +
-                    String(d.getMonth() + 1).padStart(2, '0');
+            monthKeys.forEach(function (ym) {
                 const cell = byYm[ym] || { in: 0, out: 0, count_in: 0, count_out: 0 };
                 const net = Math.round((cell.in - cell.out) * 100) / 100;
                 totIn += cell.in;
@@ -2155,7 +2755,7 @@ function factory(db, appSettings) {
                     count_in: cell.count_in,
                     count_out: cell.count_out,
                 });
-            }
+            });
 
             res.json({
                 success: true,
@@ -2166,6 +2766,9 @@ function factory(db, appSettings) {
                 customer_codes: customerCodes,
                 account_id: accountId || null,
                 include_deposits: includeDeposits,
+                exclude_chart_inn: excludeChartInn,
+                exclude_chart_inn_value: excludeChartInn ? FINANCE_CHART_EXCLUDE_OUT_INN : null,
+                source,
                 series,
                 totals: {
                     in: Math.round(totIn * 100) / 100,
@@ -2186,61 +2789,20 @@ function factory(db, appSettings) {
         try {
             await ensureFinanceTables(db);
             const limit = Math.max(3, Math.min(20, parseInt(String(req.query.limit || '8'), 10) || 8));
-            const months = Math.max(1, Math.min(36, parseInt(String(req.query.months || '12'), 10) || 12));
             const accountId = String(req.query.account_id || '').trim();
             const customerCodes = parseCustomerCodes(req.query);
             const currency = finCred.normalizeCurrency(req.query.currency || 'RUB');
             const includeInternal = truthyQueryFlag(
                 req.query.include_internal != null ? req.query.include_internal : req.query.include_deposits
             );
-            let dateFrom = String(req.query.date_from || '').trim();
-            let dateTo = String(req.query.date_to || '').trim();
-            if (!/^\d{4}-\d{2}-\d{2}$/.test(dateFrom) || !/^\d{4}-\d{2}-\d{2}$/.test(dateTo)) {
-                const end = new Date();
-                const start = new Date(end.getFullYear(), end.getMonth() - (months - 1), 1);
-                dateFrom = tochka.ymd(start);
-                dateTo = tochka.ymd(end);
-            }
-
-            const where = [
-                't.booked_date IS NOT NULL',
-                't.booked_date >= ?',
-                't.booked_date <= ?',
-                't.currency = ?',
-            ];
-            const params = [dateFrom, dateTo, currency];
-            if (accountId) {
-                where.push('t.account_id = ?');
-                params.push(accountId);
-            }
-            sqlCustomerCodeIn('a', customerCodes, where, params);
-            if (!includeInternal) {
-                where.push(sqlExcludeInternalTransfers('t'));
-            }
-            where.push(sqlExcludeManualChartTags('t'));
-            const whereSql = where.join(' AND ');
-            const [rows] = await db.query(
-                `SELECT
-                    CASE
-                      WHEN TRIM(IFNULL(t.counterparty, '')) = '' THEN '(без названия)'
-                      ELSE TRIM(t.counterparty)
-                    END AS cp_name,
-                    TRIM(IFNULL(t.counterparty_inn, '')) AS cp_inn,
-                    t.direction,
-                    SUM(t.amount_abs) AS sum_abs,
-                    COUNT(*) AS cnt
-                 FROM dg_finance_tx t
-                 LEFT JOIN dg_finance_accounts a ON a.bank = t.bank AND a.account_id = t.account_id
-                 WHERE ${whereSql}
-                 GROUP BY
-                   CASE
-                     WHEN TRIM(IFNULL(t.counterparty, '')) = '' THEN '(без названия)'
-                     ELSE TRIM(t.counterparty)
-                   END,
-                   TRIM(IFNULL(t.counterparty_inn, '')),
-                   t.direction`,
-                params
-            );
+            const source = finCash.parseSource(req.query.source);
+            const excludeChartInn =
+                req.query.exclude_chart_inn == null
+                    ? true
+                    : truthyQueryFlag(req.query.exclude_chart_inn);
+            const win = analyticsDateWindow(req);
+            const dateFrom = win.startYmd;
+            const dateTo = win.endYmd;
 
             /** Предпочитаем «человеческое» полное имя, а не «ИНН …» / короткие варианты. */
             function preferCpName(current, candidate, currentCnt, candidateCnt) {
@@ -2262,14 +2824,19 @@ function factory(db, appSettings) {
             const outMap = Object.create(null);
             let totIn = 0;
             let totOut = 0;
-            (rows || []).forEach(function (r) {
-                const name = String(r.cp_name || '(без названия)');
-                const inn = String(r.cp_inn || '').replace(/\s+/g, '');
-                // Одно юрлицо = один ИНН; без ИНН — по имени (как раньше).
+
+            function addCp(nameRaw, innRaw, direction, abs, cnt) {
+                const name = String(nameRaw || '(без названия)');
+                const inn = String(innRaw || '').replace(/\s+/g, '');
+                if (
+                    excludeChartInn &&
+                    String(direction) === 'out' &&
+                    normalizeInnDigits(inn) === FINANCE_CHART_EXCLUDE_OUT_INN
+                ) {
+                    return;
+                }
                 const key = inn ? 'inn:' + inn : 'name:' + name.toLowerCase();
-                const abs = Number(r.sum_abs) || 0;
-                const cnt = Number(r.cnt) || 0;
-                const bucket = String(r.direction) === 'out' ? outMap : inMap;
+                const bucket = String(direction) === 'out' ? outMap : inMap;
                 if (!bucket[key]) {
                     bucket[key] = { name: name, inn: inn, amount: 0, count: 0, nameVotes: 0 };
                 }
@@ -2278,9 +2845,72 @@ function factory(db, appSettings) {
                 if (inn) bucket[key].inn = inn;
                 bucket[key].amount += abs;
                 bucket[key].count += cnt;
-                if (String(r.direction) === 'out') totOut += abs;
+                if (String(direction) === 'out') totOut += abs;
                 else totIn += abs;
-            });
+            }
+
+            if (source !== 'cash') {
+                const where = [
+                    't.booked_date IS NOT NULL',
+                    't.booked_date >= ?',
+                    't.booked_date <= ?',
+                    't.currency = ?',
+                ];
+                const params = [dateFrom, dateTo, currency];
+                if (accountId) {
+                    where.push('t.account_id = ?');
+                    params.push(accountId);
+                }
+                sqlCustomerCodeIn('a', customerCodes, where, params);
+                if (!includeInternal) {
+                    where.push(sqlExcludeInternalTransfers('t'));
+                }
+                where.push(sqlExcludeManualChartTags('t'));
+                if (excludeChartInn) {
+                    where.push(sqlExcludeOutgoingToInn('t', FINANCE_CHART_EXCLUDE_OUT_INN));
+                    params.push(FINANCE_CHART_EXCLUDE_OUT_INN);
+                }
+                const whereSql = where.join(' AND ');
+                const [rows] = await db.query(
+                    `SELECT
+                        CASE
+                          WHEN TRIM(IFNULL(t.counterparty, '')) = '' THEN '(без названия)'
+                          ELSE TRIM(t.counterparty)
+                        END AS cp_name,
+                        TRIM(IFNULL(t.counterparty_inn, '')) AS cp_inn,
+                        t.direction,
+                        SUM(t.amount_abs) AS sum_abs,
+                        COUNT(*) AS cnt
+                     FROM dg_finance_tx t
+                     LEFT JOIN dg_finance_accounts a ON a.bank = t.bank AND a.account_id = t.account_id
+                     WHERE ${whereSql}
+                     GROUP BY
+                       CASE
+                         WHEN TRIM(IFNULL(t.counterparty, '')) = '' THEN '(без названия)'
+                         ELSE TRIM(t.counterparty)
+                       END,
+                       TRIM(IFNULL(t.counterparty_inn, '')),
+                       t.direction`,
+                    params
+                );
+                (rows || []).forEach(function (r) {
+                    addCp(r.cp_name, r.cp_inn, r.direction, Number(r.sum_abs) || 0, Number(r.cnt) || 0);
+                });
+            }
+
+            if (source !== 'bank') {
+                const orgAliases = await finCred.loadOrgAliases(db, appSettings);
+                const cashRows = await finCash.loadExpandedCashRows(db, finCred, orgAliases, {
+                    dateFrom,
+                    dateTo,
+                    customerCodes,
+                    accountId,
+                    chartOnly: true,
+                });
+                finCash.aggregateCashCounterparties(cashRows).forEach(function (c) {
+                    addCp(c.name, c.inn, c.direction, Number(c.amount) || 0, Number(c.count) || 0);
+                });
+            }
 
             function topList(map, total) {
                 return Object.keys(map)
@@ -2308,13 +2938,15 @@ function factory(db, appSettings) {
             res.json({
                 success: true,
                 limit: limit,
-                months: months,
                 currency: currency,
                 date_from: dateFrom,
                 date_to: dateTo,
                 customer_codes: customerCodes,
                 account_id: accountId || null,
                 include_internal: includeInternal,
+                exclude_chart_inn: excludeChartInn,
+                exclude_chart_inn_value: excludeChartInn ? FINANCE_CHART_EXCLUDE_OUT_INN : null,
+                source,
                 top_in: topList(inMap, totIn),
                 top_out: topList(outMap, totOut),
                 totals: {

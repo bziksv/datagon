@@ -132,6 +132,8 @@
                   <option value="6">6 мес.</option>
                   <option value="12" selected>12 мес.</option>
                   <option value="24">24 мес.</option>
+                  <option value="y0">Текущий год</option>
+                  <option value="y-1">Прошлый год</option>
                 </select>
                 <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-fin-analytics-refresh" data-dg-notify-start="Обновляем график…">Обновить</button>
                 <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-fin-analytics-toggle">Свернуть</button>
@@ -143,7 +145,7 @@
                 <canvas id="dg-fin-analytics-chart" height="280" aria-label="График поступлений и списаний по месяцам"></canvas>
                 <div id="dg-fin-analytics-empty" class="dg-fin-analytics-empty d-none">Нет проводок за выбранный период — загрузите выписки.</div>
               </div>
-              <p class="small text-muted mb-0 mt-2">По снимку из БД. Организация и счёт — из применённых фильтров. По умолчанию без <strong>внутреннего оборота</strong>: тело депозита (UNV), «Перевод собственных средств» (расчётный ↔ фонд) и <strong>выплаты дивидендов</strong>. <strong>Капитал / займ учредителей</strong> (галка «займ» в таблице движения) никогда не входит в график: это не деньги фирмы. Проценты и реальные платежи из фонда остаются. Зелёный — входящие, красный — исходящие, линия — чистый поток. <strong>Клик по столбцу месяца</strong> подставляет «С даты» / «По дату» (и направление) — остаётся нажать «Применить».</p>
+              <p class="small text-muted mb-0 mt-2">По снимку из БД. Организация и счёт — из применённых фильтров. По умолчанию без <strong>внутреннего оборота</strong>: тело депозита (UNV), «Перевод собственных средств» (расчётный ↔ фонд) и <strong>выплаты дивидендов</strong>. <strong>Капитал / займ учредителей</strong> (галка «займ» в таблице движения) никогда не входит в график: это не деньги фирмы. Галка <strong>«Не учитывать расход на ИНН 362903774541»</strong> (вкл. по умолчанию) убирает из графика и топа контрагентов исходящие платежи на этот ИНН — в «Движении» они остаются. Проценты и реальные платежи из фонда остаются. Зелёный — входящие, красный — исходящие, линия — чистый поток. <strong>Клик по столбцу месяца</strong> подставляет «С даты» / «По дату» (и направление) — остаётся нажать «Применить».</p>
             </div>
           </div>
 
@@ -205,6 +207,14 @@
                     <option value="out">Исходящие</option>
                   </select>
                 </div>
+                <div class="col-md-2" data-dg-fin-filter-field="source" data-dg-filter-field-title="Источник">
+                  <label class="form-label" for="dg-fin-source">Источник</label>
+                  <select id="dg-fin-source" class="form-select" title="Банк (безнал), наличные или всё вместе">
+                    <option value="all" selected>Всё</option>
+                    <option value="bank">Банк</option>
+                    <option value="cash">Нал</option>
+                  </select>
+                </div>
                 <div class="col-md-2" data-dg-fin-filter-field="account">
                   <label class="form-label" for="dg-fin-account">Счёт</label>
                   <select id="dg-fin-account" class="form-select">
@@ -254,6 +264,13 @@
                   <label class="dg-fin-check-control" title="Показать только дивиденды: галка «див.» или назначение «Выплата дивидендов». Не входят в график.">
                     <input type="checkbox" class="form-check-input m-0" id="dg-fin-dividend-only" />
                     <span>Только дивиденды</span>
+                  </label>
+                </div>
+                <div class="col-auto" data-dg-fin-filter-field="exclude_chart_inn" data-dg-filter-field-title="Исключить ИНН из графика">
+                  <label class="form-label" for="dg-fin-exclude-chart-inn">Личные платежи в графике</label>
+                  <label class="dg-fin-check-control" title="Исходящие платежи организаций на ИНН 362903774541 не входят в KPI, график и топ контрагентов. В «Движении» остаются.">
+                    <input type="checkbox" class="form-check-input m-0" id="dg-fin-exclude-chart-inn" checked />
+                    <span>Не учитывать расход на ИНН 362903774541</span>
                   </label>
                 </div>
               </div>
@@ -378,6 +395,166 @@
             </div>
           </div>
 
+          <div class="main-card mb-3 card" id="dg-fin-cash-card">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+              <div class="d-flex align-items-center gap-2 flex-grow-1 flex-wrap" style="min-width:0">
+                <i class="header-icon pe-7s-cash icon-gradient bg-happy-green me-1"></i>
+                <span class="flex-shrink-0">Наличные</span>
+                <span class="badge bg-light text-muted border flex-shrink-0">ручной ввод</span>
+                <div class="input-group input-group-sm" style="flex: 0 1 280px; min-width: 180px">
+                  <span class="input-group-text bg-white text-muted px-2" aria-hidden="true">🔎</span>
+                  <input type="search" class="form-control" id="dg-fin-cash-search" placeholder="Поиск: назначение, сумма, орг…" autocomplete="off" />
+                </div>
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-fin-cash-toggle">Свернуть</button>
+            </div>
+            <div class="card-body" id="dg-fin-cash-body">
+              <ul class="nav nav-pills mb-3" role="tablist">
+                <li class="nav-item">
+                  <button type="button" class="nav-link active" id="dg-fin-cash-tab-once" data-cash-tab="once">Разовые</button>
+                </li>
+                <li class="nav-item">
+                  <button type="button" class="nav-link" id="dg-fin-cash-tab-tmpl" data-cash-tab="tmpl">Ежемесячные шаблоны</button>
+                </li>
+              </ul>
+              <div id="dg-fin-cash-pane-once">
+                <div class="row g-2 align-items-end">
+                  <div class="col-md-2">
+                    <label class="form-label" for="dg-fin-cash-once-date">Дата</label>
+                    <input type="date" class="form-control form-control-sm" id="dg-fin-cash-once-date" />
+                  </div>
+                  <div class="col-md-1">
+                    <label class="form-label" for="dg-fin-cash-once-dir">Напр.</label>
+                    <select id="dg-fin-cash-once-dir" class="form-select form-select-sm">
+                      <option value="out" selected>Исх.</option>
+                      <option value="in">Вх.</option>
+                    </select>
+                  </div>
+                  <div class="col-md-2">
+                    <label class="form-label" for="dg-fin-cash-once-amount">Сумма</label>
+                    <input type="text" class="form-control form-control-sm" id="dg-fin-cash-once-amount" inputmode="decimal" placeholder="10 000" />
+                  </div>
+                  <div class="col-md-3">
+                    <label class="form-label" for="dg-fin-cash-once-purpose">Назначение</label>
+                    <input type="text" class="form-control form-control-sm" id="dg-fin-cash-once-purpose" placeholder="Зарплата курьеру…" />
+                  </div>
+                  <div class="col-md-2">
+                    <label class="form-label" for="dg-fin-cash-once-scope">Привязка</label>
+                    <select id="dg-fin-cash-once-scope" class="form-select form-select-sm">
+                      <option value="all" selected>Все компании</option>
+                      <option value="org">Организация</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="row g-2 align-items-end mt-1 d-none" id="dg-fin-cash-once-org-wrap">
+                  <div class="col-md-4">
+                    <label class="form-label" for="dg-fin-cash-once-org-q">Организация</label>
+                    <input type="search" class="form-control form-control-sm" id="dg-fin-cash-once-org-q" placeholder="Поиск организации…" autocomplete="off" />
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label" for="dg-fin-cash-once-org">Выбор</label>
+                    <select id="dg-fin-cash-once-org" class="form-select form-select-sm"></select>
+                  </div>
+                </div>
+                <div class="mt-2 d-flex flex-wrap align-items-center gap-3">
+                  <label class="mb-0 small d-inline-flex align-items-center gap-1">
+                    <input type="checkbox" class="form-check-input m-0" id="dg-fin-cash-once-chart" checked />
+                    <span>Учитывать в графике</span>
+                  </label>
+                  <button type="button" class="btn btn-sm btn-primary" id="dg-fin-cash-once-save" data-dg-notify-start="Сохраняем разовую…">Добавить разовую</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary d-none" id="dg-fin-cash-once-cancel">Отмена</button>
+                </div>
+                <div class="table-responsive mt-3">
+                  <table class="table table-hover table-striped mb-0 dg-fin-table dg-fin-cash-table" id="dg-fin-cash-once-table">
+                    <thead>
+                      <tr>
+                        <th>Дата</th>
+                        <th>Направление</th>
+                        <th>Сумма</th>
+                        <th>Назначение</th>
+                        <th>Привязка</th>
+                        <th>График</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody id="dg-fin-cash-once-tbody"><tr><td colspan="7" class="text-muted small">Загрузка…</td></tr></tbody>
+                  </table>
+                </div>
+              </div>
+              <div id="dg-fin-cash-pane-tmpl" class="d-none">
+                <div class="row g-2 align-items-end">
+                  <div class="col-md-1">
+                    <label class="form-label" for="dg-fin-cash-tmpl-day">День</label>
+                    <input type="number" class="form-control form-control-sm" id="dg-fin-cash-tmpl-day" min="1" max="28" value="5" />
+                  </div>
+                  <div class="col-md-1">
+                    <label class="form-label" for="dg-fin-cash-tmpl-dir">Напр.</label>
+                    <select id="dg-fin-cash-tmpl-dir" class="form-select form-select-sm">
+                      <option value="out" selected>Исх.</option>
+                      <option value="in">Вх.</option>
+                    </select>
+                  </div>
+                  <div class="col-md-2">
+                    <label class="form-label" for="dg-fin-cash-tmpl-fix">Фикс</label>
+                    <input type="text" class="form-control form-control-sm" id="dg-fin-cash-tmpl-fix" inputmode="decimal" placeholder="50 000" />
+                  </div>
+                  <div class="col-md-2">
+                    <label class="form-label" for="dg-fin-cash-tmpl-prem">Премия</label>
+                    <input type="text" class="form-control form-control-sm" id="dg-fin-cash-tmpl-prem" inputmode="decimal" placeholder="опционально" />
+                  </div>
+                  <div class="col-md-3">
+                    <label class="form-label" for="dg-fin-cash-tmpl-purpose">Назначение</label>
+                    <input type="text" class="form-control form-control-sm" id="dg-fin-cash-tmpl-purpose" placeholder="Оклад / ежемес.…" />
+                  </div>
+                  <div class="col-md-2">
+                    <label class="form-label" for="dg-fin-cash-tmpl-scope">Привязка</label>
+                    <select id="dg-fin-cash-tmpl-scope" class="form-select form-select-sm">
+                      <option value="all" selected>Все компании</option>
+                      <option value="org">Организация</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="row g-2 align-items-end mt-1 d-none" id="dg-fin-cash-tmpl-org-wrap">
+                  <div class="col-md-4">
+                    <label class="form-label" for="dg-fin-cash-tmpl-org-q">Организация</label>
+                    <input type="search" class="form-control form-control-sm" id="dg-fin-cash-tmpl-org-q" placeholder="Поиск организации…" autocomplete="off" />
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label" for="dg-fin-cash-tmpl-org">Выбор</label>
+                    <select id="dg-fin-cash-tmpl-org" class="form-select form-select-sm"></select>
+                  </div>
+                </div>
+                <div class="mt-2 d-flex flex-wrap align-items-center gap-3">
+                  <label class="mb-0 small d-inline-flex align-items-center gap-1">
+                    <input type="checkbox" class="form-check-input m-0" id="dg-fin-cash-tmpl-chart" checked />
+                    <span>В графике по умолчанию</span>
+                  </label>
+                  <button type="button" class="btn btn-sm btn-primary" id="dg-fin-cash-tmpl-save" data-dg-notify-start="Сохраняем шаблон…">Добавить шаблон</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary d-none" id="dg-fin-cash-tmpl-cancel">Отмена</button>
+                </div>
+                <p class="small text-muted mt-2 mb-0">Шаблон разворачивается на каждый месяц периода в «Движении». Клик по ежемес. строке — правка фикса/премии за месяц.</p>
+                <div class="table-responsive mt-3">
+                  <table class="table table-hover table-striped mb-0 dg-fin-table dg-fin-cash-table" id="dg-fin-cash-tmpl-table">
+                    <thead>
+                      <tr>
+                        <th>День</th>
+                        <th>Направление</th>
+                        <th>Фикс</th>
+                        <th>Премия</th>
+                        <th>Назначение</th>
+                        <th>Привязка</th>
+                        <th>Вкл.</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody id="dg-fin-cash-tmpl-tbody"><tr><td colspan="8" class="text-muted small">Загрузка…</td></tr></tbody>
+                  </table>
+                </div>
+              </div>
+              <div id="dg-fin-cash-msg" class="alert mt-3 mb-0 d-none" role="status"></div>
+            </div>
+          </div>
+
           <div id="dg-fin-confirm-overlay" class="dg-fin-confirm-overlay d-none" role="dialog" aria-modal="true" aria-labelledby="dg-fin-confirm-title">
             <div class="dg-fin-confirm-dialog card shadow">
               <div class="card-body">
@@ -386,6 +563,43 @@
                 <div class="d-flex justify-content-end gap-2">
                   <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-fin-confirm-cancel">Отмена</button>
                   <button type="button" class="btn btn-sm btn-danger" id="dg-fin-confirm-ok">Удалить</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-fin-cash-month-overlay" class="dg-fin-confirm-overlay d-none" role="dialog" aria-modal="true" aria-labelledby="dg-fin-cash-month-title">
+            <div class="dg-fin-confirm-dialog card shadow" style="max-width:420px">
+              <div class="card-body">
+                <h5 class="card-title" id="dg-fin-cash-month-title">Правка месяца</h5>
+                <p class="small text-muted" id="dg-fin-cash-month-sub"></p>
+                <div class="row g-2">
+                  <div class="col-6">
+                    <label class="form-label" for="dg-fin-cash-month-fix">Фикс</label>
+                    <input type="text" class="form-control form-control-sm" id="dg-fin-cash-month-fix" inputmode="decimal" />
+                  </div>
+                  <div class="col-6">
+                    <label class="form-label" for="dg-fin-cash-month-prem">Премия</label>
+                    <input type="text" class="form-control form-control-sm" id="dg-fin-cash-month-prem" inputmode="decimal" placeholder="пусто = из шаблона" />
+                  </div>
+                  <div class="col-12">
+                    <label class="form-label" for="dg-fin-cash-month-purpose">Назначение</label>
+                    <input type="text" class="form-control form-control-sm" id="dg-fin-cash-month-purpose" />
+                  </div>
+                </div>
+                <div class="mt-2 d-flex flex-wrap gap-3">
+                  <label class="mb-0 small d-inline-flex align-items-center gap-1">
+                    <input type="checkbox" class="form-check-input m-0" id="dg-fin-cash-month-chart" checked />
+                    <span>В графике</span>
+                  </label>
+                  <label class="mb-0 small d-inline-flex align-items-center gap-1">
+                    <input type="checkbox" class="form-check-input m-0" id="dg-fin-cash-month-skip" />
+                    <span>Пропустить месяц</span>
+                  </label>
+                </div>
+                <div class="d-flex justify-content-end gap-2 mt-3">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-fin-cash-month-cancel">Отмена</button>
+                  <button type="button" class="btn btn-sm btn-primary" id="dg-fin-cash-month-ok" data-dg-notify-start="Сохраняем месяц…">Сохранить</button>
                 </div>
               </div>
             </div>

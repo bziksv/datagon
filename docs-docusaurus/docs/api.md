@@ -89,7 +89,7 @@ description: Справочник REST-эндпоинтов p.datagon.ru (осн
 - `/api/product` -> `routes/product.js` (Карточка товара: `ms_export` + `ms_entity_details` + продажи + `dg_bundle_components`; лог отсутствий — пакетно после синка МС: `stock≤0` или для базового кода `stock` < min суффикса в `код-число`, см. `syncZeroStockLogAfterMoyskladExport`; снимки остатка по дням — `dg_product_stock_snapshot`, см. `syncProductStockSnapshotsAfterMoyskladExport` — оба вызываются из `routes/moysklad.js` после сохранения `ms_export`)
 - `/api/activity` -> `routes/activity.js`
 - `/api/db-admin` -> `routes/dbAdmin.js` (Управление БД: размеры таблиц, связи, превью, ANALYZE/OPTIMIZE)
-- `/api/finance` -> `routes/finance.js` (Финансы: Точка JWT + Райф Open API + Т‑Банк T‑API, счета, балансы, проводки; только чтение)
+- `/api/finance` -> `routes/finance.js` (Финансы: Точка JWT + Райф Open API + Т‑Банк T‑API, счета, балансы, проводки; **наличные** CRUD; банковские выписки — только чтение)
 - `/api/manager-sales` -> `routes/managerSales.js` (Таблицы менеджеров: годовой журнал оплат `dg_manager_sales_rows`)
 - `/api/ops-sheet` -> `routes/opsSheet.js` (Операционный лист: свод + Planfix-заявки `dg_ops_planfix_tasks`)
 - `GET /api/processes/overview`, `POST /api/sync-all-start`, `POST /api/sync-site-start`, `GET /api/sync-status` -> `server.js`
@@ -2206,7 +2206,7 @@ Query: `year`, `month`, `q` (номер / постановщик / статус)
 
 ## Финансы
 
-Страница `/finance.html`, роутер `routes/finance.js`, клиенты `lib/datagonTochkaClient.js`, `lib/datagonRaiffeisenClient.js`, `lib/datagonTbankClient.js`, учётные записи `lib/datagonFinanceCredentials.js`. Банки **Точка** (JWT), **Райффайзен** (`client_id` / `client_secret` / `refresh_token`) и **Т‑Банк** (Bearer T‑API). Только чтение. Матрица: ключ **`finance`**. POST config/sync — только **`full`**.
+Страница `/finance.html`, роутер `routes/finance.js`, клиенты `lib/datagonTochkaClient.js`, `lib/datagonRaiffeisenClient.js`, `lib/datagonTbankClient.js`, учётные записи `lib/datagonFinanceCredentials.js`, наличные `lib/datagonFinanceCash.js`. Банки **Точка** (JWT), **Райффайзен** (`client_id` / `client_secret` / `refresh_token`) и **Т‑Банк** (Bearer T‑API). Банковские выписки — только чтение; наличные — ручной ввод. Матрица: ключ **`finance`**. POST config/sync/cash — только **`full`**.
 
 **Несколько организаций Точки:** `app_settings.finance_tochka_credentials` (JSON). Legacy `finance_tochka_jwt` мигрирует в первую запись. Синк идёт по всем `enabled` ключам. JWT **не** в `GET /api/settings`.
 
@@ -2214,11 +2214,11 @@ Query: `year`, `month`, `q` (номер / постановщик / статус)
 
 **Т‑Банк:** `app_settings.finance_tbank_credentials`. Bearer из кабинета Т‑Бизнес → Интеграции → T‑API. Клиент `lib/datagonTbankClient.js`: `GET /api/v1/bank-accounts` (fallback v2/v3) и `GET /api/v1/statement` (`https://business.tbank.ru/openapi`). Токен **не** в `GET /api/settings`. Счета и проводки с `bank='tbank'`, `customer_code` вида `tb:{inn}`. Банк может требовать белый список IP (и для части методов — mTLS).
 
-«Обновить все» / автосинк `finance_tochka` тянет включённые ключи всех трёх банков.
+«Обновить все» / автосинк `finance_tochka` тянет включённые ключи всех трёх банков (cash не синкается).
 
 **Ограничение:** Open Banking Точки отдаёт только банковские счета. Фонды без API — ручная пометка на карточке (`is_fund`, `custom_name`).
 
-Таблицы: `dg_finance_accounts` (`bank`, `credential_id`, `org_label`, `is_fund`, `custom_name`, …), `dg_finance_tx`.
+Таблицы: `dg_finance_accounts` (`bank`, `credential_id`, `org_label`, `is_fund`, `custom_name`, …), `dg_finance_tx`, **`dg_finance_cash_templates`**, **`dg_finance_cash_overrides`**, **`dg_finance_cash_tx`**.
 
 ### GET `/api/finance/config`
 
@@ -2264,23 +2264,35 @@ Query: `year`, `month`, `q` (номер / постановщик / статус)
 
 ### GET `/api/finance/transactions`
 
-Query: `search`, `customer_code` (повторяемый или через запятую; также `customer_codes` / `org`) — несколько организаций, `direction`, `account_id`, `date_from`, `date_to`, `page`, `page_size`, `include_internal=1` (или `include_deposits=1`; по умолчанию **выкл.** — без тела депозита UNV, без «Перевод собственных средств» и без «Выплата дивидендов»), `founder_capital=1` / `founder_only=1` — только ручная пометка займ, `dividend=1` / `dividend_only=1` — галка «див.» **или** назначение «Выплата дивидендов».
+Query: `search`, `customer_code` (повторяемый или через запятую; также `customer_codes` / `org`) — несколько организаций, `direction`, **`source=bank|cash|all`** (по умолчанию **`all`**), `account_id`, `date_from`, `date_to`, `page`, `page_size`, `include_internal=1` (или `include_deposits=1`; по умолчанию **выкл.** — без тела депозита UNV, без «Перевод собственных средств» и без «Выплата дивидендов»), `founder_capital=1` / `founder_only=1` — только ручная пометка займ (банк), `dividend=1` / `dividend_only=1` — галка «див.» **или** назначение «Выплата дивидендов» (банк), `sort_by` / `sort` (`booked_date`|`amount`|`counterparty`|…), `sort_dir` (`asc`|`desc`). При `source=all|cash` к банку подмешиваются развёрнутые шаблоны и разовые наличные (`lib/datagonFinanceCash.js`). Сортировка **на сервере** по всей выборке (не только текущая страница); для `amount` — по `amount_abs`.
 
-В строках: `customer_code`, `org_label`, **`org`** — **полное** имя организации (alias `full`, иначе `org_label`), **`org_short`** — короткое. **`chart_excluded`** / **`chart_exclude_reason`** — операция не входит в график/аналитику по умолчанию (депозит UNV, «Перевод собственных средств», «Выплата дивидендов» **или** ручная пометка займ/дивиденды). **`chart_tag`**: `founder` | `dividend` | `""`. **`founder_capital`** / **`dividend_payout`**. Умный поиск матчит оба alias.
+В строках банка: `customer_code`, `org_label`, **`org`** — **полное** имя организации (alias `full`, иначе `org_label`), **`org_short`** — короткое. **`chart_excluded`** / **`chart_exclude_reason`**, **`chart_tag`**: `founder` | `dividend` | `""`, **`founder_capital`** / **`dividend_payout`**. В строках cash: `source=cash`, `cash_kind=once|recurring`, `bank=cash`, `tx_id` вида `cash:o:{id}` / `cash:t:{templateId}:{ym}`, `include_chart`, `amount_fix` / `amount_premium` (для recurring), `scope`. Умный поиск матчит оба alias.
 
-Ответ дополнительно: `include_internal`, `founder_capital`, `dividend`.
+Ответ дополнительно: `include_internal`, `founder_capital`, `dividend`, `source`, `sort_by`, `sort_dir`.
+
+### GET/POST/PATCH/DELETE `/api/finance/cash/templates`
+
+CRUD ежемесячных шаблонов (`dg_finance_cash_templates`). Body POST: `{ purpose, direction?, day_of_month?, amount_fix, amount_premium?, scope?: "all"|"org", customer_code?, include_chart?, active?, valid_from?, valid_to? }`. DELETE также чистит overrides шаблона.
+
+### PUT `/api/finance/cash/templates/:id/months/:ym`
+
+Помесячный override (`ym=YYYY-MM`): `{ amount_fix?, amount_premium?, clear_premium?, purpose?, include_chart?, skipped? }`. Частичное обновление: отсутствующие поля сохраняют прежний override или шаблон.
+
+### GET/POST/PATCH/DELETE `/api/finance/cash/tx`
+
+Разовые наличные (`dg_finance_cash_tx`). Body POST: `{ booked_date, amount, purpose, direction?, scope?, customer_code?, include_chart?, counterparty? }`.
 
 ### GET `/api/finance/analytics/monthly`
 
-Помесячная агрегация из `dg_finance_tx` (снимок). Query: `months` (1…36, по умолчанию **12**), `customer_code` / `customer_codes` / `org` (несколько), `account_id`, `currency` (по умолчанию `RUB`), `include_deposits=1` / `include_internal=1` (по умолчанию **выкл.** — без тела депозита UNV, без «Перевод собственных средств» и без «Выплата дивидендов»; проценты и внешние платежи входят). Проводки с `exclude_chart=1` (займ или дивиденды вручную) **всегда** вне графика.
+Помесячная агрегация из `dg_finance_tx` **+ cash** (разовые и развёрнутые шаблоны с `include_chart`, не `skipped`). Query: `months` (1…36, по умолчанию **12**) **или** `date_from`/`date_to` (календарный год в UI: «Текущий год» / «Прошлый год»), `customer_code` / `customer_codes` / `org` (несколько), `account_id`, **`source=bank|cash|all`**, `currency` (по умолчанию `RUB`), `include_deposits=1` / `include_internal=1` (по умолчанию **выкл.** — без тела депозита UNV, без «Перевод собственных средств» и без «Выплата дивидендов»; проценты и внешние платежи входят), **`exclude_chart_inn=0|1`** (по умолчанию **вкл.** — исходящие на ИНН `362903774541` вне графика). Проводки с `exclude_chart=1` (займ или дивиденды вручную) **всегда** вне графика; cash без `include_chart` — тоже вне.
 
-Ответ: `{ success, months, currency, date_from, date_to, include_deposits, series: [{ month, in, out, net, count_in, count_out }], totals: { in, out, net, count } }`. Пустые месяцы в окне заполняются нулями.
+Ответ: `{ success, months, currency, date_from, date_to, include_deposits, exclude_chart_inn, exclude_chart_inn_value, source, series: [{ month, in, out, net, count_in, count_out }], totals: { in, out, net, count } }`. Пустые месяцы в окне заполняются нулями.
 
 ### GET `/api/finance/analytics/counterparties`
 
-Топ контрагентов по сумме входящих / исходящих. Query: `limit` (3…20, по умолчанию **8**), `months` (если нет `date_from`/`date_to`), `date_from`, `date_to`, `customer_code` / `customer_codes` / `org`, `account_id`, `currency`, `include_internal=1` / `include_deposits=1` (по умолчанию **выкл.**, те же исключения, что у monthly). Займ и ручные дивиденды (`exclude_chart`) **всегда** вне топа.
+Топ контрагентов по сумме входящих / исходящих (банк + cash). Query: `limit` (3…20, по умолчанию **8**), `months` (если нет `date_from`/`date_to`), `date_from`, `date_to`, `customer_code` / `customer_codes` / `org`, `account_id`, **`source`**, `currency`, `include_internal=1` / `include_deposits=1` (по умолчанию **выкл.**, те же исключения, что у monthly), **`exclude_chart_inn`** (как у monthly). Займ и ручные дивиденды (`exclude_chart`) **всегда** вне топа. Cash без контрагента — группа **«(наличные)»** / по `purpose`.
 
-Ответ: `{ success, limit, currency, date_from, date_to, include_internal, top_in: [{ rank, name, inn, amount, count, share }], top_out: […], totals: { in, out, counterparties_in, counterparties_out } }`. Группировка по **ИНН** (если есть) — разные написания названия одной конторы сливаются; без ИНН — по имени.
+Ответ: `{ success, limit, currency, date_from, date_to, include_internal, exclude_chart_inn, source, top_in: [{ rank, name, inn, amount, count, share }], top_out: […], totals: { in, out, counterparties_in, counterparties_out } }`. Группировка по **ИНН** (если есть) — разные написания названия одной конторы сливаются; без ИНН — по имени.
 
 ### GET `/api/finance/sync-status`
 

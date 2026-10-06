@@ -827,14 +827,28 @@ function matchAssignerIds(pfUsers, managers) {
     const names = [];
     const mgrHits = new Set();
     (pfUsers || []).forEach((u) => {
-        const mgr = pf.matchManagerByAssigner(u.name, managers);
+        let mgr = null;
+        const cands = pf.pfUserNameCandidates ? pf.pfUserNameCandidates(u) : [u && u.name];
+        for (let i = 0; i < cands.length; i += 1) {
+            mgr = pf.matchManagerByAssigner(cands[i], managers);
+            if (mgr) break;
+        }
         if (!mgr) return;
-        if (ids.indexOf(u.id) >= 0) return;
+        if (ids.indexOf(u.id) >= 0) {
+            mgrHits.add(mgr.id);
+            return;
+        }
         ids.push(u.id);
-        names.push(u.name || mgr.full_name || mgr.username);
+        names.push((cands && cands[0]) || mgr.full_name || mgr.username);
         mgrHits.add(mgr.id);
     });
-    return { ids, names, managersMatched: mgrHits.size };
+    const unmatchedManagers = (managers || []).filter((m) => !mgrHits.has(m.id));
+    return {
+        ids,
+        names,
+        managersMatched: mgrHits.size,
+        unmatchedManagers,
+    };
 }
 
 function sleep(ms) {
@@ -1923,7 +1937,17 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
                 });
             }
             const matchedAssigners = matchAssignerIds(pfUsers, managers);
-            const assignerQueue = matchedAssigners.ids.length ? matchedAssigners.ids : [null];
+            let assignerQueue = matchedAssigners.ids.length ? matchedAssigners.ids.slice() : [null];
+            // Если часть менеджеров продаж не сматчилась с /user/list — доп. проход без
+            // фильтра постановщика, иначе их задачи остаются только в отчёте как
+            // «(не в заявках листа)» и не появляются поимённо в развороте статуса.
+            if (
+                matchedAssigners.unmatchedManagers &&
+                matchedAssigners.unmatchedManagers.length &&
+                assignerQueue.indexOf(null) < 0
+            ) {
+                assignerQueue.push(null);
+            }
             const templateQueue =
                 (pf.DEAL_STATUS_TEMPLATE_IDS || []).length > 0
                     ? pf.DEAL_STATUS_TEMPLATE_IDS.slice()
@@ -1933,6 +1957,16 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
                     code: 'assigners',
                     error:
                         'Не сопоставили сотрудников Planfix с менеджерами продаж — временно забираем все задачи за период и отбрасываем чужих постановщиков при записи.',
+                });
+            } else if (matchedAssigners.unmatchedManagers && matchedAssigners.unmatchedManagers.length) {
+                errors.push({
+                    code: 'assigners_partial',
+                    error:
+                        'Не нашли в Planfix: ' +
+                        matchedAssigners.unmatchedManagers
+                            .map((m) => m.full_name || m.username || m.id)
+                            .join(', ') +
+                        ' — доп. проход по всем постановщикам; проверьте ФИО в Datagon = ФИО в Planfix.',
                 });
             }
 
