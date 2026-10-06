@@ -896,6 +896,12 @@ async function resolveSaveChunks(appSettings, reportId, save) {
     return s;
 }
 
+function isPlanfixReportRateLimit(e) {
+    const code = e && e.body && Number(e.body.code);
+    const msg = `${(e && e.message) || ''} ${(e && e.body && (e.body.error || e.body.message)) || ''}`;
+    return code === 9002 || /already in progress|не чаще|10 minut|10 minutes|раз в 10/i.test(msg);
+}
+
 async function generateDealStatusReport(appSettings, reportId, onProgress) {
     if (typeof onProgress === 'function') {
         onProgress(`Генерируем отчёт Planfix ${reportId} («${pf.STATUS_FIELD_NAME}»)`);
@@ -916,6 +922,34 @@ async function generateDealStatusReport(appSettings, reportId, onProgress) {
             return null;
         }
     }
+    return null;
+}
+
+async function generateDealStatusReportRetry(appSettings, reportId, onProgress) {
+    let lastErr = null;
+    for (let attempt = 1; attempt <= 10; attempt += 1) {
+        try {
+            const save = await generateDealStatusReport(appSettings, reportId, onProgress);
+            if (save && save.id) return save;
+            lastErr = new Error('Generate отчёта не вернул сейв');
+        } catch (e) {
+            lastErr = e;
+            if (!isPlanfixReportRateLimit(e) || attempt === 10) throw e;
+            if (typeof onProgress === 'function') {
+                onProgress(
+                    `Planfix не даёт generate (лимит 10 мин или уже идёт). Ждём 70 с, попытка ${attempt}/10`
+                );
+            }
+            await sleep(70000);
+            continue;
+        }
+        if (attempt === 10) break;
+        if (typeof onProgress === 'function') {
+            onProgress(`Generate без сейва — повтор ${attempt}/10 через 70 с`);
+        }
+        await sleep(70000);
+    }
+    if (lastErr) throw lastErr;
     return null;
 }
 
@@ -1160,7 +1194,7 @@ async function enrichFromDealStatusReport(appSettings, db, onProgress, year, mon
             if (!fields.some((f) => pf.isStatusFieldName(f && f.name))) continue;
 
             try {
-                const fresh = await generateDealStatusReport(appSettings, id, onProgress);
+                const fresh = await generateDealStatusReportRetry(appSettings, id, onProgress);
                 if (fresh && fresh.id) {
                     localGenerated = true;
                     generated = true;
@@ -1192,7 +1226,7 @@ async function enrichFromDealStatusReport(appSettings, db, onProgress, year, mon
                 );
             }
             try {
-                const fresh = await generateDealStatusReport(appSettings, id, onProgress);
+                const fresh = await generateDealStatusReportRetry(appSettings, id, onProgress);
                 if (fresh && fresh.id) {
                     localGenerated = true;
                     generated = true;
