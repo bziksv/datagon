@@ -126,7 +126,13 @@ function canWrite(req) {
     return pageMode(req) === 'full';
 }
 
-const SEE_ALL_SPECIALTIES = new Set(['полный доступ', 'бухгалтерия']);
+const SEE_ALL_SPECIALTIES = new Set([
+    'полный доступ',
+    'бухгалтерия',
+    'делопроизводители',
+    'делопроизводитель',
+]);
+const EDIT_PLAN_SPECIALTIES = new Set(['полный доступ', 'бухгалтерия']);
 const SALES_SPECIALTY_NAME = 'Менеджер по продажам';
 
 const FIELD_LOG_LABELS = {
@@ -197,12 +203,19 @@ function actorSpecialtyName(req) {
         .toLowerCase();
 }
 
-/** Чужие таблицы — только admin, «Полный доступ» и «Бухгалтерия». Остальные видят свою. */
+/** Чужие таблицы — admin, «Полный доступ», «Бухгалтерия», «Делопроизводители». Остальные видят свою. */
 function canSeeAll(req) {
     const actor = req && req.datagonActor;
     if (!actor) return false;
     if (actor.username === 'admin') return true;
     return SEE_ALL_SPECIALTIES.has(actorSpecialtyName(req));
+}
+
+function canEditPlans(req) {
+    const actor = req && req.datagonActor;
+    if (!actor) return false;
+    if (actor.username === 'admin') return true;
+    return EDIT_PLAN_SPECIALTIES.has(actorSpecialtyName(req));
 }
 
 function actorId(req) {
@@ -1943,7 +1956,7 @@ module.exports = function managerSalesRouterFactory(db) {
     router.put('/plans/base', async (req, res) => {
         try {
             await ensureSchema(db);
-            if (!canSeeAll(req)) {
+            if (!canEditPlans(req)) {
                 return res.status(403).json({ error: 'Планы меняют Полный доступ и Бухгалтерия' });
             }
             const body = req.body || {};
@@ -1971,7 +1984,7 @@ module.exports = function managerSalesRouterFactory(db) {
     router.put('/plans/matrix', async (req, res) => {
         try {
             await ensureSchema(db);
-            if (!canSeeAll(req)) {
+            if (!canEditPlans(req)) {
                 return res.status(403).json({ error: 'Планы меняют Полный доступ и Бухгалтерия' });
             }
             const body = req.body || {};
@@ -2059,7 +2072,7 @@ module.exports = function managerSalesRouterFactory(db) {
     router.put('/plans/month', async (req, res) => {
         try {
             await ensureSchema(db);
-            if (!canSeeAll(req)) {
+            if (!canEditPlans(req)) {
                 return res.status(403).json({ error: 'Планы меняют Полный доступ и Бухгалтерия' });
             }
             const body = req.body || {};
@@ -2227,7 +2240,7 @@ module.exports = function managerSalesRouterFactory(db) {
                 sort_dir: sortDir.toLowerCase(),
                 can_write: canWrite(req),
                 can_pick_manager: canSeeAll(req),
-                can_edit_plans: canSeeAll(req),
+                can_edit_plans: canEditPlans(req),
                 plan: planInfo,
                 totals: {
                     amount_ex_delivery: Number(tot && tot.amount_ex_delivery) || 0,

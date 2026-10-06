@@ -403,7 +403,13 @@
 
   function formatCellValue(key, row) {
     var v = row[key];
-    if (key === "manager_name") return escapeHtml(row.manager_name || "");
+    if (key === "manager_name") {
+      var name = escapeHtml(row.manager_name || "");
+      if (row.is_archived) {
+        name += ' <span class="text-muted">(архив)</span>';
+      }
+      return name;
+    }
     if (key === "plan_status") {
       if (!v) return "—";
       var ok = v === "выполнен";
@@ -489,6 +495,35 @@
     return name.indexOf(q) >= 0 || user.indexOf(q) >= 0;
   }
 
+  function rowIsAllZero(row) {
+    if (!row || row.is_total) return false;
+    var keys = [
+      "turnover",
+      "profit_before_tax",
+      "profit_after_tax",
+      "bonus_current",
+      "applications_count",
+      "paid_applications",
+      "coefficient",
+      "bonus_past",
+      "salary",
+      "fact_profit",
+      "salary_paid",
+      "company_profit",
+    ];
+    for (var i = 0; i < keys.length; i += 1) {
+      var v = row[keys[i]];
+      if (v == null || v === "") continue;
+      var n = Number(v);
+      if (Number.isFinite(n) && Math.abs(n) > 1e-9) return false;
+    }
+    return true;
+  }
+
+  function rowVisibleInSheet(row) {
+    return rowMatchesSearch(row) && !rowIsAllZero(row);
+  }
+
   function buildThead() {
     var cols = visibleCols();
     var ths = cols
@@ -518,7 +553,7 @@
     var cols = visibleCols();
     var isTotal = !!row.is_total;
     var trClass = isTotal ? "dg-ops-row-total" : "";
-    if (!isTotal && !rowMatchesSearch(row)) trClass += (trClass ? " " : "") + "dg-ops-row-hidden";
+    if (!isTotal && !rowVisibleInSheet(row)) trClass += (trClass ? " " : "") + "dg-ops-row-hidden";
     var tds = cols
       .map(function (c) {
         var key = c[0];
@@ -561,7 +596,7 @@
     if (empty) empty.classList.add("d-none");
     var thead = buildThead();
     state.months.forEach(function (block) {
-      var visibleRows = (block.rows || []).filter(rowMatchesSearch);
+      var visibleRows = (block.rows || []).filter(rowVisibleInSheet);
       var totals = state.search ? deriveClientTotals(visibleRows) : block.totals;
       var wrap = document.createElement("div");
       wrap.className = "dg-ops-month-block";

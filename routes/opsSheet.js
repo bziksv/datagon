@@ -345,20 +345,22 @@ async function assignMissingCatalogOrder(db) {
     }
 }
 
-async function listSalesManagers(db) {
+async function listSalesManagers(db, opts) {
+    const includeArchived = !!(opts && opts.includeArchived);
     const [users] = await db.query(
-        `SELECT u.id, u.username, u.full_name
+        `SELECT u.id, u.username, u.full_name, COALESCE(u.is_archived, 0) AS is_archived
            FROM users u
            INNER JOIN specialties s ON s.id = u.specialty_id
-          WHERE COALESCE(u.is_archived, 0) = 0
-            AND s.name = ?
-          ORDER BY COALESCE(NULLIF(u.full_name,''), u.username)`,
+          WHERE s.name = ?
+            AND (${includeArchived ? '1=1' : 'COALESCE(u.is_archived, 0) = 0'})
+          ORDER BY COALESCE(u.is_archived, 0), COALESCE(NULLIF(u.full_name,''), u.username)`,
         [SALES_SPECIALTY_NAME]
     );
     return (users || []).map((u) => ({
         id: Number(u.id),
         username: u.username || '',
         full_name: u.full_name || u.username || '',
+        is_archived: Number(u.is_archived) === 1,
     }));
 }
 
@@ -1622,7 +1624,7 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
             );
             const years = (yearRows || []).map((r) => Number(r.year)).filter((y) => Number.isFinite(y));
             if (!years.includes(cy)) years.unshift(cy);
-            const managers = await listSalesManagers(db);
+            const managers = await listSalesManagers(db, { includeArchived: true });
             const { token } = credsFromSettings(settings);
             res.json({
                 success: true,
@@ -2303,7 +2305,7 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
         try {
             await ensureSchema(db);
             const year = normYear(req.query.year, currentYear());
-            const managers = await listSalesManagers(db);
+            const managers = await listSalesManagers(db, { includeArchived: true });
             const mids = managers.map((m) => m.id);
             const [aggregates, plans, manualMap, pfApps] = await Promise.all([
                 fetchMonthAggregates(db, year, mids),
@@ -2346,7 +2348,7 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
             if (!year || !month || !Number.isFinite(mid) || mid <= 0) {
                 return res.status(400).json({ success: false, error: 'Нужны year, month, manager_user_id' });
             }
-            const managers = await listSalesManagers(db);
+            const managers = await listSalesManagers(db, { includeArchived: true });
             const mgr = managers.find((m) => m.id === mid);
             if (!mgr) {
                 return res.status(400).json({ success: false, error: 'Менеджер не из группы «Менеджер по продажам»' });
