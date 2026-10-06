@@ -2184,13 +2184,17 @@ Query: `year`, `month`, `q` (номер / постановщик / статус)
 
 ### GET `/api/ops-sheet/planfix-sync-status`
 
-Живой этап текущего синка: `{ active, stage, message, pages, fetched, stored, elapsed_sec, dry_run, year, last_error }`. UI опрашивает раз в секунду после `started: true` (и при 409).
+Живой этап текущего синка: `{ active, stage, message, pages, fetched, stored, elapsed_sec, dry_run, year, last_error, cancel_requested }`. UI опрашивает раз в секунду после `started: true` (и при 409). `stage: cancelled` — остановлен кнопкой.
+
+### POST `/api/ops-sheet/planfix-sync-cancel`
+
+Только `full`. Мягкая остановка: `cancel_requested`, синк выходит между страницами `/task/list` и ожиданиями generate (до ~0,4 с, не рвёт текущий HTTP к Planfix). Ответ `{ success, cancelled, …planfix-sync-status }`. Если синка нет — `cancelled: false`. Кнопка **Остановить** на `/ops-sheet.html` видна, пока `active`.
 
 ### POST `/api/ops-sheet/planfix-sync`
 
 Только `full`. Body: `{ year, month }`. Ответ сразу `{ success: true, started: true, …planfix-sync-status }` — работа **в фоне**. UI опрашивает `GET /planfix-sync-status` до `active: false`.
 
-Один прогон: сотрудники → постановщики «Менеджер по продажам» → `POST /task/list` за период (без фильтра шаблона КП) → системный статус → generate отчёта **450694**. `POST /report/{id}/generate` **дат в теле не принимает**. Год 20–30 мин. В UI одна кнопка.
+Один прогон: сотрудники → постановщики «Менеджер по продажам» → `POST /task/list` за период (без фильтра шаблона КП) → системный статус → generate отчёта **450694**. `POST /report/{id}/generate` **дат в теле не принимает**. Год 20–30 мин. Остановка — `POST /planfix-sync-cancel`.
 
 Перед синком в UI Planfix у отчёта выставьте тот же период (API generate даты не принимает). Обрыв TLS Planfix повторяется до 4 раз.
 

@@ -986,6 +986,11 @@
       var b = el(id);
       if (b) b.disabled = !write || !!state.pf.syncing;
     });
+    var cancelBtn = el("dg-ops-pf-sync-cancel");
+    if (cancelBtn) {
+      cancelBtn.classList.toggle("d-none", !state.pf.syncing);
+      cancelBtn.disabled = !write || !state.pf.syncing;
+    }
     var badge = el("dg-ops-pf-script-badge");
     var sc = state.pf.sync_script;
     if (badge) {
@@ -1226,6 +1231,18 @@
           .then(function (j) {
             patchLiveProgress(j, Number(j.elapsed_sec) || Math.round((Date.now() - startedWait) / 1000));
             if (j && j.success && !j.active) {
+              if (j.stage === "cancelled") {
+                resolve({
+                  success: true,
+                  cancelled: true,
+                  attached: !!opts.existing,
+                  pages: j.pages,
+                  stored: j.stored,
+                  fetched: j.fetched,
+                  message: j.message,
+                });
+                return;
+              }
               if (j.stage === "error" || j.last_error) {
                 reject(new Error(j.last_error || j.message || "Синк Planfix завершился с ошибкой"));
                 return;
@@ -1282,6 +1299,7 @@
     var started = Date.now();
     var year = state.year;
     state.pf.syncing = true;
+    renderPlanfixPanel();
     patchLiveProgress({ message: "старт…" }, 0);
     var lastProg = null;
     var timer = setInterval(function () {
@@ -1329,6 +1347,22 @@
       .then(function (j) {
         clearInterval(timer);
         state.pf.syncing = false;
+        renderPlanfixPanel();
+        if (j && j.cancelled) {
+          showActionLog(
+            "warning",
+            "Синк Planfix остановлен. " +
+              escapeHtml(j.message || "") +
+              "<br>Фильтры: " +
+              planfixFiltersLine() +
+              "<br>Период в БД может быть неполным — полный снимок после нового синка.",
+            true
+          );
+          toast("warning", "Синк Planfix остановлен");
+          return loadPlanfix().then(function () {
+            return loadYear();
+          });
+        }
         applyPlanfixPanel(j);
         showActionLog("success", formatPlanfixSummary(j), true);
         return loadYear();
@@ -1336,6 +1370,7 @@
       .catch(function (e) {
         clearInterval(timer);
         state.pf.syncing = false;
+        renderPlanfixPanel();
         showActionLog("danger", "Ошибка: " + escapeHtml(e.message || e) + "<br>Фильтры: " + planfixFiltersLine(), true);
         toast("danger", e.message || "Planfix");
       });
@@ -1953,6 +1988,35 @@
         runPlanfixSync();
       });
     }
+    if (el("dg-ops-pf-sync-cancel")) {
+      el("dg-ops-pf-sync-cancel").addEventListener("click", function () {
+        var btn = this;
+        var run = function () {
+          return fetch("/api/ops-sheet/planfix-sync-cancel", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: "{}",
+          }).then(function (r) {
+            return r.json().then(function (j) {
+              if (!r.ok || !j || j.success === false) {
+                throw new Error((j && j.error) || "HTTP " + r.status);
+              }
+              return j;
+            });
+          });
+        };
+        var p =
+          window.DatagonNotify && window.DatagonNotify.busyRun
+            ? window.DatagonNotify.busyRun(btn, run)
+            : run();
+        p.then(function (j) {
+          toast("warning", j && j.cancelled ? "Остановка синка Planfix…" : (j && j.message) || "Синк не идёт");
+        }).catch(function (e) {
+          toast("danger", e.message || "Не удалось остановить");
+        });
+      });
+    }
     if (el("dg-ops-pf-save-map")) {
       el("dg-ops-pf-save-map").addEventListener("click", function () {
         savePlanfixMap();
@@ -2054,7 +2118,19 @@
         fillYearSelect(state.years);
         fillPfMonthSelect();
         paintFilterForm();
-        return commitFilters({ keepTaskPage: fromUrl });
+        return commitFilters({ keepTaskPage: fromUrl }).then(function () {
+          return fetch("/api/ops-sheet/planfix-sync-status", { credentials: "same-origin" })
+            .then(function (r) {
+              return r.json();
+            })
+            .then(function (j) {
+              if (j && j.active) return runPlanfixSync();
+              return null;
+            })
+            .catch(function () {
+              return null;
+            });
+        });
       })
       .catch(function (e) {
         setHint("Ошибка: " + (e.message || e));

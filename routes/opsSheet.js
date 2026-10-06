@@ -93,6 +93,7 @@ const pfSyncJob = {
     started_ms: 0,
     updated_ms: 0,
     last_error: null,
+    cancelRequested: false,
 };
 
 function markPfSync(patch) {
@@ -119,7 +120,17 @@ function pfSyncPublic() {
         stored: pfSyncJob.stored || 0,
         elapsed_sec: started ? Math.max(0, Math.round((Date.now() - started) / 1000)) : 0,
         last_error: pfSyncJob.last_error || null,
+        cancel_requested: !!pfSyncJob.cancelRequested,
     };
+}
+
+function throwIfPfSyncCancelled() {
+    if (!pfSyncJob.cancelRequested) return;
+    const err = new Error(
+        `Синк Planfix остановлен (страниц ${pfSyncJob.pages || 0}, записано ${pfSyncJob.stored || 0})`
+    );
+    err.code = 'PF_SYNC_CANCELLED';
+    throw err;
 }
 
 function formatPlanfixSyncError(e) {
@@ -825,7 +836,17 @@ function matchAssignerIds(pfUsers, managers) {
 }
 
 function sleep(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+    const step = 400;
+    let left = Math.max(0, Number(ms) || 0);
+    return (async () => {
+        while (left > 0) {
+            throwIfPfSyncCancelled();
+            const chunk = Math.min(step, left);
+            await new Promise((resolve) => setTimeout(resolve, chunk));
+            left -= chunk;
+        }
+        throwIfPfSyncCancelled();
+    })();
 }
 
 async function findDealStatusReport(appSettings, onProgress) {
@@ -927,6 +948,7 @@ async function generateDealStatusReport(appSettings, reportId, onProgress) {
 async function generateDealStatusReportRetry(appSettings, reportId, onProgress) {
     let lastErr = null;
     for (let attempt = 1; attempt <= 10; attempt += 1) {
+        throwIfPfSyncCancelled();
         try {
             const save = await generateDealStatusReport(appSettings, reportId, onProgress);
             if (save && save.id) return save;
@@ -960,6 +982,7 @@ async function readDealStatusReportPairs(appSettings, reportId, save, onProgress
     let c = 0;
     const maxChunks = known > 0 ? known : 80;
     for (; c < maxChunks; c += 1) {
+        throwIfPfSyncCancelled();
         if (typeof onProgress === 'function') {
             onProgress(
                 `Читаем «${pf.STATUS_FIELD_NAME}»: чанк ${c + 1}/${known > 0 ? known : '?'}`
@@ -1177,6 +1200,7 @@ async function enrichFromDealStatusReport(appSettings, db, onProgress, year, mon
     let generate_error = '';
     let generated = false;
     for (let i = 0; i < ids.length; i += 1) {
+        throwIfPfSyncCancelled();
         const id = ids[i];
         if (typeof onProgress === 'function') {
             onProgress(
@@ -1200,6 +1224,7 @@ async function enrichFromDealStatusReport(appSettings, db, onProgress, year, mon
                     save = await resolveSaveChunks(appSettings, id, fresh);
                 }
             } catch (e) {
+                if (e && e.code === 'PF_SYNC_CANCELLED') throw e;
                 generate_error = e && e.message ? e.message : String(e);
             }
             // Не подставляем «самый толстый» исторический сейв: dump на 25 чанков даёт Поставщик 23722
@@ -1209,6 +1234,7 @@ async function enrichFromDealStatusReport(appSettings, db, onProgress, year, mon
                 continue;
             }
         } catch (e) {
+            if (e && e.code === 'PF_SYNC_CANCELLED') throw e;
             generate_error = e && e.message ? e.message : String(e);
             continue;
         }
@@ -1234,6 +1260,7 @@ async function enrichFromDealStatusReport(appSettings, db, onProgress, year, mon
                     overlaps = await reportOverlapsLocalPeriod(db, read.byTask, year, month);
                 }
             } catch (e) {
+                if (e && e.code === 'PF_SYNC_CANCELLED') throw e;
                 generate_error = e && e.message ? e.message : String(e);
             }
         }
@@ -1722,6 +1749,29 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
         res.json({ success: true, ...pfSyncPublic() });
     });
 
+    router.post('/planfix-sync-cancel', (req, res) => {
+        if (!canWrite(req)) {
+            return res.status(403).json({ success: false, error: 'Недостаточно прав (нужен full)' });
+        }
+        if (!pfSyncJob.active) {
+            return res.json({
+                success: true,
+                cancelled: false,
+                message: 'Синк Planfix сейчас не идёт',
+                ...pfSyncPublic(),
+            });
+        }
+        pfSyncJob.cancelRequested = true;
+        markPfSync({
+            message: 'Остановка по запросу — дождёмся конца текущего запроса к Planfix…',
+        });
+        return res.json({
+            success: true,
+            cancelled: true,
+            ...pfSyncPublic(),
+        });
+    });
+
     router.post('/planfix-sync', async (req, res) => {
         const started = Date.now();
         let ownsJob = false;
@@ -1776,6 +1826,7 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
                 year,
                 month,
                 last_error: null,
+                cancelRequested: false,
                 stage: reportOnly ? 'status_report' : 'fields',
                 message: dryRun
                     ? `Пробный просмотр (${periodLabel}): справочник полей`
@@ -1958,6 +2009,7 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
                 let pageLen = 0;
                 let localOffset = 0;
                 do {
+                    throwIfPfSyncCancelled();
                     markPfSync({
                         stage: 'pages',
                         message:
@@ -1978,12 +2030,14 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
             }
 
             for (let ai = 0; ai < assignerQueue.length; ai += 1) {
+                throwIfPfSyncCancelled();
                 for (let ti = 0; ti < templateQueue.length; ti += 1) {
                     await paginateAssigner(assignerQueue[ai], templateQueue[ti]);
                 }
             }
 
             if (!dryRun) {
+                throwIfPfSyncCancelled();
                 markPfSync({
                     stage: 'task_dates',
                     message: `Копируем даты из заявок листа (${periodLabel})`,
@@ -1994,6 +2048,7 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
             }
 
             if (!dryRun) {
+                throwIfPfSyncCancelled();
                 markPfSync({
                     stage: 'prune',
                     message: month
@@ -2045,6 +2100,7 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
                         if (r.status_value) seenStatuses[r.status_value] = true;
                     });
                 } catch (e) {
+                    if (e && e.code === 'PF_SYNC_CANCELLED') throw e;
                     errors.push({
                         code: 'status_report',
                         error: e && e.message ? e.message : 'Не удалось прочитать отчёт «Статус Сделки/Письма»',
@@ -2069,6 +2125,16 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
             });
                 })()
                     .catch((e) => {
+                        if (e && e.code === 'PF_SYNC_CANCELLED') {
+                            markPfSync({
+                                active: false,
+                                stage: 'cancelled',
+                                last_error: null,
+                                cancelRequested: false,
+                                message: e.message || 'Синк Planfix остановлен',
+                            });
+                            return;
+                        }
                         const status = e.status && e.status >= 400 && e.status < 600 ? e.status : 500;
                         if (status >= 500) console.error('[ops-sheet/planfix-sync]', e);
                         const msg = formatPlanfixSyncError(e);
@@ -2077,6 +2143,7 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
                             stage: 'error',
                             last_error: msg,
                             message: msg,
+                            cancelRequested: false,
                         });
                     })
                     .finally(() => {
