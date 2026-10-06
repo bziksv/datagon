@@ -237,6 +237,44 @@
   body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .dg-ops-pf-dragging {
     opacity: 0.45;
   }
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .dg-ops-pf-expand {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.15rem;
+    height: 1.15rem;
+    padding: 0;
+    margin-right: 0.35rem;
+    border: 0;
+    background: transparent;
+    color: #3f6ad8;
+    line-height: 1;
+    vertical-align: middle;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .dg-ops-pf-expand[disabled] {
+    color: #c5cad3;
+    cursor: default;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .dg-ops-pf-expand i {
+    font-size: 1.05rem;
+    font-weight: 700;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .dg-ops-pf-status-name {
+    font-weight: 600;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .dg-ops-pf-child td {
+    background: #f7f9fc;
+    font-size: 0.9rem;
+    color: #495057;
+    border-top: 0;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .dg-ops-pf-child-name {
+    padding-left: 2.35rem !important;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .dg-ops-pf-child-other {
+    font-style: italic;
+    color: #6c757d;
+  }
   body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] #dg-ops-action-log {
     min-height: 5.25rem;
   }
@@ -1078,7 +1116,8 @@
                 Одна кнопка <strong>Синхронизировать Planfix</strong>.
                 <strong>В отчёте Planfix</strong> — 1:1 со свежим generate (даты как в UI Planfix; сохранять отчёт в Planfix не нужно).
                 Старые сейвы больше не подставляются. Если только что жали «сформировать» в Planfix — синк подождёт лимит 10 мин и повторит generate.
-                <strong>В заявках листа</strong> — постановщик = менеджер продаж (без отбора шаблона КП). Токен —
+                <strong>В заявках листа</strong> — постановщик = менеджер продаж (без отбора шаблона КП).
+                Строку статуса можно раскрыть — внутри постановщики, как в отчёте Planfix. Токен —
                 <a href="/settings.html">Настройки → Planfix</a>.
               </p>
               <div id="dg-ops-pf-insight" class="alert alert-warning py-2 px-3 d-none" role="status"></div>
@@ -1400,6 +1439,7 @@
       task_rows: [],
       syncing: false,
     },
+    pfExpanded: {},
   };
 
   function el(id) {
@@ -2192,7 +2232,19 @@
     }
     var shownBucket = s.bucket || s.suggested_bucket || "";
     var countOn = !!s.count_in_apps;
-    return (
+    var mgrs = s.managers || [];
+    var open = !!state.pfExpanded[s.status_value];
+    var caret =
+      mgrs.length
+        ? '<button type="button" class="dg-ops-pf-expand" data-dg-no-activity="1" aria-expanded="' +
+          (open ? "true" : "false") +
+          '" title="' +
+          (open ? "Свернуть постановщиков" : "Показать постановщиков") +
+          '"><i class="pe-7s-angle-' +
+          (open ? "down" : "right") +
+          '" aria-hidden="true"></i></button>'
+        : '<button type="button" class="dg-ops-pf-expand" disabled tabindex="-1" data-dg-no-activity="1" aria-hidden="true"><i class="pe-7s-angle-right"></i></button>';
+    var parent =
       '<tr draggable="false" data-ops-status="' +
       escapeHtml(s.status_value) +
       '">' +
@@ -2200,9 +2252,12 @@
       grip +
       "</td>" +
       "<td>" +
+      caret +
+      '<span class="dg-ops-pf-status-name">' +
       (s.status_value
         ? escapeHtml(s.status_value)
         : "без статуса (Planfix не отдал поле)") +
+      "</span>" +
       (s.suggested_bucket && !s.mapped ? ' <span class="text-muted">(предложение)</span>' : "") +
       "</td>" +
       '<td class="dg-ops-num" title="Гистограмма отчёта Planfix 1:1, без отбора постановщик / шаблон КП">' +
@@ -2219,8 +2274,32 @@
       '<td><div class="form-check"><input class="form-check-input dg-ops-pf-count" type="checkbox"' +
       (countOn ? " checked" : "") +
       (shownBucket ? "" : " disabled") +
-      "></div></td></tr>"
-    );
+      "></div></td></tr>";
+    if (!open || !mgrs.length) return parent;
+    var kids = mgrs
+      .map(function (m) {
+        var other = m.name === "(не в заявках листа)" || m.name === "(без постановщика)";
+        return (
+          '<tr class="dg-ops-pf-child" data-ops-child="1" data-ops-parent="' +
+          escapeHtml(s.status_value) +
+          '">' +
+          "<td></td>" +
+          '<td class="dg-ops-pf-child-name' +
+          (other ? " dg-ops-pf-child-other" : "") +
+          '">' +
+          escapeHtml(m.name) +
+          "</td>" +
+          '<td class="dg-ops-num">' +
+          (m.tasks_n_report == null ? "—" : escapeHtml(formatInt(m.tasks_n_report))) +
+          "</td>" +
+          '<td class="dg-ops-num">' +
+          escapeHtml(formatInt(m.tasks_n || 0)) +
+          "</td>" +
+          '<td colspan="2"></td></tr>'
+        );
+      })
+      .join("");
+    return parent + kids;
   }
 
   function findStatusRow(tbody, status) {
@@ -3085,22 +3164,47 @@
     apply();
   }
 
+  function pfMapParentRow(node) {
+    var tr = node && node.closest ? node.closest("tr") : null;
+    if (!tr) return null;
+    if (tr.getAttribute("data-ops-child") === "1") {
+      var p = tr.previousElementSibling;
+      while (p && p.getAttribute("data-ops-child") === "1") p = p.previousElementSibling;
+      return p;
+    }
+    return tr;
+  }
+
+  function pfMapGroup(parent) {
+    var nodes = [parent];
+    var n = parent.nextElementSibling;
+    while (n && n.getAttribute("data-ops-child") === "1") {
+      nodes.push(n);
+      n = n.nextElementSibling;
+    }
+    return nodes;
+  }
+
   function bindPlanfixMapDrag(tbody) {
     var dragRow = null;
+    var dragGroup = [];
     tbody.addEventListener("mousedown", function (ev) {
       var handle = ev.target && ev.target.closest ? ev.target.closest(".dg-ops-pf-drag") : null;
-      var tr = ev.target && ev.target.closest ? ev.target.closest("tr[data-ops-status]") : null;
-      if (tr) tr.draggable = !!handle;
+      var tr = pfMapParentRow(ev.target);
+      if (tr && tr.hasAttribute("data-ops-status")) tr.draggable = !!handle;
     });
     tbody.addEventListener("dragstart", function (ev) {
       var handle = ev.target && ev.target.closest ? ev.target.closest(".dg-ops-pf-drag") : null;
-      var tr = ev.target && ev.target.closest ? ev.target.closest("tr[data-ops-status]") : null;
-      if (!tr || !handle) {
+      var tr = pfMapParentRow(ev.target);
+      if (!tr || !handle || !tr.hasAttribute("data-ops-status")) {
         ev.preventDefault();
         return;
       }
       dragRow = tr;
-      tr.classList.add("dg-ops-pf-dragging");
+      dragGroup = pfMapGroup(tr);
+      dragGroup.forEach(function (n) {
+        n.classList.add("dg-ops-pf-dragging");
+      });
       try {
         ev.dataTransfer.effectAllowed = "move";
         ev.dataTransfer.setData("text/plain", tr.getAttribute("data-ops-status") || "");
@@ -3112,23 +3216,57 @@
       try {
         ev.dataTransfer.dropEffect = "move";
       } catch (e2) {}
-      var over = ev.target && ev.target.closest ? ev.target.closest("tr[data-ops-status]") : null;
-      if (!over || over === dragRow) return;
+      var over = pfMapParentRow(ev.target);
+      if (!over || over === dragRow || dragGroup.indexOf(over) >= 0) return;
+      if (!over.hasAttribute("data-ops-status")) return;
+      var overGroup = pfMapGroup(over);
       var rect = over.getBoundingClientRect();
       var before = ev.clientY < rect.top + rect.height / 2;
-      if (before) tbody.insertBefore(dragRow, over);
-      else tbody.insertBefore(dragRow, over.nextSibling);
+      if (before) {
+        dragGroup.forEach(function (n) {
+          tbody.insertBefore(n, over);
+        });
+      } else {
+        var ref = overGroup[overGroup.length - 1].nextSibling;
+        dragGroup.forEach(function (n) {
+          tbody.insertBefore(n, ref);
+        });
+      }
     });
     tbody.addEventListener("drop", function (ev) {
       ev.preventDefault();
     });
     tbody.addEventListener("dragend", function () {
-      if (dragRow) dragRow.classList.remove("dg-ops-pf-dragging");
+      dragGroup.forEach(function (n) {
+        n.classList.remove("dg-ops-pf-dragging");
+      });
       dragRow = null;
+      dragGroup = [];
       tbody.querySelectorAll("tr[data-ops-status]").forEach(function (tr) {
         tr.draggable = false;
       });
       if (state.can_write) savePlanfixMap({ silent: true });
+    });
+  }
+
+  function bindPlanfixMapExpand(tbody) {
+    tbody.addEventListener("click", function (ev) {
+      var t = ev.target;
+      if (!t || !t.closest) return;
+      if (t.closest("select, input, a, .dg-ops-pf-drag, .dg-ops-pf-grip-td, .form-check")) return;
+      var td = t.closest("td");
+      if (td && td.querySelector("select, input")) return;
+      var child = t.closest("tr.dg-ops-pf-child");
+      var tr = t.closest("tr[data-ops-status]");
+      if (child || !tr || tr.getAttribute("data-ops-sep") === "1") return;
+      var st = tr.getAttribute("data-ops-status") || "";
+      var row = (state.pf.statuses || []).find(function (s) {
+        return s.status_value === st;
+      });
+      if (!row || !(row.managers || []).length) return;
+      if (state.pfExpanded[st]) delete state.pfExpanded[st];
+      else state.pfExpanded[st] = 1;
+      renderPlanfixPanel();
     });
   }
 
@@ -3170,6 +3308,7 @@
         else chk.checked = true;
       });
       bindPlanfixMapDrag(tbody);
+      bindPlanfixMapExpand(tbody);
     }
     function commitPfTasks() {
       var inp = el("dg-ops-pf-tasks-search");

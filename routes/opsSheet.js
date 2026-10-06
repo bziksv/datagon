@@ -1298,6 +1298,83 @@ async function enrichFromDealStatusReport(appSettings, db, onProgress, year, mon
     };
 }
 
+function assignerLabel(name, joined) {
+    if (!joined) return '(не в заявках листа)';
+    const t = String(name || '').trim();
+    return t || '(без постановщика)';
+}
+
+function mergeStatusManagers(sheetBy, reportBy, hasReportCounts) {
+    const out = {};
+    const statuses = new Set([...Object.keys(sheetBy || {}), ...Object.keys(reportBy || {})]);
+    statuses.forEach((st) => {
+        const names = new Set([
+            ...Object.keys((sheetBy && sheetBy[st]) || {}),
+            ...Object.keys((reportBy && reportBy[st]) || {}),
+        ]);
+        const rows = [...names]
+            .map((name) => ({
+                name,
+                tasks_n: Number((sheetBy && sheetBy[st] && sheetBy[st][name]) || 0) || 0,
+                tasks_n_report: hasReportCounts
+                    ? Number((reportBy && reportBy[st] && reportBy[st][name]) || 0) || 0
+                    : null,
+            }))
+            .sort((a, b) => String(a.name).localeCompare(String(b.name), 'ru'));
+        out[st] = rows;
+    });
+    return out;
+}
+
+async function loadStatusManagerBreakdown(db, bounds, { periodScoped, hasReportCounts }) {
+    const sheetBy = {};
+    const [sheetRows] = await db.query(
+        `SELECT status_value, assigner_name, COUNT(*) AS n
+           FROM dg_ops_planfix_tasks
+          WHERE created_at >= ? AND created_at < ?
+          GROUP BY status_value, assigner_name`,
+        [bounds.fromSql, bounds.toSql]
+    );
+    (sheetRows || []).forEach((r) => {
+        const st = String(r.status_value || '');
+        const name = assignerLabel(r.assigner_name, true);
+        if (!sheetBy[st]) sheetBy[st] = {};
+        sheetBy[st][name] = (sheetBy[st][name] || 0) + (Number(r.n) || 0);
+    });
+    const reportBy = {};
+    if (hasReportCounts) {
+        try {
+            const nameExpr = `CASE
+                    WHEN t.task_id IS NULL THEN '(не в заявках листа)'
+                    WHEN TRIM(IFNULL(t.assigner_name,'')) = '' THEN '(без постановщика)'
+                    ELSE t.assigner_name
+                 END`;
+            const sql = periodScoped
+                ? `SELECT r.status_value, ${nameExpr} AS assigner_name, COUNT(*) AS n
+                     FROM dg_ops_planfix_report_task r
+                     LEFT JOIN dg_ops_planfix_tasks t ON t.task_id = r.task_id
+                    GROUP BY r.status_value, ${nameExpr}`
+                : `SELECT r.status_value, ${nameExpr} AS assigner_name, COUNT(*) AS n
+                     FROM dg_ops_planfix_report_task r
+                     INNER JOIN dg_ops_planfix_task_dates d ON d.task_id = r.task_id
+                     LEFT JOIN dg_ops_planfix_tasks t ON t.task_id = r.task_id
+                    WHERE d.created_at >= ? AND d.created_at < ?
+                    GROUP BY r.status_value, ${nameExpr}`;
+            const args = periodScoped ? [] : [bounds.fromSql, bounds.toSql];
+            const [rr] = await db.query(sql, args);
+            (rr || []).forEach((r) => {
+                const st = String(r.status_value || '');
+                const name = String(r.assigner_name || '(не в заявках листа)');
+                if (!reportBy[st]) reportBy[st] = {};
+                reportBy[st][name] = (reportBy[st][name] || 0) + (Number(r.n) || 0);
+            });
+        } catch (e) {
+            if (!(e && (e.errno === 1146 || /doesn't exist/i.test(String(e.message || ''))))) throw e;
+        }
+    }
+    return mergeStatusManagers(sheetBy, reportBy, hasReportCounts);
+}
+
 async function loadPlanfixPanel(db, year, managers, month) {
     const m = month == null ? 0 : month;
     const b = pf.periodBounds(year, m);
@@ -1333,14 +1410,16 @@ async function loadPlanfixPanel(db, year, managers, month) {
     let reportCountRows = [];
     let reportMeta = null;
     let hasReportCounts = false;
+    let periodScoped = false;
     try {
         const metaRow = await loadReportMeta(db);
         const reqMonth = Number(b.month) || 0;
-        const periodScoped =
+        periodScoped = !!(
             metaRow &&
             String(metaRow.scope || '') === 'period' &&
             Number(metaRow.year) === Number(year) &&
-            Number(metaRow.month) === reqMonth;
+            Number(metaRow.month) === reqMonth
+        );
         if (periodScoped) {
             // Сейв сгенерирован при синке этого месяца (период в Planfix UI) — гистограмма 1:1 с Planfix.
             const [rr] = await db.query(
@@ -1404,6 +1483,7 @@ async function loadPlanfixPanel(db, year, managers, month) {
         reportBy[k] = n;
         reportTotal += n;
     });
+    const mgrByStatus = await loadStatusManagerBreakdown(db, b, { periodScoped, hasReportCounts });
     const names = {};
     const catMeta = {};
     const catOrder = [];
@@ -1456,6 +1536,7 @@ async function loadPlanfixPanel(db, year, managers, month) {
                 tasks_in_year: isSep ? 0 : countBy[status_value] || 0,
                 tasks_n: isSep ? 0 : countBy[status_value] || 0,
                 tasks_n_report: isSep ? 0 : hasReportCounts ? reportBy[status_value] || 0 : null,
+                managers: isSep ? [] : mgrByStatus[status_value] || [],
                 bucket: isSep ? '' : bucket,
                 suggested_bucket: isSep ? '' : suggested,
                 count_in_apps: isSep ? false : countIn,

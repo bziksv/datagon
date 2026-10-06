@@ -2176,7 +2176,7 @@ Body: `year`, `month`, `manager_user_id` + `coefficient` / `bonus_past` / `salar
 
 ### GET `/api/ops-sheet/planfix`
 
-Query: `year`, `month` (`0` = весь год, `1–12` = месяц). Локальная панель статусов **за период**: `statuses[]` (`status_value`, `tasks_n` / `tasks_in_year` — заявки листа: постановщик=менеджер продаж, без фильтра шаблона КП; `bucket`, `suggested_bucket`, `count_in_apps`, `mapped`), `buckets`, `unmatched_assigners`, `local_total`, `empty_status`, `with_status`, `period`, `last_synced_at`, `sync_script`. Поля `tasks_n_report` / `report_total` / `report_meta` — гистограмма отчёта.
+Query: `year`, `month` (`0` = весь год, `1–12` = месяц). Локальная панель статусов **за период**: `statuses[]` (`status_value`, `tasks_n` / `tasks_in_year` — заявки листа: постановщик=менеджер продаж, без фильтра шаблона КП; `managers[]` — разворот по постановщику `{ name, tasks_n, tasks_n_report }`; `bucket`, `suggested_bucket`, `count_in_apps`, `mapped`), `buckets`, `unmatched_assigners`, `local_total`, `empty_status`, `with_status`, `period`, `last_synced_at`, `sync_script`. Поля `tasks_n_report` / `report_total` / `report_meta` — гистограмма отчёта.
 
 ### GET `/api/ops-sheet/planfix-tasks`
 
