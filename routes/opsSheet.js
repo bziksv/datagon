@@ -856,11 +856,9 @@ async function findDealStatusReport(appSettings, onProgress) {
 
 function pickBestReportSave(saves) {
     const arr = (saves || []).filter((s) => s && s.id);
-    arr.sort((a, b) => {
-        const cc = (Number(b.chunksCount) || 0) - (Number(a.chunksCount) || 0);
-        if (cc) return cc;
-        return Number(b.id) - Number(a.id);
-    });
+    // Свежий сейв, не самый толстый: иначе год 2024 берёт старый dump на 25 чанков (Поставщик 23722)
+    // вместо generate на 18 чанков (22912 как в Planfix).
+    arr.sort((a, b) => Number(b.id) - Number(a.id));
     return arr[0] || null;
 }
 
@@ -1161,14 +1159,6 @@ async function enrichFromDealStatusReport(appSettings, db, onProgress, year, mon
             const fields = pf.collectReportFields(det);
             if (!fields.some((f) => pf.isStatusFieldName(f && f.name))) continue;
 
-            let listed = [];
-            try {
-                listed = await listReportSaves(appSettings, id);
-            } catch (_) {
-                listed = [];
-            }
-            const bestListed = pickBestReportSave(listed);
-
             try {
                 const fresh = await generateDealStatusReport(appSettings, id, onProgress);
                 if (fresh && fresh.id) {
@@ -1179,22 +1169,11 @@ async function enrichFromDealStatusReport(appSettings, db, onProgress, year, mon
             } catch (e) {
                 generate_error = e && e.message ? e.message : String(e);
             }
+            // Не подставляем «самый толстый» исторический сейв: dump на 25 чанков даёт Поставщик 23722
+            // при 22912 в Planfix за 2024. Только свежий generate (или ниже — повторный generate).
             if (!save || !save.id) {
-                save = bestListed;
-            } else if (
-                bestListed &&
-                Number(bestListed.id) !== Number(save.id) &&
-                (Number(save.chunksCount) || 0) <= 1 &&
-                Number(bestListed.chunksCount) > 1
-            ) {
-                // Одночанковый generate (как сейв 54 = 413 строк) не затирает толстый сейв.
-                if (typeof onProgress === 'function') {
-                    onProgress(
-                        `Generate ${id} сейв ${save.id} — 1 чанк, берём сейв ${bestListed.id} (${bestListed.chunksCount} чанков)`
-                    );
-                }
-                save = bestListed;
-                localGenerated = false;
+                generate_error = generate_error || 'Generate отчёта не вернул сейв';
+                continue;
             }
         } catch (e) {
             generate_error = e && e.message ? e.message : String(e);
