@@ -931,44 +931,59 @@ async function generateDealStatusReport(appSettings, reportId, onProgress) {
     const gen = await restJson(appSettings, 'POST', `/report/${reportId}/generate`, {}, 30000);
     const requestId = gen && gen.requestId;
     if (!requestId) return null;
-    for (let i = 0; i < 40; i += 1) {
-        await sleep(3000);
+    const pollMs = 5000;
+    const maxMs = 30 * 60 * 1000;
+    const t0 = Date.now();
+    let i = 0;
+    let lastStatus = '';
+    while (Date.now() - t0 < maxMs) {
+        throwIfPfSyncCancelled();
+        await sleep(pollMs);
+        i += 1;
+        const elapsed = Math.round((Date.now() - t0) / 1000);
         const st = await restJson(appSettings, 'GET', `/report/status/${requestId}`, null, 20000);
+        lastStatus = st && st.status ? String(st.status) : '';
         if (typeof onProgress === 'function') {
-            onProgress(`Отчёт ${reportId}: ${st && st.status ? st.status : '…'} (${i + 1}/40)`);
+            onProgress(`Отчёт ${reportId}: ${lastStatus || '…'} (опрос ${i}, ${elapsed} с / 30 мин)`);
         }
         const save = st && (st.save || st.reportSave);
         if (st && st.status === 'ready' && save && save.id) return normalizeReportSave(save);
         if (st && st.status && st.status !== 'in_progress' && st.status !== 'processing') {
             if (save && save.id) return normalizeReportSave(save);
-            return null;
+            break;
         }
+    }
+    if (typeof onProgress === 'function') {
+        onProgress(
+            `Отчёт ${reportId}: generate не ready за 30 мин (${lastStatus || 'timeout'}) — без подстановки старого сейва`
+        );
     }
     return null;
 }
 
 async function generateDealStatusReportRetry(appSettings, reportId, onProgress) {
     let lastErr = null;
-    for (let attempt = 1; attempt <= 10; attempt += 1) {
+    for (let attempt = 1; attempt <= 4; attempt += 1) {
         throwIfPfSyncCancelled();
         try {
             const save = await generateDealStatusReport(appSettings, reportId, onProgress);
             if (save && save.id) return save;
-            lastErr = new Error('Generate отчёта не вернул сейв');
+            lastErr = new Error('Generate отчёта не вернул сейв за 30 мин');
         } catch (e) {
             lastErr = e;
-            if (!isPlanfixReportRateLimit(e) || attempt === 10) throw e;
+            if (e && e.code === 'PF_SYNC_CANCELLED') throw e;
+            if (!isPlanfixReportRateLimit(e) || attempt === 4) throw e;
             if (typeof onProgress === 'function') {
                 onProgress(
-                    `Planfix не даёт generate (лимит 10 мин или уже идёт). Ждём 70 с, попытка ${attempt}/10`
+                    `Planfix не даёт generate (лимит 10 мин или уже идёт). Ждём 70 с, попытка ${attempt}/4`
                 );
             }
             await sleep(70000);
             continue;
         }
-        if (attempt === 10) break;
+        if (attempt === 4) break;
         if (typeof onProgress === 'function') {
-            onProgress(`Generate без сейва — повтор ${attempt}/10 через 70 с`);
+            onProgress(`Generate без сейва — повтор ${attempt}/4 через 70 с`);
         }
         await sleep(70000);
     }

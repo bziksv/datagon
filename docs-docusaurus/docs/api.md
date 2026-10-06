@@ -2194,7 +2194,7 @@ Query: `year`, `month`, `q` (номер / постановщик / статус)
 
 Только `full`. Body: `{ year, month }`. Ответ сразу `{ success: true, started: true, …planfix-sync-status }` — работа **в фоне**. UI опрашивает `GET /planfix-sync-status` до `active: false`.
 
-Один прогон: сотрудники → постановщики «Менеджер по продажам» → `POST /task/list` за период (без фильтра шаблона КП) → системный статус → generate отчёта **450694**. `POST /report/{id}/generate` **дат в теле не принимает**. Год 20–30 мин. Остановка — `POST /planfix-sync-cancel`.
+Один прогон: сотрудники → постановщики «Менеджер по продажам» → `POST /task/list` за период (без фильтра шаблона КП) → системный статус → generate отчёта **450694** (без fallback на 450690). Опрос generate до **30 мин**. `POST /report/{id}/generate` **дат в теле не принимает**. Год 20–30 мин. Остановка — `POST /planfix-sync-cancel`.
 
 Перед синком в UI Planfix у отчёта выставьте тот же период (API generate даты не принимает). Обрыв TLS Planfix повторяется до 4 раз.
 
