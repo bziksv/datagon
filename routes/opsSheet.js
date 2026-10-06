@@ -864,6 +864,40 @@ function pickBestReportSave(saves) {
     return arr[0] || null;
 }
 
+function normalizeReportSave(save) {
+    if (!save || !save.id) return null;
+    const chunks = Number(save.chunksCount);
+    return {
+        id: Number(save.id),
+        chunksCount: Number.isFinite(chunks) && chunks > 0 ? chunks : 0,
+        name: save.name || '',
+    };
+}
+
+async function listReportSaves(appSettings, reportId) {
+    const list = await restJson(
+        appSettings,
+        'POST',
+        `/report/${reportId}/save/list`,
+        { offset: 0, pageSize: 20, fields: 'id,name,dateTime,chunksCount' },
+        20000
+    );
+    return pf.collectReportSaves(list).map(normalizeReportSave).filter(Boolean);
+}
+
+async function resolveSaveChunks(appSettings, reportId, save) {
+    const s = normalizeReportSave(save);
+    if (!s) return null;
+    if (s.chunksCount > 0) return s;
+    try {
+        const found = (await listReportSaves(appSettings, reportId)).find((x) => x.id === s.id);
+        if (found && found.chunksCount > 0) s.chunksCount = found.chunksCount;
+    } catch (_) {
+        /* чанки дочитаем до пустого */
+    }
+    return s;
+}
+
 async function generateDealStatusReport(appSettings, reportId, onProgress) {
     if (typeof onProgress === 'function') {
         onProgress(`Генерируем отчёт Planfix ${reportId} («${pf.STATUS_FIELD_NAME}»)`);
@@ -878,9 +912,9 @@ async function generateDealStatusReport(appSettings, reportId, onProgress) {
             onProgress(`Отчёт ${reportId}: ${st && st.status ? st.status : '…'} (${i + 1}/40)`);
         }
         const save = st && (st.save || st.reportSave);
-        if (st && st.status === 'ready' && save && save.id) return save;
+        if (st && st.status === 'ready' && save && save.id) return normalizeReportSave(save);
         if (st && st.status && st.status !== 'in_progress' && st.status !== 'processing') {
-            if (save && save.id) return save;
+            if (save && save.id) return normalizeReportSave(save);
             return null;
         }
     }
@@ -888,16 +922,17 @@ async function generateDealStatusReport(appSettings, reportId, onProgress) {
 }
 
 async function readDealStatusReportPairs(appSettings, reportId, save, onProgress) {
-    let chunks = Math.max(1, Number(save && save.chunksCount) || 1);
+    const known = Number(save && save.chunksCount) || 0;
     const byTask = new Map();
     const unique = [];
     let hint = {};
     let c = 0;
-    // chunksCount в list иногда врёт/пустой — читаем, пока чанки не кончатся (потолок 40).
-    const maxChunks = Math.max(chunks, 40);
+    const maxChunks = known > 0 ? known : 80;
     for (; c < maxChunks; c += 1) {
         if (typeof onProgress === 'function') {
-            onProgress(`Читаем «${pf.STATUS_FIELD_NAME}»: чанк ${c + 1}/${chunks > 1 ? chunks : '?'}`);
+            onProgress(
+                `Читаем «${pf.STATUS_FIELD_NAME}»: чанк ${c + 1}/${known > 0 ? known : '?'}`
+            );
         }
         let payload;
         try {
@@ -915,15 +950,12 @@ async function readDealStatusReportPairs(appSettings, reportId, save, onProgress
         const parsed = pf.parseDealStatusReportRows(payload, hint);
         hint = { taskIdx: parsed.taskIdx, statusIdx: parsed.statusIdx };
         const pairs = parsed.pairs || [];
-        if (!pairs.length && c > 0) break;
-        if (!pairs.length && c === 0) break;
+        if (!pairs.length) break;
         pairs.forEach((p) => {
             byTask.set(p.task_id, p.status_value);
             if (unique.indexOf(p.status_value) < 0) unique.push(p.status_value);
         });
-        if (Number(save && save.chunksCount) > 0 && c + 1 >= Number(save.chunksCount)) break;
-        // если chunksCount не задан — продолжаем до пустого чанка
-        if (!(Number(save && save.chunksCount) > 0) && pairs.length < 10 && c > 0) break;
+        if (known > 0 && c + 1 >= known) break;
     }
     return { byTask, unique, chunks: Math.max(1, c), save_id: save.id };
 }
@@ -1105,10 +1137,9 @@ async function reportOverlapsLocalPeriod(db, byTask, year, month) {
 
 async function enrichFromDealStatusReport(appSettings, db, onProgress, year, month) {
     const ids = pf.DEAL_STATUS_REPORT_IDS || [450694];
-    // И месяц, и «весь год»: всегда generate. Период только в UI Planfix (API дат не принимает).
-    // Толстый сейв + срез по датам занижает гистограмму (год: Поставщик 4704 вместо цифр Planfix).
+    // Период generate API не принимает (swagger: тело пустое) — даты как в UI Planfix.
+    // Только первый подходящий отчёт. Второй (450690) одночанковый: раньше затирал 25 чанков 450694.
     const periodMonth = Number(month) >= 1 && Number(month) <= 12 ? Number(month) : 0;
-    const forcePeriodGenerate = true;
     const merged = new Map();
     const unique = [];
     const used = [];
@@ -1130,32 +1161,47 @@ async function enrichFromDealStatusReport(appSettings, db, onProgress, year, mon
             const fields = pf.collectReportFields(det);
             if (!fields.some((f) => pf.isStatusFieldName(f && f.name))) continue;
 
+            let listed = [];
+            try {
+                listed = await listReportSaves(appSettings, id);
+            } catch (_) {
+                listed = [];
+            }
+            const bestListed = pickBestReportSave(listed);
+
             try {
                 const fresh = await generateDealStatusReport(appSettings, id, onProgress);
                 if (fresh && fresh.id) {
                     localGenerated = true;
                     generated = true;
-                    save = { id: fresh.id, chunksCount: Number(fresh.chunksCount) || 1 };
+                    save = await resolveSaveChunks(appSettings, id, fresh);
                 }
             } catch (e) {
                 generate_error = e && e.message ? e.message : String(e);
             }
             if (!save || !save.id) {
-                const list = await restJson(
-                    appSettings,
-                    'POST',
-                    `/report/${id}/save/list`,
-                    { offset: 0, pageSize: 20, fields: 'id,name,dateTime,chunksCount' },
-                    20000
-                );
-                save = pickBestReportSave(pf.collectReportSaves(list));
+                save = bestListed;
+            } else if (
+                bestListed &&
+                Number(bestListed.id) !== Number(save.id) &&
+                (Number(save.chunksCount) || 0) <= 1 &&
+                Number(bestListed.chunksCount) > 1
+            ) {
+                // Одночанковый generate (как сейв 54 = 413 строк) не затирает толстый сейв.
+                if (typeof onProgress === 'function') {
+                    onProgress(
+                        `Generate ${id} сейв ${save.id} — 1 чанк, берём сейв ${bestListed.id} (${bestListed.chunksCount} чанков)`
+                    );
+                }
+                save = bestListed;
+                localGenerated = false;
             }
         } catch (e) {
             generate_error = e && e.message ? e.message : String(e);
             continue;
         }
         if (!save || !save.id) continue;
-        if (!save.chunksCount) save.chunksCount = 1;
+        save = await resolveSaveChunks(appSettings, id, save);
         let read = await readDealStatusReportPairs(appSettings, id, save, onProgress);
         let overlaps = year
             ? await reportOverlapsLocalPeriod(db, read.byTask, year, month)
@@ -1171,8 +1217,7 @@ async function enrichFromDealStatusReport(appSettings, db, onProgress, year, mon
                 if (fresh && fresh.id) {
                     localGenerated = true;
                     generated = true;
-                    save = { id: fresh.id, chunksCount: Number(fresh.chunksCount) || 1 };
-                    if (!save.chunksCount) save.chunksCount = 1;
+                    save = await resolveSaveChunks(appSettings, id, fresh);
                     read = await readDealStatusReportPairs(appSettings, id, save, onProgress);
                     overlaps = await reportOverlapsLocalPeriod(db, read.byTask, year, month);
                 }
@@ -1183,29 +1228,6 @@ async function enrichFromDealStatusReport(appSettings, db, onProgress, year, mon
         const score = pf.scoreDealStatusUniques(read.unique);
         if (score < 1) continue;
         const dealUniques = (read.unique || []).filter((s) => s && !pf.isPlanfixProcessStatusName(s));
-
-        if (localGenerated) {
-            // Только свежий сейв периода — не мержим толстые исторические.
-            merged.clear();
-            unique.length = 0;
-            used.length = 0;
-            read.byTask.forEach((val, tid) => {
-                if (!val || pf.isPlanfixProcessStatusName(val)) return;
-                merged.set(tid, val);
-            });
-            dealUniques.forEach((s) => {
-                if (unique.indexOf(s) < 0) unique.push(s);
-            });
-            used.push({
-                report_id: id,
-                save_id: read.save_id,
-                chunks: read.chunks,
-                report_rows: read.byTask.size,
-                score,
-                covers_period: true,
-            });
-            break;
-        }
 
         read.byTask.forEach((val, tid) => {
             if (!val || pf.isPlanfixProcessStatusName(val)) return;
@@ -1220,8 +1242,10 @@ async function enrichFromDealStatusReport(appSettings, db, onProgress, year, mon
             chunks: read.chunks,
             report_rows: read.byTask.size,
             score,
-            covers_period: !!overlaps,
+            covers_period: localGenerated ? true : !!overlaps,
         });
+        // Первый годный отчёт — стоп. Не идём в 450690 (1 чанк), он затирал гистограмму.
+        break;
     }
     if (!used.length) {
         const err = new Error(
