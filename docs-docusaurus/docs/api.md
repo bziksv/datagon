@@ -89,7 +89,7 @@ description: Справочник REST-эндпоинтов p.datagon.ru (осн
 - `/api/product` -> `routes/product.js` (Карточка товара: `ms_export` + `ms_entity_details` + продажи + `dg_bundle_components`; лог отсутствий — пакетно после синка МС: `stock≤0` или для базового кода `stock` < min суффикса в `код-число`, см. `syncZeroStockLogAfterMoyskladExport`; снимки остатка по дням — `dg_product_stock_snapshot`, см. `syncProductStockSnapshotsAfterMoyskladExport` — оба вызываются из `routes/moysklad.js` после сохранения `ms_export`)
 - `/api/activity` -> `routes/activity.js`
 - `/api/db-admin` -> `routes/dbAdmin.js` (Управление БД: размеры таблиц, связи, превью, ANALYZE/OPTIMIZE)
-- `/api/finance` -> `routes/finance.js` (Финансы / Точка: JWT, счета, балансы, проводки; только чтение)
+- `/api/finance` -> `routes/finance.js` (Финансы: Точка JWT + Райф Open API, счета, балансы, проводки; только чтение)
 - `/api/manager-sales` -> `routes/managerSales.js` (Таблицы менеджеров: годовой журнал оплат `dg_manager_sales_rows`)
 - `/api/ops-sheet` -> `routes/opsSheet.js` (Операционный лист: свод + Planfix-заявки `dg_ops_planfix_tasks`)
 - `GET /api/processes/overview`, `POST /api/sync-all-start`, `POST /api/sync-site-start`, `GET /api/sync-status` -> `server.js`
@@ -2206,29 +2206,35 @@ Query: `year`, `month`, `q` (номер / постановщик / статус)
 
 ## Финансы
 
-Страница `/finance.html`, роутер `routes/finance.js`, клиент `lib/datagonTochkaClient.js`, учётные записи `lib/datagonFinanceCredentials.js`. Банк **Точка**, JWT из кабинета (Bearer). Только чтение. Матрица: ключ **`finance`**. POST config/sync — только **`full`**.
+Страница `/finance.html`, роутер `routes/finance.js`, клиенты `lib/datagonTochkaClient.js` и `lib/datagonRaiffeisenClient.js`, учётные записи `lib/datagonFinanceCredentials.js`. Банки **Точка** (JWT) и **Райффайзен** (`client_id` / `client_secret` / `refresh_token`). Только чтение. Матрица: ключ **`finance`**. POST config/sync — только **`full`**.
 
-**Несколько организаций:** `app_settings.finance_tochka_credentials` (JSON). Legacy `finance_tochka_jwt` мигрирует в первую запись. Синк идёт по всем `enabled` ключам. JWT **не** в `GET /api/settings`.
+**Несколько организаций Точки:** `app_settings.finance_tochka_credentials` (JSON). Legacy `finance_tochka_jwt` мигрирует в первую запись. Синк идёт по всем `enabled` ключам. JWT **не** в `GET /api/settings`.
 
-**Ограничение:** Open Banking отдаёт только банковские счета. Фонды без API — ручная пометка на карточке (`is_fund`, `custom_name`).
+**Райффайзен:** `app_settings.finance_raiffeisen_credentials`. Refresh обменивается на access/id token через `sso.rbo.raiffeisen.ru`; новый refresh сохраняется. Счета и проводки в тех же таблицах с `bank='raiffeisen'`. «Обновить все» тянет оба банка.
 
-Таблицы: `dg_finance_accounts` (`credential_id`, `org_label`, `is_fund`, `custom_name`, …), `dg_finance_tx`.
+**Ограничение:** Open Banking Точки отдаёт только банковские счета. Фонды без API — ручная пометка на карточке (`is_fund`, `custom_name`).
+
+Таблицы: `dg_finance_accounts` (`bank`, `credential_id`, `org_label`, `is_fund`, `custom_name`, …), `dg_finance_tx`.
 
 ### GET `/api/finance/config`
 
-`{ success, configured, credentials: [{ id, label, enabled, jwt_mask, jwt_len, customer_codes, customer_names }], can_write, sync }`.
+`{ success, configured, credentials: [{ id, label, enabled, jwt_mask, jwt_len, customer_codes, customer_names }], raiffeisen_credentials: [{ id, label, enabled, client_id, client_secret_mask, refresh_token_mask, configured, customer_codes, customer_names }], can_write, sync }`.
 
 ### POST `/api/finance/config`
+
+Точка (по умолчанию):
 
 - `{ "action": "upsert", "label", "jwt", "id?" }` — добавить/обновить ключ (при upsert без id — новая запись; с id — правка)
 - `{ "action": "delete", "id" }`
 - `{ "action": "toggle", "id", "enabled" }`
 - legacy `{ "jwt", "label?" }` — upsert первой/новой
-- `{ "clear": true }` — очистить все
+- `{ "clear": true }` — очистить JWT Точки
+
+Райф: `{ "bank": "raiffeisen", "action": "upsert"|"delete"|"toggle", … }` (`client_id`, `client_secret`, `refresh_token`, `label`, `id`).
 
 ### GET `/api/finance/probe`
 
-Опционально `?credential_id=`. Ответ: `{ count, credentials_probed, results[], consent_gaps, api_note }`.
+Опционально `?credential_id=` и `?bank=tochka|raiffeisen`. Ответ: `{ count, credentials_probed, results[], consent_gaps, api_note }`.
 
 ### GET `/api/finance/accounts`
 

@@ -40,6 +40,8 @@ module.exports = (db, appSettings) => {
     router.get('/', async (req, res) => {
         const out = Object.assign({}, appSettings);
         delete out.finance_tochka_jwt;
+        delete out.finance_tochka_credentials;
+        delete out.finance_raiffeisen_credentials;
         return res.json(out);
     });
 

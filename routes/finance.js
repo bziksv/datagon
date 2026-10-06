@@ -1,8 +1,9 @@
 /**
- * Финансы: несколько JWT Точки (по организациям), счета/балансы, проводки (только чтение).
+ * Финансы: JWT Точки и Open API Райффайзен (счета/балансы/проводки, только чтение).
  */
 const express = require('express');
 const tochka = require('../lib/datagonTochkaClient');
+const raiff = require('../lib/datagonRaiffeisenClient');
 const finCred = require('../lib/datagonFinanceCredentials');
 
 const DEFAULT_TX_DAYS = 30;
@@ -200,6 +201,81 @@ async function probeOneCredential(cred) {
     };
 }
 
+async function upsertFinanceAccount(db, bank, acc) {
+    await db.query(
+        `INSERT INTO dg_finance_accounts
+            (bank, account_id, account_number, currency, name, status, account_type, account_sub_type, customer_code, credential_id, org_label, balance, available, blocked, synced_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+         ON DUPLICATE KEY UPDATE
+            account_number = VALUES(account_number),
+            currency = VALUES(currency),
+            name = VALUES(name),
+            status = VALUES(status),
+            account_type = VALUES(account_type),
+            account_sub_type = VALUES(account_sub_type),
+            customer_code = VALUES(customer_code),
+            credential_id = VALUES(credential_id),
+            org_label = VALUES(org_label),
+            balance = VALUES(balance),
+            available = VALUES(available),
+            blocked = VALUES(blocked),
+            synced_at = VALUES(synced_at)`,
+        [
+            bank,
+            acc.account_id,
+            acc.account_number,
+            acc.currency,
+            acc.name,
+            acc.status,
+            acc.account_type,
+            acc.account_sub_type || '',
+            acc.customer_code || '',
+            acc.credential_id,
+            acc.org_label,
+            acc.balance,
+            acc.available,
+            acc.blocked,
+        ]
+    );
+}
+
+async function upsertFinanceTx(db, bank, tx) {
+    const bookedDate = parseBookedDate(tx.booked_at);
+    await db.query(
+        `INSERT INTO dg_finance_tx
+            (bank, tx_id, account_id, booked_at, booked_date, amount, amount_abs, direction, currency, purpose, counterparty, counterparty_inn, document_number, synced_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+         ON DUPLICATE KEY UPDATE
+            account_id = VALUES(account_id),
+            booked_at = VALUES(booked_at),
+            booked_date = VALUES(booked_date),
+            amount = VALUES(amount),
+            amount_abs = VALUES(amount_abs),
+            direction = VALUES(direction),
+            currency = VALUES(currency),
+            purpose = VALUES(purpose),
+            counterparty = VALUES(counterparty),
+            counterparty_inn = VALUES(counterparty_inn),
+            document_number = VALUES(document_number),
+            synced_at = VALUES(synced_at)`,
+        [
+            bank,
+            String(tx.tx_id).slice(0, 160),
+            tx.account_id,
+            String(tx.booked_at || '').slice(0, 40),
+            bookedDate,
+            tx.amount,
+            tx.amount_abs,
+            tx.direction,
+            tx.currency,
+            tx.purpose,
+            String(tx.counterparty || '').slice(0, 512),
+            String(tx.counterparty_inn || '').slice(0, 32),
+            String(tx.document_number || '').slice(0, 64),
+        ]
+    );
+}
+
 function parseYmd(s) {
     const v = String(s || '').trim();
     return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : '';
@@ -352,40 +428,21 @@ async function syncOneCredential(db, cred, opts) {
         const displayName =
             (customerRaw ? customerRaw + ' · ' : accountOrgLabel ? accountOrgLabel + ' · ' : '') +
             (acc.account_sub_type_label || tochka.accountSubTypeLabel(acc.account_sub_type) || 'Счёт');
-        await db.query(
-            `INSERT INTO dg_finance_accounts
-                (bank, account_id, account_number, currency, name, status, account_type, account_sub_type, customer_code, credential_id, org_label, balance, available, blocked, synced_at)
-             VALUES ('tochka', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
-             ON DUPLICATE KEY UPDATE
-                account_number = VALUES(account_number),
-                currency = VALUES(currency),
-                name = VALUES(name),
-                status = VALUES(status),
-                account_type = VALUES(account_type),
-                account_sub_type = VALUES(account_sub_type),
-                customer_code = VALUES(customer_code),
-                credential_id = VALUES(credential_id),
-                org_label = VALUES(org_label),
-                balance = VALUES(balance),
-                available = VALUES(available),
-                blocked = VALUES(blocked),
-                synced_at = VALUES(synced_at)`,
-            [
-                acc.account_id,
-                acc.account_number,
-                acc.currency || bal.currency || 'RUB',
-                displayName,
-                acc.status,
-                acc.account_type,
-                acc.account_sub_type || '',
-                acc.customer_code || '',
-                cred.id,
-                accountOrgLabel,
-                bal.balance,
-                bal.available,
-                bal.blocked,
-            ]
-        );
+        await upsertFinanceAccount(db, 'tochka', {
+            account_id: acc.account_id,
+            account_number: acc.account_number,
+            currency: acc.currency || bal.currency || 'RUB',
+            name: displayName,
+            status: acc.status,
+            account_type: acc.account_type,
+            account_sub_type: acc.account_sub_type || '',
+            customer_code: acc.customer_code || '',
+            credential_id: cred.id,
+            org_label: accountOrgLabel,
+            balance: bal.balance,
+            available: bal.available,
+            blocked: bal.blocked,
+        });
         accountsOk += 1;
         if (skipTx) continue;
         try {
@@ -401,39 +458,7 @@ async function syncOneCredential(db, cred, opts) {
             const st = await tochka.fetchStatement(jwt, acc.account_id, startYmd, endYmd);
             const txs = tochka.flattenTransactions(st.statement, acc.account_id);
             for (const tx of txs) {
-                const bookedDate = parseBookedDate(tx.booked_at);
-                await db.query(
-                    `INSERT INTO dg_finance_tx
-                        (bank, tx_id, account_id, booked_at, booked_date, amount, amount_abs, direction, currency, purpose, counterparty, counterparty_inn, document_number, synced_at)
-                     VALUES ('tochka', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
-                     ON DUPLICATE KEY UPDATE
-                        account_id = VALUES(account_id),
-                        booked_at = VALUES(booked_at),
-                        booked_date = VALUES(booked_date),
-                        amount = VALUES(amount),
-                        amount_abs = VALUES(amount_abs),
-                        direction = VALUES(direction),
-                        currency = VALUES(currency),
-                        purpose = VALUES(purpose),
-                        counterparty = VALUES(counterparty),
-                        counterparty_inn = VALUES(counterparty_inn),
-                        document_number = VALUES(document_number),
-                        synced_at = VALUES(synced_at)`,
-                    [
-                        String(tx.tx_id).slice(0, 160),
-                        tx.account_id,
-                        String(tx.booked_at || '').slice(0, 40),
-                        bookedDate,
-                        tx.amount,
-                        tx.amount_abs,
-                        tx.direction,
-                        tx.currency,
-                        tx.purpose,
-                        String(tx.counterparty || '').slice(0, 512),
-                        String(tx.counterparty_inn || '').slice(0, 32),
-                        String(tx.document_number || '').slice(0, 64),
-                    ]
-                );
+                await upsertFinanceTx(db, 'tochka', tx);
                 txUpserted += 1;
             }
         } catch (e) {
@@ -460,7 +485,8 @@ async function syncOneCredential(db, cred, opts) {
 
 async function runTochkaSync(db, appSettings, opts) {
     await ensureFinanceTables(db);
-    if (syncJob.active && !(opts && opts._claimed)) {
+    const nested = Boolean(opts && opts.nested);
+    if (!nested && syncJob.active && !(opts && opts._claimed)) {
         return { success: false, reason: 'already_running', message: syncJob.message || 'Уже идёт обновление' };
     }
     const allCreds = await finCred.loadCredentials(db, appSettings);
@@ -469,6 +495,19 @@ async function runTochkaSync(db, appSettings, opts) {
         creds = creds.filter((c) => c.id === String(opts.credential_id));
     }
     if (!creds.length) {
+        if (opts && opts.allowEmpty) {
+            return {
+                success: true,
+                skipped: true,
+                reason: 'missing_jwt',
+                accounts: 0,
+                tx_upserted: 0,
+                credentials: 0,
+                by_credential: [],
+                errors: [],
+                message: 'Нет JWT Точки',
+            };
+        }
         return {
             success: false,
             reason: 'missing_jwt',
@@ -489,20 +528,24 @@ async function runTochkaSync(db, appSettings, opts) {
     const scopeBits = [];
     if (customerCode) scopeBits.push('орг ' + customerCode);
     if (accountId) scopeBits.push('счёт');
-    syncJob = {
-        active: true,
-        message:
-            'Финансы: ' +
-            window.startYmd +
-            '…' +
-            window.endYmd +
-            (scopeBits.length ? ' (' + scopeBits.join(', ') + ')' : '') +
-            ' · ключей ' +
-            creds.length,
-        started_at: new Date().toISOString(),
-        last_error: null,
-        last_result: null,
-    };
+    if (!nested) {
+        syncJob = {
+            active: true,
+            message:
+                'Финансы: ' +
+                window.startYmd +
+                '…' +
+                window.endYmd +
+                (scopeBits.length ? ' (' + scopeBits.join(', ') + ')' : '') +
+                ' · ключей ' +
+                creds.length,
+            started_at: new Date().toISOString(),
+            last_error: null,
+            last_result: null,
+        };
+    } else {
+        syncJob.message = 'Точка: ключей ' + creds.length;
+    }
     const errors = [];
     let accountsOk = 0;
     let txUpserted = 0;
@@ -574,6 +617,375 @@ async function runTochkaSync(db, appSettings, opts) {
                 duration_sec +
                 ' с',
         };
+        if (!nested) {
+            syncJob.active = false;
+            syncJob.last_result = result;
+            syncJob.message = result.message;
+            syncJob.last_error = success ? null : (errors[0] && errors[0].error) || result.message;
+        }
+        return result;
+    } catch (e) {
+        if (!nested) {
+            syncJob.active = false;
+            syncJob.last_error = e.message || String(e);
+            syncJob.message = syncJob.last_error;
+        }
+        throw e;
+    }
+}
+
+async function persistRaiffCred(db, appSettings, cred) {
+    const list = await finCred.loadRaiffeisenCredentials(db, appSettings);
+    const i = list.findIndex((c) => c.id === cred.id);
+    if (i >= 0) list[i] = finCred.normalizeRaiffCredential(cred);
+    else list.push(finCred.normalizeRaiffCredential(cred));
+    await finCred.saveRaiffeisenCredentials(db, appSettings, list);
+}
+
+async function enrichRaiffCredentialMeta(db, appSettings, cred) {
+    try {
+        await raiff.ensureTokens(cred);
+        await persistRaiffCred(db, appSettings, cred);
+        const accounts = await raiff.listAccounts(cred);
+        const names = [];
+        const codes = [];
+        for (const a of accounts) {
+            if (a.customer_code && codes.indexOf(a.customer_code) < 0) codes.push(a.customer_code);
+            if (a.org_name && names.indexOf(a.org_name) < 0) names.push(a.org_name);
+        }
+        cred.customer_codes = codes;
+        cred.customer_names = names;
+        const autoLabels = new Set(['', 'Райффайзен', 'Райф']);
+        if (autoLabels.has(String(cred.label || '').trim()) && names[0]) {
+            const picked = pickOrgLabelFromCustomers(names);
+            if (picked) cred.label = picked.slice(0, 120);
+        }
+        cred.updated_at = new Date().toISOString();
+        await persistRaiffCred(db, appSettings, cred);
+    } catch (e) {
+        /* optional */
+    }
+    return cred;
+}
+
+async function syncOneRaiffeisenCredential(db, appSettings, cred, opts) {
+    const skipTx = opts.skipTx;
+    const onProgress = opts.onProgress;
+    const customerCodeFilter = String(opts.customer_code || '').trim();
+    const accountIdFilter = String(opts.account_id || '').trim();
+    const window = opts.window || resolveStatementWindow(opts);
+    const errors = [];
+    let accountsOk = 0;
+    let txUpserted = 0;
+
+    await raiff.ensureTokens(cred);
+    await persistRaiffCred(db, appSettings, cred);
+    let accounts = await raiff.listAccounts(cred);
+    await persistRaiffCred(db, appSettings, cred);
+    if (customerCodeFilter) {
+        accounts = accounts.filter((a) => String(a.customer_code || '') === customerCodeFilter);
+    }
+    if (accountIdFilter) {
+        accounts = accounts.filter(
+            (a) =>
+                String(a.account_id || '') === accountIdFilter ||
+                String(a.account_number || '') === accountIdFilter
+        );
+    }
+    const names = [];
+    for (const a of accounts) {
+        if (a.org_name && names.indexOf(a.org_name) < 0) names.push(a.org_name);
+    }
+    cred.customer_names = names;
+    cred.customer_codes = Array.from(new Set(accounts.map((a) => a.customer_code).filter(Boolean)));
+    await persistRaiffCred(db, appSettings, cred);
+
+    if (!accounts.length) {
+        return {
+            credential_id: cred.id,
+            label: String(cred.label || 'Райффайзен').slice(0, 120),
+            bank: 'raiffeisen',
+            accounts: 0,
+            tx_upserted: 0,
+            errors: [],
+            skipped: true,
+            period: { from: window.startYmd, to: window.endYmd, days: window.days },
+        };
+    }
+    onProgress({ message: (cred.label || 'Райф') + ': счетов ' + accounts.length, accounts: accounts.length });
+
+    for (const acc of accounts) {
+        const accountOrgLabel = shortOrgLabelFromName(acc.org_name) || String(cred.label || 'Райффайзен').slice(0, 120);
+        syncJob.message = 'Райф · ' + accountOrgLabel + ': ' + (acc.account_number || acc.account_id);
+        onProgress({ message: syncJob.message, account_id: acc.account_id, credential_id: cred.id });
+        let balance = acc.available != null ? acc.available : acc.balance;
+        let txs = [];
+        if (!skipTx) {
+            try {
+                syncJob.message =
+                    'Райф · ' +
+                    accountOrgLabel +
+                    ': выписка ' +
+                    (acc.account_number || acc.account_id) +
+                    ' ' +
+                    window.startYmd +
+                    '…' +
+                    window.endYmd;
+                onProgress({ message: syncJob.message, account_id: acc.account_id });
+                const st = await raiff.fetchAccountStatementRange(
+                    cred,
+                    acc.account_number || acc.account_id,
+                    window.startYmd,
+                    window.endYmd
+                );
+                await persistRaiffCred(db, appSettings, cred);
+                txs = st.transactions || [];
+                if (st.lastBalance != null) balance = st.lastBalance;
+            } catch (e) {
+                errors.push({ code: acc.account_id, error: e.message || String(e) });
+            }
+        }
+        const displayName =
+            (accountOrgLabel ? accountOrgLabel + ' · ' : '') + (acc.account_sub_type_label || 'Счёт');
+        await upsertFinanceAccount(db, 'raiffeisen', {
+            account_id: acc.account_id,
+            account_number: acc.account_number,
+            currency: acc.currency || 'RUB',
+            name: displayName,
+            status: acc.status || '',
+            account_type: acc.account_type || '',
+            account_sub_type: acc.account_sub_type || '',
+            customer_code: acc.customer_code || '',
+            credential_id: cred.id,
+            org_label: accountOrgLabel,
+            balance: balance,
+            available: balance,
+            blocked: acc.blocked,
+        });
+        accountsOk += 1;
+        for (const tx of txs) {
+            await upsertFinanceTx(db, 'raiffeisen', tx);
+            txUpserted += 1;
+        }
+        await raiff.sleep(120);
+    }
+    return {
+        credential_id: cred.id,
+        label: String(cred.label || 'Райффайзен').slice(0, 120),
+        bank: 'raiffeisen',
+        accounts: accountsOk,
+        tx_upserted: txUpserted,
+        errors,
+        period: { from: window.startYmd, to: window.endYmd, days: window.days },
+    };
+}
+
+async function runRaiffeisenSync(db, appSettings, opts) {
+    await ensureFinanceTables(db);
+    const nested = Boolean(opts && opts.nested);
+    if (!nested && syncJob.active && !(opts && opts._claimed)) {
+        return { success: false, reason: 'already_running', message: syncJob.message || 'Уже идёт обновление' };
+    }
+    const allCreds = await finCred.loadRaiffeisenCredentials(db, appSettings);
+    let creds = finCred.enabledRaiffeisen(allCreds);
+    if (opts && opts.credential_id) {
+        creds = creds.filter((c) => c.id === String(opts.credential_id));
+    }
+    if (!creds.length) {
+        if (opts && opts.allowEmpty) {
+            return {
+                success: true,
+                skipped: true,
+                reason: 'missing_raiff',
+                accounts: 0,
+                tx_upserted: 0,
+                credentials: 0,
+                by_credential: [],
+                errors: [],
+                message: 'Нет ключей Райфа',
+            };
+        }
+        return {
+            success: false,
+            reason: 'missing_raiff',
+            message: 'Добавьте client_id, secret и refresh_token Райфа на странице «Финансы»',
+        };
+    }
+    let window;
+    try {
+        window = resolveStatementWindow(opts || {});
+    } catch (e) {
+        return { success: false, reason: 'bad_period', message: e.message || String(e) };
+    }
+    const customerCode = String((opts && opts.customer_code) || '').trim();
+    const accountId = String((opts && opts.account_id) || '').trim();
+    const skipTx = Boolean(opts && opts.balances_only);
+    const onProgress = typeof (opts && opts.onProgress) === 'function' ? opts.onProgress : () => {};
+    const t0 = Date.now();
+    if (!nested) {
+        syncJob = {
+            active: true,
+            message: 'Райф: ' + window.startYmd + '…' + window.endYmd + ' · ключей ' + creds.length,
+            started_at: new Date().toISOString(),
+            last_error: null,
+            last_result: null,
+        };
+    } else {
+        syncJob.message = 'Райф: ключей ' + creds.length;
+    }
+    const errors = [];
+    let accountsOk = 0;
+    let txUpserted = 0;
+    const byCred = [];
+    try {
+        for (const cred of creds) {
+            try {
+                const one = await syncOneRaiffeisenCredential(db, appSettings, cred, {
+                    window,
+                    customer_code: customerCode || undefined,
+                    account_id: accountId || undefined,
+                    skipTx,
+                    onProgress,
+                });
+                if (one.skipped && !one.accounts) continue;
+                accountsOk += one.accounts;
+                txUpserted += one.tx_upserted;
+                byCred.push({
+                    credential_id: one.credential_id,
+                    label: one.label,
+                    bank: 'raiffeisen',
+                    accounts: one.accounts,
+                    tx_upserted: one.tx_upserted,
+                });
+                for (const er of one.errors || []) errors.push(er);
+            } catch (e) {
+                errors.push({ code: cred.id || cred.label, error: e.message || String(e) });
+            }
+        }
+        const duration_sec = Math.round((Date.now() - t0) / 1000);
+        const success = accountsOk > 0 || errors.length === 0;
+        const result = {
+            success,
+            dry_run: false,
+            bank: 'raiffeisen',
+            accounts: accountsOk,
+            tx_upserted: txUpserted,
+            balances_only: skipTx,
+            credentials: byCred.length,
+            by_credential: byCred,
+            errors: errors.slice(0, 20),
+            duration_sec,
+            days: window.days,
+            date_from: window.startYmd,
+            date_to: window.endYmd,
+            message:
+                'Райф: ключей ' +
+                byCred.length +
+                ', счетов ' +
+                accountsOk +
+                ', проводок ' +
+                txUpserted +
+                ' · ' +
+                duration_sec +
+                ' с',
+        };
+        if (!nested) {
+            syncJob.active = false;
+            syncJob.last_result = result;
+            syncJob.message = result.message;
+            syncJob.last_error = success ? null : (errors[0] && errors[0].error) || result.message;
+        }
+        return result;
+    } catch (e) {
+        if (!nested) {
+            syncJob.active = false;
+            syncJob.last_error = e.message || String(e);
+            syncJob.message = syncJob.last_error;
+        }
+        throw e;
+    }
+}
+
+function bankFromOpts(opts) {
+    const bank = String((opts && opts.bank) || '').trim().toLowerCase();
+    const credId = String((opts && opts.credential_id) || '').trim();
+    if (bank === 'raiffeisen' || credId.indexOf('rf_') === 0) return 'raiffeisen';
+    if (bank === 'tochka' || credId.indexOf('tc_') === 0) return 'tochka';
+    if (credId) return 'tochka';
+    return '';
+}
+
+async function runFinanceAll(db, appSettings, opts) {
+    const o = opts || {};
+    const only = bankFromOpts(o);
+    if (only === 'tochka') return runTochkaSync(db, appSettings, o);
+    if (only === 'raiffeisen') return runRaiffeisenSync(db, appSettings, o);
+    if (syncJob.active && !o._claimed) {
+        return { success: false, reason: 'already_running', message: syncJob.message || 'Уже идёт обновление' };
+    }
+    let window;
+    try {
+        window = resolveStatementWindow(o);
+    } catch (e) {
+        return { success: false, reason: 'bad_period', message: e.message || String(e) };
+    }
+    const t0 = Date.now();
+    syncJob = {
+        active: true,
+        message: 'Финансы: Точка + Райф ' + window.startYmd + '…' + window.endYmd,
+        started_at: new Date().toISOString(),
+        last_error: null,
+        last_result: null,
+    };
+    try {
+        const nestedOpts = Object.assign({}, o, { nested: true, _claimed: true, allowEmpty: true, window });
+        const tochkaRes = await runTochkaSync(db, appSettings, nestedOpts);
+        const raiffRes = await runRaiffeisenSync(db, appSettings, nestedOpts);
+        if (tochkaRes.reason === 'missing_jwt' && raiffRes.reason === 'missing_raiff') {
+            const empty = {
+                success: false,
+                reason: 'missing_jwt',
+                message: 'Добавьте JWT Точки или ключи Райфа на странице «Финансы»',
+            };
+            syncJob.active = false;
+            syncJob.last_result = empty;
+            syncJob.message = empty.message;
+            syncJob.last_error = empty.message;
+            return empty;
+        }
+        const byCred = []
+            .concat(tochkaRes.by_credential || [])
+            .concat(raiffRes.by_credential || []);
+        const errors = [].concat(tochkaRes.errors || [], raiffRes.errors || []).slice(0, 20);
+        const accounts = Number(tochkaRes.accounts || 0) + Number(raiffRes.accounts || 0);
+        const txUpserted = Number(tochkaRes.tx_upserted || 0) + Number(raiffRes.tx_upserted || 0);
+        const duration_sec = Math.round((Date.now() - t0) / 1000);
+        const success = accounts > 0 || errors.length === 0;
+        const result = {
+            success,
+            dry_run: false,
+            accounts,
+            tx_upserted: txUpserted,
+            balances_only: Boolean(o.balances_only),
+            credentials: byCred.length,
+            by_credential: byCred,
+            errors,
+            duration_sec,
+            days: window.days,
+            date_from: window.startYmd,
+            date_to: window.endYmd,
+            api_note: 'Точка и Райффайзен пишутся в один снимок счетов и проводок.',
+            message:
+                'Точка + Райф: ключей ' +
+                byCred.length +
+                ', счетов ' +
+                accounts +
+                ', проводок ' +
+                txUpserted +
+                ' · ' +
+                duration_sec +
+                ' с',
+        };
         syncJob.active = false;
         syncJob.last_result = result;
         syncJob.message = result.message;
@@ -588,7 +1000,7 @@ async function runTochkaSync(db, appSettings, opts) {
 }
 
 async function triggerFinanceSync(db, appSettings, opts) {
-    return runTochkaSync(db, appSettings, opts || {});
+    return runFinanceAll(db, appSettings, opts || {});
 }
 
 function factory(db, appSettings) {
@@ -598,14 +1010,17 @@ function factory(db, appSettings) {
         if (!requireFinanceAccess(req, res, false)) return;
         try {
             const list = await finCred.loadCredentials(db, appSettings);
+            const raiffList = await finCred.loadRaiffeisenCredentials(db, appSettings);
             const mode = pageMode(req);
             const pub = list.map(finCred.publicCredential);
-            const configured = pub.some((c) => c.configured && c.enabled);
+            const raiffPub = raiffList.map(finCred.publicRaiffCredential);
+            const configured =
+                pub.some((c) => c.configured && c.enabled) || raiffPub.some((c) => c.configured && c.enabled);
             res.json({
                 success: true,
                 configured,
                 credentials: pub,
-                // back-compat
+                raiffeisen_credentials: raiffPub,
                 jwt_mask: pub[0] ? pub[0].jwt_mask : '',
                 jwt_len: pub[0] ? pub[0].jwt_len : 0,
                 can_write: mode === 'full',
@@ -620,6 +1035,72 @@ function factory(db, appSettings) {
         if (!requireFinanceAccess(req, res, true)) return;
         try {
             const body = req.body || {};
+            const bank = String(body.bank || '').trim().toLowerCase();
+            if (bank === 'raiffeisen') {
+                let list = await finCred.loadRaiffeisenCredentials(db, appSettings);
+                const action = String(body.action || '').trim();
+                if (action === 'upsert') {
+                    const id = String(body.id || '').trim();
+                    const label = String(body.label || '').trim();
+                    let cred = id ? list.find((c) => c.id === id) : null;
+                    if (cred) {
+                        if (label) cred.label = label.slice(0, 120);
+                        if (body.client_id != null) cred.client_id = String(body.client_id).trim().slice(0, 200);
+                        if (body.client_secret) cred.client_secret = String(body.client_secret).trim().slice(0, 800);
+                        if (body.refresh_token) cred.refresh_token = String(body.refresh_token).trim().slice(0, 8000);
+                        if (body.enabled != null) cred.enabled = Boolean(body.enabled);
+                    } else {
+                        if (!String(body.client_id || '').trim() || !String(body.client_secret || '').trim() || !String(body.refresh_token || '').trim()) {
+                            return res.status(400).json({
+                                success: false,
+                                error: 'Для Райфа нужны client_id, client_secret и refresh_token',
+                            });
+                        }
+                        cred = finCred.normalizeRaiffCredential({
+                            id: finCred.newRaiffCredId(),
+                            label: label || 'Райффайзен',
+                            client_id: body.client_id,
+                            client_secret: body.client_secret,
+                            refresh_token: body.refresh_token,
+                            enabled: body.enabled !== false,
+                        });
+                        list.push(cred);
+                    }
+                    cred.updated_at = new Date().toISOString();
+                    list = await finCred.saveRaiffeisenCredentials(db, appSettings, list);
+                    await enrichRaiffCredentialMeta(db, appSettings, cred);
+                    list = await finCred.loadRaiffeisenCredentials(db, appSettings);
+                } else if (action === 'delete') {
+                    const id = String(body.id || '').trim();
+                    if (!id) return res.status(400).json({ success: false, error: 'Нужен id' });
+                    list = await finCred.saveRaiffeisenCredentials(
+                        db,
+                        appSettings,
+                        list.filter((c) => c.id !== id)
+                    );
+                } else if (action === 'toggle') {
+                    const id = String(body.id || '').trim();
+                    const cred = list.find((c) => c.id === id);
+                    if (!cred) return res.status(404).json({ success: false, error: 'Ключ Райфа не найден' });
+                    cred.enabled = body.enabled !== false && body.enabled !== 0 && body.enabled !== '0';
+                    cred.updated_at = new Date().toISOString();
+                    list = await finCred.saveRaiffeisenCredentials(db, appSettings, list);
+                } else {
+                    return res.status(400).json({
+                        success: false,
+                        error: 'Райф: action upsert|delete|toggle',
+                    });
+                }
+                const pubT = (await finCred.loadCredentials(db, appSettings)).map(finCred.publicCredential);
+                const pubR = (await finCred.loadRaiffeisenCredentials(db, appSettings)).map(finCred.publicRaiffCredential);
+                return res.json({
+                    success: true,
+                    configured: pubT.some((c) => c.configured && c.enabled) || pubR.some((c) => c.configured && c.enabled),
+                    credentials: pubT,
+                    raiffeisen_credentials: pubR,
+                });
+            }
+
             let list = await finCred.loadCredentials(db, appSettings);
             const action = String(body.action || '').trim();
 
@@ -683,10 +1164,12 @@ function factory(db, appSettings) {
             }
 
             const pub = list.map(finCred.publicCredential);
+            const raiffPub = (await finCred.loadRaiffeisenCredentials(db, appSettings)).map(finCred.publicRaiffCredential);
             res.json({
                 success: true,
-                configured: pub.some((c) => c.configured && c.enabled),
+                configured: pub.some((c) => c.configured && c.enabled) || raiffPub.some((c) => c.configured && c.enabled),
                 credentials: pub,
+                raiffeisen_credentials: raiffPub,
                 jwt_mask: pub[0] ? pub[0].jwt_mask : '',
                 jwt_len: pub[0] ? pub[0].jwt_len : 0,
             });
@@ -698,32 +1181,74 @@ function factory(db, appSettings) {
     router.get('/probe', async (req, res) => {
         if (!requireFinanceAccess(req, res, true)) return;
         try {
-            const list = await finCred.loadCredentials(db, appSettings);
+            const bank = String(req.query.bank || '').trim().toLowerCase();
             const credId = String(req.query.credential_id || '').trim();
-            let creds = finCred.enabledWithJwt(list);
-            if (credId) creds = list.filter((c) => c.id === credId && String(c.jwt || '').trim());
-            if (!creds.length) {
-                return res.status(400).json({ success: false, error: 'Нет JWT для проверки (добавьте организацию)' });
-            }
             const results = [];
             let totalAccounts = 0;
             const consent_gaps_all = [];
-            for (const cred of creds) {
-                try {
-                    const one = await probeOneCredential(cred);
-                    results.push(one);
-                    totalAccounts += one.count;
-                    for (const g of one.consent_gaps || []) {
-                        consent_gaps_all.push(Object.assign({ credential_id: cred.id, label: cred.label }, g));
+            const wantTochka = !bank || bank === 'tochka' || (credId && credId.indexOf('rf_') !== 0);
+            const wantRaiff = !bank || bank === 'raiffeisen' || credId.indexOf('rf_') === 0;
+
+            if (wantTochka && (!credId || credId.indexOf('rf_') !== 0)) {
+                const list = await finCred.loadCredentials(db, appSettings);
+                let creds = finCred.enabledWithJwt(list);
+                if (credId) creds = list.filter((c) => c.id === credId && String(c.jwt || '').trim());
+                for (const cred of creds) {
+                    try {
+                        const one = await probeOneCredential(cred);
+                        one.bank = 'tochka';
+                        results.push(one);
+                        totalAccounts += one.count;
+                        for (const g of one.consent_gaps || []) {
+                            consent_gaps_all.push(Object.assign({ credential_id: cred.id, label: cred.label, bank: 'tochka' }, g));
+                        }
+                    } catch (e) {
+                        results.push({
+                            bank: 'tochka',
+                            credential_id: cred.id,
+                            label: cred.label,
+                            error: e.message || String(e),
+                            count: 0,
+                        });
                     }
-                } catch (e) {
-                    results.push({
-                        credential_id: cred.id,
-                        label: cred.label,
-                        error: e.message || String(e),
-                        count: 0,
-                    });
                 }
+            }
+            if (wantRaiff && (!credId || credId.indexOf('rf_') === 0)) {
+                const list = await finCred.loadRaiffeisenCredentials(db, appSettings);
+                let creds = finCred.enabledRaiffeisen(list);
+                if (credId) creds = list.filter((c) => c.id === credId);
+                for (const cred of creds) {
+                    try {
+                        await raiff.ensureTokens(cred);
+                        await persistRaiffCred(db, appSettings, cred);
+                        const accounts = await raiff.listAccounts(cred);
+                        results.push({
+                            bank: 'raiffeisen',
+                            credential_id: cred.id,
+                            label: cred.label,
+                            count: accounts.length,
+                            accounts: accounts.map((a) => ({
+                                account_id: a.account_id,
+                                account_number: a.account_number,
+                                currency: a.currency,
+                                name: a.name,
+                                customer_code: a.customer_code,
+                            })),
+                        });
+                        totalAccounts += accounts.length;
+                    } catch (e) {
+                        results.push({
+                            bank: 'raiffeisen',
+                            credential_id: cred.id,
+                            label: cred.label,
+                            error: e.message || String(e),
+                            count: 0,
+                        });
+                    }
+                }
+            }
+            if (!results.length) {
+                return res.status(400).json({ success: false, error: 'Нет ключей для проверки (Точка или Райф)' });
             }
             res.json({
                 success: true,
@@ -731,9 +1256,7 @@ function factory(db, appSettings) {
                 credentials_probed: results.length,
                 results,
                 consent_gaps: consent_gaps_all,
-                api_note:
-                    'Можно хранить несколько JWT (по организациям). Один ключ тоже может покрывать несколько компаний, если при генерации отмечены права для каждой.',
-                // back-compat flat fields from first ok result
+                api_note: 'Точка — JWT. Райф — client_id / secret / refresh_token из RBO.',
                 customers: (results[0] && results[0].customers) || [],
                 account_sub_types: (results[0] && results[0].account_sub_types) || {},
                 accounts: (results[0] && results[0].accounts) || [],
@@ -756,8 +1279,7 @@ function factory(db, appSettings) {
                         is_fund, custom_name,
                         balance, available, blocked, synced_at
                  FROM dg_finance_accounts
-                 WHERE bank = 'tochka'
-                 ORDER BY is_fund ASC, available DESC, org_label ASC, account_number ASC, account_id ASC`
+                 ORDER BY bank ASC, is_fund ASC, available DESC, org_label ASC, account_number ASC, account_id ASC`
             );
             const subtypes = {};
             for (const a of rows || []) {
@@ -773,7 +1295,7 @@ function factory(db, appSettings) {
                 org_aliases,
                 can_write: pageMode(req) === 'full',
                 api_note:
-                    'Банк — в шапке организации (Точка). Фонд: галка при редактировании названия (карандаш) или клик по бейджу типа.',
+                    'Банк — в шапке организации (Точка / Райффайзен). Фонд: галка при редактировании названия (карандаш) или клик по бейджу типа.',
             });
         } catch (e) {
             res.status(500).json({ success: false, error: e.message || String(e) });
@@ -896,8 +1418,13 @@ function factory(db, appSettings) {
             const page = Math.max(1, parseInt(String(req.query.page || '1'), 10) || 1);
             const pageSize = Math.min(200, Math.max(20, parseInt(String(req.query.page_size || '100'), 10) || 100));
             const orgAliases = await finCred.loadOrgAliases(db, appSettings);
-            const where = ['t.bank = ?'];
-            const params = ['tochka'];
+            const bankFilter = String(req.query.bank || '').trim().toLowerCase();
+            const where = [];
+            const params = [];
+            if (bankFilter === 'tochka' || bankFilter === 'raiffeisen') {
+                where.push('t.bank = ?');
+                params.push(bankFilter);
+            }
             if (accountId) {
                 where.push('t.account_id = ?');
                 params.push(accountId);
@@ -947,7 +1474,7 @@ function factory(db, appSettings) {
                     params.push(like, like, like, like, like, like, like, like);
                 }
             }
-            const whereSql = where.join(' AND ');
+            const whereSql = where.length ? where.join(' AND ') : '1=1';
             const [cntRows] = await db.query(
                 `SELECT COUNT(*) AS n
                  FROM dg_finance_tx t
@@ -1019,8 +1546,8 @@ function factory(db, appSettings) {
             const startYmd = tochka.ymd(start);
             const endYmd = tochka.ymd(end);
 
-            const where = ['t.bank = ?', 't.booked_date IS NOT NULL', 't.booked_date >= ?', 't.booked_date <= ?', 't.currency = ?'];
-            const params = ['tochka', startYmd, endYmd, currency];
+            const where = ['t.booked_date IS NOT NULL', 't.booked_date >= ?', 't.booked_date <= ?', 't.currency = ?'];
+            const params = [startYmd, endYmd, currency];
             if (accountId) {
                 where.push('t.account_id = ?');
                 params.push(accountId);
@@ -1133,13 +1660,12 @@ function factory(db, appSettings) {
             }
 
             const where = [
-                't.bank = ?',
                 't.booked_date IS NOT NULL',
                 't.booked_date >= ?',
                 't.booked_date <= ?',
                 't.currency = ?',
             ];
-            const params = ['tochka', dateFrom, dateTo, currency];
+            const params = [dateFrom, dateTo, currency];
             if (accountId) {
                 where.push('t.account_id = ?');
                 params.push(accountId);
@@ -1282,6 +1808,7 @@ function factory(db, appSettings) {
         const accountId = String(body.account_id || '').trim();
         const dateFrom = String(body.date_from || '').trim();
         const dateTo = String(body.date_to || '').trim();
+        const bank = String(body.bank || '').trim().toLowerCase();
         try {
             resolveStatementWindow({
                 days,
@@ -1308,7 +1835,7 @@ function factory(db, appSettings) {
             last_result: null,
         };
         setImmediate(() => {
-            runTochkaSync(db, appSettings, {
+            runFinanceAll(db, appSettings, {
                 days,
                 balances_only: balancesOnly,
                 credential_id: credentialId || undefined,
@@ -1316,6 +1843,7 @@ function factory(db, appSettings) {
                 account_id: accountId || undefined,
                 date_from: dateFrom || undefined,
                 date_to: dateTo || undefined,
+                bank: bank || undefined,
                 _claimed: true,
             }).catch((e) => {
                 console.error('[finance][sync]', e && e.message ? e.message : e);
@@ -1347,7 +1875,7 @@ function factory(db, appSettings) {
 }
 
 factory.triggerFinanceSyncFromSettings = async function triggerFinanceSyncFromSettings(db, appSettings, opts) {
-    return runTochkaSync(db, appSettings, opts || {});
+    return runFinanceAll(db, appSettings, opts || {});
 };
 factory.getSyncState = getSyncState;
 

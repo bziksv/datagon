@@ -7,7 +7,7 @@
                 <div>
                   Финансы
                   <div class="page-title-subheading">
-                    Банк Точка: счета, остатки и движение (только чтение). JWT — в карточке настроек при полном доступе.
+                    Точка и Райффайзен: счета, остатки и движение (только чтение). Ключи — в карточке настроек при полном доступе.
                     Расписание — <a href="/settings.html">Настройки</a> · журнал — <a href="/processes.html">processes</a>.
                   </div>
                 </div>
@@ -25,17 +25,19 @@
             </div>
             <div class="card-body" id="dg-fin-bank-body">
               <p class="small text-muted mb-2">
-                Можно сохранить <strong>несколько JWT</strong> — по одному на организацию (или один ключ с правами на все компании в кабинете Точки).
-                При генерации для каждой компании отметьте <code>ReadAccounts</code>, <code>ReadBalances</code>, <code>ReadStatements</code>.
+                <strong>Точка:</strong> несколько JWT — по одному на организацию (или один ключ с правами на все компании).
+                При генерации отметьте <code>ReadAccounts</code>, <code>ReadBalances</code>, <code>ReadStatements</code>.
               </p>
               <p class="small text-muted mb-3">
-                <strong>Депозиты и фонды</strong> отдельным API не отдаются; если Точка вернула их как счета — они появятся в снимке.
+                <strong>Райффайзен:</strong> в RBO «Интеграция банка с учетными системами» → API-оркестратор → refresh_token.
+                В Datagon сохраняются <code>client_id</code>, <code>client_secret</code> и <code>refresh_token</code> (банк ротирует refresh при каждом обновлении).
               </p>
 
+              <div class="fw-semibold mb-2">Точка</div>
               <div id="dg-fin-cred-list" class="mb-3"></div>
 
-              <div class="border rounded p-3 bg-light">
-                <div class="fw-semibold mb-2">Добавить организацию / JWT</div>
+              <div class="border rounded p-3 bg-light mb-4">
+                <div class="fw-semibold mb-2">Добавить организацию / JWT Точки</div>
                 <div class="row g-2 align-items-end">
                   <div class="col-md-4">
                     <label class="form-label" for="dg-fin-cred-label">Название</label>
@@ -48,7 +50,35 @@
                 </div>
                 <div class="mt-3 d-flex flex-wrap gap-2">
                   <button type="button" class="btn btn-sm btn-primary" id="dg-fin-btn-save-bank" data-dg-notify-start="Сохраняем JWT организации…">Добавить / сохранить</button>
-                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-fin-btn-probe" data-dg-notify-start="Проверяем все JWT Точки…">Проверить все</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-fin-btn-probe" data-dg-notify-start="Проверяем JWT Точки…">Проверить Точку</button>
+                </div>
+              </div>
+
+              <div class="fw-semibold mb-2">Райффайзен</div>
+              <div id="dg-fin-raiff-list" class="mb-3"></div>
+              <div class="border rounded p-3 bg-light">
+                <div class="fw-semibold mb-2">Добавить ключ Райфа</div>
+                <div class="row g-2 align-items-end">
+                  <div class="col-md-4">
+                    <label class="form-label" for="dg-fin-raiff-label">Название</label>
+                    <input type="text" class="form-control" id="dg-fin-raiff-label" placeholder="ООО …" autocomplete="off" />
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label" for="dg-fin-raiff-client-id">client_id</label>
+                    <input type="text" class="form-control" id="dg-fin-raiff-client-id" autocomplete="off" />
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label" for="dg-fin-raiff-client-secret">client_secret</label>
+                    <input type="password" class="form-control" id="dg-fin-raiff-client-secret" autocomplete="off" />
+                  </div>
+                  <div class="col-md-12">
+                    <label class="form-label" for="dg-fin-raiff-refresh">refresh_token</label>
+                    <input type="password" class="form-control" id="dg-fin-raiff-refresh" autocomplete="off" placeholder="Из RBO → Выпустить Refresh-токен" />
+                  </div>
+                </div>
+                <div class="mt-3 d-flex flex-wrap gap-2">
+                  <button type="button" class="btn btn-sm btn-primary" id="dg-fin-btn-save-raiff" data-dg-notify-start="Сохраняем ключ Райфа…">Добавить / сохранить</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-fin-btn-probe-raiff" data-dg-notify-start="Проверяем Райф…">Проверить Райф</button>
                 </div>
               </div>
               <div id="dg-fin-bank-save-msg" class="alert mt-3 mb-0 d-none" role="status"></div>
@@ -189,10 +219,10 @@
               <div class="mt-3 d-flex flex-wrap gap-2">
                 <button type="button" class="btn btn-sm btn-primary" id="dg-fin-apply" data-dg-notify-start="Применяем фильтры…">Применить</button>
                 <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-fin-reset" data-dg-notify-start="Сбрасываем фильтры…">По умолчанию</button>
-                <button type="button" class="btn btn-sm btn-success" id="dg-fin-load-tx" data-dg-notify-start="Загружаем выписки из Точки…">Загрузить выписки</button>
-                <button type="button" class="btn btn-sm btn-outline-success" id="dg-fin-sync" data-dg-notify-start="Обновляем все организации из банка…">Обновить все</button>
+                <button type="button" class="btn btn-sm btn-success" id="dg-fin-load-tx" data-dg-notify-start="Загружаем выписки из банков…">Загрузить выписки</button>
+                <button type="button" class="btn btn-sm btn-outline-success" id="dg-fin-sync" data-dg-notify-start="Обновляем все организации из банков…">Обновить все</button>
               </div>
-              <p class="small text-muted mt-2 mb-0">«Загрузить выписки» берёт период дат, организацию и счёт из фильтров и тянет проводки из Точки. Без дат — окно «Выписка, дн.».</p>
+              <p class="small text-muted mt-2 mb-0">«Загрузить выписки» берёт период дат, организацию и счёт из фильтров и тянет проводки из Точки и Райфа. Без дат — окно «Выписка, дн.».</p>
               <div id="dg-fin-action-log" class="alert alert-secondary py-2 px-3 mt-3 mb-0 d-none" role="status"></div>
               <p class="small text-muted mt-2 mb-0 d-none" id="dg-fin-status-hint"></p>
             </div>

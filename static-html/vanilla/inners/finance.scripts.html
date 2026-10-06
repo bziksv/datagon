@@ -5,6 +5,7 @@
     ["direction", "Направление"],
     ["amount", "Сумма"],
     ["org", "Организация"],
+    ["bank", "Банк"],
     ["account_number", "Счёт"],
     ["counterparty", "Контрагент"],
     ["counterparty_inn", "ИНН"],
@@ -18,6 +19,7 @@
     direction: 120,
     amount: 130,
     org: 140,
+    bank: 110,
     account_number: 150,
     counterparty: 220,
     counterparty_inn: 120,
@@ -60,6 +62,7 @@
   var state = {
     canWrite: false,
     credentials: [],
+    raiffeisenCredentials: [],
     accounts: [],
     orgAliases: {},
     page: 1,
@@ -275,12 +278,92 @@
     return n;
   }
 
-  function renderAnalyticsKpis(totals, currency) {
+  function currentAnalyticsYm() {
+    try {
+      var parts = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Europe/Moscow",
+        year: "numeric",
+        month: "2-digit",
+      }).formatToParts(new Date());
+      var y = "";
+      var m = "";
+      parts.forEach(function (p) {
+        if (p.type === "year") y = p.value;
+        if (p.type === "month") m = p.value;
+      });
+      if (y && m) return y + "-" + m;
+    } catch (e) {}
+    var d = new Date();
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
+  }
+
+  function completedNetSeries(series) {
+    var curYm = currentAnalyticsYm();
+    return (Array.isArray(series) ? series : []).filter(function (r) {
+      var ym = String((r && r.month) || "").slice(0, 7);
+      return /^\d{4}-\d{2}$/.test(ym) && ym < curYm;
+    });
+  }
+
+  function avgNetFromSeries(rows) {
+    if (!rows.length) return 0;
+    var sum = 0;
+    rows.forEach(function (r) { sum += Number(r.net) || 0; });
+    return sum / rows.length;
+  }
+
+  function netDynamics(rows) {
+    if (!rows || rows.length < 2) return null;
+    var n = rows.length;
+    var last = rows[n - 1];
+    var prev = rows[n - 2];
+    var recent = Number(last.net) || 0;
+    var base = Number(prev.net) || 0;
+    var delta = recent - base;
+    var usePct = Math.abs(base) >= 100000;
+    var pct = usePct ? (delta / Math.abs(base)) * 100 : null;
+    var dir = delta > 0.5 ? "up" : delta < -0.5 ? "down" : "flat";
+    return {
+      recent: recent,
+      base: base,
+      delta: delta,
+      pct: pct,
+      dir: dir,
+      label: fmtMonthLabel(last.month) + " к " + fmtMonthLabel(prev.month),
+    };
+  }
+
+  function renderAnalyticsKpis(totals, currency, series) {
     var box = el("dg-fin-analytics-kpis");
     if (!box) return;
     var t = totals || {};
     var cur = currency || "RUB";
     var net = Number(t.net) || 0;
+    var done = completedNetSeries(series);
+    var avg = avgNetFromSeries(done);
+    var dyn = netDynamics(done);
+    var avgTxt = done.length
+      ? "ср. " + fmtMoney(avg, cur) + " / мес."
+      : "вход − исход";
+    var dynHtml = "";
+    if (dyn) {
+      var arrow = dyn.dir === "up" ? "↑" : dyn.dir === "down" ? "↓" : "→";
+      var word = dyn.dir === "up" ? "растёт" : dyn.dir === "down" ? "снижается" : "стабильно";
+      var mag =
+        dyn.pct != null && Number.isFinite(dyn.pct)
+          ? (dyn.pct > 0 ? "+" : "") + (Math.round(dyn.pct * 10) / 10) + "%"
+          : (dyn.delta >= 0 ? "+" : "") + fmtMoney(dyn.delta, cur);
+      dynHtml =
+        '<div class="dg-fin-kpi-dyn is-' +
+        dyn.dir +
+        '" title="' +
+        esc(dyn.label) +
+        '">' +
+        esc(arrow + " " + word + " · " + mag) +
+        '<span class="dg-fin-kpi-dyn-hint"> ' +
+        esc(dyn.label) +
+        "</span></div>";
+    }
     box.innerHTML =
       '<div class="dg-fin-kpi is-in"><div class="dg-fin-kpi-label">Входящие</div><div class="dg-fin-kpi-value">' +
       esc(fmtMoney(t.in, cur)) +
@@ -292,7 +375,12 @@
       (net >= 0 ? "is-pos" : "is-neg") +
       '">' +
       esc(fmtMoney(net, cur)) +
-      '</div><div class="dg-fin-kpi-sub">вход − исход</div></div>' +
+      '</div><div class="dg-fin-kpi-sub">' +
+      esc(avgTxt) +
+      (done.length ? " · полные мес." : "") +
+      "</div>" +
+      dynHtml +
+      "</div>" +
       '<div class="dg-fin-kpi"><div class="dg-fin-kpi-label">Операций</div><div class="dg-fin-kpi-value">' +
       esc(String(Number(t.count) || 0)) +
       '</div><div class="dg-fin-kpi-sub">в снимке за период</div></div>';
@@ -543,7 +631,7 @@
       .then(function (r) { return r.json(); })
       .then(function (j) {
         if (!j || !j.success) throw new Error((j && j.error) || "analytics");
-        renderAnalyticsKpis(j.totals, j.currency);
+        renderAnalyticsKpis(j.totals, j.currency, j.series || []);
         renderMonthlyChart(j.series || [], j.currency);
         return j;
       })
@@ -909,6 +997,7 @@
     if (key === "amount") return Number(row.amount);
     if (key === "booked_date") return String(row.booked_date || row.booked_at || "");
     if (key === "org") return rowOrgLabel(row);
+    if (key === "bank") return BANK_LABELS[String(row.bank || "tochka").toLowerCase()] || String(row.bank || "");
     return String(row[key] == null ? "" : row[key]);
   }
   function rowOrgLabel(row) {
@@ -954,6 +1043,9 @@
     if (key === "org") {
       return esc(rowOrgLabel(row) || "—");
     }
+    if (key === "bank") {
+      return esc(BANK_LABELS[String(row.bank || "tochka").toLowerCase()] || row.bank || "—");
+    }
     if (key === "account_number") {
       return esc(maskAcc(row.account_number || row.account_id));
     }
@@ -989,7 +1081,7 @@
     }
   }
 
-  var BANK_LABELS = { tochka: "Точка" };
+  var BANK_LABELS = { tochka: "Точка", raiffeisen: "Райффайзен" };
 
   function accountAvailable(a) {
     var n = a && a.available != null ? Number(a.available) : Number(a && a.balance);
@@ -1131,7 +1223,7 @@
     if (!state.accounts.length) {
       totalWrap.innerHTML = "";
       banksWrap.innerHTML =
-        '<p class="text-muted small mb-0">Счетов пока нет. Сохраните JWT и нажмите «Обновить» у организации.</p>';
+        '<p class="text-muted small mb-0">Счетов пока нет. Сохраните ключ Точки или Райфа и нажмите «Обновить» у организации.</p>';
       return;
     }
 
@@ -1282,7 +1374,9 @@
           '">' +
           '<div class="dg-fin-bank-head">' +
           '<div class="dg-fin-bank-head-left">' +
-          '<span class="dg-fin-bank-pill dg-fin-bank-pill-lg">' +
+          '<span class="dg-fin-bank-pill dg-fin-bank-pill-lg' +
+          (g.bank_code === "raiffeisen" ? " is-raiffeisen" : "") +
+          '">' +
           esc(g.bank_label) +
           "</span>" +
           "<div class=\"dg-fin-bank-title-wrap\">" +
@@ -1743,6 +1837,61 @@
       "</tbody></table></div>";
   }
 
+  function renderRaiffList() {
+    var root = el("dg-fin-raiff-list");
+    if (!root) return;
+    var list = state.raiffeisenCredentials || [];
+    if (!list.length) {
+      root.innerHTML = '<p class="small text-muted mb-0">Ключи Райфа пока не добавлены. client_id, secret и refresh_token — ниже.</p>';
+      return;
+    }
+    root.innerHTML =
+      '<div class="table-responsive"><table class="table table-sm align-middle mb-0">' +
+      "<thead><tr><th>Организация</th><th>client_id</th><th>refresh</th><th>Вкл.</th><th></th></tr></thead><tbody>" +
+      list
+        .map(function (c) {
+          var names = (c.customer_names || []).join(", ") || (c.customer_codes || []).join(", ") || "—";
+          return (
+            "<tr data-raiff-id=\"" +
+            esc(c.id) +
+            "\">" +
+            "<td><strong>" +
+            esc(c.label || "Райффайзен") +
+            "</strong><div class=\"small text-muted\">" +
+            esc(names) +
+            "</div></td>" +
+            "<td class=\"small text-muted\">" +
+            esc(c.client_id || "—") +
+            "</td>" +
+            "<td class=\"small text-muted\">" +
+            esc(c.refresh_token_mask || "—") +
+            "</td>" +
+            "<td><input type=\"checkbox\" class=\"form-check-input dg-fin-raiff-en\" " +
+            (c.enabled ? "checked " : "") +
+            "data-raiff-id=\"" +
+            esc(c.id) +
+            "\" /></td>" +
+            "<td class=\"text-nowrap\">" +
+            '<button type="button" class="btn btn-sm btn-outline-success dg-fin-raiff-sync" data-raiff-id="' +
+            esc(c.id) +
+            '" data-raiff-label="' +
+            esc(c.label || "Райффайзен") +
+            '" data-dg-notify-start="Обновляем Райф…"' +
+            (c.enabled === false ? " disabled" : "") +
+            ">Обновить</button> " +
+            '<button type="button" class="btn btn-sm btn-outline-secondary dg-fin-raiff-probe" data-raiff-id="' +
+            esc(c.id) +
+            '" data-dg-notify-start="Проверяем Райф…">Проверить</button> ' +
+            '<button type="button" class="btn btn-sm btn-outline-danger dg-fin-raiff-del" data-raiff-id="' +
+            esc(c.id) +
+            '" data-dg-notify-start="Удаляем ключ Райфа…">Удалить</button>' +
+            "</td></tr>"
+          );
+        })
+        .join("") +
+      "</tbody></table></div>";
+  }
+
   function loadConfig() {
     return fetch("/api/finance/config", { credentials: "same-origin" })
       .then(function (r) { return r.json(); })
@@ -1750,9 +1899,11 @@
         if (!j || !j.success) throw new Error((j && j.error) || "config");
         state.canWrite = !!j.can_write;
         state.credentials = Array.isArray(j.credentials) ? j.credentials : [];
+        state.raiffeisenCredentials = Array.isArray(j.raiffeisen_credentials) ? j.raiffeisen_credentials : [];
         var card = el("dg-fin-bank-card");
         if (card) card.style.display = state.canWrite ? "" : "none";
         renderCredList();
+        renderRaiffList();
         var inp = el("dg-fin-jwt");
         if (inp) {
           inp.value = "";
@@ -1883,12 +2034,93 @@
     });
   }
 
-  function probe(credentialId) {
-    var btn = el("dg-fin-btn-probe");
-    var t0 = Date.now();
-    showActionLog("info", credentialId ? "Проверка одного JWT…" : "Проверка всех JWT Точки…");
+  function saveRaiff() {
+    var lab = el("dg-fin-raiff-label");
+    var cid = el("dg-fin-raiff-client-id");
+    var sec = el("dg-fin-raiff-client-secret");
+    var ref = el("dg-fin-raiff-refresh");
+    var clientId = String((cid && cid.value) || "").trim();
+    var clientSecret = String((sec && sec.value) || "").trim();
+    var refresh = String((ref && ref.value) || "").trim();
+    var label = String((lab && lab.value) || "").trim();
+    if (!clientId || !clientSecret || !refresh) {
+      setBankMsg("danger", "<strong>Нужны client_id, client_secret и refresh_token</strong> Райфа.");
+      return Promise.resolve();
+    }
+    var btn = el("dg-fin-btn-save-raiff");
     var run = function () {
-      var url = "/api/finance/probe" + (credentialId ? "?credential_id=" + encodeURIComponent(credentialId) : "");
+      setBankMsg("warning", "Сохраняем Райф…");
+      return postConfig({
+        bank: "raiffeisen",
+        action: "upsert",
+        label: label || "Райффайзен",
+        client_id: clientId,
+        client_secret: clientSecret,
+        refresh_token: refresh,
+      })
+        .then(function (x) {
+          if (!x.r.ok || !x.j.success) throw new Error((x.j && x.j.error) || ("HTTP " + x.r.status));
+          return fetch("/api/finance/config", { credentials: "same-origin" }).then(function (r) {
+            return r.json();
+          });
+        })
+        .then(function (cfg) {
+          state.raiffeisenCredentials = Array.isArray(cfg.raiffeisen_credentials) ? cfg.raiffeisen_credentials : [];
+          renderRaiffList();
+          var added = state.raiffeisenCredentials.filter(function (c) {
+            return String(c.client_id || "") === clientId;
+          });
+          var html = "<strong>Ключ Райфа сохранён.</strong>";
+          if (added[0]) html += "<br>" + esc(added[0].label) + ": " + esc(added[0].refresh_token_mask || "—");
+          setBankMsg("success", html);
+          if (cid) cid.value = "";
+          if (sec) sec.value = "";
+          if (ref) ref.value = "";
+          if (lab) lab.value = "";
+        })
+        .catch(function (e) {
+          setBankMsg("danger", "<strong>Ошибка сохранения Райфа.</strong> " + esc(e.message || String(e)));
+        });
+    };
+    if (window.DatagonNotify && window.DatagonNotify.busyRun && btn) return window.DatagonNotify.busyRun(btn, run);
+    return run();
+  }
+
+  function deleteRaiff(id) {
+    return openFinConfirm({
+      title: "Удалить ключ Райфа?",
+      text: "client_id и refresh_token будут удалены из настроек. Снимок счетов в БД останется.",
+      okLabel: "Удалить",
+    }).then(function (ok) {
+      if (!ok) return null;
+      return postConfig({ bank: "raiffeisen", action: "delete", id: id }).then(function (x) {
+        if (!x.r.ok || !x.j.success) throw new Error((x.j && x.j.error) || ("HTTP " + x.r.status));
+        state.raiffeisenCredentials = Array.isArray(x.j.raiffeisen_credentials) ? x.j.raiffeisen_credentials : [];
+        renderRaiffList();
+        setBankMsg("success", "<strong>Ключ Райфа удалён.</strong>");
+        toast("success", "Ключ Райфа удалён");
+      });
+    });
+  }
+
+  function toggleRaiff(id, enabled) {
+    return postConfig({ bank: "raiffeisen", action: "toggle", id: id, enabled: !!enabled }).then(function (x) {
+      if (!x.r.ok || !x.j.success) throw new Error((x.j && x.j.error) || ("HTTP " + x.r.status));
+      state.raiffeisenCredentials = Array.isArray(x.j.raiffeisen_credentials) ? x.j.raiffeisen_credentials : [];
+      renderRaiffList();
+    });
+  }
+
+  function probe(credentialId, bank) {
+    var btn = bank === "raiffeisen" ? el("dg-fin-btn-probe-raiff") : el("dg-fin-btn-probe");
+    var t0 = Date.now();
+    showActionLog("info", credentialId ? "Проверка ключа…" : bank === "raiffeisen" ? "Проверка Райфа…" : bank === "tochka" ? "Проверка Точки…" : "Проверка банков…");
+    var run = function () {
+      var url = "/api/finance/probe";
+      var qs = [];
+      if (credentialId) qs.push("credential_id=" + encodeURIComponent(credentialId));
+      if (bank) qs.push("bank=" + encodeURIComponent(bank));
+      if (qs.length) url += "?" + qs.join("&");
       return fetch(url, { credentials: "same-origin" })
         .then(function (r) {
           return r.json().then(function (j) {
@@ -1925,7 +2157,7 @@
           }
           if (x.j.api_note) html += "<br><span class=\"small text-muted\">" + esc(x.j.api_note) + "</span>";
           showActionLog("success", html, true);
-          toast("success", "Точка: счетов " + Number(x.j.count || 0));
+          toast("success", "Банки: счетов " + Number(x.j.count || 0));
         })
         .catch(function (e) {
           showActionLog("danger", "Ошибка проверки: " + (e.message || String(e)));
@@ -2013,7 +2245,7 @@
           var msg = String(sync.message || "Обновление…");
           showActionLog(
             "info",
-            "Обновляем счета и выписку Точки за " +
+            "Обновляем счета и выписку (Точка / Райф) за " +
               days +
               " дн.<br><span class=\"small\">Фильтры: " +
               esc(filtersTxt) +
@@ -2056,6 +2288,7 @@
     var orgTxt = String(opts.orgLabel || "").trim();
     if (credId && !orgTxt) {
       var found = (state.credentials || []).find(function (c) { return c.id === credId; });
+      if (!found) found = (state.raiffeisenCredentials || []).find(function (c) { return c.id === credId; });
       if (found) orgTxt = found.label || "";
     }
     var useFilters = !!opts.useFilters;
@@ -2088,7 +2321,7 @@
     var tick = null;
     showActionLog(
       "info",
-      "Загружаем выписки из Точки (" +
+      "Загружаем выписки (Точка / Райф) (" +
         esc(scopeTxt) +
         ")<br><span class=\"small\">" +
         esc(filtersTxt) +
@@ -2099,7 +2332,7 @@
       var s = Math.round((Date.now() - t0) / 1000);
       showActionLog(
         "info",
-        "Загружаем выписки из Точки (" +
+        "Загружаем выписки (Точка / Райф) (" +
           esc(scopeTxt) +
           ")<br><span class=\"small\">" +
           esc(filtersTxt) +
@@ -2112,6 +2345,7 @@
     var btn = opts.triggerBtn || el("dg-fin-load-tx") || el("dg-fin-sync");
     var body = { days: days };
     if (credId) body.credential_id = credId;
+    if (credId && String(credId).indexOf("rf_") === 0) body.bank = "raiffeisen";
     if (customerCode) body.customer_code = customerCode;
     if (accountId) body.account_id = accountId;
     if (dateFrom) body.date_from = dateFrom;
@@ -2160,8 +2394,16 @@
   });
   el("dg-fin-btn-save-bank").addEventListener("click", saveJwt);
   el("dg-fin-btn-probe").addEventListener("click", function () {
-    probe();
+    probe("", "tochka");
   });
+  var saveRaiffBtn = el("dg-fin-btn-save-raiff");
+  if (saveRaiffBtn) saveRaiffBtn.addEventListener("click", saveRaiff);
+  var probeRaiffBtn = el("dg-fin-btn-probe-raiff");
+  if (probeRaiffBtn) {
+    probeRaiffBtn.addEventListener("click", function () {
+      probe("", "raiffeisen");
+    });
+  }
   var credList = el("dg-fin-cred-list");
   if (credList) {
     credList.addEventListener("click", function (ev) {
@@ -2197,6 +2439,46 @@
       var id = t.getAttribute("data-cred-id");
       if (!id) return;
       toggleCred(id, t.checked).catch(function (e) {
+        setBankMsg("danger", esc(e.message || String(e)));
+        t.checked = !t.checked;
+      });
+    });
+  }
+  var raiffList = el("dg-fin-raiff-list");
+  if (raiffList) {
+    raiffList.addEventListener("click", function (ev) {
+      var t = ev.target;
+      if (!t) return;
+      var del = t.closest && t.closest(".dg-fin-raiff-del");
+      var pr = t.closest && t.closest(".dg-fin-raiff-probe");
+      var syn = t.closest && t.closest(".dg-fin-raiff-sync");
+      if (del) {
+        var idDel = del.getAttribute("data-raiff-id");
+        if (!idDel) return;
+        deleteRaiff(idDel).catch(function (e) {
+          setBankMsg("danger", esc(e.message || String(e)));
+        });
+        return;
+      }
+      if (pr) {
+        var idPr = pr.getAttribute("data-raiff-id");
+        if (!idPr) return;
+        probe(idPr, "raiffeisen");
+        return;
+      }
+      if (syn) {
+        var idSyn = syn.getAttribute("data-raiff-id");
+        var labSyn = syn.getAttribute("data-raiff-label") || "";
+        if (!idSyn) return;
+        syncFromBank({ credentialId: idSyn, triggerBtn: syn, orgLabel: labSyn });
+      }
+    });
+    raiffList.addEventListener("change", function (ev) {
+      var t = ev.target;
+      if (!t || !t.classList || !t.classList.contains("dg-fin-raiff-en")) return;
+      var id = t.getAttribute("data-raiff-id");
+      if (!id) return;
+      toggleRaiff(id, t.checked).catch(function (e) {
         setBankMsg("danger", esc(e.message || String(e)));
         t.checked = !t.checked;
       });
