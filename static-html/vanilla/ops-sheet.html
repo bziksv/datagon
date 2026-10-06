@@ -1078,7 +1078,7 @@
                 Одна кнопка <strong>Синхронизировать Planfix</strong>.
                 <strong>В отчёте Planfix</strong> — 1:1 со свежим generate (даты как в UI Planfix; сохранять отчёт в Planfix не нужно).
                 Старые сейвы больше не подставляются. Если только что жали «сформировать» в Planfix — синк подождёт лимит 10 мин и повторит generate.
-                <strong>В заявках листа</strong> — менеджеры продаж, шаблоны КП 14 и 176404. Токен —
+                <strong>В заявках листа</strong> — постановщик = менеджер продаж (без отбора шаблона КП). Токен —
                 <a href="/settings.html">Настройки → Planfix</a>.
               </p>
               <div id="dg-ops-pf-insight" class="alert alert-warning py-2 px-3 d-none" role="status"></div>
@@ -2208,7 +2208,7 @@
       '<td class="dg-ops-num" title="Гистограмма отчёта Planfix 1:1, без отбора постановщик / шаблон КП">' +
       (s.tasks_n_report == null ? "—" : escapeHtml(formatInt(s.tasks_n_report))) +
       "</td>" +
-      '<td class="dg-ops-num" title="Постановщик = менеджер продаж, шаблоны КП 14 и 176404">' +
+      '<td class="dg-ops-num" title="Постановщик = менеджер продаж, без отбора шаблона КП">' +
       escapeHtml(formatInt(s.tasks_n != null ? s.tasks_n : s.tasks_in_year || 0)) +
       "</td>" +
       '<td><select class="form-select form-select-sm dg-ops-pf-bucket" data-idx="' +
@@ -2288,14 +2288,14 @@
           escapeHtml(period || "") +
           "</strong>: в заявках листа <strong>" +
           fmtIntRu(tot) +
-          "</strong> (менеджеры + шаблоны КП), со статусом " +
+          "</strong> (постановщик = менеджер продаж), со статусом " +
           fmtIntRu(withN) +
           ", без статуса " +
           fmtIntRu(emptyN) +
           ".<br><strong>В отчёте Planfix</strong> — 1:1 с гистограммой" +
           (rm.save_id ? " (сейв №" + escapeHtml(String(rm.save_id)) + ")" : "") +
           (repTot != null ? ": <strong>" + fmtIntRu(repTot) + "</strong> задач" : " (нет данных)") +
-          ". <strong>В заявках листа</strong> меньше — там только менеджеры продаж и шаблоны КП.";
+          ". <strong>В заявках листа</strong> меньше, если постановщик не менеджер продаж.";
       }
     }
     var um = el("dg-ops-pf-unmatched");

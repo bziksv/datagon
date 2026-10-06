@@ -917,7 +917,7 @@
       '<td class="dg-ops-num" title="Гистограмма отчёта Planfix 1:1, без отбора постановщик / шаблон КП">' +
       (s.tasks_n_report == null ? "—" : escapeHtml(formatInt(s.tasks_n_report))) +
       "</td>" +
-      '<td class="dg-ops-num" title="Постановщик = менеджер продаж, шаблоны КП 14 и 176404">' +
+      '<td class="dg-ops-num" title="Постановщик = менеджер продаж, без отбора шаблона КП">' +
       escapeHtml(formatInt(s.tasks_n != null ? s.tasks_n : s.tasks_in_year || 0)) +
       "</td>" +
       '<td><select class="form-select form-select-sm dg-ops-pf-bucket" data-idx="' +
@@ -997,14 +997,14 @@
           escapeHtml(period || "") +
           "</strong>: в заявках листа <strong>" +
           fmtIntRu(tot) +
-          "</strong> (менеджеры + шаблоны КП), со статусом " +
+          "</strong> (постановщик = менеджер продаж), со статусом " +
           fmtIntRu(withN) +
           ", без статуса " +
           fmtIntRu(emptyN) +
           ".<br><strong>В отчёте Planfix</strong> — 1:1 с гистограммой" +
           (rm.save_id ? " (сейв №" + escapeHtml(String(rm.save_id)) + ")" : "") +
           (repTot != null ? ": <strong>" + fmtIntRu(repTot) + "</strong> задач" : " (нет данных)") +
-          ". <strong>В заявках листа</strong> меньше — там только менеджеры продаж и шаблоны КП.";
+          ". <strong>В заявках листа</strong> меньше, если постановщик не менеджер продаж.";
       }
     }
     var um = el("dg-ops-pf-unmatched");

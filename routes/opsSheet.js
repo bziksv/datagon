@@ -763,7 +763,6 @@ async function listTasksPage(appSettings, { offset, pageSize, fieldId, year, mon
     }
     const tid = Number(templateId);
     if (Number.isFinite(tid) && tid > 0) {
-        // Planfix type 51 не принимает «14;176404» как ИЛИ — такой value даёт 0 строк.
         filters.push({ type: 51, operator: 'equal', value: String(tid) });
     }
     if (withFieldFilter && fieldId) {
