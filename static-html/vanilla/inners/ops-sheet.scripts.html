@@ -896,7 +896,7 @@
         '<td class="dg-ops-pf-grip-td">' +
         grip +
         "</td>" +
-        '<td colspan="4" class="dg-ops-pf-sep-td"><span class="dg-ops-pf-sep-line">-----</span></td></tr>'
+        '<td colspan="5" class="dg-ops-pf-sep-td"><span class="dg-ops-pf-sep-line">-----</span></td></tr>'
       );
     }
     var shownBucket = s.bucket || s.suggested_bucket || "";
@@ -914,7 +914,10 @@
         : "без статуса (Planfix не отдал поле)") +
       (s.suggested_bucket && !s.mapped ? ' <span class="text-muted">(предложение)</span>' : "") +
       "</td>" +
-      '<td class="dg-ops-num" title="Заявки листа в локальной базе за период фильтра (постановщик = менеджер продаж, шаблоны КП 14 и 176404)">' +
+      '<td class="dg-ops-num" title="Гистограмма отчёта Planfix 1:1, без отбора постановщик / шаблон КП">' +
+      (s.tasks_n_report == null ? "—" : escapeHtml(formatInt(s.tasks_n_report))) +
+      "</td>" +
+      '<td class="dg-ops-num" title="Постановщик = менеджер продаж, шаблоны КП 14 и 176404">' +
       escapeHtml(formatInt(s.tasks_n != null ? s.tasks_n : s.tasks_in_year || 0)) +
       "</td>" +
       '<td><select class="form-select form-select-sm dg-ops-pf-bucket" data-idx="' +
@@ -954,7 +957,7 @@
       var list = state.pf.statuses || [];
       if (!list.length) {
         tbody.innerHTML =
-          '<tr><td colspan="5" class="text-muted">Нет строк за период — синхронизируйте выбранный месяц.</td></tr>';
+          '<tr><td colspan="6" class="text-muted">Нет строк за период — синхронизируйте выбранный месяц.</td></tr>';
       } else {
         tbody.innerHTML = list
           .map(function (s, idx) {
@@ -987,16 +990,21 @@
       } else {
         insight.className = "alert alert-success py-2 px-3";
         insight.classList.remove("d-none");
+        var repTot = state.pf.report_total;
+        var rm = state.pf.report_meta || {};
         insight.innerHTML =
           "Период <strong>" +
           escapeHtml(period || "") +
-          "</strong>: в локальной базе <strong>" +
+          "</strong>: в заявках листа <strong>" +
           fmtIntRu(tot) +
-          "</strong> заявок листа (менеджеры продаж + шаблоны КП), со статусом " +
+          "</strong> (менеджеры + шаблоны КП), со статусом " +
           fmtIntRu(withN) +
           ", без статуса " +
           fmtIntRu(emptyN) +
-          ". Колонка <strong>Заявок в базе</strong> — сводка по этим задачам; отдельный повторный забор «только отчёта» не нужен.";
+          ".<br><strong>В отчёте Planfix</strong> — 1:1 с гистограммой" +
+          (rm.save_id ? " (сейв №" + escapeHtml(String(rm.save_id)) + ")" : "") +
+          (repTot != null ? ": <strong>" + fmtIntRu(repTot) + "</strong> задач" : " (нет данных)") +
+          ". <strong>В заявках листа</strong> меньше — там только менеджеры продаж и шаблоны КП.";
       }
     }
     var um = el("dg-ops-pf-unmatched");
