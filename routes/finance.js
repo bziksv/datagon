@@ -130,6 +130,48 @@ function shortOrgLabelFromName(name) {
     return pick.slice(0, 120);
 }
 
+function parseCustomerCodes(src) {
+    const out = [];
+    function push(v) {
+        if (v == null || v === '') return;
+        if (Array.isArray(v)) {
+            v.forEach(push);
+            return;
+        }
+        String(v)
+            .split(/[,;]/)
+            .forEach((s) => {
+                const t = String(s).trim();
+                if (t && out.indexOf(t) < 0) out.push(t);
+            });
+    }
+    if (src && typeof src === 'object') {
+        push(src.customer_codes);
+        push(src.customer_code);
+        push(src.org);
+    } else {
+        push(src);
+    }
+    return out;
+}
+
+function sqlCustomerCodeIn(alias, codes, where, params) {
+    if (!codes || !codes.length) return;
+    if (codes.length === 1) {
+        where.push(alias + '.customer_code = ?');
+        params.push(codes[0]);
+        return;
+    }
+    where.push(alias + '.customer_code IN (' + codes.map(() => '?').join(',') + ')');
+    codes.forEach((c) => params.push(c));
+}
+
+function filterAccountsByCustomerCodes(accounts, codes) {
+    if (!codes || !codes.length) return accounts;
+    const set = new Set(codes);
+    return (accounts || []).filter((a) => set.has(String(a.customer_code || '')));
+}
+
 function pickOrgLabelFromCustomers(names) {
     const list = (Array.isArray(names) ? names : [])
         .map((n) => String(n || '').trim())
@@ -356,7 +398,7 @@ async function syncOneCredential(db, cred, opts) {
     const jwt = String(cred.jwt || '').trim();
     const skipTx = opts.skipTx;
     const onProgress = opts.onProgress;
-    const customerCodeFilter = String(opts.customer_code || '').trim();
+    const customerCodes = parseCustomerCodes(opts);
     const accountIdFilter = String(opts.account_id || '').trim();
     const window = opts.window || resolveStatementWindow(opts);
     const errors = [];
@@ -374,9 +416,7 @@ async function syncOneCredential(db, cred, opts) {
     for (const c of customersMeta) {
         if (c.customer_code) customerNameByCode[c.customer_code] = c.short_name || c.full_name || c.customer_code;
     }
-    if (customerCodeFilter) {
-        accounts = accounts.filter((a) => String(a.customer_code || '') === customerCodeFilter);
-    }
+    accounts = filterAccountsByCustomerCodes(accounts, customerCodes);
     if (accountIdFilter) {
         accounts = accounts.filter(
             (a) =>
@@ -520,13 +560,13 @@ async function runTochkaSync(db, appSettings, opts) {
     } catch (e) {
         return { success: false, reason: 'bad_period', message: e.message || String(e) };
     }
-    const customerCode = String((opts && opts.customer_code) || '').trim();
+    const customerCodes = parseCustomerCodes(opts);
     const accountId = String((opts && opts.account_id) || '').trim();
     const skipTx = Boolean(opts && opts.balances_only);
     const onProgress = typeof (opts && opts.onProgress) === 'function' ? opts.onProgress : () => {};
     const t0 = Date.now();
     const scopeBits = [];
-    if (customerCode) scopeBits.push('орг ' + customerCode);
+    if (customerCodes.length) scopeBits.push('орг ' + customerCodes.join(','));
     if (accountId) scopeBits.push('счёт');
     if (!nested) {
         syncJob = {
@@ -559,7 +599,7 @@ async function runTochkaSync(db, appSettings, opts) {
                     days: window.days,
                     date_from: window.startYmd,
                     date_to: window.endYmd,
-                    customer_code: customerCode || undefined,
+                    customer_codes: customerCodes.length ? customerCodes : undefined,
                     account_id: accountId || undefined,
                     skipTx,
                     onProgress,
@@ -600,7 +640,7 @@ async function runTochkaSync(db, appSettings, opts) {
             days: window.days,
             date_from: window.startYmd,
             date_to: window.endYmd,
-            customer_code: customerCode || '',
+            customer_codes: customerCodes,
             account_id: accountId || '',
             message:
                 'Ключей ' +
@@ -671,7 +711,7 @@ async function enrichRaiffCredentialMeta(db, appSettings, cred) {
 async function syncOneRaiffeisenCredential(db, appSettings, cred, opts) {
     const skipTx = opts.skipTx;
     const onProgress = opts.onProgress;
-    const customerCodeFilter = String(opts.customer_code || '').trim();
+    const customerCodes = parseCustomerCodes(opts);
     const accountIdFilter = String(opts.account_id || '').trim();
     const window = opts.window || resolveStatementWindow(opts);
     const errors = [];
@@ -682,9 +722,7 @@ async function syncOneRaiffeisenCredential(db, appSettings, cred, opts) {
     await persistRaiffCred(db, appSettings, cred);
     let accounts = await raiff.listAccounts(cred);
     await persistRaiffCred(db, appSettings, cred);
-    if (customerCodeFilter) {
-        accounts = accounts.filter((a) => String(a.customer_code || '') === customerCodeFilter);
-    }
+    accounts = filterAccountsByCustomerCodes(accounts, customerCodes);
     if (accountIdFilter) {
         accounts = accounts.filter(
             (a) =>
@@ -817,7 +855,7 @@ async function runRaiffeisenSync(db, appSettings, opts) {
     } catch (e) {
         return { success: false, reason: 'bad_period', message: e.message || String(e) };
     }
-    const customerCode = String((opts && opts.customer_code) || '').trim();
+    const customerCodes = parseCustomerCodes(opts);
     const accountId = String((opts && opts.account_id) || '').trim();
     const skipTx = Boolean(opts && opts.balances_only);
     const onProgress = typeof (opts && opts.onProgress) === 'function' ? opts.onProgress : () => {};
@@ -842,7 +880,7 @@ async function runRaiffeisenSync(db, appSettings, opts) {
             try {
                 const one = await syncOneRaiffeisenCredential(db, appSettings, cred, {
                     window,
-                    customer_code: customerCode || undefined,
+                    customer_codes: customerCodes.length ? customerCodes : undefined,
                     account_id: accountId || undefined,
                     skipTx,
                     onProgress,
@@ -1409,7 +1447,7 @@ function factory(db, appSettings) {
             const search = String(req.query.search || '').trim();
             const direction = String(req.query.direction || '').trim().toLowerCase();
             const accountId = String(req.query.account_id || '').trim();
-            const customerCode = String(req.query.customer_code || req.query.org || '').trim();
+            const customerCodes = parseCustomerCodes(req.query);
             const dateFrom = String(req.query.date_from || '').trim();
             const dateTo = String(req.query.date_to || '').trim();
             const includeInternal = truthyQueryFlag(
@@ -1429,10 +1467,7 @@ function factory(db, appSettings) {
                 where.push('t.account_id = ?');
                 params.push(accountId);
             }
-            if (customerCode) {
-                where.push('a.customer_code = ?');
-                params.push(customerCode);
-            }
+            sqlCustomerCodeIn('a', customerCodes, where, params);
             if (direction === 'in' || direction === 'out') {
                 where.push('t.direction = ?');
                 params.push(direction);
@@ -1534,7 +1569,7 @@ function factory(db, appSettings) {
             await ensureFinanceTables(db);
             const months = Math.max(1, Math.min(36, parseInt(String(req.query.months || '12'), 10) || 12));
             const accountId = String(req.query.account_id || '').trim();
-            const customerCode = String(req.query.customer_code || req.query.org || '').trim();
+            const customerCodes = parseCustomerCodes(req.query);
             const currency = String(req.query.currency || 'RUB').trim().toUpperCase() || 'RUB';
             const includeDeposits = truthyQueryFlag(
                 req.query.include_deposits != null ? req.query.include_deposits : req.query.include_internal
@@ -1552,10 +1587,7 @@ function factory(db, appSettings) {
                 where.push('t.account_id = ?');
                 params.push(accountId);
             }
-            if (customerCode) {
-                where.push('a.customer_code = ?');
-                params.push(customerCode);
-            }
+            sqlCustomerCodeIn('a', customerCodes, where, params);
             if (!includeDeposits) {
                 where.push(sqlExcludeInternalTransfers('t'));
             }
@@ -1620,7 +1652,7 @@ function factory(db, appSettings) {
                 currency,
                 date_from: startYmd,
                 date_to: endYmd,
-                customer_code: customerCode || null,
+                customer_codes: customerCodes,
                 account_id: accountId || null,
                 include_deposits: includeDeposits,
                 series,
@@ -1645,7 +1677,7 @@ function factory(db, appSettings) {
             const limit = Math.max(3, Math.min(20, parseInt(String(req.query.limit || '8'), 10) || 8));
             const months = Math.max(1, Math.min(36, parseInt(String(req.query.months || '12'), 10) || 12));
             const accountId = String(req.query.account_id || '').trim();
-            const customerCode = String(req.query.customer_code || req.query.org || '').trim();
+            const customerCodes = parseCustomerCodes(req.query);
             const currency = String(req.query.currency || 'RUB').trim().toUpperCase() || 'RUB';
             const includeInternal = truthyQueryFlag(
                 req.query.include_internal != null ? req.query.include_internal : req.query.include_deposits
@@ -1670,10 +1702,7 @@ function factory(db, appSettings) {
                 where.push('t.account_id = ?');
                 params.push(accountId);
             }
-            if (customerCode) {
-                where.push('a.customer_code = ?');
-                params.push(customerCode);
-            }
+            sqlCustomerCodeIn('a', customerCodes, where, params);
             if (!includeInternal) {
                 where.push(sqlExcludeInternalTransfers('t'));
             }
@@ -1771,7 +1800,7 @@ function factory(db, appSettings) {
                 currency: currency,
                 date_from: dateFrom,
                 date_to: dateTo,
-                customer_code: customerCode || null,
+                customer_codes: customerCodes,
                 account_id: accountId || null,
                 include_internal: includeInternal,
                 top_in: topList(inMap, totIn),
@@ -1804,7 +1833,7 @@ function factory(db, appSettings) {
             body.balances_only === true || body.balances_only === 1 || body.balances_only === '1'
         );
         const credentialId = String(body.credential_id || '').trim();
-        const customerCode = String(body.customer_code || body.org || '').trim();
+        const customerCodes = parseCustomerCodes(body);
         const accountId = String(body.account_id || '').trim();
         const dateFrom = String(body.date_from || '').trim();
         const dateTo = String(body.date_to || '').trim();
@@ -1839,7 +1868,7 @@ function factory(db, appSettings) {
                 days,
                 balances_only: balancesOnly,
                 credential_id: credentialId || undefined,
-                customer_code: customerCode || undefined,
+                customer_codes: customerCodes.length ? customerCodes : undefined,
                 account_id: accountId || undefined,
                 date_from: dateFrom || undefined,
                 date_to: dateTo || undefined,
@@ -1859,7 +1888,7 @@ function factory(db, appSettings) {
             days,
             date_from: dateFrom || null,
             date_to: dateTo || null,
-            customer_code: customerCode || null,
+            customer_codes: customerCodes,
             account_id: accountId || null,
             balances_only: balancesOnly,
             sync: getSyncState(),

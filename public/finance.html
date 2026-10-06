@@ -779,6 +779,25 @@
       color: #94a3b8;
       font-size: 0.88rem;
     }
+    .dg-fin-org-btn {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .dg-fin-org-menu {
+      max-height: 280px;
+      overflow-y: auto;
+    }
+    .dg-fin-org-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.45rem;
+      padding: 0.28rem 0.4rem;
+      margin: 0;
+    }
+    .dg-fin-org-item .form-check-input { margin-top: 0.2rem; }
+    .dg-fin-org-item-lab { min-width: 0; line-height: 1.25; }
+    .dg-fin-org-item-sub { display: block; font-size: 0.72rem; color: #94a3b8; }
   </style>
 
   <style>
@@ -1669,11 +1688,14 @@
                   <label class="form-label" for="dg-fin-search">Умный поиск</label>
                   <input type="search" id="dg-fin-search" class="form-control" placeholder="Назначение, контрагент, ИНН, номер, счёт…" autocomplete="off" />
                 </div>
-                <div class="col-md-2" data-dg-fin-filter-field="org" data-dg-filter-field-title="Организация">
-                  <label class="form-label" for="dg-fin-org">Организация</label>
-                  <select id="dg-fin-org" class="form-select">
-                    <option value="">Все</option>
-                  </select>
+                <div class="col-md-3" data-dg-fin-filter-field="org" data-dg-filter-field-title="Организация">
+                  <label class="form-label" for="dg-fin-org-btn">Организация</label>
+                  <div class="dropdown w-100" id="dg-fin-org-wrap">
+                    <button type="button" class="form-select text-start dg-vanilla-dropdown-toggle dg-fin-org-btn" id="dg-fin-org-btn" aria-expanded="false" aria-haspopup="true">Все</button>
+                    <div class="dropdown-menu p-2 dg-fin-org-menu" id="dg-fin-org-menu" style="min-width: 100%">
+                      <div class="small text-muted px-1 py-1">Нет организаций</div>
+                    </div>
+                  </div>
                 </div>
                 <div class="col-md-2" data-dg-fin-filter-field="date_from">
                   <label class="form-label" for="dg-fin-date-from">С даты</label>
@@ -2017,8 +2039,8 @@
     rows: [],
     sortKey: "booked_date",
     sortDir: "desc",
-    pending: { search: "", org: "", date_from: "", date_to: "", direction: "", account_id: "", page_size: 100, sync_days: 30, include_internal: false },
-    applied: { search: "", org: "", date_from: "", date_to: "", direction: "", account_id: "", page_size: 100, sync_days: 30, include_internal: false },
+    pending: { search: "", org: [], date_from: "", date_to: "", direction: "", account_id: "", page_size: 100, sync_days: 30, include_internal: false },
+    applied: { search: "", org: [], date_from: "", date_to: "", direction: "", account_id: "", page_size: 100, sync_days: 30, include_internal: false },
     analyticsMonths: 12,
   };
 
@@ -2040,6 +2062,34 @@
   }
 
   function el(id) { return document.getElementById(id); }
+  function normalizeOrgs(list) {
+    var out = [];
+    if (list == null || list === "") return out;
+    var arr = Array.isArray(list) ? list : String(list).split(",");
+    arr.forEach(function (x) {
+      var t = String(x || "").trim();
+      if (t && out.indexOf(t) < 0) out.push(t);
+    });
+    out.sort();
+    return out;
+  }
+  function orgsKey(list) {
+    return normalizeOrgs(list).join("\u0001");
+  }
+  function appendOrgQuery(q, orgs) {
+    normalizeOrgs(orgs).forEach(function (c) {
+      q.append("customer_code", c);
+    });
+  }
+  function orgFilterCaption(orgs) {
+    var codes = normalizeOrgs(orgs);
+    if (!codes.length) return "Все";
+    var names = codes.map(function (c) {
+      return orgOptionLabel(c) || c;
+    });
+    if (names.length <= 2) return names.join(", ");
+    return names.length + " орг.";
+  }
   function esc(s) {
     return String(s == null ? "" : s)
       .replace(/&/g, "&amp;")
@@ -2145,7 +2195,16 @@
 
   function readPendingFromForm() {
     state.pending.search = String((el("dg-fin-search") && el("dg-fin-search").value) || "").trim();
-    state.pending.org = String((el("dg-fin-org") && el("dg-fin-org").value) || "").trim();
+    var orgBoxes = document.querySelectorAll("#dg-fin-org-menu input.dg-fin-org-cb");
+    if (orgBoxes.length) {
+      var picked = [];
+      orgBoxes.forEach(function (cb) {
+        if (cb.checked) picked.push(String(cb.value || "").trim());
+      });
+      state.pending.org = normalizeOrgs(picked);
+    } else {
+      state.pending.org = normalizeOrgs(state.pending.org);
+    }
     state.pending.date_from = String((el("dg-fin-date-from") && el("dg-fin-date-from").value) || "");
     state.pending.date_to = String((el("dg-fin-date-to") && el("dg-fin-date-to").value) || "");
     state.pending.direction = String((el("dg-fin-direction") && el("dg-fin-direction").value) || "");
@@ -2157,7 +2216,7 @@
   function writeFormFromPending() {
     if (el("dg-fin-search")) el("dg-fin-search").value = state.pending.search;
     if (el("dg-fin-table-search-mirror")) el("dg-fin-table-search-mirror").value = state.pending.search;
-    if (el("dg-fin-org")) el("dg-fin-org").value = state.pending.org;
+    syncOrgChecksFromPending();
     if (el("dg-fin-date-from")) el("dg-fin-date-from").value = state.pending.date_from;
     if (el("dg-fin-date-to")) el("dg-fin-date-to").value = state.pending.date_to;
     if (el("dg-fin-direction")) el("dg-fin-direction").value = state.pending.direction;
@@ -2174,7 +2233,7 @@
     if (!btn) return;
     var dirty =
       state.pending.search !== state.applied.search ||
-      state.pending.org !== state.applied.org ||
+      orgsKey(state.pending.org) !== orgsKey(state.applied.org) ||
       state.pending.date_from !== state.applied.date_from ||
       state.pending.date_to !== state.applied.date_to ||
       state.pending.direction !== state.applied.direction ||
@@ -2187,9 +2246,10 @@
   function commitFilters() {
     readPendingFromForm();
     // если счёт не из выбранной орг — сбросить
-    if (state.pending.org && state.pending.account_id) {
+    var orgs = normalizeOrgs(state.pending.org);
+    if (orgs.length && state.pending.account_id) {
       var ok = (state.accounts || []).some(function (a) {
-        return a.account_id === state.pending.account_id && String(a.customer_code || "") === state.pending.org;
+        return a.account_id === state.pending.account_id && orgs.indexOf(String(a.customer_code || "")) >= 0;
       });
       if (!ok) state.pending.account_id = "";
     }
@@ -2556,11 +2616,11 @@
   function loadMonthlyAnalytics() {
     var months = readAnalyticsMonths();
     var scope = el("dg-fin-analytics-scope");
-    var org = state.applied.org;
+    var org = normalizeOrgs(state.applied.org);
     var acc = state.applied.account_id;
     if (scope) {
       var bits = [];
-      if (org) bits.push(orgLabelByCode(org) || org);
+      if (org.length) bits.push(org.map(function (c) { return orgLabelByCode(c) || c; }).join(", "));
       if (acc) {
         var a = (state.accounts || []).find(function (x) { return x.account_id === acc; });
         bits.push(a ? accountDisplayName(a) : maskAcc(acc));
@@ -2569,7 +2629,7 @@
     }
     var q = new URLSearchParams();
     q.set("months", String(months));
-    if (org) q.set("customer_code", org);
+    appendOrgQuery(q, org);
     if (acc) q.set("account_id", acc);
     if (state.applied.include_internal) q.set("include_internal", "1");
     return fetch("/api/finance/analytics/monthly?" + q.toString(), { credentials: "same-origin" })
@@ -2703,13 +2763,13 @@
 
   function loadCounterparties() {
     var limit = readCpLimit();
-    var org = state.applied.org;
+    var org = normalizeOrgs(state.applied.org);
     var acc = state.applied.account_id;
     var scope = el("dg-fin-cp-scope");
     var q = new URLSearchParams();
     q.set("limit", String(limit));
     q.set("months", String(readAnalyticsMonths()));
-    if (org) q.set("customer_code", org);
+    appendOrgQuery(q, org);
     if (acc) q.set("account_id", acc);
     if (state.applied.date_from) q.set("date_from", state.applied.date_from);
     if (state.applied.date_to) q.set("date_to", state.applied.date_to);
@@ -2723,7 +2783,7 @@
         if (scope) {
           var bits = [];
           if (j.date_from && j.date_to) bits.push(j.date_from + " → " + j.date_to);
-          if (org) bits.push(orgLabelByCode(org) || org);
+          if (org.length) bits.push(org.map(function (c) { return orgLabelByCode(c) || c; }).join(", "));
           scope.textContent = bits.length ? bits.join(" · ") : "все организации";
         }
         var tot = j.totals || {};
@@ -3207,7 +3267,9 @@
       '<div class="card dg-fin-total-card">' +
       '<div class="card-body">' +
       '<div class="dg-fin-total-label">Всего доступно' +
-      (state.applied.org ? " · " + esc(orgLabelByCode(state.applied.org)) : "") +
+      (normalizeOrgs(state.applied.org).length
+        ? " · " + esc(normalizeOrgs(state.applied.org).map(function (c) { return orgLabelByCode(c) || c; }).join(", "))
+        : "") +
       "</div>" +
       '<p class="dg-fin-total-amount dg-fin-bal-num mb-0">' +
       esc(main ? fmtMoney(main.amount, main.currency) : "—") +
@@ -3363,11 +3425,11 @@
       .join("");
   }
 
-  function filteredAccounts(orgCode) {
-    var code = String(orgCode || "").trim();
-    if (!code) return (state.accounts || []).slice();
+  function filteredAccounts(orgCodes) {
+    var codes = normalizeOrgs(orgCodes);
+    if (!codes.length) return (state.accounts || []).slice();
     return (state.accounts || []).filter(function (a) {
-      return String(a.customer_code || "") === code;
+      return codes.indexOf(String(a.customer_code || "")) >= 0;
     });
   }
   function getOrgAliasEntry(customerCode) {
@@ -3411,30 +3473,83 @@
     });
     return hit ? String(hit.org_label || hit.name || c).trim() : c;
   }
-  function fillOrgSelect() {
-    var sel = el("dg-fin-org");
-    if (!sel) return;
-    var cur = state.pending.org;
+  function collectOrgOptions() {
     var map = Object.create(null);
+    var banks = Object.create(null);
     (state.accounts || []).forEach(function (a) {
       var code = String(a.customer_code || "").trim();
       if (!code) return;
-      if (!map[code]) {
-        map[code] = orgFullName(code, a.org_label || code);
-      }
+      if (!map[code]) map[code] = orgFullName(code, a.org_label || code);
+      var bank = String(a.bank || "tochka").toLowerCase();
+      var lab = BANK_LABELS[bank] || bank;
+      if (!banks[code]) banks[code] = [];
+      if (banks[code].indexOf(lab) < 0) banks[code].push(lab);
+    });
+    var nameCount = Object.create(null);
+    Object.keys(map).forEach(function (code) {
+      var n = String(map[code] || "").toLowerCase();
+      nameCount[n] = (nameCount[n] || 0) + 1;
     });
     var codes = Object.keys(map).sort(function (a, b) {
       return map[a].localeCompare(map[b], "ru");
     });
-    sel.innerHTML =
-      '<option value="">Все</option>' +
-      codes
+    return { map: map, banks: banks, nameCount: nameCount, codes: codes };
+  }
+  function orgOptionLabel(code) {
+    var opt = collectOrgOptions();
+    var name = opt.map[code] || orgLabelByCode(code) || code;
+    var nKey = String(name || "").toLowerCase();
+    var banks = opt.banks[code] || [];
+    if ((opt.nameCount[nKey] || 0) > 1 && banks.length) {
+      return name + " · " + banks.join("/");
+    }
+    if (banks.length > 1) return name + " · " + banks.join("/");
+    return name;
+  }
+  function updateOrgBtnLabel() {
+    var btn = el("dg-fin-org-btn");
+    if (btn) btn.textContent = orgFilterCaption(state.pending.org);
+  }
+  function syncOrgChecksFromPending() {
+    var picked = normalizeOrgs(state.pending.org);
+    document.querySelectorAll("#dg-fin-org-menu input.dg-fin-org-cb").forEach(function (cb) {
+      cb.checked = picked.indexOf(String(cb.value || "").trim()) >= 0;
+    });
+    updateOrgBtnLabel();
+  }
+  function fillOrgSelect() {
+    var menu = el("dg-fin-org-menu");
+    if (!menu) return;
+    var opt = collectOrgOptions();
+    var picked = normalizeOrgs(state.pending.org).filter(function (c) {
+      return !!opt.map[c];
+    });
+    if (picked.length !== normalizeOrgs(state.pending.org).length) state.pending.org = picked;
+    if (!opt.codes.length) {
+      menu.innerHTML = '<div class="small text-muted px-1 py-1">Нет организаций</div>';
+      updateOrgBtnLabel();
+      return;
+    }
+    menu.innerHTML =
+      '<button type="button" class="btn btn-link btn-sm p-0 mb-1 dg-fin-org-all">Снять все</button>' +
+      opt.codes
         .map(function (code) {
-          return '<option value="' + esc(code) + '">' + esc(map[code]) + "</option>";
+          var banks = (opt.banks[code] || []).join(", ");
+          return (
+            '<label class="dg-fin-org-item">' +
+            '<input type="checkbox" class="form-check-input dg-fin-org-cb" value="' +
+            esc(code) +
+            '"' +
+            (picked.indexOf(code) >= 0 ? " checked" : "") +
+            " />" +
+            '<span class="dg-fin-org-item-lab">' +
+            esc(orgOptionLabel(code)) +
+            (banks ? '<span class="dg-fin-org-item-sub">' + esc(banks) + "</span>" : "") +
+            "</span></label>"
+          );
         })
         .join("");
-    sel.value = cur && map[cur] ? cur : "";
-    if (cur && !map[cur]) state.pending.org = "";
+    updateOrgBtnLabel();
   }
   function fillAccountSelect() {
     var sel = el("dg-fin-account");
@@ -3703,7 +3818,7 @@
   function loadTx() {
     var q = new URLSearchParams();
     q.set("search", state.applied.search || "");
-    q.set("customer_code", state.applied.org || "");
+    appendOrgQuery(q, state.applied.org);
     q.set("direction", state.applied.direction || "");
     q.set("account_id", state.applied.account_id || "");
     q.set("date_from", state.applied.date_from || "");
@@ -4237,7 +4352,7 @@
       if (found) orgTxt = found.label || "";
     }
     var useFilters = !!opts.useFilters;
-    var customerCode = useFilters ? String(state.pending.org || "").trim() : "";
+    var customerCodes = useFilters ? normalizeOrgs(state.pending.org) : [];
     var accountId = useFilters ? String(state.pending.account_id || "").trim() : "";
     var dateFrom = useFilters ? String(state.pending.date_from || "").trim() : "";
     var dateTo = useFilters ? String(state.pending.date_to || "").trim() : "";
@@ -4253,13 +4368,20 @@
         : "последние " + days + " дн.";
     var scopeParts = [];
     if (credId) scopeParts.push("JWT: " + (orgTxt || credId));
-    if (customerCode) scopeParts.push("орг: " + (orgLabelByCode(customerCode) || customerCode));
+    if (customerCodes.length) scopeParts.push("орг: " + customerCodes.map(function (c) { return orgLabelByCode(c) || c; }).join(", "));
     if (accountId) scopeParts.push("счёт: " + maskAcc(accountId));
     if (!scopeParts.length) scopeParts.push(useFilters ? "все орг. по фильтрам" : "все включённые JWT");
     var scopeTxt = scopeParts.join(" · ");
     var filtersTxt = [
       "период: " + periodTxt,
-      "организация: " + (customerCode ? orgLabelByCode(customerCode) : useFilters ? "все" : credId ? orgTxt || "JWT" : "все"),
+      "организация: " +
+        (customerCodes.length
+          ? customerCodes.map(function (c) { return orgLabelByCode(c) || c; }).join(", ")
+          : useFilters
+            ? "все"
+            : credId
+              ? orgTxt || "JWT"
+              : "все"),
       "счёт: " + (accountId ? maskAcc(accountId) : "все"),
     ].join("; ");
     var t0 = Date.now();
@@ -4291,7 +4413,7 @@
     var body = { days: days };
     if (credId) body.credential_id = credId;
     if (credId && String(credId).indexOf("rf_") === 0) body.bank = "raiffeisen";
-    if (customerCode) body.customer_code = customerCode;
+    if (customerCodes.length) body.customer_codes = customerCodes;
     if (accountId) body.account_id = accountId;
     if (dateFrom) body.date_from = dateFrom;
     if (dateTo) body.date_to = dateTo;
@@ -4333,7 +4455,7 @@
   el("dg-fin-apply").addEventListener("click", commitFilters);
   el("dg-fin-reset").addEventListener("click", function () {
     hideActionLog();
-    state.pending = { search: "", org: "", date_from: "", date_to: "", direction: "", account_id: "", page_size: 100, sync_days: 30, include_internal: false };
+    state.pending = { search: "", org: [], date_from: "", date_to: "", direction: "", account_id: "", page_size: 100, sync_days: 30, include_internal: false };
     writeFormFromPending();
     commitFilters();
   });
@@ -4488,16 +4610,37 @@
       }
     });
   }
-  ["dg-fin-search", "dg-fin-org", "dg-fin-date-from", "dg-fin-date-to", "dg-fin-direction", "dg-fin-account", "dg-fin-page-size", "dg-fin-sync-days", "dg-fin-include-internal"].forEach(function (id) {
+  ["dg-fin-search", "dg-fin-date-from", "dg-fin-date-to", "dg-fin-direction", "dg-fin-account", "dg-fin-page-size", "dg-fin-sync-days", "dg-fin-include-internal"].forEach(function (id) {
     var n = el(id);
     if (!n) return;
     n.addEventListener("input", function () { readPendingFromForm(); markDirty(); });
     n.addEventListener("change", function () {
       readPendingFromForm();
-      if (id === "dg-fin-org") fillAccountSelect();
       markDirty();
     });
   });
+  var orgMenu = el("dg-fin-org-menu");
+  if (orgMenu) {
+    orgMenu.addEventListener("click", function (ev) {
+      var all = ev.target && ev.target.closest && ev.target.closest(".dg-fin-org-all");
+      if (all) {
+        ev.preventDefault();
+        document.querySelectorAll("#dg-fin-org-menu input.dg-fin-org-cb").forEach(function (cb) {
+          cb.checked = false;
+        });
+        readPendingFromForm();
+        fillAccountSelect();
+        markDirty();
+      }
+    });
+    orgMenu.addEventListener("change", function (ev) {
+      if (!ev.target || !ev.target.classList || !ev.target.classList.contains("dg-fin-org-cb")) return;
+      readPendingFromForm();
+      fillAccountSelect();
+      updateOrgBtnLabel();
+      markDirty();
+    });
+  }
   el("dg-fin-page-size-foot").addEventListener("change", function () {
     if (el("dg-fin-page-size")) el("dg-fin-page-size").value = el("dg-fin-page-size-foot").value;
     readPendingFromForm();

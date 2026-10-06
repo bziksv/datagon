@@ -2254,7 +2254,7 @@ Query: `year`, `month`, `q` (номер / постановщик / статус)
 
 ### GET `/api/finance/transactions`
 
-Query: `search`, `customer_code` (организация / клиент Точки), `direction`, `account_id`, `date_from`, `date_to`, `page`, `page_size`, `include_internal=1` (или `include_deposits=1`; по умолчанию **выкл.** — без тела депозита UNV, без «Перевод собственных средств» и без «Выплата дивидендов»).
+Query: `search`, `customer_code` (повторяемый или через запятую; также `customer_codes` / `org`) — несколько организаций, `direction`, `account_id`, `date_from`, `date_to`, `page`, `page_size`, `include_internal=1` (или `include_deposits=1`; по умолчанию **выкл.** — без тела депозита UNV, без «Перевод собственных средств» и без «Выплата дивидендов»).
 
 В строках: `customer_code`, `org_label`, **`org`** — **полное** имя организации (alias `full`, иначе `org_label`), **`org_short`** — короткое. **`chart_excluded`** / **`chart_exclude_reason`** — операция не входит в график/аналитику по умолчанию (депозит UNV, «Перевод собственных средств», «Выплата дивидендов»). Умный поиск матчит оба alias.
 
@@ -2262,13 +2262,13 @@ Query: `search`, `customer_code` (организация / клиент Точк
 
 ### GET `/api/finance/analytics/monthly`
 
-Помесячная агрегация из `dg_finance_tx` (снимок). Query: `months` (1…36, по умолчанию **12**), `customer_code` / `org`, `account_id`, `currency` (по умолчанию `RUB`), `include_deposits=1` / `include_internal=1` (по умолчанию **выкл.** — без тела депозита UNV, без «Перевод собственных средств» и без «Выплата дивидендов»; проценты и внешние платежи входят).
+Помесячная агрегация из `dg_finance_tx` (снимок). Query: `months` (1…36, по умолчанию **12**), `customer_code` / `customer_codes` / `org` (несколько), `account_id`, `currency` (по умолчанию `RUB`), `include_deposits=1` / `include_internal=1` (по умолчанию **выкл.** — без тела депозита UNV, без «Перевод собственных средств» и без «Выплата дивидендов»; проценты и внешние платежи входят).
 
 Ответ: `{ success, months, currency, date_from, date_to, include_deposits, series: [{ month, in, out, net, count_in, count_out }], totals: { in, out, net, count } }`. Пустые месяцы в окне заполняются нулями.
 
 ### GET `/api/finance/analytics/counterparties`
 
-Топ контрагентов по сумме входящих / исходящих. Query: `limit` (3…20, по умолчанию **8**), `months` (если нет `date_from`/`date_to`), `date_from`, `date_to`, `customer_code` / `org`, `account_id`, `currency`, `include_internal=1` / `include_deposits=1` (по умолчанию **выкл.**, те же исключения, что у monthly).
+Топ контрагентов по сумме входящих / исходящих. Query: `limit` (3…20, по умолчанию **8**), `months` (если нет `date_from`/`date_to`), `date_from`, `date_to`, `customer_code` / `customer_codes` / `org`, `account_id`, `currency`, `include_internal=1` / `include_deposits=1` (по умолчанию **выкл.**, те же исключения, что у monthly).
 
 Ответ: `{ success, limit, currency, date_from, date_to, include_internal, top_in: [{ rank, name, inn, amount, count, share }], top_out: […], totals: { in, out, counterparties_in, counterparties_out } }`. Группировка по **ИНН** (если есть) — разные написания названия одной конторы сливаются; без ИНН — по имени.
 
@@ -2276,8 +2276,8 @@ Query: `search`, `customer_code` (организация / клиент Точк
 
 ### POST `/api/finance/sync`
 
-Body: `{ "days": 30, "date_from?", "date_to?", "customer_code?", "account_id?", "balances_only": false, "credential_id?" }`.  
-Период: либо `date_from`/`date_to` (не больше 1095 дн.), либо `days` (1…1095). Без `credential_id` — все включённые JWT; `customer_code` / `account_id` сужают счета внутри ключей. Асинхронно (`queued: true`); итог в `sync-status → last_result`.
+Body: `{ "days": 30, "date_from?", "date_to?", "customer_code?", "customer_codes?", "account_id?", "balances_only": false, "credential_id?" }`.
+Период: либо `date_from`/`date_to` (не больше 1095 дн.), либо `days` (1…1095). Без `credential_id` — все включённые JWT; `customer_codes` / `account_id` сужают счета внутри ключей. Асинхронно (`queued: true`); итог в `sync-status → last_result`.
 
 Автосинк: `task: "finance_tochka"`. Сценарий: [Финансы](/docs/finance).
 
