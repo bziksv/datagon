@@ -84,7 +84,7 @@ description: Справочник REST-эндпоинтов p.datagon.ru (осн
 - `/api/ms-orders` -> `routes/msOrders.js` (Заказы в МС: `entity/customerorder`, окно **30 дней**, исключение ответственных из `app_settings`)
 - `/api/suppliers` -> `routes/suppliers.js` (Поставщики: агрегат по `ms_export` + `dg_supplier_settings`; `GET /`, `GET /assignees`, `GET /ms-order-log`, `GET /ms-order-log/:logId`, `GET /export/supplier`, `GET /export/purchaser`, `POST /:supplierKey/send-ms-order`, `PATCH /:supplierKey`)
 - `/api/supplier-analysis` -> `routes/supplierAnalysis.js` (Анализ поставщиков: продажи из `ms_demand` + `ms_export.supplier`; `GET /projects`, `/overview`, `/ranking`, `/highlights`, `/trend`, `/products`, `/export`, `/data-freshness`; фильтр `project_mode` / `project_uuids`)
-- `/api/product-analysis` -> `routes/productAnalysis.js` (Анализ товаров: продажи/остатки по SKU; `GET /projects`, `/presets`, `/overview`, `/ranking`, `/export`; `POST /decision`, `/decision/bulk`, `/min-stock/apply`; таблица `dg_product_analysis_decisions`)
+- `/api/product-analysis` -> `routes/productAnalysis.js` (Анализ товаров: продажи/остатки по SKU; `GET /projects`, `/presets`, `/overview`, `/ranking`, `/export`; `POST /decision`, `/decision/bulk`, `/min-stock/apply`; комментарии `POST|PATCH|DELETE /:code/comments[/:id]`; таблицы `dg_product_analysis_decisions`, `dg_product_analysis_comments`)
 - `/api/purchase` -> `routes/purchase.js` (Закупки: `GET` список — SQL `ORDER BY` + пагинация, enrich страницы; `POST /override`, `POST /overrides-import`, журнал overrides: `GET /log`, `GET /log/stats`, `POST /log/cleanup`; перенос «Предлагаемый нес.ост.» → `ms_export.min_stock` (только БД): `POST /min-stock-apply/run`, …; выгрузка в МС — `auto_sync_min_stock_export` / `lib/datagonMinStockExportMs.js`)
 - `/api/product` -> `routes/product.js` (Карточка товара: `ms_export` + `ms_entity_details` + продажи + `dg_bundle_components`; лог отсутствий — пакетно после синка МС: `stock≤0` или для базового кода `stock` < min суффикса в `код-число`, см. `syncZeroStockLogAfterMoyskladExport`; снимки остатка по дням — `dg_product_stock_snapshot`, см. `syncProductStockSnapshotsAfterMoyskladExport` — оба вызываются из `routes/moysklad.js` после сохранения `ms_export`)
 - `/api/activity` -> `routes/activity.js`
@@ -2184,7 +2184,11 @@ Query: `year`, `month`, `q` (номер / постановщик / статус)
 
 ### GET `/api/ops-sheet/planfix-sync-status`
 
-Живой этап текущего синка: `{ active, stage, message, pages, fetched, stored, elapsed_sec, dry_run, year, last_error, cancel_requested }`. UI опрашивает раз в секунду после `started: true` (и при 409). `stage: cancelled` — остановлен кнопкой.
+Живой этап текущего синка: `{ active, stage, message, pages, fetched, stored, assigners_matched, unmatched_managers[], elapsed_sec, dry_run, year, last_error, cancel_requested, sync_script }`. `fetched`/`stored` — **уникальные** `task_id`. UI опрашивает раз в секунду после `started: true` (и при 409). `stage: cancelled` — остановлен кнопкой.
+
+### GET `/api/ops-sheet/planfix-assigners`
+
+Preflight матча «Менеджер по продажам» ↔ Planfix `/user/list` **без** выгрузки задач. Ответ: `assigners_matched`, `assigner_names`, `unmatched_managers[{ id, full_name, username }]`, `pf_users`, `managers_total`, `sync_script`.
 
 ### POST `/api/ops-sheet/planfix-sync-cancel`
 
@@ -2194,7 +2198,7 @@ Query: `year`, `month`, `q` (номер / постановщик / статус)
 
 Только `full`. Body: `{ year, month }`. Ответ сразу `{ success: true, started: true, …planfix-sync-status }` — работа **в фоне**. UI опрашивает `GET /planfix-sync-status` до `active: false`.
 
-Один прогон: сотрудники → постановщики «Менеджер по продажам» → `POST /task/list` за период (без фильтра шаблона КП) → системный статус → generate отчёта **450694** (без fallback на 450690). Опрос generate до **30 мин**. `POST /report/{id}/generate` **дат в теле не принимает**. Год 20–30 мин. Остановка — `POST /planfix-sync-cancel`.
+Один прогон: сотрудники → постановщики «Менеджер по продажам» → `POST /task/list` **только по сматченным** `user:id` за период (без фильтра шаблона КП) → системный статус → generate отчёта **450694**. **Нет** прохода «все постановщики» (rev.22). Несматченные ФИО — в `errors` / `unmatched_managers`, без дампа года. Опрос generate до **30 мин**. Год по числу менеджеров × страницы, не × весь аккаунт. Остановка — `POST /planfix-sync-cancel`.
 
 Перед синком в UI Planfix у отчёта выставьте тот же период (API generate даты не принимает). Обрыв TLS Planfix повторяется до 4 раз.
 
@@ -2214,7 +2218,7 @@ Query: `year`, `month`, `q` (номер / постановщик / статус)
 
 **Т‑Банк:** `app_settings.finance_tbank_credentials`. Bearer из кабинета Т‑Бизнес → Интеграции → T‑API. Клиент `lib/datagonTbankClient.js`: `GET /api/v1/bank-accounts` (fallback v2/v3) и `GET /api/v1/statement` (`https://business.tbank.ru/openapi`). Токен **не** в `GET /api/settings`. Счета и проводки с `bank='tbank'`, `customer_code` вида `tb:{inn}`. Банк может требовать белый список IP (и для части методов — mTLS).
 
-«Обновить все» / автосинк `finance_tochka` тянет включённые ключи всех трёх банков (cash не синкается).
+«Обновить все» / автосинк `finance_tochka` тянет включённые ключи всех трёх банков (cash не синкается). Если в прогоне есть **хотя бы одна** ошибка API/ключа — `success: false`, в `auto_sync_runs` статус **failed** (красный стикер), в `message` сводка **и** хвост `ОШИБКИ N: …` (не маскируется зелёным «Завершено» при живых остальных банках).
 
 **Ограничение:** Open Banking Точки отдаёт только банковские счета. Фонды без API — ручная пометка на карточке (`is_fund`, `custom_name`).
 
@@ -2387,9 +2391,11 @@ Query: `days`, `search`, `project_mode`, `project_uuids` (как в ranking). О
 
 **Производительность ranking/overview:** тяжёлый join к `dg_product_stock_snapshot` (~миллионы строк) **не** выполняется на каждом запросе (как в анализе поставщиков). Snap включается только для пресетов «Новые на складе» / «исключать новые» из мёртвых·зависших·НС>0 и при сортировке по `days_on_stock`. Для обычных списков `days_on_stock` догружается точечно по кодам текущей страницы. Окно «прошлый период» продаж в ranking строится только при сортировке по `revenue_change_pct` (в overview — всегда, для KPI Δ%).
 
-Решения хранятся в **`dg_product_analysis_decisions`** (не в `dg_purchase_overrides`): `lifecycle` (`none`|`top`|`hold`|`boost`|`boost_failed`|`clearance`|`exit`), `do_not_order`, `min_stock_target`, `lock_proposed_min_stock`, поля буста (`boost_started_at`, `boost_days`), `decision_note`.
+Решения хранятся в **`dg_product_analysis_decisions`** (не в `dg_purchase_overrides`): `lifecycle` (`none`|`top`|`hold`|`boost`|`boost_failed`|`infographic`|`clearance`|`exit`), `do_not_order`, `min_stock_target`, `lock_proposed_min_stock`, поля буста (`boost_started_at`, `boost_days`), `decision_note` (снимок **последнего** комментария для CSV/экспорта).
 
-Каждое реальное изменение поля пишется в **`dg_product_analysis_decisions_log`** (`field`, `old_value`/`new_value` человекочитаемо, `source`: `row`|`bulk`|`min_stock`|`purchase`). В UI перед колонкой «Решение» — колонка **«Комментарий»** (`decision_note`, до 500 символов, сохранение по Enter/blur) с кнопкой **лог**; у «Решение» — своя кнопка **лог** (hover/клик), как журнал overrides на закупках.
+Комментарии к SKU — таблица **`dg_product_analysis_comments`** (как на manager-sales): несколько записей на код, автор, правка/удаление только своих. UI: список + «+» + модалка. При первом старте непустые старые `decision_note` мигрируют в первый комментарий.
+
+Каждое реальное изменение поля решения пишется в **`dg_product_analysis_decisions_log`** (`field`, `old_value`/`new_value` человекочитаемо, `source`: `row`|`bulk`|`min_stock`|`purchase`|`ui`). В UI у «Решение» и «Комментарий» — кнопка **лог**.
 
 Пресеты query `preset`: `all`, `top_revenue`, `top_qty`, `dead`, `stuck`, `new_on_stock`, `dead_min_stock`, `min_vs_proposed`, `lifecycle_*`, `do_not_order`. Фильтр проектов отгрузок — как у supplier-analysis (`project_mode` / `project_uuids`).
 
@@ -2413,7 +2419,7 @@ Query: `days`, `new_stock_days` (7–180, default 30), `exclude_new_on_stock` (`
 
 ### GET `/api/product-analysis/ranking`
 
-Query: как overview + `limit` (default 100), `offset`, `sort_by`, `sort_dir`. Ответ: `{ total, rows[] }` — метрики продаж/остатка + `manager` + `days_on_stock` / `first_positive_date` (по `dg_product_stock_snapshot`, lookback **до 365 дней**, join только по складским SKU) + поля решения.
+Query: как overview + `limit` (default 100), `offset`, `sort_by`, `sort_dir`. Ответ: `{ total, rows[], can_write, actor_user_id }` — метрики продаж/остатка + `manager` + `days_on_stock` / `first_positive_date` + поля решения + **`comments[]`** (`id`, `body`, `author_short`, `created_at_label`, `can_edit`) и `decision_note` (текст последнего комментария).
 
 ### GET `/api/product-analysis/sku-detail`
 
@@ -2429,7 +2435,19 @@ CSV по текущим фильтрам (до 20 000 строк).
 
 ### POST `/api/product-analysis/decision`
 
-Body: `{ code, action? | lifecycle?, do_not_order?, min_stock_target?, lock_proposed_min_stock?, decision_note?, boost_days? }`. Actions: `boost`, `boost_failed`, `clearance`, `exit`, `top`, `hold`, `clear_decision`, `do_not_order_on`/`off`, `lock_proposed_zero`, `unlock_proposed` (снимает замок и очищает `dg_purchase_overrides.proposed_min_stock`). Ответ дополнительно: `changes[]`. Источник в журнале: `row`.
+Body: `{ code, action? | lifecycle?, do_not_order?, min_stock_target?, lock_proposed_min_stock?, decision_note?, boost_days? }`. Actions: `boost`, `boost_failed`, `infographic`, `clearance`, `exit`, `top`, `hold`, `clear_decision`, `do_not_order_on`/`off`, `lock_proposed_zero`, `unlock_proposed` (снимает замок и очищает `dg_purchase_overrides.proposed_min_stock`). Ответ дополнительно: `changes[]`. Источник в журнале: `row`. Для новых комментариев предпочтительны эндпоинты ниже (не сырой `decision_note`).
+
+### POST `/api/product-analysis/:code/comments`
+
+Body: `{ body }` (до 2000 символов). Создаёт комментарий. Ответ: `{ success, comment, comments[], decision_note }`.
+
+### PATCH `/api/product-analysis/:code/comments/:commentId`
+
+Body: `{ body }`. Только автор комментария.
+
+### DELETE `/api/product-analysis/:code/comments/:commentId`
+
+Только автор. После add/edit/delete `decision_note` в decisions синхронизируется с последним комментарием (или очищается).
 
 В UI колонка «Предлагаемый нес.ост.» показывает бейдж **🔒 фикс.** и кнопку **Снять**, если `lock_proposed_min_stock`. То же на `/purchase.html` (по `lock_proposed_min_stock` или явному override `proposed_min_stock`).
 

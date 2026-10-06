@@ -13,6 +13,9 @@
  * POST /api/product-analysis/decision
  * POST /api/product-analysis/decision/bulk
  * POST /api/product-analysis/min-stock/apply
+ * POST /api/product-analysis/:code/comments
+ * PATCH /api/product-analysis/:code/comments/:commentId
+ * DELETE /api/product-analysis/:code/comments/:commentId
  */
 
 const express = require('express');
@@ -47,12 +50,35 @@ const {
     upsertProductDecision,
     listProductDecisionLogs,
     describePatchFields,
+    attachProductComments,
+    addProductComment,
+    updateProductComment,
+    deleteProductComment,
+    loadCommentsByCodes,
     DEFAULT_BOOST_DAYS,
 } = require('../lib/datagonProductAnalysisDecisions');
 
 const CACHE_TTL_MS = 60 * 1000;
-const CACHE_VER = 'pa6';
+const CACHE_VER = 'pa7';
 const responseCache = new Map();
+
+function pageMode(req) {
+    const actor = req && req.datagonActor;
+    if (!actor) return 'full';
+    if (actor.username === 'admin') return 'full';
+    const raw = actor.page_modes && actor.page_modes['product-analysis'];
+    return raw === 'view' || raw === 'hidden' || raw === 'full' ? raw : 'full';
+}
+
+function canWrite(req) {
+    return pageMode(req) === 'full';
+}
+
+function actorUserId(req) {
+    const id = req && req.datagonActor && req.datagonActor.id;
+    const n = Number(id);
+    return Number.isFinite(n) && n > 0 ? n : null;
+}
 
 const RANKING_SORT = new Set([
     'code',
@@ -291,7 +317,16 @@ module.exports = function productAnalysisRouterFactory(db, _appSettings) {
         res.json({
             success: true,
             presets: PRESETS,
-            lifecycles: ['none', 'top', 'hold', 'boost', 'boost_failed', 'clearance', 'exit'],
+            lifecycles: [
+                'none',
+                'top',
+                'hold',
+                'boost',
+                'boost_failed',
+                'infographic',
+                'clearance',
+                'exit',
+            ],
             default_boost_days: DEFAULT_BOOST_DAYS,
         });
     });
@@ -447,6 +482,7 @@ module.exports = function productAnalysisRouterFactory(db, _appSettings) {
                         : null,
                     boost_days: product.boost_days == null ? null : num(product.boost_days),
                     decision_note: product.decision_note != null ? String(product.decision_note) : null,
+                    comments: (await loadCommentsByCodes(db, [code], actorUserId(req)))[code] || [],
                 },
                 sales: {
                     qty_total: sales_qty_total,
@@ -579,7 +615,17 @@ module.exports = function productAnalysisRouterFactory(db, _appSettings) {
                 pf: pf.fingerprint,
             });
             const cached = cacheGet(cacheKey);
-            if (cached) return res.json({ ...cached, cache: { hit: true } });
+            const actorId = actorUserId(req);
+            if (cached) {
+                const rows = await attachProductComments(db, cached.rows || [], actorId);
+                return res.json({
+                    ...cached,
+                    rows,
+                    can_write: canWrite(req),
+                    actor_user_id: actorId,
+                    cache: { hit: true },
+                });
+            }
 
             const needSnap = rankingNeedsSnapJoin(flt, sortBy);
             const needPrev = sortBy === 'revenue_change_pct';
@@ -623,6 +669,8 @@ module.exports = function productAnalysisRouterFactory(db, _appSettings) {
                 });
             }
 
+            mapped = await attachProductComments(db, mapped, actorId);
+
             const payload = {
                 success: true,
                 days,
@@ -636,13 +684,23 @@ module.exports = function productAnalysisRouterFactory(db, _appSettings) {
                 sort_dir: sortDir.toLowerCase(),
                 project_filter: await projectFilterMeta(db, pf),
                 rows: mapped,
+                can_write: canWrite(req),
+                actor_user_id: actorId,
                 perf: {
                     snap_joined: needSnap,
                     snap_lookback: needSnap ? snapLookback : 0,
                     prev_period: needPrev,
                 },
             };
-            cacheSet(cacheKey, payload);
+            // В кэш — без comments (can_edit зависит от актора); comments дописываем при отдаче.
+            cacheSet(cacheKey, {
+                ...payload,
+                rows: mapped.map((r) => {
+                    const copy = Object.assign({}, r);
+                    delete copy.comments;
+                    return copy;
+                }),
+            });
             res.json(payload);
         } catch (e) {
             console.error('[product-analysis] ranking', e);
@@ -736,6 +794,7 @@ module.exports = function productAnalysisRouterFactory(db, _appSettings) {
                 patch.lifecycle = 'boost';
                 if (patch.boost_days == null) patch.boost_days = DEFAULT_BOOST_DAYS;
             } else if (action === 'boost_failed') patch.lifecycle = 'boost_failed';
+            else if (action === 'infographic') patch.lifecycle = 'infographic';
             else if (action === 'clearance') {
                 patch.lifecycle = 'clearance';
                 patch.do_not_order = true;
@@ -772,6 +831,9 @@ module.exports = function productAnalysisRouterFactory(db, _appSettings) {
         const t0 = Date.now();
         try {
             await ensureProductAnalysisDecisionsSchema(db);
+            if (!canWrite(req)) {
+                return res.status(403).json({ success: false, error: 'Режим только просмотра', code: 'PAGE_VIEW_ONLY' });
+            }
             const body = req.body && typeof req.body === 'object' ? req.body : {};
             const code = String(body.code || '').trim();
             if (!code) return res.status(400).json({ success: false, error: 'Не указан code' });
@@ -795,6 +857,74 @@ module.exports = function productAnalysisRouterFactory(db, _appSettings) {
             });
         } catch (e) {
             res.status(400).json({ success: false, error: e.message || 'Ошибка' });
+        }
+    });
+
+    async function commentsForCodeResponse(code, actorId) {
+        const byCode = await loadCommentsByCodes(db, [code], actorId);
+        const comments = byCode[code] || [];
+        return {
+            comments,
+            decision_note: comments[0] && comments[0].body ? String(comments[0].body).slice(0, 500) : null,
+        };
+    }
+
+    router.post('/:code/comments', express.json({ limit: '32kb' }), async (req, res) => {
+        try {
+            if (!canWrite(req)) {
+                return res.status(403).json({ success: false, error: 'Режим только просмотра', code: 'PAGE_VIEW_ONLY' });
+            }
+            const code = decodeURIComponent(String(req.params.code || '')).trim();
+            const comment = await addProductComment(
+                db,
+                code,
+                req.body && req.body.body,
+                req.datagonActor || null,
+            );
+            invalidateProductAnalysisCache();
+            const pack = await commentsForCodeResponse(code, actorUserId(req));
+            res.json({ success: true, comment, ...pack });
+        } catch (e) {
+            const status = e && e.status ? e.status : 400;
+            res.status(status).json({ success: false, error: e.message || 'Ошибка комментария' });
+        }
+    });
+
+    router.patch('/:code/comments/:commentId', express.json({ limit: '32kb' }), async (req, res) => {
+        try {
+            if (!canWrite(req)) {
+                return res.status(403).json({ success: false, error: 'Режим только просмотра', code: 'PAGE_VIEW_ONLY' });
+            }
+            const code = decodeURIComponent(String(req.params.code || '')).trim();
+            const comment = await updateProductComment(
+                db,
+                code,
+                req.params.commentId,
+                req.body && req.body.body,
+                req.datagonActor || null,
+            );
+            invalidateProductAnalysisCache();
+            const pack = await commentsForCodeResponse(code, actorUserId(req));
+            res.json({ success: true, comment, ...pack });
+        } catch (e) {
+            const status = e && e.status ? e.status : 400;
+            res.status(status).json({ success: false, error: e.message || 'Ошибка комментария' });
+        }
+    });
+
+    router.delete('/:code/comments/:commentId', async (req, res) => {
+        try {
+            if (!canWrite(req)) {
+                return res.status(403).json({ success: false, error: 'Режим только просмотра', code: 'PAGE_VIEW_ONLY' });
+            }
+            const code = decodeURIComponent(String(req.params.code || '')).trim();
+            await deleteProductComment(db, code, req.params.commentId, req.datagonActor || null);
+            invalidateProductAnalysisCache();
+            const pack = await commentsForCodeResponse(code, actorUserId(req));
+            res.json({ success: true, ...pack });
+        } catch (e) {
+            const status = e && e.status ? e.status : 400;
+            res.status(status).json({ success: false, error: e.message || 'Ошибка удаления' });
         }
     });
 

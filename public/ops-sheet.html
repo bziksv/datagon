@@ -2093,10 +2093,22 @@
       counts =
         "Страниц: " +
         fmtIntRu(j.pages) +
-        ", задач: " +
+        ", уникальных задач: " +
         fmtIntRu(j.fetched) +
-        ", записано: " +
+        ", записано уникальных: " +
         fmtIntRu(j.stored);
+      if (j.assigners_matched != null) {
+        counts += "; постановщиков: " + fmtIntRu(j.assigners_matched);
+      }
+      if (j.unmatched_managers && j.unmatched_managers.length) {
+        counts +=
+          "; ⚠ не в Planfix: " +
+          j.unmatched_managers
+            .map(function (n) {
+              return String(n);
+            })
+            .join(", ");
+      }
     }
     setNodeText("dg-ops-pf-prog-counts", counts);
   }

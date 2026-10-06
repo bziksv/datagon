@@ -90,6 +90,8 @@ const pfSyncJob = {
     pages: 0,
     fetched: 0,
     stored: 0,
+    assigners_matched: 0,
+    unmatched_managers: [],
     started_ms: 0,
     updated_ms: 0,
     last_error: null,
@@ -118,9 +120,14 @@ function pfSyncPublic() {
         pages: pfSyncJob.pages || 0,
         fetched: pfSyncJob.fetched || 0,
         stored: pfSyncJob.stored || 0,
+        assigners_matched: pfSyncJob.assigners_matched || 0,
+        unmatched_managers: Array.isArray(pfSyncJob.unmatched_managers)
+            ? pfSyncJob.unmatched_managers
+            : [],
         elapsed_sec: started ? Math.max(0, Math.round((Date.now() - started) / 1000)) : 0,
         last_error: pfSyncJob.last_error || null,
         cancel_requested: !!pfSyncJob.cancelRequested,
+        sync_script: getOpsPlanfixSyncMeta(),
     };
 }
 
@@ -1780,6 +1787,44 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
         res.json({ success: true, ...pfSyncPublic() });
     });
 
+    /** Preflight: матчинг менеджеров продаж ↔ Planfix /user/list (без /task/list). */
+    router.get('/planfix-assigners', async (req, res) => {
+        try {
+            await ensureSchema(db);
+            const { token } = credsFromSettings(settings);
+            if (!token) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Сначала сохраните REST-токен в Настройки → Planfix',
+                });
+            }
+            const managers = await listSalesManagers(db);
+            const pfUsers = await listPlanfixUsers(settings, null);
+            const matched = matchAssignerIds(pfUsers, managers);
+            res.json({
+                success: true,
+                sync_script: getOpsPlanfixSyncMeta(),
+                managers_total: managers.length,
+                pf_users: pfUsers.length,
+                assigners_matched: matched.ids.length,
+                assigner_ids: matched.ids,
+                assigner_names: matched.names,
+                unmatched_managers: (matched.unmatchedManagers || []).map((m) => ({
+                    id: m.id,
+                    full_name: m.full_name || m.username || '',
+                    username: m.username || '',
+                })),
+                note:
+                    'Синк Planfix идёт только по сматченным user id. Полный проход «все постановщики» отключён (rev.22).',
+            });
+        } catch (e) {
+            res.status(500).json({
+                success: false,
+                error: e && e.message ? e.message : 'planfix-assigners failed',
+            });
+        }
+    });
+
     router.post('/planfix-sync-cancel', (req, res) => {
         if (!canWrite(req)) {
             return res.status(403).json({ success: false, error: 'Недостаточно прав (нужен full)' });
@@ -1937,38 +1982,52 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
                 });
             }
             const matchedAssigners = matchAssignerIds(pfUsers, managers);
-            let assignerQueue = matchedAssigners.ids.length ? matchedAssigners.ids.slice() : [null];
-            // Если часть менеджеров продаж не сматчилась с /user/list — доп. проход без
-            // фильтра постановщика, иначе их задачи остаются только в отчёте как
-            // «(не в заявках листа)» и не появляются поимённо в развороте статуса.
-            if (
-                matchedAssigners.unmatchedManagers &&
-                matchedAssigners.unmatchedManagers.length &&
-                assignerQueue.indexOf(null) < 0
-            ) {
-                assignerQueue.push(null);
+            const unmatchedNames = (matchedAssigners.unmatchedManagers || []).map(
+                (m) => m.full_name || m.username || String(m.id)
+            );
+            const assignerQueue = matchedAssigners.ids.slice();
+            markPfSync({
+                stage: 'assigners',
+                assigners_matched: matchedAssigners.ids.length,
+                unmatched_managers: unmatchedNames,
+                message:
+                    'Постановщики: сматчено ' +
+                    matchedAssigners.ids.length +
+                    ' из ' +
+                    managers.length +
+                    (unmatchedNames.length
+                        ? '; не в Planfix: ' + unmatchedNames.join(', ')
+                        : ''),
+            });
+            if (!assignerQueue.length) {
+                const errMsg =
+                    'Не сопоставили ни одного сотрудника Planfix с менеджерами продаж — синк без полного дампа аккаунта невозможен. Проверьте ФИО в Datagon = ФИО в Planfix.';
+                errors.push({ code: 'assigners', error: errMsg });
+                markPfSync({
+                    active: false,
+                    stage: 'error',
+                    last_error: errMsg,
+                    message: errMsg,
+                    pages: 0,
+                    fetched: 0,
+                    stored: 0,
+                });
+                return;
+            }
+            if (unmatchedNames.length) {
+                errors.push({
+                    code: 'assigners_partial',
+                    error:
+                        'Не нашли в Planfix: ' +
+                        unmatchedNames.join(', ') +
+                        ' — их задачи в этот прогон не попадут. Полный дамп «все постановщики» отключён; поправьте ФИО (Datagon = Planfix) и пересинхронизируйте.',
+                });
             }
             const templateQueue =
                 (pf.DEAL_STATUS_TEMPLATE_IDS || []).length > 0
                     ? pf.DEAL_STATUS_TEMPLATE_IDS.slice()
                     : [null];
-            if (!matchedAssigners.ids.length) {
-                errors.push({
-                    code: 'assigners',
-                    error:
-                        'Не сопоставили сотрудников Planfix с менеджерами продаж — временно забираем все задачи за период и отбрасываем чужих постановщиков при записи.',
-                });
-            } else if (matchedAssigners.unmatchedManagers && matchedAssigners.unmatchedManagers.length) {
-                errors.push({
-                    code: 'assigners_partial',
-                    error:
-                        'Не нашли в Planfix: ' +
-                        matchedAssigners.unmatchedManagers
-                            .map((m) => m.full_name || m.username || m.id)
-                            .join(', ') +
-                        ' — доп. проход по всем постановщикам; проверьте ФИО в Datagon = ФИО в Planfix.',
-                });
-            }
+            // removed: assignerQueue.push(null) full-year dump (rev.21) — see rev.22
 
             const field = await findDealStatusField(settings, (msg) => {
                 markPfSync({ stage: 'fields', message: msg });
@@ -2004,8 +2063,8 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
 
             const syncedAt = mysqlNow();
             let pages = 0;
-            let fetched = 0;
-            let stored = 0;
+            const seenFetched = new Set();
+            const seenStored = new Set();
             let skippedNoDate = 0;
             let skippedNoId = 0;
             let skippedNotManager = 0;
@@ -2016,7 +2075,6 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
             const consume = async (payload, write) => {
                 const tasks = pf.collectTasks(payload);
                 pages += 1;
-                fetched += tasks.length;
                 const rows = [];
                 tasks.forEach((t) => {
                     const mapped = mapTaskRow(t, field.id, field.name, syncedAt);
@@ -2028,6 +2086,7 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
                         skippedNoDate += 1;
                         return;
                     }
+                    seenFetched.add(String(mapped.task_id));
                     if (!pf.matchManagerByAssigner(mapped.assigner_name, managers)) {
                         skippedNotManager += 1;
                         return;
@@ -2042,16 +2101,20 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
                 });
                 if (write && rows.length) {
                     await upsertTaskRows(db, rows);
-                    stored += rows.length;
+                    rows.forEach((r) => seenStored.add(String(r.task_id)));
                 }
+                const fetched = seenFetched.size;
+                const stored = seenStored.size;
                 markPfSync({
                     stage: 'pages',
                     pages,
                     fetched,
                     stored,
+                    assigners_matched: matchedAssigners.ids.length,
+                    unmatched_managers: unmatchedNames,
                     message: dryRun
-                        ? `Пробный просмотр: страница ${pages}, задач ${fetched}`
-                        : `Страница ${pages}: забрано ${fetched}, своих ${stored}, чужих постановщиков ${skippedNotManager}`,
+                        ? `Пробный просмотр: страница ${pages}, уникальных задач ${fetched}`
+                        : `Страница ${pages}: уникальных ${fetched}, записано уникальных ${stored}, чужих постановщиков ${skippedNotManager}`,
                 });
                 return tasks.length;
             };
@@ -2064,7 +2127,7 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
                     markPfSync({
                         stage: 'pages',
                         message:
-                            (assignerId ? `Постановщик user:${assignerId}` : 'Все постановщики') +
+                            (assignerId ? `Постановщик user:${assignerId}` : 'Постановщик') +
                             (templateId ? `, шаблон ${templateId}` : '') +
                             `, offset ${localOffset}`,
                     });
@@ -2163,6 +2226,8 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
             }
 
             const durationSec = Math.round((Date.now() - started) / 10) / 100;
+            const fetched = seenFetched.size;
+            const stored = seenStored.size;
             markPfSync({
                 active: false,
                 stage: 'done',
@@ -2170,9 +2235,14 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
                 pages,
                 fetched,
                 stored: dryRun ? 0 : stored,
+                assigners_matched: matchedAssigners.ids.length,
+                unmatched_managers: unmatchedNames,
                 message: dryRun
-                    ? `Пробный просмотр готов: ${fetched} задач`
-                    : `Готово: ${stored} задач за ${durationSec} с`,
+                    ? `Пробный просмотр готов: ${fetched} уникальных задач`
+                    : `Готово: ${stored} уникальных задач за ${durationSec} с` +
+                      (unmatchedNames.length
+                          ? ` · несматченные: ${unmatchedNames.join(', ')}`
+                          : ''),
             });
                 })()
                     .catch((e) => {

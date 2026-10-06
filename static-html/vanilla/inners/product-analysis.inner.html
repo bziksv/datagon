@@ -131,6 +131,9 @@
                     <button type="button" class="btn btn-sm btn-outline-warning" id="dg-pa-act-boost-failed"
                       data-dg-notify-start="Отмечаем: буст не сработал…"
                       data-dg-tooltip="Этап «Буст не сработал»: реклама уже была, эффекта нет. Кандидаты дальше на распродажу или вывод. Только метка lifecycle.">Буст не сработал</button>
+                    <button type="button" class="btn btn-sm btn-outline-info" id="dg-pa-act-infographic"
+                      data-dg-notify-start="Ставим: обновление инфографики…"
+                      data-dg-tooltip="Этап «Обновление инфографики»: нужна новая инфографика/креативы на витрине. Только lifecycle=infographic, НС и закупки не трогает.">Обновление инфографики</button>
                     <button type="button" class="btn btn-sm btn-outline-danger" id="dg-pa-act-clearance"
                       data-dg-notify-start="Переводим в распродажу…"
                       data-dg-tooltip="Этап «Распродажа»: сливаем остаток. Ставит lifecycle=clearance, флаг «не заказывать» и цель НС = 0. Сам неснижаемый в ms_export не меняет — для этого «Обнулить неснижаемый».">Распродажа (слить остаток)</button>
@@ -338,6 +341,43 @@
               <div class="d-flex justify-content-end gap-2 flex-wrap">
                 <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-pa-bulk-confirm-cancel">Отмена</button>
                 <button type="button" class="btn btn-sm btn-danger" id="dg-pa-bulk-confirm-ok" disabled>Применить ко всей выборке</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-pa-cmt-overlay" class="dg-pa-confirm-overlay" style="display: none" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="dg-pa-cmt-title">
+            <div class="dg-pa-confirm-backdrop" id="dg-pa-cmt-backdrop"></div>
+            <div class="dg-pa-confirm-panel card shadow-lg border-0">
+              <div class="card-header">
+                <div class="fw-semibold" id="dg-pa-cmt-title">Комментарий</div>
+              </div>
+              <div class="card-body">
+                <p class="mb-2 text-muted small" id="dg-pa-cmt-hint">Новый комментарий появится сверху. Редактировать сможете только свой.</p>
+                <label class="form-label" for="dg-pa-cmt-text">Текст</label>
+                <textarea class="form-control" id="dg-pa-cmt-text" rows="4" maxlength="2000" placeholder="Напишите комментарий…"></textarea>
+              </div>
+              <div class="card-footer d-flex justify-content-between gap-2 flex-wrap bg-white border-top-0">
+                <button type="button" class="btn btn-outline-danger d-none" id="dg-pa-cmt-del" data-dg-notify-start="Удаление комментария…">Удалить</button>
+                <div class="d-flex gap-2 ms-auto">
+                  <button type="button" class="btn btn-outline-secondary" id="dg-pa-cmt-cancel" data-dg-no-activity="1">Отмена</button>
+                  <button type="button" class="btn btn-primary" id="dg-pa-cmt-ok" data-dg-notify-start="Сохраняем комментарий…">Сохранить</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-pa-cmt-del-overlay" class="dg-pa-confirm-overlay" style="display: none" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="dg-pa-cmt-del-title">
+            <div class="dg-pa-confirm-backdrop" id="dg-pa-cmt-del-backdrop"></div>
+            <div class="dg-pa-confirm-panel card shadow-lg border-0">
+              <div class="card-header">
+                <div class="fw-semibold" id="dg-pa-cmt-del-title">Удалить комментарий?</div>
+              </div>
+              <div class="card-body">
+                <p class="mb-0" id="dg-pa-cmt-del-text">Комментарий будет удалён без возможности восстановить.</p>
+              </div>
+              <div class="card-footer d-flex justify-content-end gap-2 flex-wrap bg-white border-top-0">
+                <button type="button" class="btn btn-outline-secondary" id="dg-pa-cmt-del-cancel" data-dg-no-activity="1">Отмена</button>
+                <button type="button" class="btn btn-danger" id="dg-pa-cmt-del-ok" data-dg-notify-start="Удаляем комментарий…">Удалить</button>
               </div>
             </div>
           </div>

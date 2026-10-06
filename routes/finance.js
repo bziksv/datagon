@@ -20,6 +20,33 @@ let syncJob = {
     last_result: null,
 };
 
+/** Ошибки банка обязаны ломать «успех» и попадать в message (auto_sync_runs / стикер). */
+function financeSyncOk(errors) {
+    return !(errors && errors.length);
+}
+
+function formatFinanceErrorsSuffix(errors) {
+    const list = Array.isArray(errors) ? errors.filter(Boolean) : [];
+    if (!list.length) return '';
+    const bits = list.slice(0, 5).map((er) => {
+        const code = er && er.code != null ? String(er.code).trim() : '';
+        const err = er && er.error != null ? String(er.error) : String(er);
+        return (code ? code + ': ' : '') + err;
+    });
+    return (
+        ' · ОШИБКИ ' +
+        list.length +
+        ': ' +
+        bits.join('; ') +
+        (list.length > 5 ? '…' : '')
+    );
+}
+
+function withFinanceErrorsInMessage(base, errors) {
+    const msg = String(base || '').trim() + formatFinanceErrorsSuffix(errors);
+    return msg.length > 480 ? msg.slice(0, 477) + '…' : msg;
+}
+
 async function ensureFinanceTables(db) {
     if (tablesReady) return tablesReady;
     tablesReady = (async () => {
@@ -734,7 +761,7 @@ async function runTochkaSync(db, appSettings, opts) {
             }
         }
         const duration_sec = Math.round((Date.now() - t0) / 1000);
-        const success = accountsOk > 0 || errors.length === 0;
+        const success = financeSyncOk(errors);
         const result = {
             success,
             dry_run: false,
@@ -753,20 +780,22 @@ async function runTochkaSync(db, appSettings, opts) {
             date_to: window.endYmd,
             customer_codes: customerCodes,
             account_id: accountId || '',
-            message:
+            message: withFinanceErrorsInMessage(
                 'Ключей ' +
-                byCred.length +
-                ', счетов ' +
-                accountsOk +
-                ', проводок ' +
-                txUpserted +
-                ' · ' +
-                window.startYmd +
-                '…' +
-                window.endYmd +
-                ' · ' +
-                duration_sec +
-                ' с',
+                    byCred.length +
+                    ', счетов ' +
+                    accountsOk +
+                    ', проводок ' +
+                    txUpserted +
+                    ' · ' +
+                    window.startYmd +
+                    '…' +
+                    window.endYmd +
+                    ' · ' +
+                    duration_sec +
+                    ' с',
+                errors
+            ),
         };
         if (!nested) {
             syncJob.active = false;
@@ -1012,7 +1041,7 @@ async function runRaiffeisenSync(db, appSettings, opts) {
             }
         }
         const duration_sec = Math.round((Date.now() - t0) / 1000);
-        const success = accountsOk > 0 || errors.length === 0;
+        const success = financeSyncOk(errors);
         const result = {
             success,
             dry_run: false,
@@ -1027,16 +1056,18 @@ async function runRaiffeisenSync(db, appSettings, opts) {
             days: window.days,
             date_from: window.startYmd,
             date_to: window.endYmd,
-            message:
+            message: withFinanceErrorsInMessage(
                 'Райф: ключей ' +
-                byCred.length +
-                ', счетов ' +
-                accountsOk +
-                ', проводок ' +
-                txUpserted +
-                ' · ' +
-                duration_sec +
-                ' с',
+                    byCred.length +
+                    ', счетов ' +
+                    accountsOk +
+                    ', проводок ' +
+                    txUpserted +
+                    ' · ' +
+                    duration_sec +
+                    ' с',
+                errors
+            ),
         };
         if (!nested) {
             syncJob.active = false;
@@ -1280,7 +1311,7 @@ async function runTbankSync(db, appSettings, opts) {
             }
         }
         const duration_sec = Math.round((Date.now() - t0) / 1000);
-        const success = accountsOk > 0 || errors.length === 0;
+        const success = financeSyncOk(errors);
         const result = {
             success,
             dry_run: false,
@@ -1297,16 +1328,18 @@ async function runTbankSync(db, appSettings, opts) {
             date_to: window.endYmd,
             customer_codes: customerCodes,
             account_id: accountId || '',
-            message:
+            message: withFinanceErrorsInMessage(
                 'Т‑Банк: ключей ' +
-                byCred.length +
-                ', счетов ' +
-                accountsOk +
-                ', проводок ' +
-                txUpserted +
-                ' · ' +
-                duration_sec +
-                ' с',
+                    byCred.length +
+                    ', счетов ' +
+                    accountsOk +
+                    ', проводок ' +
+                    txUpserted +
+                    ' · ' +
+                    duration_sec +
+                    ' с',
+                errors
+            ),
         };
         if (!nested) {
             syncJob.active = false;
@@ -1393,7 +1426,7 @@ async function runFinanceAll(db, appSettings, opts) {
             Number(raiffRes.tx_upserted || 0) +
             Number(tbankRes.tx_upserted || 0);
         const duration_sec = Math.round((Date.now() - t0) / 1000);
-        const success = accounts > 0 || errors.length === 0;
+        const success = financeSyncOk(errors);
         const result = {
             success,
             dry_run: false,
@@ -1408,16 +1441,18 @@ async function runFinanceAll(db, appSettings, opts) {
             date_from: window.startYmd,
             date_to: window.endYmd,
             api_note: 'Точка, Райффайзен и Т‑Банк пишутся в один снимок счетов и проводок.',
-            message:
+            message: withFinanceErrorsInMessage(
                 'Точка + Райф + Т‑Банк: ключей ' +
-                byCred.length +
-                ', счетов ' +
-                accounts +
-                ', проводок ' +
-                txUpserted +
-                ' · ' +
-                duration_sec +
-                ' с',
+                    byCred.length +
+                    ', счетов ' +
+                    accounts +
+                    ', проводок ' +
+                    txUpserted +
+                    ' · ' +
+                    duration_sec +
+                    ' с',
+                errors
+            ),
         };
         syncJob.active = false;
         syncJob.last_result = result;

@@ -214,6 +214,7 @@
     .dg-pa-lc-select.dg-pa-lc-hold { background: #e2e3e5; color: #383d41; border-color: #d6d8db; }
     .dg-pa-lc-select.dg-pa-lc-boost { background: #cce5ff; color: #004085; border-color: #b8daff; }
     .dg-pa-lc-select.dg-pa-lc-boost_failed { background: #fff3cd; color: #856404; border-color: #ffeeba; }
+    .dg-pa-lc-select.dg-pa-lc-infographic { background: #e2d9f3; color: #432874; border-color: #d1c4e9; }
     .dg-pa-lc-select.dg-pa-lc-clearance { background: #f8d7da; color: #721c24; border-color: #f5c6cb; }
     .dg-pa-lc-select.dg-pa-lc-exit { background: #f5c6cb; color: #491217; border-color: #f1b0b7; }
     .dg-pa-dno-toggle {
@@ -226,6 +227,7 @@
     .dg-pa-lc-top { background: #d4edda; color: #155724; }
     .dg-pa-lc-boost { background: #cce5ff; color: #004085; }
     .dg-pa-lc-boost_failed { background: #fff3cd; color: #856404; }
+    .dg-pa-lc-infographic { background: #e2d9f3; color: #432874; }
     .dg-pa-lc-clearance { background: #f8d7da; color: #721c24; }
     .dg-pa-lc-exit { background: #f5c6cb; color: #491217; }
     .dg-pa-proposed-cell {
@@ -254,29 +256,108 @@
       line-height: 1.3;
     }
 
-    .dg-pa-lc-wrap,
-    .dg-pa-note-wrap {
+    .dg-pa-lc-wrap {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      max-width: 100%;
+      width: 100%;
+    }
+    .dg-pa-lc-wrap .dg-pa-lc-select {
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+    .dg-pa-comments-wrap {
       display: inline-flex;
       align-items: flex-start;
       gap: 0.25rem;
       max-width: 100%;
       width: 100%;
     }
-    .dg-pa-lc-wrap {
-      align-items: center;
+    .dg-pa-comments {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0.28rem;
+      flex: 1 1 auto;
+      min-width: 10rem;
+      max-width: 18rem;
     }
-    .dg-pa-lc-wrap .dg-pa-lc-select,
-    .dg-pa-note-wrap .dg-pa-note-input {
+    .dg-pa-cmt-add {
+      align-self: flex-start;
+      border: 1px dashed #9db2e8;
+      background: #f5f8ff;
+      color: #3f6ad8;
+      border-radius: 0.3rem;
+      width: 1.55rem;
+      height: 1.55rem;
+      line-height: 1.35rem;
+      padding: 0;
+      font-size: 1.05rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .dg-pa-cmt-add:hover {
+      background: #e8efff;
+      border-color: #3f6ad8;
+    }
+    .dg-pa-cmt-item {
+      font-size: 0.78rem;
+      line-height: 1.25;
+      color: #495057;
+      padding: 0.2rem 0.35rem;
+      border-radius: 0.3rem;
+      background: #f8f9fa;
+      border: 1px solid #eef1f4;
+    }
+    .dg-pa-cmt-item.dg-pa-cmt-own {
+      background: #f3f7ff;
+      border-color: #d7e2fb;
+    }
+    .dg-pa-cmt-meta {
+      display: block;
+      color: #6c757d;
+      font-weight: 600;
+      margin-bottom: 0.1rem;
+    }
+    .dg-pa-cmt-body {
+      white-space: pre-wrap;
+      word-break: break-word;
       flex: 1 1 auto;
       min-width: 0;
     }
-    .dg-pa-note-input {
-      font-size: 12px;
-      padding: 0.2rem 0.35rem;
-      line-height: 1.35;
-      height: auto;
-      min-height: calc(1.35em * 3 + 0.4rem);
-      resize: vertical;
+    .dg-pa-cmt-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.15rem;
+    }
+    .dg-pa-cmt-edit {
+      flex: 0 0 auto;
+      width: 1.25rem;
+      height: 1.25rem;
+      margin: 0;
+      padding: 0;
+      border: 1px solid transparent;
+      border-radius: 7px;
+      background: transparent;
+      color: #6c757d;
+      line-height: 1;
+      cursor: pointer;
+    }
+    .dg-pa-cmt-edit:hover {
+      color: #3f6ad8;
+      border-color: #d7e2fb;
+      background: #fff;
+    }
+    .dg-pa-cmt-empty {
+      color: #adb5bd;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="product-analysis"] #dg-pa-table td .dg-pa-comments-wrap {
+      vertical-align: top;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="product-analysis"] #dg-pa-thead th[data-col="decision_note"] {
+      min-width: 12rem;
+      max-width: 20rem;
     }
     .dg-pa-lc-log {
       flex: 0 0 auto;
@@ -289,6 +370,25 @@
     .dg-pa-lc-log:hover {
       color: #1e6bb8;
       border-color: #1e6bb8;
+    }
+    .dg-pa-confirm-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 2200;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+    .dg-pa-confirm-backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.45);
+    }
+    .dg-pa-confirm-panel {
+      position: relative;
+      z-index: 1;
+      width: min(440px, 100%);
     }
 
     .dg-pa-cell-tip {

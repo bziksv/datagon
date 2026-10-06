@@ -237,6 +237,7 @@
     .dg-pa-lc-select.dg-pa-lc-hold { background: #e2e3e5; color: #383d41; border-color: #d6d8db; }
     .dg-pa-lc-select.dg-pa-lc-boost { background: #cce5ff; color: #004085; border-color: #b8daff; }
     .dg-pa-lc-select.dg-pa-lc-boost_failed { background: #fff3cd; color: #856404; border-color: #ffeeba; }
+    .dg-pa-lc-select.dg-pa-lc-infographic { background: #e2d9f3; color: #432874; border-color: #d1c4e9; }
     .dg-pa-lc-select.dg-pa-lc-clearance { background: #f8d7da; color: #721c24; border-color: #f5c6cb; }
     .dg-pa-lc-select.dg-pa-lc-exit { background: #f5c6cb; color: #491217; border-color: #f1b0b7; }
     .dg-pa-dno-toggle {
@@ -249,6 +250,7 @@
     .dg-pa-lc-top { background: #d4edda; color: #155724; }
     .dg-pa-lc-boost { background: #cce5ff; color: #004085; }
     .dg-pa-lc-boost_failed { background: #fff3cd; color: #856404; }
+    .dg-pa-lc-infographic { background: #e2d9f3; color: #432874; }
     .dg-pa-lc-clearance { background: #f8d7da; color: #721c24; }
     .dg-pa-lc-exit { background: #f5c6cb; color: #491217; }
     .dg-pa-proposed-cell {
@@ -277,29 +279,108 @@
       line-height: 1.3;
     }
 
-    .dg-pa-lc-wrap,
-    .dg-pa-note-wrap {
+    .dg-pa-lc-wrap {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      max-width: 100%;
+      width: 100%;
+    }
+    .dg-pa-lc-wrap .dg-pa-lc-select {
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+    .dg-pa-comments-wrap {
       display: inline-flex;
       align-items: flex-start;
       gap: 0.25rem;
       max-width: 100%;
       width: 100%;
     }
-    .dg-pa-lc-wrap {
-      align-items: center;
+    .dg-pa-comments {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0.28rem;
+      flex: 1 1 auto;
+      min-width: 10rem;
+      max-width: 18rem;
     }
-    .dg-pa-lc-wrap .dg-pa-lc-select,
-    .dg-pa-note-wrap .dg-pa-note-input {
+    .dg-pa-cmt-add {
+      align-self: flex-start;
+      border: 1px dashed #9db2e8;
+      background: #f5f8ff;
+      color: #3f6ad8;
+      border-radius: 0.3rem;
+      width: 1.55rem;
+      height: 1.55rem;
+      line-height: 1.35rem;
+      padding: 0;
+      font-size: 1.05rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .dg-pa-cmt-add:hover {
+      background: #e8efff;
+      border-color: #3f6ad8;
+    }
+    .dg-pa-cmt-item {
+      font-size: 0.78rem;
+      line-height: 1.25;
+      color: #495057;
+      padding: 0.2rem 0.35rem;
+      border-radius: 0.3rem;
+      background: #f8f9fa;
+      border: 1px solid #eef1f4;
+    }
+    .dg-pa-cmt-item.dg-pa-cmt-own {
+      background: #f3f7ff;
+      border-color: #d7e2fb;
+    }
+    .dg-pa-cmt-meta {
+      display: block;
+      color: #6c757d;
+      font-weight: 600;
+      margin-bottom: 0.1rem;
+    }
+    .dg-pa-cmt-body {
+      white-space: pre-wrap;
+      word-break: break-word;
       flex: 1 1 auto;
       min-width: 0;
     }
-    .dg-pa-note-input {
-      font-size: 12px;
-      padding: 0.2rem 0.35rem;
-      line-height: 1.35;
-      height: auto;
-      min-height: calc(1.35em * 3 + 0.4rem);
-      resize: vertical;
+    .dg-pa-cmt-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.15rem;
+    }
+    .dg-pa-cmt-edit {
+      flex: 0 0 auto;
+      width: 1.25rem;
+      height: 1.25rem;
+      margin: 0;
+      padding: 0;
+      border: 1px solid transparent;
+      border-radius: 7px;
+      background: transparent;
+      color: #6c757d;
+      line-height: 1;
+      cursor: pointer;
+    }
+    .dg-pa-cmt-edit:hover {
+      color: #3f6ad8;
+      border-color: #d7e2fb;
+      background: #fff;
+    }
+    .dg-pa-cmt-empty {
+      color: #adb5bd;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="product-analysis"] #dg-pa-table td .dg-pa-comments-wrap {
+      vertical-align: top;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="product-analysis"] #dg-pa-thead th[data-col="decision_note"] {
+      min-width: 12rem;
+      max-width: 20rem;
     }
     .dg-pa-lc-log {
       flex: 0 0 auto;
@@ -312,6 +393,25 @@
     .dg-pa-lc-log:hover {
       color: #1e6bb8;
       border-color: #1e6bb8;
+    }
+    .dg-pa-confirm-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 2200;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+    .dg-pa-confirm-backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.45);
+    }
+    .dg-pa-confirm-panel {
+      position: relative;
+      z-index: 1;
+      width: min(440px, 100%);
     }
 
     .dg-pa-cell-tip {
@@ -1267,6 +1367,9 @@
                     <button type="button" class="btn btn-sm btn-outline-warning" id="dg-pa-act-boost-failed"
                       data-dg-notify-start="Отмечаем: буст не сработал…"
                       data-dg-tooltip="Этап «Буст не сработал»: реклама уже была, эффекта нет. Кандидаты дальше на распродажу или вывод. Только метка lifecycle.">Буст не сработал</button>
+                    <button type="button" class="btn btn-sm btn-outline-info" id="dg-pa-act-infographic"
+                      data-dg-notify-start="Ставим: обновление инфографики…"
+                      data-dg-tooltip="Этап «Обновление инфографики»: нужна новая инфографика/креативы на витрине. Только lifecycle=infographic, НС и закупки не трогает.">Обновление инфографики</button>
                     <button type="button" class="btn btn-sm btn-outline-danger" id="dg-pa-act-clearance"
                       data-dg-notify-start="Переводим в распродажу…"
                       data-dg-tooltip="Этап «Распродажа»: сливаем остаток. Ставит lifecycle=clearance, флаг «не заказывать» и цель НС = 0. Сам неснижаемый в ms_export не меняет — для этого «Обнулить неснижаемый».">Распродажа (слить остаток)</button>
@@ -1478,6 +1581,43 @@
             </div>
           </div>
 
+          <div id="dg-pa-cmt-overlay" class="dg-pa-confirm-overlay" style="display: none" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="dg-pa-cmt-title">
+            <div class="dg-pa-confirm-backdrop" id="dg-pa-cmt-backdrop"></div>
+            <div class="dg-pa-confirm-panel card shadow-lg border-0">
+              <div class="card-header">
+                <div class="fw-semibold" id="dg-pa-cmt-title">Комментарий</div>
+              </div>
+              <div class="card-body">
+                <p class="mb-2 text-muted small" id="dg-pa-cmt-hint">Новый комментарий появится сверху. Редактировать сможете только свой.</p>
+                <label class="form-label" for="dg-pa-cmt-text">Текст</label>
+                <textarea class="form-control" id="dg-pa-cmt-text" rows="4" maxlength="2000" placeholder="Напишите комментарий…"></textarea>
+              </div>
+              <div class="card-footer d-flex justify-content-between gap-2 flex-wrap bg-white border-top-0">
+                <button type="button" class="btn btn-outline-danger d-none" id="dg-pa-cmt-del" data-dg-notify-start="Удаление комментария…">Удалить</button>
+                <div class="d-flex gap-2 ms-auto">
+                  <button type="button" class="btn btn-outline-secondary" id="dg-pa-cmt-cancel" data-dg-no-activity="1">Отмена</button>
+                  <button type="button" class="btn btn-primary" id="dg-pa-cmt-ok" data-dg-notify-start="Сохраняем комментарий…">Сохранить</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-pa-cmt-del-overlay" class="dg-pa-confirm-overlay" style="display: none" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="dg-pa-cmt-del-title">
+            <div class="dg-pa-confirm-backdrop" id="dg-pa-cmt-del-backdrop"></div>
+            <div class="dg-pa-confirm-panel card shadow-lg border-0">
+              <div class="card-header">
+                <div class="fw-semibold" id="dg-pa-cmt-del-title">Удалить комментарий?</div>
+              </div>
+              <div class="card-body">
+                <p class="mb-0" id="dg-pa-cmt-del-text">Комментарий будет удалён без возможности восстановить.</p>
+              </div>
+              <div class="card-footer d-flex justify-content-end gap-2 flex-wrap bg-white border-top-0">
+                <button type="button" class="btn btn-outline-secondary" id="dg-pa-cmt-del-cancel" data-dg-no-activity="1">Отмена</button>
+                <button type="button" class="btn btn-danger" id="dg-pa-cmt-del-ok" data-dg-notify-start="Удаляем комментарий…">Удалить</button>
+              </div>
+            </div>
+          </div>
+
         </div>
 
         <div class="app-footer">
@@ -1592,7 +1732,7 @@
         ["sales_revenue", "Продажи ₽", { tip: "Выручка по отгрузкам за выбранный период" }],
         ["margin_pct", "Маржа % (оценка)", { tip: "Грубая оценка: не точная маржа. По умолчанию скрыта." }],
         ["days_without_sales", "Дней без продаж", { tip: "Дней с последней отгрузки в периоде; пусто — продаж не было" }],
-        ["decision_note", "Комментарий", { tip: "Свободный комментарий к решению по SKU (до 3 строк). Сохраняется при уходе из поля или Ctrl/⌘+Enter. История — «лог»." }],
+        ["decision_note", "Комментарий", { tip: "Комментарии к SKU: «+» — новый, карандаш — свой. Как на «Менеджер продаж»." }],
         ["lifecycle", "Решение", { tip: "Выберите этап прямо в строке: топ / держать / буст / распродажа / вывод. Массовые кнопки сверху — для пачек." }],
       ];
       var PA_DEFAULT_VISIBLE = PA_COLS.map(function (c) { return c[0]; }).filter(function (k) {
@@ -1602,7 +1742,7 @@
         _expand: 32, _sel: 36, code: 110, name: 220, supplier_name: 140, manager: 140, stock_qty: 90,
         stock_value_rub: 100, days_on_stock: 100, min_stock: 120, formula_proposed: 160,
         sales_qty: 100, sales_revenue: 110, margin_pct: 90,
-        days_without_sales: 110, decision_note: 180, lifecycle: 180,
+        days_without_sales: 110, decision_note: 220, lifecycle: 180,
       };
 
       var PRESETS_FALLBACK = [
@@ -1666,6 +1806,11 @@
           tip: "Буст ставили, эффекта нет — дальше распродажа или вывод.",
         },
         {
+          key: "lifecycle_infographic",
+          label: "Обновление инфографики",
+          tip: "Нужно обновить инфографику / креативы карточки на витрине.",
+        },
+        {
           key: "lifecycle_clearance",
           label: "Распродажа",
           tip: "Этап распродажи: не заказывать, слить остаток.",
@@ -1685,6 +1830,7 @@
         hold: "Держать",
         boost: "Буст (реклама)",
         boost_failed: "Буст не сработал",
+        infographic: "Обновление инфографики",
         clearance: "Распродажа",
         exit: "Вывод из ассортимента",
       };
@@ -1695,6 +1841,7 @@
         { value: "hold", action: "hold" },
         { value: "boost", action: "boost" },
         { value: "boost_failed", action: "boost_failed" },
+        { value: "infographic", action: "infographic" },
         { value: "clearance", action: "clearance" },
         { value: "exit", action: "exit" },
       ];
@@ -1728,20 +1875,7 @@
                   message: "Сохранено: " + code + (ch ? " (" + ch + ")" : ""),
                 });
               }
-              if (o.noReload) {
-                if (el && Object.prototype.hasOwnProperty.call(body, "decision_note")) {
-                  var saved =
-                    x.j.decision && x.j.decision.decision_note != null
-                      ? String(x.j.decision.decision_note)
-                      : body.decision_note == null
-                        ? ""
-                        : String(body.decision_note);
-                  el.value = saved;
-                  el.setAttribute("data-prev", saved);
-                  el.title = saved || "Комментарий к решению";
-                }
-                return x.j;
-              }
+              if (o.noReload) return x.j;
               return loadAll();
             })
             .catch(function (e) {
@@ -1751,12 +1885,7 @@
                   message: (e && e.message) || "Ошибка сохранения",
                 });
               }
-              if (o.noReload) {
-                if (el && el.getAttribute("data-prev") != null) {
-                  el.value = el.getAttribute("data-prev") || "";
-                }
-                return null;
-              }
+              if (o.noReload) return null;
               return loadRanking();
             });
         };
@@ -1766,15 +1895,62 @@
         return run();
       }
 
-      function saveDecisionNoteFromInput(inp) {
-        if (!inp) return;
-        var code = inp.getAttribute("data-code") || "";
-        if (!code) return;
-        var next = String(inp.value || "").trim().slice(0, 500);
-        var prev = String(inp.getAttribute("data-prev") || "");
-        if (next === prev) return;
-        inp.value = next;
-        postRowDecision(code, { decision_note: next === "" ? null : next }, inp, { noReload: true });
+      function commentsList(row) {
+        return Array.isArray(row && row.comments) ? row.comments : [];
+      }
+
+      function renderCommentsCell(row) {
+        var list = commentsList(row);
+        var add = state.can_write
+          ? '<button type="button" class="dg-pa-cmt-add" data-pa-cmt-add="' +
+            esc(row.code) +
+            '" title="Добавить комментарий" aria-label="Добавить комментарий" data-dg-notify-start="Новый комментарий…">+</button>'
+          : "";
+        var items = list
+          .map(function (c) {
+            var own =
+              !!c.can_edit || Number(c.author_user_id) === Number(state.actor_user_id);
+            var edit =
+              own && state.can_write
+                ? '<button type="button" class="dg-pa-cmt-edit" data-pa-cmt-edit="' +
+                  esc(String(c.id)) +
+                  '" data-pa-cmt-code="' +
+                  esc(row.code) +
+                  '" title="Изменить комментарий" aria-label="Изменить комментарий" data-dg-no-activity="1"><i class="pe-7s-pen" aria-hidden="true"></i></button>'
+                : "";
+            var meta =
+              esc(c.author_short || c.author_name || "—") +
+              " — " +
+              esc(c.created_at_label || "—");
+            return (
+              '<div class="dg-pa-cmt-item' +
+              (own ? " dg-pa-cmt-own" : "") +
+              '">' +
+              '<span class="dg-pa-cmt-meta">' +
+              meta +
+              "</span>" +
+              '<div class="dg-pa-cmt-row"><span class="dg-pa-cmt-body">' +
+              esc(c.body || "") +
+              "</span>" +
+              edit +
+              "</div></div>"
+            );
+          })
+          .join("");
+        if (!items && !add) {
+          return '<span class="dg-pa-cmt-empty">—</span>';
+        }
+        return (
+          '<div class="dg-pa-comments-wrap">' +
+          '<div class="dg-pa-comments">' +
+          items +
+          add +
+          "</div>" +
+          '<button type="button" class="btn btn-sm btn-outline-secondary dg-pa-lc-log" data-dg-code="' +
+          esc(row.code) +
+          '" data-dg-field="decision_note" aria-label="Журнал комментария" data-dg-no-activity="1">лог</button>' +
+          "</div>"
+        );
       }
 
       var FILTERS_KEY = "datagon_product_analysis_filters_collapsed_v1";
@@ -1800,6 +1976,8 @@
         sort_dir: "desc",
         rows: [],
         selected: {},
+        can_write: true,
+        actor_user_id: null,
         selectedCode: "",
         pending: {
           days: 90,
@@ -2880,24 +3058,7 @@
         }
         if (key === "name" || key === "supplier_name" || key === "manager") return esc(r[key] || "");
         if (key === "decision_note") {
-          var note = r.decision_note != null ? String(r.decision_note) : "";
-          return (
-            '<span class="dg-pa-note-wrap">' +
-            '<textarea class="form-control form-control-sm dg-pa-note-input" rows="3" maxlength="500" ' +
-            'data-code="' +
-            esc(r.code) +
-            '" data-prev="' +
-            esc(note) +
-            '" placeholder="Комментарий…" title="' +
-            esc(note || "Комментарий к решению") +
-            '" data-dg-no-activity="1" data-dg-tooltip="Сохраняется при уходе из поля или Ctrl/⌘+Enter">' +
-            esc(note) +
-            "</textarea>" +
-            '<button type="button" class="btn btn-sm btn-outline-secondary dg-pa-lc-log" data-dg-code="' +
-            esc(r.code) +
-            '" data-dg-field="decision_note" aria-label="Журнал комментария" data-dg-no-activity="1">лог</button>' +
-            "</span>"
-          );
+          return renderCommentsCell(r);
         }
         if (key === "lifecycle") {
           var lc = r.lifecycle || "none";
@@ -3099,8 +3260,12 @@
           esc(LC_LABEL[product.lifecycle] || product.lifecycle || "—") +
           (product.do_not_order ? " · не заказывать" : "") +
           "</li>" +
-          "<li>Комментарий: " +
-          esc(product.decision_note || "—") +
+          "<li>Комментарии: " +
+          (product.comments && product.comments.length
+            ? product.comments.length +
+              " · последний: " +
+              esc((product.comments[0] && product.comments[0].body) || product.decision_note || "—")
+            : esc(product.decision_note || "—")) +
           "</li>" +
           "<li>Продажи за период: <strong>" +
           fmt(sales.qty_total, 0) +
@@ -3416,12 +3581,177 @@
           .then(function (j) {
             if (!j || !j.success) throw new Error((j && j.error) || "Ошибка списка");
             state.rows = j.rows || [];
+            if (typeof j.can_write === "boolean") state.can_write = j.can_write;
+            if (j.actor_user_id != null) state.actor_user_id = Number(j.actor_user_id) || null;
             state.total = Number(j.total || 0);
             if (j.sort_by) state.sort_by = j.sort_by;
             if (j.sort_dir) state.sort_dir = j.sort_dir;
             renderTable();
             scheduleUrlSync();
             return j;
+          });
+      }
+
+      var cmtEditState = { code: null, commentId: null };
+
+      function toastPa(type, message) {
+        if (window.DatagonNotify && window.DatagonNotify.toast) {
+          window.DatagonNotify.toast({ type: type, message: message });
+        }
+      }
+
+      function closeCommentModal() {
+        var ov = document.getElementById("dg-pa-cmt-overlay");
+        if (!ov) return;
+        ov.style.display = "none";
+        ov.setAttribute("aria-hidden", "true");
+        cmtEditState.code = null;
+        cmtEditState.commentId = null;
+        var ta = document.getElementById("dg-pa-cmt-text");
+        if (ta) ta.value = "";
+        var del = document.getElementById("dg-pa-cmt-del");
+        if (del) del.classList.add("d-none");
+      }
+
+      function closeCommentDeleteModal() {
+        var ov = document.getElementById("dg-pa-cmt-del-overlay");
+        if (!ov) return;
+        ov.style.display = "none";
+        ov.setAttribute("aria-hidden", "true");
+      }
+
+      function openCommentDeleteModal() {
+        var editing = Number.isFinite(cmtEditState.commentId) && cmtEditState.commentId > 0;
+        if (!editing) return;
+        var body = document.getElementById("dg-pa-cmt-text")
+          ? String(document.getElementById("dg-pa-cmt-text").value || "").trim()
+          : "";
+        var txt = document.getElementById("dg-pa-cmt-del-text");
+        if (txt) {
+          txt.textContent = body
+            ? "Удалить комментарий «" + (body.length > 80 ? body.slice(0, 77) + "…" : body) + "»? Восстановить нельзя."
+            : "Комментарий будет удалён без возможности восстановить.";
+        }
+        var ov = document.getElementById("dg-pa-cmt-del-overlay");
+        if (!ov) return;
+        ov.style.display = "flex";
+        ov.setAttribute("aria-hidden", "false");
+      }
+
+      function openCommentModal(code, commentId) {
+        if (!state.can_write) {
+          toastPa("info", "Комментарии пишет тот, у кого есть запись на странице");
+          return;
+        }
+        closeCommentDeleteModal();
+        cmtEditState.code = String(code || "");
+        cmtEditState.commentId =
+          commentId != null && commentId !== "" ? Number(commentId) : null;
+        var row = state.rows.filter(function (r) {
+          return String(r.code) === String(code);
+        })[0];
+        var editing = Number.isFinite(cmtEditState.commentId) && cmtEditState.commentId > 0;
+        var title = document.getElementById("dg-pa-cmt-title");
+        if (title) {
+          title.textContent = editing
+            ? "Изменить комментарий · " + code
+            : "Новый комментарий · " + code;
+        }
+        var hint = document.getElementById("dg-pa-cmt-hint");
+        if (hint) {
+          hint.textContent = editing
+            ? "Править или удалить можно только свой комментарий."
+            : "Новый комментарий появится сверху. Редактировать сможете только свой.";
+        }
+        var text = "";
+        if (editing && row) {
+          var found = commentsList(row).filter(function (c) {
+            return Number(c.id) === cmtEditState.commentId;
+          })[0];
+          text = found ? found.body || "" : "";
+        }
+        var ta = document.getElementById("dg-pa-cmt-text");
+        if (ta) ta.value = text;
+        var del = document.getElementById("dg-pa-cmt-del");
+        if (del) del.classList.toggle("d-none", !editing);
+        var ov = document.getElementById("dg-pa-cmt-overlay");
+        if (!ov) return;
+        ov.style.display = "flex";
+        ov.setAttribute("aria-hidden", "false");
+        setTimeout(function () {
+          if (ta) {
+            ta.focus();
+            if (ta.select && editing) ta.select();
+          }
+        }, 0);
+      }
+
+      function applyCommentsToRow(code, pack) {
+        state.rows = state.rows.map(function (r) {
+          if (String(r.code) !== String(code)) return r;
+          return Object.assign({}, r, {
+            comments: pack.comments || [],
+            decision_note: pack.decision_note != null ? pack.decision_note : null,
+          });
+        });
+      }
+
+      function saveCommentModal() {
+        var code = String(cmtEditState.code || "").trim();
+        if (!code) return Promise.resolve();
+        var body = document.getElementById("dg-pa-cmt-text")
+          ? String(document.getElementById("dg-pa-cmt-text").value || "").trim()
+          : "";
+        if (!body) {
+          toastPa("warning", "Введите текст комментария");
+          return Promise.resolve();
+        }
+        var editing = Number.isFinite(cmtEditState.commentId) && cmtEditState.commentId > 0;
+        var url = editing
+          ? "/api/product-analysis/" + encodeURIComponent(code) + "/comments/" + cmtEditState.commentId
+          : "/api/product-analysis/" + encodeURIComponent(code) + "/comments";
+        return fetch(url, {
+          method: editing ? "PATCH" : "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ body: body }),
+        })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { ok: r.ok, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.ok || !x.j.success) throw new Error((x.j && x.j.error) || "Ошибка");
+            applyCommentsToRow(code, x.j);
+            invalidatePaTipCache(code);
+            closeCommentModal();
+            renderTable();
+            toastPa("success", editing ? "Комментарий обновлён" : "Комментарий добавлен");
+          });
+      }
+
+      function deleteCommentModal() {
+        var code = String(cmtEditState.code || "").trim();
+        var commentId = Number(cmtEditState.commentId);
+        if (!code || !Number.isFinite(commentId) || commentId < 1) return Promise.resolve();
+        return fetch(
+          "/api/product-analysis/" + encodeURIComponent(code) + "/comments/" + commentId,
+          { method: "DELETE", credentials: "same-origin" }
+        )
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { ok: r.ok, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.ok || !x.j.success) throw new Error((x.j && x.j.error) || "Ошибка");
+            applyCommentsToRow(code, x.j);
+            invalidatePaTipCache(code);
+            closeCommentDeleteModal();
+            closeCommentModal();
+            renderTable();
+            toastPa("success", "Комментарий удалён");
           });
       }
 
@@ -4044,11 +4374,6 @@
         });
 
         document.getElementById("dg-pa-tbody").addEventListener("change", function (ev) {
-          var noteInp = ev.target.closest(".dg-pa-note-input");
-          if (noteInp) {
-            saveDecisionNoteFromInput(noteInp);
-            return;
-          }
           var sel = ev.target.closest(".dg-pa-lc-select");
           if (sel) {
             var codeLc = sel.getAttribute("data-code");
@@ -4067,26 +4392,29 @@
           if (!inp) return;
           state.selected[inp.getAttribute("data-code")] = !!inp.checked;
         });
-        document.getElementById("dg-pa-tbody").addEventListener("keydown", function (ev) {
-          var noteInp = ev.target.closest(".dg-pa-note-input");
-          if (!noteInp) return;
-          if (ev.key === "Enter" && (ev.ctrlKey || ev.metaKey)) {
+        document.getElementById("dg-pa-tbody").addEventListener("click", function (ev) {
+          var addCmt = ev.target.closest("[data-pa-cmt-add]");
+          if (addCmt) {
             ev.preventDefault();
-            noteInp.blur();
+            ev.stopPropagation();
+            openCommentModal(addCmt.getAttribute("data-pa-cmt-add"), null);
             return;
           }
-          if (ev.key === "Escape") {
+          var editCmt = ev.target.closest("[data-pa-cmt-edit]");
+          if (editCmt) {
             ev.preventDefault();
-            noteInp.value = noteInp.getAttribute("data-prev") || "";
-            noteInp.blur();
+            ev.stopPropagation();
+            openCommentModal(
+              editCmt.getAttribute("data-pa-cmt-code"),
+              editCmt.getAttribute("data-pa-cmt-edit")
+            );
+            return;
           }
-        });
-        document.getElementById("dg-pa-tbody").addEventListener("click", function (ev) {
           if (
             ev.target.closest(".dg-pa-lc-select") ||
             ev.target.closest(".dg-pa-lc-log") ||
-            ev.target.closest(".dg-pa-note-input") ||
-            ev.target.closest(".dg-pa-note-wrap")
+            ev.target.closest(".dg-pa-comments") ||
+            ev.target.closest(".dg-pa-comments-wrap")
           ) {
             ev.stopPropagation();
           }
@@ -4104,8 +4432,8 @@
             ev.target.closest(".dg-pa-row-sel") ||
             ev.target.closest(".dg-pa-detail-row") ||
             ev.target.closest(".dg-pa-lc-select") ||
-            ev.target.closest(".dg-pa-note-input") ||
-            ev.target.closest(".dg-pa-note-wrap")
+            ev.target.closest(".dg-pa-comments") ||
+            ev.target.closest(".dg-pa-comments-wrap")
           ) {
             return;
           }
@@ -4121,6 +4449,75 @@
             openDetail(tr.getAttribute("data-code"), tr.getAttribute("data-name"));
           }
         });
+
+        (function bindCommentModals() {
+          var cancel = document.getElementById("dg-pa-cmt-cancel");
+          var backdrop = document.getElementById("dg-pa-cmt-backdrop");
+          var ok = document.getElementById("dg-pa-cmt-ok");
+          var del = document.getElementById("dg-pa-cmt-del");
+          var delCancel = document.getElementById("dg-pa-cmt-del-cancel");
+          var delBackdrop = document.getElementById("dg-pa-cmt-del-backdrop");
+          var delOk = document.getElementById("dg-pa-cmt-del-ok");
+          var ta = document.getElementById("dg-pa-cmt-text");
+          if (cancel) cancel.addEventListener("click", closeCommentModal);
+          if (backdrop) backdrop.addEventListener("click", closeCommentModal);
+          if (ok) {
+            ok.addEventListener("click", function () {
+              var btn = ok;
+              var run = function () {
+                return saveCommentModal().catch(function (e) {
+                  toastPa("danger", (e && e.message) || "Ошибка сохранения");
+                });
+              };
+              if (window.DatagonNotify && window.DatagonNotify.busyRun) {
+                window.DatagonNotify.busyRun(btn, run);
+              } else {
+                run();
+              }
+            });
+          }
+          if (del) del.addEventListener("click", openCommentDeleteModal);
+          if (delCancel) delCancel.addEventListener("click", closeCommentDeleteModal);
+          if (delBackdrop) delBackdrop.addEventListener("click", closeCommentDeleteModal);
+          if (delOk) {
+            delOk.addEventListener("click", function () {
+              var btn = delOk;
+              var run = function () {
+                return deleteCommentModal().catch(function (e) {
+                  toastPa("danger", (e && e.message) || "Ошибка удаления");
+                });
+              };
+              if (window.DatagonNotify && window.DatagonNotify.busyRun) {
+                window.DatagonNotify.busyRun(btn, run);
+              } else {
+                run();
+              }
+            });
+          }
+          if (ta) {
+            ta.addEventListener("keydown", function (ev) {
+              if (ev.key === "Enter" && (ev.ctrlKey || ev.metaKey)) {
+                ev.preventDefault();
+                if (ok) ok.click();
+              }
+              if (ev.key === "Escape") {
+                ev.preventDefault();
+                closeCommentModal();
+              }
+            });
+          }
+          document.addEventListener("keydown", function (ev) {
+            if (ev.key !== "Escape") return;
+            var delOv = document.getElementById("dg-pa-cmt-del-overlay");
+            if (delOv && delOv.style.display === "flex") {
+              closeCommentDeleteModal();
+              return;
+            }
+            var ov = document.getElementById("dg-pa-cmt-overlay");
+            if (ov && ov.style.display === "flex") closeCommentModal();
+          });
+        })();
+
         var detailClose = document.getElementById("dg-pa-detail-close");
         if (detailClose) {
           detailClose.addEventListener("click", function () {
@@ -4133,6 +4530,9 @@
         });
         document.getElementById("dg-pa-act-boost-failed").addEventListener("click", function () {
           runBulkDecision("boost_failed", "Буст не сработал");
+        });
+        document.getElementById("dg-pa-act-infographic").addEventListener("click", function () {
+          runBulkDecision("infographic", "Обновление инфографики");
         });
         document.getElementById("dg-pa-act-clearance").addEventListener("click", function () {
           runBulkDecision("clearance", "Распродажа (слить остаток)");
