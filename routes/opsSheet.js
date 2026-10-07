@@ -1393,11 +1393,21 @@ async function reportOverlapsLocalPeriod(db, byTask, year, month) {
     return false;
 }
 
-async function enrichFromDealStatusReport(appSettings, db, onProgress, year, month) {
+async function enrichFromDealStatusReport(appSettings, db, onProgress, year, month, opts) {
     const ids = pf.DEAL_STATUS_REPORT_IDS || [450694];
     // Период generate API не принимает (swagger: тело пустое) — даты как в UI Planfix.
     // Только первый подходящий отчёт. Второй (450690) одночанковый: раньше затирал 25 чанков 450694.
-    const periodMonth = Number(month) >= 1 && Number(month) <= 12 ? Number(month) : 0;
+    const splitMonths = (
+        opts && Array.isArray(opts.splitMonths) ? opts.splitMonths : []
+    )
+        .map((x) => Math.round(Number(x)))
+        .filter((x) => x >= 1 && x <= 12);
+    const periodMonth =
+        splitMonths.length > 1
+            ? 0
+            : Number(month) >= 1 && Number(month) <= 12
+              ? Number(month)
+              : 0;
     const merged = new Map();
     const unique = [];
     const used = [];
@@ -1408,9 +1418,11 @@ async function enrichFromDealStatusReport(appSettings, db, onProgress, year, mon
         const id = ids[i];
         if (typeof onProgress === 'function') {
             onProgress(
-                periodMonth
-                    ? `Отчёт ${id}: generate за месяц (период как в Planfix UI)`
-                    : `Отчёт ${id}: generate за весь ${year} (период как в Planfix UI)`
+                splitMonths.length > 1
+                    ? `Отчёт ${id}: generate за ${splitMonths.map((m) => MONTH_LABELS[m]).join('+')} (период как в Planfix UI)`
+                    : periodMonth
+                      ? `Отчёт ${id}: generate за месяц (период как в Planfix UI)`
+                      : `Отчёт ${id}: generate за весь ${year} (период как в Planfix UI)`
             );
         }
         let save = null;
@@ -1445,9 +1457,17 @@ async function enrichFromDealStatusReport(appSettings, db, onProgress, year, mon
         if (!save || !save.id) continue;
         save = await resolveSaveChunks(appSettings, id, save);
         let read = await readDealStatusReportPairs(appSettings, id, save, onProgress);
-        let overlaps = year
-            ? await reportOverlapsLocalPeriod(db, read.byTask, year, month)
-            : true;
+        const overlapMonths =
+            splitMonths.length > 1 ? splitMonths : periodMonth ? [periodMonth] : [0];
+        let overlaps = !year;
+        if (year) {
+            for (let oi = 0; oi < overlapMonths.length; oi += 1) {
+                if (await reportOverlapsLocalPeriod(db, read.byTask, year, overlapMonths[oi])) {
+                    overlaps = true;
+                    break;
+                }
+            }
+        }
         if (!overlaps && !localGenerated) {
             if (typeof onProgress === 'function') {
                 onProgress(
@@ -1461,7 +1481,20 @@ async function enrichFromDealStatusReport(appSettings, db, onProgress, year, mon
                     generated = true;
                     save = await resolveSaveChunks(appSettings, id, fresh);
                     read = await readDealStatusReportPairs(appSettings, id, save, onProgress);
-                    overlaps = await reportOverlapsLocalPeriod(db, read.byTask, year, month);
+                    overlaps = false;
+                    for (let oi = 0; oi < overlapMonths.length; oi += 1) {
+                        if (
+                            await reportOverlapsLocalPeriod(
+                                db,
+                                read.byTask,
+                                year,
+                                overlapMonths[oi]
+                            )
+                        ) {
+                            overlaps = true;
+                            break;
+                        }
+                    }
                 }
             } catch (e) {
                 if (e && e.code === 'PF_SYNC_CANCELLED') throw e;
@@ -1473,9 +1506,12 @@ async function enrichFromDealStatusReport(appSettings, db, onProgress, year, mon
         const dealUniques = (read.unique || []).filter((s) => s && !pf.isPlanfixProcessStatusName(s));
 
         if (year && !overlaps) {
-            const label = periodMonth
-                ? `${MONTH_LABELS[periodMonth]} ${year}`
-                : `весь ${year}`;
+            const label =
+                splitMonths.length > 1
+                    ? `${splitMonths.map((m) => MONTH_LABELS[m]).join(', ')} ${year}`
+                    : periodMonth
+                      ? `${MONTH_LABELS[periodMonth]} ${year}`
+                      : `весь ${year}`;
             const err = new Error(
                 `Сейв отчёта Planfix (${id}) не пересекается с периодом Datagon «${label}». ` +
                     `В UI отчёта https://almamed.planfix.ru/?action=report&id=${id} выставьте тот же год/месяц и повторите. ` +
@@ -1517,17 +1553,61 @@ async function enrichFromDealStatusReport(appSettings, db, onProgress, year, mon
     }
     const applied = await applyReportStatuses(db, merged);
     await upsertCatalog(db, unique, 'report');
-    await upsertReportStatusCounts(db, merged, used[0], year, periodMonth);
-    await upsertReportTasks(db, merged, used[0], year, periodMonth);
-    await upsertReportMeta(db, {
-        report_id: used[0].report_id,
-        save_id: used[0].save_id,
-        year: Number(year) || 0,
-        month: periodMonth,
-        scope: 'period',
-        generated,
-    });
     await refreshTaskDatesFromSheet(db);
+    if (splitMonths.length > 1) {
+        // Один generate за несколько месяцев → разложить снимки по month (не в month=0).
+        const idsAll = [...merged.keys()];
+        const dateBy = new Map();
+        for (let i = 0; i < idsAll.length; i += 400) {
+            const slice = idsAll.slice(i, i + 400);
+            const ph = slice.map(() => '?').join(',');
+            const [drows] = await db.query(
+                `SELECT task_id, created_at FROM dg_ops_planfix_task_dates WHERE task_id IN (${ph})`,
+                slice
+            );
+            (drows || []).forEach((r) => {
+                dateBy.set(Number(r.task_id), r.created_at);
+            });
+        }
+        for (let mi = 0; mi < splitMonths.length; mi += 1) {
+            const m = splitMonths[mi];
+            const b = pf.periodBounds(year, m);
+            const part = new Map();
+            merged.forEach((val, tid) => {
+                const raw = dateBy.get(Number(tid));
+                if (raw == null) return;
+                // created_at в БД — наивное МСК (как NOW() сервера MSK)
+                const wall = String(raw).replace('T', ' ').slice(0, 19);
+                if (wall >= b.fromSql && wall < b.toSql) part.set(tid, val);
+            });
+            if (typeof onProgress === 'function') {
+                onProgress(
+                    `Снимок отчёта ${MONTH_LABELS[m]} ${year}: ${part.size} задач из generate`
+                );
+            }
+            await upsertReportStatusCounts(db, part, used[0], year, m);
+            await upsertReportTasks(db, part, used[0], year, m);
+            await upsertReportMeta(db, {
+                report_id: used[0].report_id,
+                save_id: used[0].save_id,
+                year: Number(year) || 0,
+                month: m,
+                scope: 'period',
+                generated,
+            });
+        }
+    } else {
+        await upsertReportStatusCounts(db, merged, used[0], year, periodMonth);
+        await upsertReportTasks(db, merged, used[0], year, periodMonth);
+        await upsertReportMeta(db, {
+            report_id: used[0].report_id,
+            save_id: used[0].save_id,
+            year: Number(year) || 0,
+            month: periodMonth,
+            scope: 'period',
+            generated,
+        });
+    }
     return {
         report_id: used[0].report_id,
         reports: used,
@@ -1538,7 +1618,8 @@ async function enrichFromDealStatusReport(appSettings, db, onProgress, year, mon
         unique_statuses: unique,
         generated,
         covers_period: true,
-        scope: 'period',
+        scope: splitMonths.length > 1 ? 'months_sum' : 'period',
+        months: splitMonths.length > 1 ? splitMonths.slice() : undefined,
         generate_error: generate_error || undefined,
     };
 }
@@ -1571,7 +1652,11 @@ function mergeStatusManagers(sheetBy, reportBy, hasReportCounts) {
     return out;
 }
 
-async function loadStatusManagerBreakdown(db, ranges, { periodScoped, hasReportCounts, snapYear, snapMonth }) {
+async function loadStatusManagerBreakdown(
+    db,
+    ranges,
+    { periodScoped, hasReportCounts, snapYear, snapMonth, snapMonths }
+) {
     const sheetBy = {};
     const sheetClause = pf.createdAtRangesSql('created_at', ranges);
     const [sheetRows] = await db.query(
@@ -1596,22 +1681,40 @@ async function loadStatusManagerBreakdown(db, ranges, { periodScoped, hasReportC
                     ELSE t.assigner_name
                  END`;
             const sy = Number(snapYear) || 0;
-            const sm = periodMonthNorm(snapMonth);
+            const monthsIn =
+                Array.isArray(snapMonths) && snapMonths.length
+                    ? snapMonths.map((x) => periodMonthNorm(x)).filter((x) => x >= 1 && x <= 12)
+                    : [];
             const datesClause = pf.createdAtRangesSql('d.created_at', ranges);
-            const sql = periodScoped
-                ? `SELECT r.status_value, ${nameExpr} AS assigner_name, COUNT(*) AS n
-                     FROM dg_ops_planfix_report_task r
-                     LEFT JOIN dg_ops_planfix_tasks t ON t.task_id = r.task_id
-                    WHERE r.year = ? AND r.month = ?
-                    GROUP BY r.status_value, ${nameExpr}`
-                : `SELECT r.status_value, ${nameExpr} AS assigner_name, COUNT(*) AS n
-                     FROM dg_ops_planfix_report_task r
-                     INNER JOIN dg_ops_planfix_task_dates d ON d.task_id = r.task_id
-                     LEFT JOIN dg_ops_planfix_tasks t ON t.task_id = r.task_id
-                    WHERE r.year = ? AND r.month = ?
-                      AND (${datesClause.sql})
-                    GROUP BY r.status_value, ${nameExpr}`;
-            const args = periodScoped ? [sy, sm] : [sy, sm, ...datesClause.args];
+            let sql;
+            let args;
+            if (periodScoped && monthsIn.length > 1) {
+                const ph = monthsIn.map(() => '?').join(',');
+                sql = `SELECT r.status_value, ${nameExpr} AS assigner_name, COUNT(*) AS n
+                         FROM dg_ops_planfix_report_task r
+                         LEFT JOIN dg_ops_planfix_tasks t ON t.task_id = r.task_id
+                        WHERE r.year = ? AND r.month IN (${ph})
+                        GROUP BY r.status_value, ${nameExpr}`;
+                args = [sy, ...monthsIn];
+            } else if (periodScoped) {
+                const sm = periodMonthNorm(snapMonth);
+                sql = `SELECT r.status_value, ${nameExpr} AS assigner_name, COUNT(*) AS n
+                         FROM dg_ops_planfix_report_task r
+                         LEFT JOIN dg_ops_planfix_tasks t ON t.task_id = r.task_id
+                        WHERE r.year = ? AND r.month = ?
+                        GROUP BY r.status_value, ${nameExpr}`;
+                args = [sy, sm];
+            } else {
+                const sm = periodMonthNorm(snapMonth);
+                sql = `SELECT r.status_value, ${nameExpr} AS assigner_name, COUNT(*) AS n
+                         FROM dg_ops_planfix_report_task r
+                         INNER JOIN dg_ops_planfix_task_dates d ON d.task_id = r.task_id
+                         LEFT JOIN dg_ops_planfix_tasks t ON t.task_id = r.task_id
+                        WHERE r.year = ? AND r.month = ?
+                          AND (${datesClause.sql})
+                        GROUP BY r.status_value, ${nameExpr}`;
+                args = [sy, sm, ...datesClause.args];
+            }
             const [rr] = await db.query(sql, args);
             (rr || []).forEach((r) => {
                 const st = String(r.status_value || '');
@@ -1674,18 +1777,77 @@ async function loadPlanfixPanel(db, year, managers, monthOrMonths) {
     let periodScoped = false;
     let snapYear = Number(year) || 0;
     let snapMonth = Number(pr.labelMonth) || 0;
+    let snapMonths = null;
     const datesOnReport = pf.createdAtRangesSql('d.created_at', pr.ranges);
     try {
         const reqMonth = monthsList.length === 1 ? monthsList[0] : 0;
-        const metaRow = await loadReportMeta(db, year, reqMonth);
-        periodScoped = !!(
-            monthsList.length === 1 &&
-            metaRow &&
-            String(metaRow.scope || '') === 'period' &&
-            Number(metaRow.year) === Number(year) &&
-            Number(metaRow.month) === reqMonth
-        );
-        if (periodScoped) {
+        const multiMonths =
+            monthsList[0] !== 0 && monthsList.length > 1
+                ? monthsList.filter((m) => m >= 1 && m <= 12)
+                : null;
+        let multiSumOk = false;
+        if (multiMonths && multiMonths.length > 1) {
+            // Сумма помесячных снимков = гистограмма Planfix за эти месяцы (1+2 → 1605+1581=3186).
+            // Раньше резали годовой month=0 по датам → Поставщик 3134 вместо 3186.
+            const metas = [];
+            multiSumOk = true;
+            for (let i = 0; i < multiMonths.length; i += 1) {
+                const mr = await loadReportMeta(db, year, multiMonths[i]);
+                if (
+                    !(
+                        mr &&
+                        String(mr.scope || '') === 'period' &&
+                        Number(mr.year) === Number(year) &&
+                        Number(mr.month) === multiMonths[i]
+                    )
+                ) {
+                    multiSumOk = false;
+                    break;
+                }
+                metas.push(mr);
+            }
+            if (multiSumOk) {
+                const ph = multiMonths.map(() => '?').join(',');
+                const [rr] = await db.query(
+                    `SELECT status_value, SUM(n) AS n
+                       FROM dg_ops_planfix_report_status_counts
+                      WHERE year = ? AND month IN (${ph})
+                      GROUP BY status_value`,
+                    [Number(year) || 0, ...multiMonths]
+                );
+                reportCountRows = rr || [];
+                hasReportCounts = reportCountRows.length > 0;
+                periodScoped = true;
+                snapYear = Number(year) || 0;
+                snapMonth = 0;
+                snapMonths = multiMonths.slice();
+                const latest = metas.reduce((a, b) => {
+                    const ta = a && a.synced_at ? new Date(a.synced_at).getTime() : 0;
+                    const tb = b && b.synced_at ? new Date(b.synced_at).getTime() : 0;
+                    return tb >= ta ? b : a;
+                }, metas[0]);
+                reportMeta = {
+                    report_id: Number(latest && latest.report_id) || 0,
+                    save_id: Number(latest && latest.save_id) || 0,
+                    synced_at: latest && latest.synced_at ? latest.synced_at : null,
+                    scope: 'months_sum',
+                    year: snapYear,
+                    month: 0,
+                    months: multiMonths.slice(),
+                };
+            }
+        }
+        const metaRow = !multiSumOk ? await loadReportMeta(db, year, reqMonth) : null;
+        periodScoped =
+            periodScoped ||
+            !!(
+                monthsList.length === 1 &&
+                metaRow &&
+                String(metaRow.scope || '') === 'period' &&
+                Number(metaRow.year) === Number(year) &&
+                Number(metaRow.month) === reqMonth
+            );
+        if (!multiSumOk && periodScoped) {
             snapYear = Number(metaRow.year) || 0;
             snapMonth = Number(metaRow.month) || 0;
             // Сейв этого (year, month) — гистограмма 1:1 с Planfix.
@@ -1705,7 +1867,7 @@ async function loadPlanfixPanel(db, year, managers, monthOrMonths) {
                 year: snapYear,
                 month: snapMonth,
             };
-        } else {
+        } else if (!multiSumOk) {
             // Нет точного снимка: пробуем полный год того же year (month=0), иначе даты.
             const yearMeta = await loadReportMeta(db, year, 0);
             if (yearMeta && Number(yearMeta.year) === Number(year) && Number(yearMeta.month) === 0) {
@@ -1792,6 +1954,7 @@ async function loadPlanfixPanel(db, year, managers, monthOrMonths) {
         hasReportCounts,
         snapYear,
         snapMonth,
+        snapMonths,
     });
     const names = {};
     const catMeta = {};
@@ -2497,14 +2660,30 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
                 await upsertCatalog(db, Object.keys(seenStatuses), 'task');
                 let reportMeta = null;
                 const reportMonth = monthsQueue.length === 1 ? monthsQueue[0] : 0;
+                const splitMonths =
+                    monthsQueue.length > 1 && monthsQueue[0] !== 0
+                        ? monthsQueue.filter((m) => m >= 1 && m <= 12)
+                        : null;
                 try {
                     markPfSync({
                         stage: 'status_report',
-                        message: `Отдельно забираем «${pf.STATUS_FIELD_NAME}» из отчёта Planfix (${periodLabelFor(reportMonth)})`,
+                        message:
+                            splitMonths && splitMonths.length
+                                ? `Отдельно забираем «${pf.STATUS_FIELD_NAME}» из отчёта Planfix (${splitMonths
+                                      .map((m) => MONTH_LABELS[m])
+                                      .join('+')} ${year} — в UI Planfix тот же диапазон)`
+                                : `Отдельно забираем «${pf.STATUS_FIELD_NAME}» из отчёта Planfix (${periodLabelFor(reportMonth)})`,
                     });
-                    reportMeta = await enrichFromDealStatusReport(settings, db, (msg) => {
-                        markPfSync({ stage: 'status_report', message: msg });
-                    }, year, reportMonth);
+                    reportMeta = await enrichFromDealStatusReport(
+                        settings,
+                        db,
+                        (msg) => {
+                            markPfSync({ stage: 'status_report', message: msg });
+                        },
+                        year,
+                        reportMonth,
+                        splitMonths && splitMonths.length ? { splitMonths } : undefined
+                    );
                     (reportMeta.unique_statuses || []).forEach((s) => {
                         if (s) seenStatuses[s] = true;
                     });
