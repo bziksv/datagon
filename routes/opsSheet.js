@@ -12,6 +12,9 @@ const {
 const {
     MONTH_LABELS,
     COLUMN_LEGEND,
+    OPS_AUTO_FROM,
+    SHIPPED_STATUSES,
+    isOpsAutoEra,
     profitBeforeTaxRow,
     buildRow,
     buildTotals,
@@ -183,6 +186,35 @@ async function ensureSchema(db) {
             KEY idx_ops_year (year)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
+    try {
+        await db.query(
+            'ALTER TABLE dg_ops_sheet_manual ADD COLUMN bonus_past_manual TINYINT NOT NULL DEFAULT 0'
+        );
+    } catch (e) {
+        if (!(e && (e.errno === 1060 || /duplicate column/i.test(String(e.message || ''))))) throw e;
+    }
+    try {
+        await db.query('ALTER TABLE dg_manager_sales_rows ADD COLUMN shipped_at DATE NULL');
+    } catch (e) {
+        if (!(e && (e.errno === 1060 || /duplicate column/i.test(String(e.message || ''))))) {
+            /* таблица может ещё не существовать до первого визита manager-sales */
+        }
+    }
+    try {
+        await db.query('ALTER TABLE dg_manager_sales_rows ADD KEY idx_msl_shipped (shipped_at)');
+    } catch (_) {}
+    // С окт. 2026: у уже «Отгружен» без даты — подставляем paid_at (тот же месяц).
+    // Плавающие май→октябрь: нужна явная shipped_at в месяце отгрузки.
+    try {
+        await db.query(
+            `UPDATE dg_manager_sales_rows
+                SET shipped_at = paid_at
+              WHERE shipped_at IS NULL
+                AND paid_at IS NOT NULL
+                AND paid_at >= '2026-10-01'
+                AND status IN ('Отгружен', 'Частично отгружен')`
+        );
+    } catch (_) {}
     await db.query(`
         CREATE TABLE IF NOT EXISTS dg_ops_planfix_tasks (
             task_id BIGINT NOT NULL PRIMARY KEY,
@@ -600,7 +632,8 @@ async function fetchMonthAggregates(db, year, managerIds) {
 
 async function loadManualMap(db, year) {
     const [rows] = await db.query(
-        `SELECT year, month, manager_user_id, coefficient, bonus_past, salary
+        `SELECT year, month, manager_user_id, applications_count, coefficient,
+                bonus_past, bonus_past_manual, salary
            FROM dg_ops_sheet_manual
           WHERE year = ?`,
         [year]
@@ -610,13 +643,167 @@ async function loadManualMap(db, year) {
         const mid = Number(r.manager_user_id);
         const m = Number(r.month);
         map[`${mid}:${m}`] = {
-            applications_count: null,
+            // «Кол-во заявок (с Гугла)» — импорт из Google ops-листа, не Planfix-галка
+            applications_count:
+                r.applications_count != null ? Math.round(Number(r.applications_count) || 0) : null,
+            applications_local: null,
             coefficient: r.coefficient != null ? Number(r.coefficient) : null,
             bonus_past: r.bonus_past != null ? Number(r.bonus_past) : null,
+            bonus_past_manual: Number(r.bonus_past_manual) === 1 ? 1 : 0,
             salary: r.salary != null ? Number(r.salary) : null,
         };
     });
     return map;
+}
+
+function emptyShippedBonusCell() {
+    return {
+        sum: 0,
+        count: 0,
+        sum_past: 0,
+        count_past: 0,
+        sum_current: 0,
+        count_current: 0,
+    };
+}
+
+/**
+ * Премии по отгрузкам месяца листа.
+ * Дата отгрузки: COALESCE(shipped_at, paid_at) если статус Отгружен/Частично
+ * (у старых строк shipped_at часто пустой — без fallback колонка была нулями).
+ * — past: оплата раньше месяца отгрузки (май→октябрь: нужна явная shipped_at);
+ * — current: оплата в том же месяце.
+ * bonus_current = полная премия месяца (все продажи), без вычета sum_current.
+ */
+async function fetchBonusPastByShipped(db, year, managerIds) {
+    const out = {};
+    const ids = (managerIds || []).map((n) => Number(n)).filter((n) => Number.isFinite(n) && n > 0);
+    if (!ids.length) return out;
+    const ph = ids.map(() => '?').join(',');
+    const statusPh = SHIPPED_STATUSES.map(() => '?').join(',');
+    const [rows] = await db.query(
+        `SELECT COALESCE(handed_to_user_id, manager_user_id) AS mid,
+                YEAR(COALESCE(shipped_at, paid_at)) AS sy,
+                MONTH(COALESCE(shipped_at, paid_at)) AS sm,
+                YEAR(paid_at) AS py,
+                MONTH(paid_at) AS pm,
+                bonus
+           FROM dg_manager_sales_rows
+          WHERE archived_at IS NULL
+            AND paid_at IS NOT NULL
+            AND status IN (${statusPh})
+            AND YEAR(COALESCE(shipped_at, paid_at)) = ?
+            AND COALESCE(handed_to_user_id, manager_user_id) IN (${ph})`,
+        SHIPPED_STATUSES.concat([year]).concat(ids)
+    );
+    (rows || []).forEach((r) => {
+        const mid = Number(r.mid);
+        const sy = Number(r.sy);
+        const sm = Number(r.sm);
+        const py = Number(r.py);
+        const pm = Number(r.pm);
+        if (!Number.isFinite(mid) || sy !== year || !sm || sm < 1 || sm > 12) return;
+        if (!Number.isFinite(py) || !Number.isFinite(pm) || pm < 1 || pm > 12) return;
+        // Оплата позже месяца отгрузки — не считаем (битые даты)
+        if (py > year || (py === year && pm > sm)) return;
+        const key = `${mid}:${sm}`;
+        if (!out[key]) out[key] = emptyShippedBonusCell();
+        const bonus = toNum(r.bonus) || 0;
+        const sameMonth = py === year && pm === sm;
+        out[key].sum += bonus;
+        out[key].count += 1;
+        if (sameMonth) {
+            out[key].sum_current += bonus;
+            out[key].count_current += 1;
+        } else {
+            out[key].sum_past += bonus;
+            out[key].count_past += 1;
+        }
+    });
+    Object.keys(out).forEach((k) => {
+        out[k].sum = round2(out[k].sum);
+        out[k].sum_past = round2(out[k].sum_past);
+        out[k].sum_current = round2(out[k].sum_current);
+    });
+    return out;
+}
+
+function sqlDateOnly(v) {
+    if (v == null) return null;
+    if (v instanceof Date && !isNaN(v.getTime())) {
+        // MySQL DATE часто приходит как локальная полночь (МСК → UTC −3ч).
+        // toISOString() тогда сдвигает календарный день назад — берём локальные Y-M-D.
+        const y = v.getFullYear();
+        const m = String(v.getMonth() + 1).padStart(2, '0');
+        const d = String(v.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
+    }
+    const s = String(v);
+    return s.length >= 10 ? s.slice(0, 10) : s;
+}
+
+function paidYearMonthFromValue(paid) {
+    if (paid == null) return { py: null, pm: null };
+    if (typeof paid === 'string') {
+        const parts = paid.slice(0, 10).split('-');
+        if (parts.length === 3) {
+            return { py: Number(parts[0]), pm: Number(parts[1]) };
+        }
+    }
+    const iso = sqlDateOnly(paid);
+    if (!iso) return { py: null, pm: null };
+    const parts = iso.split('-');
+    return { py: Number(parts[0]), pm: Number(parts[1]) };
+}
+
+async function listBonusPastOrders(db, year, month, managerId) {
+    const mid = Number(managerId);
+    const y = Number(year);
+    const m = Number(month);
+    if (!Number.isFinite(mid) || mid <= 0 || !Number.isFinite(y) || !m || m < 1 || m > 12) {
+        return [];
+    }
+    const statusPh = SHIPPED_STATUSES.map(() => '?').join(',');
+    const [rows] = await db.query(
+        `SELECT id, row_no, our_invoice_no, order_url, paid_at, shipped_at, status,
+                amount_ex_delivery, bonus, pct_mp,
+                COALESCE(handed_to_user_id, manager_user_id) AS credit_mid
+           FROM dg_manager_sales_rows
+          WHERE archived_at IS NULL
+            AND paid_at IS NOT NULL
+            AND status IN (${statusPh})
+            AND YEAR(COALESCE(shipped_at, paid_at)) = ?
+            AND MONTH(COALESCE(shipped_at, paid_at)) = ?
+            AND COALESCE(handed_to_user_id, manager_user_id) = ?
+          ORDER BY COALESCE(shipped_at, paid_at) ASC, paid_at ASC, id ASC`,
+        // placeholders: status IN (…) → YEAR → MONTH → manager
+        SHIPPED_STATUSES.concat([y, m, mid])
+    );
+    const out = [];
+    (rows || []).forEach((r) => {
+        const { py, pm } = paidYearMonthFromValue(r.paid_at);
+        if (!Number.isFinite(py) || !Number.isFinite(pm)) return;
+        if (py > y || (py === y && pm > m)) return;
+        const sameMonth = py === y && pm === m;
+        const shipExplicit = sqlDateOnly(r.shipped_at);
+        const shipEff = shipExplicit || sqlDateOnly(r.paid_at);
+        out.push({
+            id: Number(r.id),
+            row_no: r.row_no != null ? Number(r.row_no) : null,
+            our_invoice_no: r.our_invoice_no || '',
+            order_url: r.order_url || '',
+            paid_at: sqlDateOnly(r.paid_at),
+            shipped_at: shipEff,
+            shipped_at_inferred: !shipExplicit,
+            status: r.status || '',
+            amount_ex_delivery: toNum(r.amount_ex_delivery),
+            bonus: toNum(r.bonus),
+            pct_mp: toNum(r.pct_mp),
+            bucket: sameMonth ? 'current' : 'past',
+            floating: !sameMonth,
+        });
+    });
+    return out;
 }
 
 async function fetchPlanfixAppCounts(db, year, managers) {
@@ -638,33 +825,47 @@ async function fetchPlanfixAppCounts(db, year, managers) {
         [b.fromSql, b.toSql]
     );
     const counts = {};
+    const countsLocal = {};
     const unmatched = {};
     (agg || []).forEach((row) => {
         const status = String(row.status_value || '');
-        if (!countSet[status]) return;
-        const mgr = pf.matchManagerByAssigner(row.assigner_name, managers);
         const n = Number(row.n) || 0;
-        if (!mgr) {
-            const k = String(row.assigner_name || '').trim() || '(без постановщика)';
-            unmatched[k] = (unmatched[k] || 0) + n;
-            return;
-        }
+        const mgr = pf.matchManagerByAssigner(row.assigner_name, managers);
         const m = Number(row.m);
         if (!m || m < 1 || m > 12) return;
+
+        if (!pf.isExcludedFromAppsCount(status)) {
+            if (!mgr) {
+                const k = String(row.assigner_name || '').trim() || '(без постановщика)';
+                unmatched[k] = (unmatched[k] || 0) + n;
+            } else {
+                const key = `${mgr.id}:${m}`;
+                countsLocal[key] = (countsLocal[key] || 0) + n;
+            }
+        }
+
+        if (!countSet[status]) return;
+        if (!mgr) return;
         const key = `${mgr.id}:${m}`;
         counts[key] = (counts[key] || 0) + n;
     });
-    return { counts, unmatched };
+    return { counts, countsLocal, unmatched };
 }
 
-function manualWithApps(manual, appsCount) {
+/** applications_count — из manual (Google); applications_local — живой Planfix. */
+function manualWithApps(manual, appsLocal) {
     const m = Object.assign(emptyManual(), manual || {});
-    m.applications_count = appsCount != null ? Math.round(Number(appsCount) || 0) : 0;
+    if (m.applications_count != null) {
+        m.applications_count = Math.round(Number(m.applications_count) || 0);
+    }
+    m.applications_local = appsLocal != null ? Math.round(Number(appsLocal) || 0) : 0;
     return m;
 }
 
-function buildYearSnapshot(managers, year, aggregates, plans, manualMap, planfixCounts) {
+function buildYearSnapshot(managers, year, aggregates, plans, manualMap, planfixLocal, bonusPastMap) {
     const months = [];
+    const localMap = planfixLocal || {};
+    const bpMap = bonusPastMap || {};
     for (let month = 1; month <= 12; month += 1) {
         const rows = managers.map((mgr) => {
             const key = `${mgr.id}:${month}`;
@@ -676,8 +877,11 @@ function buildYearSnapshot(managers, year, aggregates, plans, manualMap, planfix
             };
             const plan = resolvePlan(plans, mgr.id, year, month);
             const pctMp = pctMpFromMonthTotal(agg.turnover, plan.plan_amount, plan.steps);
+            const bp = bpMap[key] || emptyShippedBonusCell();
+            // Полная премия месяца: все продажи credit-менеджера (отгруженные и нет + переданные ему)
             const bonusCurrent = round2((agg.profit_after_tax / 100) * pctMp);
-            const manual = manualWithApps(manualMap[key], planfixCounts[key] || 0);
+            const manBase = manualMap[key] || emptyManual();
+            const manual = manualWithApps(manBase, localMap[key] || 0);
             return buildRow(
                 mgr,
                 {
@@ -689,7 +893,16 @@ function buildYearSnapshot(managers, year, aggregates, plans, manualMap, planfix
                     plan_amount: plan.plan_amount,
                     pct_mp: pctMp,
                 },
-                manual
+                manual,
+                {
+                    year,
+                    month,
+                    bonus_past_auto: bp.sum,
+                    bonus_past_manual: manBase.bonus_past_manual,
+                    bonus_past_orders_count: bp.count,
+                    bonus_past_from_past: bp.sum_past,
+                    bonus_past_from_current: bp.sum_current,
+                }
             );
         });
         months.push({
@@ -697,6 +910,7 @@ function buildYearSnapshot(managers, year, aggregates, plans, manualMap, planfix
             label: MONTH_LABELS[month],
             rows,
             totals: buildTotals(rows),
+            ops_auto_era: isOpsAutoEra(year, month),
         });
     }
     return months;
@@ -2052,7 +2266,8 @@ function monthsFromRequest(req, body) {
     return pf.normalizeMonthsList(single, 0);
 }
 
-function composeMonthRow(mgr, agg, plan, manual) {
+function composeMonthRow(mgr, agg, plan, manual, opts) {
+    const o = opts || {};
     const pctMp = pctMpFromMonthTotal(agg.turnover, plan.plan_amount, plan.steps);
     const bonusCurrent = round2((agg.profit_after_tax / 100) * pctMp);
     return buildRow(
@@ -2066,7 +2281,8 @@ function composeMonthRow(mgr, agg, plan, manual) {
             plan_amount: plan.plan_amount,
             pct_mp: pctMp,
         },
-        manual
+        manual,
+        o
     );
 }
 
@@ -2100,21 +2316,174 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
                     profit_before_tax: 'SUM(net − delivery), net = F − K − vatAmount',
                     profit_after_tax: 'SUM(diff)',
                     profit_pct: 'profit_after_tax / turnover × 100',
-                    bonus_current: 'SUM(diff) × pct_mp / 100',
+                    bonus_current:
+                        'SUM(diff) × pct_mp / 100 по credit-менеджеру (COALESCE(handed_to, manager)): все продажи месяца — отгруженные и нет, включая переданные от других',
+                    applications_local:
+                        'COUNT задач из dg_ops_planfix_tasks (постановщик=менеджер); все статусы кроме: Товар получен, Заказан товар у поставщика, Поставщик, Информационное письмо, Подбор по Т.з., клиент отказался - мониторинг цен - ГБУЗ',
                     applications_count:
-                        'COUNT задач Planfix (постановщик = менеджер, месяц = дата создания, статус в корзине с «в кол-во заявок»)',
+                        'Импорт из Google операционного листа (колонка «Кол-во заявок») → «Кол-во заявок (с Гугла)»',
                     paid_applications: 'COUNT DISTINCT № счёта (или строки без счёта) credit-менеджера за месяц',
-                    apps_per_sale: 'applications_count / paid_applications',
+                    apps_per_sale_local: 'applications_local / paid_applications (целое, Math.round)',
+                    apps_per_sale: 'applications_count / paid_applications (целое, Math.round)',
                     avg_check: 'turnover / paid_applications',
                     fact_profit: 'profit_after_tax − bonus_current − salary',
                     salary_paid: 'salary + bonus_past',
                     company_profit: 'profit_after_tax − salary_paid',
                     company_pct: 'company_profit / turnover × 100',
+                    bonus_past:
+                        'С окт. 2026: SUM(bonus) всех отгрузок месяца (прошлые + текущие оплаты). Карандаш — override. До окт. 2026 — архив',
                 },
+                ops_auto_from: OPS_AUTO_FROM,
             });
         } catch (e) {
             console.error('[ops-sheet/meta]', e);
             res.status(500).json({ success: false, error: e.message || 'meta failed' });
+        }
+    });
+
+    router.get('/bonus-past-orders', async (req, res) => {
+        try {
+            await ensureSchema(db);
+            const year = normYear(req.query.year, null);
+            const month = normMonth(req.query.month);
+            const mid = Number(req.query.manager_user_id);
+            if (!year || !month || !Number.isFinite(mid) || mid <= 0) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Нужны year, month, manager_user_id',
+                });
+            }
+            const managers = await listSalesManagers(db, { includeArchived: true });
+            const mgr = managers.find((m) => m.id === mid);
+            if (!mgr) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Менеджер не из группы «Менеджер по продажам»',
+                });
+            }
+            const orders = await listBonusPastOrders(db, year, month, mid);
+            let totalBonus = 0;
+            let totalPast = 0;
+            let totalCurrent = 0;
+            let countPast = 0;
+            let countCurrent = 0;
+            orders.forEach((o) => {
+                const b = toNum(o.bonus) || 0;
+                totalBonus += b;
+                if (o.bucket === 'current') {
+                    totalCurrent += b;
+                    countCurrent += 1;
+                } else {
+                    totalPast += b;
+                    countPast += 1;
+                }
+            });
+            const manualMap = await loadManualMap(db, year);
+            const man = manualMap[`${mid}:${month}`] || {};
+            res.json({
+                success: true,
+                year,
+                month,
+                manager_user_id: mid,
+                manager_name: mgr.full_name || mgr.username || '',
+                ops_auto_era: isOpsAutoEra(year, month),
+                ops_auto_from: OPS_AUTO_FROM,
+                total_bonus: round2(totalBonus),
+                total_from_past: round2(totalPast),
+                total_from_current: round2(totalCurrent),
+                orders_count: orders.length,
+                orders_from_past: countPast,
+                orders_from_current: countCurrent,
+                note:
+                    'Сюда входят все отгрузки месяца (оплата раньше или в этом месяце). «Премия за текущий месяц» — отдельно: полная премия по всем продажам месяца (отгруженные и нет + переданные).',
+                bonus_past_manual: Number(man.bonus_past_manual) === 1 ? 1 : 0,
+                bonus_past_override: man.bonus_past != null ? Number(man.bonus_past) : null,
+                orders,
+            });
+        } catch (e) {
+            console.error('[ops-sheet/bonus-past-orders]', e);
+            res.status(500).json({ success: false, error: e.message || 'load failed' });
+        }
+    });
+
+    /**
+     * Разворот «Кол-во заявок*» по менеджеру/месяцу: статусы задач Planfix.
+     * Query: year, month (1–12), manager_user_id.
+     */
+    router.get('/manager-app-statuses', async (req, res) => {
+        try {
+            await ensureSchema(db);
+            const year = normYear(req.query.year, currentYear());
+            const month = normMonth(req.query.month);
+            const mid = Number(req.query.manager_user_id);
+            if (!year || !month || !Number.isFinite(mid) || mid <= 0) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Нужны year, month (1–12), manager_user_id',
+                });
+            }
+            const managers = await listSalesManagers(db, { includeArchived: true });
+            const mgr = managers.find((m) => Number(m.id) === mid);
+            if (!mgr) {
+                return res.status(404).json({ success: false, error: 'Менеджер не найден' });
+            }
+            const b = pf.periodBounds(year, month);
+            const [agg] = await db.query(
+                `SELECT assigner_name, status_value, COUNT(*) AS n
+                   FROM dg_ops_planfix_tasks
+                  WHERE created_at >= ? AND created_at < ?
+                  GROUP BY assigner_name, status_value`,
+                [b.fromSql, b.toSql]
+            );
+            const byStatus = {};
+            (agg || []).forEach((row) => {
+                const matched = pf.matchManagerByAssigner(row.assigner_name, [mgr]);
+                if (!matched || Number(matched.id) !== mid) return;
+                const st = String(row.status_value || '');
+                const n = Number(row.n) || 0;
+                byStatus[st] = (byStatus[st] || 0) + n;
+            });
+            const statuses = Object.keys(byStatus)
+                .map((status_value) => {
+                    const n = byStatus[status_value];
+                    const excluded = pf.isExcludedFromAppsCount(status_value);
+                    return {
+                        status_value: status_value || '(без статуса)',
+                        n,
+                        excluded,
+                        sort: pf.defaultDealStatusSortIndex(status_value),
+                    };
+                })
+                .sort((a, b) => {
+                    if (a.excluded !== b.excluded) return a.excluded ? 1 : -1;
+                    if (a.sort !== b.sort) {
+                        if (a.sort < 0 && b.sort < 0) return b.n - a.n;
+                        if (a.sort < 0) return 1;
+                        if (b.sort < 0) return -1;
+                        return a.sort - b.sort;
+                    }
+                    return b.n - a.n;
+                });
+            let included_total = 0;
+            let excluded_total = 0;
+            statuses.forEach((s) => {
+                if (s.excluded) excluded_total += s.n;
+                else included_total += s.n;
+            });
+            res.json({
+                success: true,
+                year,
+                month,
+                manager_user_id: mid,
+                manager_name: mgr.full_name || mgr.username || '',
+                included_total,
+                excluded_total,
+                all_total: included_total + excluded_total,
+                statuses,
+            });
+        } catch (e) {
+            console.error('[ops-sheet/manager-app-statuses]', e);
+            res.status(500).json({ success: false, error: e.message || 'statuses failed' });
         }
     });
 
@@ -2929,11 +3298,12 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
             const year = normYear(req.query.year, currentYear());
             const managers = await listSalesManagers(db, { includeArchived: true });
             const mids = managers.map((m) => m.id);
-            const [aggregates, plans, manualMap, pfApps] = await Promise.all([
+            const [aggregates, plans, manualMap, pfApps, bonusPastMap] = await Promise.all([
                 fetchMonthAggregates(db, year, mids),
                 loadPlans(db),
                 loadManualMap(db, year),
                 fetchPlanfixAppCounts(db, year, managers),
+                fetchBonusPastByShipped(db, year, mids),
             ]);
             const months = buildYearSnapshot(
                 managers,
@@ -2941,7 +3311,8 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
                 aggregates,
                 plans,
                 manualMap,
-                pfApps.counts || {}
+                pfApps.countsLocal || {},
+                bonusPastMap
             );
             res.json({
                 success: true,
@@ -2950,6 +3321,7 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
                 months,
                 can_write: canWrite(req),
                 planfix_unmatched: pfApps.unmatched || {},
+                ops_auto_from: OPS_AUTO_FROM,
             });
         } catch (e) {
             console.error('[ops-sheet/]', e);
@@ -2981,26 +3353,39 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
             }
 
             const [existingRows] = await db.query(
-                `SELECT coefficient, bonus_past, salary
+                `SELECT applications_count, coefficient, bonus_past, bonus_past_manual, salary
                    FROM dg_ops_sheet_manual
                   WHERE year = ? AND month = ? AND manager_user_id = ?
                   LIMIT 1`,
                 [year, month, mid]
             );
             const prev = existingRows && existingRows[0] ? existingRows[0] : {};
+            let bonusPastManual =
+                prev.bonus_past_manual != null ? (Number(prev.bonus_past_manual) === 1 ? 1 : 0) : 0;
+            let nextBonusPast =
+                prev.bonus_past != null ? Number(prev.bonus_past) : null;
+            if (patch.bonus_past !== undefined) {
+                nextBonusPast = patch.bonus_past;
+                // null / пусто в авто-эре → сброс к авторасчёту; иначе ручной override
+                if (patch.bonus_past == null) {
+                    bonusPastManual = 0;
+                } else {
+                    bonusPastManual = 1;
+                }
+            }
             const next = {
+                applications_count:
+                    prev.applications_count != null
+                        ? Math.round(Number(prev.applications_count) || 0)
+                        : null,
                 coefficient:
                     patch.coefficient !== undefined
                         ? patch.coefficient
                         : prev.coefficient != null
                           ? Number(prev.coefficient)
                           : null,
-                bonus_past:
-                    patch.bonus_past !== undefined
-                        ? patch.bonus_past
-                        : prev.bonus_past != null
-                          ? Number(prev.bonus_past)
-                          : null,
+                bonus_past: nextBonusPast,
+                bonus_past_manual: bonusPastManual,
                 salary:
                     patch.salary !== undefined
                         ? patch.salary
@@ -3012,22 +3397,33 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
             const actor = actorId(req);
             await db.query(
                 `INSERT INTO dg_ops_sheet_manual
-                    (year, month, manager_user_id, coefficient, bonus_past, salary, updated_by)
-                 VALUES (?, ?, ?, ?, ?, ?, ?)
+                    (year, month, manager_user_id, coefficient, bonus_past, bonus_past_manual, salary, updated_by)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                  ON DUPLICATE KEY UPDATE
                     coefficient = VALUES(coefficient),
                     bonus_past = VALUES(bonus_past),
+                    bonus_past_manual = VALUES(bonus_past_manual),
                     salary = VALUES(salary),
                     updated_by = VALUES(updated_by)`,
-                [year, month, mid, next.coefficient, next.bonus_past, next.salary, actor]
+                [
+                    year,
+                    month,
+                    mid,
+                    next.coefficient,
+                    next.bonus_past,
+                    next.bonus_past_manual,
+                    next.salary,
+                    actor,
+                ]
             );
 
             const allMids = managers.map((m) => m.id);
-            const [allAgg, plans, manualMap, pfApps] = await Promise.all([
+            const [allAgg, plans, manualMap, pfApps, bonusPastMap] = await Promise.all([
                 fetchMonthAggregates(db, year, allMids),
                 loadPlans(db),
                 loadManualMap(db, year),
                 fetchPlanfixAppCounts(db, year, managers),
+                fetchBonusPastByShipped(db, year, allMids),
             ]);
             const monthRows = managers.map((m) => {
                 const k = `${m.id}:${month}`;
@@ -3038,8 +3434,26 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
                     paid_applications: 0,
                 };
                 const p = resolvePlan(plans, m.id, year, month);
-                const manBase = m.id === mid ? next : manualMap[k] || emptyManual();
-                return composeMonthRow(m, a, p, manualWithApps(manBase, (pfApps.counts || {})[k] || 0));
+                const manBase =
+                    m.id === mid
+                        ? Object.assign({}, manualMap[k] || emptyManual(), next)
+                        : manualMap[k] || emptyManual();
+                const bp = bonusPastMap[k] || emptyShippedBonusCell();
+                return composeMonthRow(
+                    m,
+                    a,
+                    p,
+                    manualWithApps(manBase, (pfApps.countsLocal || {})[k] || 0),
+                    {
+                        year,
+                        month,
+                        bonus_past_auto: bp.sum,
+                        bonus_past_manual: manBase.bonus_past_manual,
+                        bonus_past_orders_count: bp.count,
+                        bonus_past_from_past: bp.sum_past,
+                        bonus_past_from_current: bp.sum_current,
+                    }
+                );
             });
             const row = monthRows.find((r) => Number(r.manager_user_id) === mid);
 
@@ -3049,6 +3463,7 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
                 month,
                 row,
                 totals: buildTotals(monthRows),
+                ops_auto_era: isOpsAutoEra(year, month),
             });
         } catch (e) {
             const status = e.status || 500;

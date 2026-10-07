@@ -416,7 +416,11 @@
                 <p class="small text-muted mb-3">
                   У каждого года свой план и свои пороги % МП.: сначала общий план года, затем персональный у менеджера, затем месяц (отпуск).
                   % МП. считается от суммы «без доставки» за месяц. Пустая ячейка плана наследует значение слева.
+                  Менять планы и пороги могут только <strong>Полный доступ</strong> и <strong>Бухгалтерия</strong>.
                 </p>
+                <div id="dg-msl-plan-readonly-hint" class="alert alert-info py-2 small d-none" role="status">
+                  Режим просмотра: поля плана и порогов % МП. недоступны для изменения.
+                </div>
                 <div class="dg-msl-plan-year-row mb-3">
                   <div class="dg-msl-plan-year-field">
                     <label class="form-label" for="dg-msl-plan-year">Год</label>
@@ -424,15 +428,15 @@
                   </div>
                   <div class="dg-msl-plan-base-field">
                     <label class="form-label" for="dg-msl-plan-base">План года для всех, ₽</label>
-                    <input type="text" inputmode="decimal" class="form-control" id="dg-msl-plan-base" />
+                    <input type="text" inputmode="decimal" class="form-control" id="dg-msl-plan-base" readonly disabled />
                   </div>
                 </div>
                 <p class="small mb-2" id="dg-msl-plan-steps-hint"></p>
                 <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-1">
                   <span class="form-label mb-0">Пороги % МП. этого года</span>
                   <div class="d-flex gap-2">
-                    <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-msl-plan-step-add" data-dg-no-activity="1">+ ступень</button>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-msl-plan-step-reset" data-dg-no-activity="1">Как в Google</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary d-none" id="dg-msl-plan-step-add" data-dg-no-activity="1">+ ступень</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary d-none" id="dg-msl-plan-step-reset" data-dg-no-activity="1">Как в Google</button>
                   </div>
                 </div>
                 <div class="table-responsive mb-3">
@@ -449,7 +453,7 @@
                 </div>
                 <div class="d-flex align-items-center gap-2 mb-3">
                   <label class="form-label mb-0" for="dg-msl-plan-pct-max">Иначе % МП.</label>
-                  <input type="text" inputmode="decimal" class="form-control form-control-sm" id="dg-msl-plan-pct-max" style="width: 5rem" />
+                  <input type="text" inputmode="decimal" class="form-control form-control-sm" id="dg-msl-plan-pct-max" style="width: 5rem" readonly disabled />
                 </div>
                 <div class="table-responsive dg-msl-plan-grid-wrap">
                   <table class="table table-sm mb-0" id="dg-msl-plan-grid">
@@ -468,7 +472,7 @@
               </div>
               <div class="card-footer d-flex justify-content-end gap-2">
                 <button type="button" class="btn btn-outline-secondary" id="dg-msl-plans-cancel" data-dg-no-activity="1">Закрыть</button>
-                <button type="button" class="btn btn-primary" id="dg-msl-plan-matrix-save" data-dg-notify-start="Сохраняем планы…">Сохранить планы</button>
+                <button type="button" class="btn btn-primary d-none" id="dg-msl-plan-matrix-save" data-dg-notify-start="Сохраняем планы…">Сохранить планы</button>
               </div>
             </div>
           </div>

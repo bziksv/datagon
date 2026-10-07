@@ -144,6 +144,80 @@
     font-size: 0.78rem;
     font-variant-numeric: tabular-nums;
   }
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .dg-ops-manual-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    flex-wrap: nowrap;
+    max-width: 100%;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .dg-ops-manual-val {
+    font-variant-numeric: tabular-nums;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .dg-ops-src-badge {
+    font-size: 0.65rem;
+    line-height: 1;
+    padding: 0.12rem 0.28rem;
+    border-radius: 0.2rem;
+    text-transform: lowercase;
+    white-space: nowrap;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .dg-ops-src-auto {
+    background: #e8f5e9;
+    color: #2e7d32;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .dg-ops-src-manual {
+    background: #fff3e0;
+    color: #e65100;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .dg-ops-pencil-btn,
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .dg-ops-orders-btn {
+    border: 0;
+    background: transparent;
+    padding: 0.1rem 0.2rem;
+    line-height: 1;
+    color: #6c757d;
+    cursor: pointer;
+    border-radius: 0.2rem;
+    position: relative;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .dg-ops-pencil-btn:hover,
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .dg-ops-orders-btn:hover {
+    color: #3f6ad8;
+    background: rgba(63, 106, 216, 0.08);
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .dg-ops-orders-n {
+    font-size: 0.62rem;
+    margin-left: 0.1rem;
+    font-variant-numeric: tabular-nums;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .dg-ops-bonus-orders-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1080;
+    background: rgba(24, 28, 36, 0.45);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .dg-ops-bonus-orders-dialog {
+    width: min(920px, 100%);
+    max-height: min(86vh, 720px);
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.22);
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .dg-ops-bonus-orders-dialog .card-body {
+    overflow: auto;
+    min-height: 0;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .dg-ops-bonus-orders-table th,
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .dg-ops-bonus-orders-table td {
+    font-size: 0.78rem;
+    vertical-align: middle;
+  }
   body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .dg-ops-pct-low {
     color: #b71c1c;
   }
@@ -237,7 +311,8 @@
   body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .dg-ops-pf-dragging {
     opacity: 0.45;
   }
-  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .dg-ops-pf-expand {
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .dg-ops-pf-expand,
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .dg-ops-mgr-apps-expand {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -250,6 +325,32 @@
     color: #3f6ad8;
     line-height: 1;
     vertical-align: middle;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .dg-ops-mgr-apps-expand i {
+    font-size: 1.05rem;
+    font-weight: 700;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .dg-ops-mgr-apps-child td {
+    background: #f7f9fc;
+    font-size: 0.9rem;
+    color: #495057;
+    border-top: 0;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .dg-ops-mgr-apps-status {
+    padding-left: 2.1rem !important;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .dg-ops-mgr-apps-excluded {
+    color: #9aa0a6 !important;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .dg-ops-mgr-apps-sum {
+    font-size: 0.85rem;
+    color: #6c757d;
+    font-style: italic;
+    padding-left: 2.1rem !important;
+    background: #eef2f7 !important;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] tr.dg-ops-mgr-apps-open > td {
+    background: #f0f4ff;
   }
   body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .dg-ops-pf-expand[disabled] {
     color: #c5cad3;
@@ -788,14 +889,19 @@
                           ></i>
                         </a>
                       </li>
-                      <li class="metismenu-item dg-sidebar-architect-item">
+                      <li class="metismenu-item dg-sidebar-architect-item dg-sidebar-nav-restricted" data-dg-nav-restricted="activity">
                         <a
                           class="metismenu-link"
                           data-nav="architectui-demo"
                           href="/ref/react-demo-index.html"
-                          title="Каталог разделов React-шаблона ArchitectUI"
+                          title="Каталог разделов React-шаблона ArchitectUI (только админ / управление пользователями)"
                         >
                           <i class="metismenu-icon pe-7s-plugin"></i>ArchitectUI
+                          <i
+                            class="pe-7s-lock dg-nav-restricted-icon"
+                            aria-hidden="true"
+                            title="Пункт меню с ограниченным доступом"
+                          ></i>
                         </a>
                       </li>
                       <li class="metismenu-item dg-sidebar-nav-restricted" data-dg-nav-restricted="activity">
@@ -1073,8 +1179,10 @@
                   <div class="small text-muted mb-1">Легенда</div>
                   <div class="d-flex flex-wrap gap-3 small">
                     <span><span class="dg-ops-legend-dot dg-ops-legend-auto"></span>из таблиц</span>
-                    <span><span class="dg-ops-legend-dot dg-ops-legend-manual"></span>ручной</span>
+                    <span><span class="dg-ops-legend-dot dg-ops-legend-manual"></span>ручной / карандаш</span>
                     <span><span class="dg-ops-legend-dot dg-ops-legend-derived"></span>считается</span>
+                    <span title="Колонки с * считаются динамически из локальной БД Planfix; наведите на заголовок — формула">*</span> динамич.
+                    <span class="text-muted" title="С октября 2026 премия с прошлыми месяцами — авто по отгрузкам; раньше — архив">окт.2026+ авто</span>
                   </div>
                 </div>
               </div>
@@ -1277,6 +1385,43 @@
             </div>
           </div>
 
+          <div
+            id="dg-ops-bonus-orders-overlay"
+            class="dg-ops-bonus-orders-overlay"
+            style="display: none"
+            aria-hidden="true"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="dg-ops-bonus-orders-title"
+          >
+            <div class="dg-ops-bonus-orders-dialog card">
+              <div class="card-header d-flex align-items-center justify-content-between gap-2">
+                <div class="fw-semibold" id="dg-ops-bonus-orders-title">Заказы в расчёте премии</div>
+                <button
+                  type="button"
+                  class="btn-close"
+                  aria-label="Закрыть"
+                  id="dg-ops-bonus-orders-x"
+                  data-dg-no-activity="1"
+                ></button>
+              </div>
+              <div class="card-body">
+                <p class="small text-muted mb-2" id="dg-ops-bonus-orders-meta"></p>
+                <div id="dg-ops-bonus-orders-body"></div>
+              </div>
+              <div class="card-footer d-flex justify-content-end">
+                <button
+                  type="button"
+                  class="btn btn-outline-secondary"
+                  id="dg-ops-bonus-orders-close"
+                  data-dg-no-activity="1"
+                >
+                  Закрыть
+                </button>
+              </div>
+            </div>
+          </div>
+
         </div>
 
         <div class="app-footer">
@@ -1368,10 +1513,11 @@
     ["profit_after_tax", "Прибыль\nс вычетом налога"],
     ["profit_pct", "Общий %\nприбыли за месяц"],
     ["bonus_current", "Премия за\nтекущий месяц"],
-    ["applications_count", "Кол-во\nзаявок"],
-    ["coefficient", "Коэффициент"],
-    ["paid_applications", "Оплаченные\nзаявки"],
-    ["apps_per_sale", "Отношение\nпродаж к заявкам"],
+    ["applications_local", "Кол-во\nзаявок*"],
+    ["applications_count", "Кол-во заявок\n(с Гугла)"],
+    ["paid_applications", "Оплаченные\nзаявки*"],
+    ["apps_per_sale_local", "Отношение\nпродаж к заявкам*"],
+    ["apps_per_sale", "Отношение продаж\nк заявкам (с Гугла)"],
     ["avg_check", "Средний чек"],
     ["bonus_past", "Премия с учетом\nзаказов с прошлых месяцев"],
     ["salary", "Оклад с учетом\nотработанных дней"],
@@ -1395,9 +1541,14 @@
     company_profit: 1,
   };
   var PCT_KEYS = { profit_pct: 1, company_pct: 1 };
-  var INT_KEYS = { applications_count: 1, paid_applications: 1 };
+  var INT_KEYS = {
+    applications_local: 1,
+    applications_count: 1,
+    paid_applications: 1,
+    apps_per_sale_local: 1,
+    apps_per_sale: 1,
+  };
   var MANUAL_KEYS = {
-    coefficient: 1,
     bonus_past: 1,
     salary: 1,
   };
@@ -1406,15 +1557,21 @@
     profit_before_tax: "SUM(net − доставка), без налога 16%",
     profit_after_tax: "SUM(разница / diff) с налогом 16%",
     profit_pct: "прибыль после налога / оборот × 100",
-    bonus_current: "SUM(diff) × % МП. месяца / 100",
+    bonus_current:
+      "SUM(diff) × % МП. / 100: все продажи месяца credit-менеджера (отгруженные и нет + переданные от других)",
+    applications_local:
+      "* Динамический расчёт из локальной БД Planfix: постановщик = менеджер, месяц = дата создания; все статусы, кроме: Товар получен, Заказан товар у поставщика, Поставщик, Информационное письмо, Подбор по Т.з., клиент отказался - мониторинг цен - ГБУЗ",
     applications_count:
-      "задачи Planfix: постановщик = менеджер, месяц = дата создания, статус в корзине с галкой «в кол-во заявок»",
-    coefficient: "Ручной ввод",
-    paid_applications: "оплаченные продажи за месяц: один № счёта = одна продажа (НДС-позиции не удваивают)",
-    apps_per_sale: "кол-во заявок / оплаченные заявки",
+      "Импорт из Google операционного листа: колонка «Кол-во заявок»",
+    paid_applications:
+      "* Динамический расчёт из таблиц продаж Datagon: credit-менеджер, месяц = paid_at; один № нашего счёта = одна оплаченная заявка (позиции НДС не удваивают)",
+    apps_per_sale_local:
+      "* Динамический расчёт: Кол-во заявок / Оплаченные заявки, округление до целого",
+    apps_per_sale: "Кол-во заявок (с Гугла) / Оплаченные заявки, округление до целого",
     avg_check: "оборот / оплаченные заявки",
-    bonus_past: "Ручной ввод",
-    salary: "Ручной ввод",
+    bonus_past:
+      "С окт. 2026: сумма премий всех отгрузок месяца (оплата в прошлых месяцах + в текущем). Карандаш — ручной ввод; i — список заказов. До окт. 2026 — архив",
+    salary: "Ручной ввод (карандаш). Пустое значение допустимо",
     fact_profit: "прибыль после налога − премия месяца − оклад",
     salary_paid: "оклад + премия с прошлыми месяцами",
     company_profit: "прибыль после налога − зарплата с премиями прошлых",
@@ -1444,6 +1601,10 @@
     visible: OPS_COLS.map(function (c) { return c[0]; }),
     widths: {},
     loading: false,
+    /** Разворот статусов заявок под менеджером: ключ `${managerId}:${month}` */
+    mgrAppsExpanded: {},
+    mgrAppsCache: {},
+    mgrAppsLoading: {},
     pf: {
       buckets: [],
       statuses: [],
@@ -1657,6 +1818,16 @@
       OPS_COLS.forEach(function (c) { known[c[0]] = 1; });
       var next = arr.filter(function (k) { return known[k]; });
       if (next.indexOf("manager_name") < 0) next.unshift("manager_name");
+      if (next.indexOf("applications_local") < 0) {
+        var appsIdx = next.indexOf("applications_count");
+        if (appsIdx >= 0) next.splice(appsIdx, 0, "applications_local");
+        else next.push("applications_local");
+      }
+      if (next.indexOf("apps_per_sale_local") < 0) {
+        var ratioIdx = next.indexOf("apps_per_sale");
+        if (ratioIdx >= 0) next.splice(ratioIdx, 0, "apps_per_sale_local");
+        else next.push("apps_per_sale_local");
+      }
       if (next.length) state.visible = next;
     } catch (e) {}
   }
@@ -1682,10 +1853,24 @@
     } catch (e) {}
   }
 
-  function visibleCols() {
+  /** Колонки Google-архива: с окт. 2026 в листе не показываем. */
+  var GOOGLE_ARCHIVE_COLS = {
+    applications_count: 1,
+    apps_per_sale: 1,
+  };
+
+  function visibleCols(month) {
     var set = {};
-    state.visible.forEach(function (k) { set[k] = 1; });
-    return OPS_COLS.filter(function (c) { return set[c[0]]; });
+    state.visible.forEach(function (k) {
+      set[k] = 1;
+    });
+    var hideGoogle =
+      month != null && month !== "" && isOpsAutoEraMonth(state.year, month);
+    return OPS_COLS.filter(function (c) {
+      if (!set[c[0]]) return false;
+      if (hideGoogle && GOOGLE_ARCHIVE_COLS[c[0]]) return false;
+      return true;
+    });
   }
 
   function pctClass(v) {
@@ -1794,6 +1979,67 @@
     return "";
   }
 
+  function isOpsAutoEraMonth(year, month) {
+    var y = Number(year);
+    var m = Number(month);
+    if (!Number.isFinite(y) || !Number.isFinite(m)) return false;
+    if (y > 2026) return true;
+    if (y < 2026) return false;
+    return m >= 10;
+  }
+
+  function formatManualCellInner(key, row, month) {
+    var money = formatCellValue(key, row);
+    var badge = "";
+    if (key === "bonus_past" && isOpsAutoEraMonth(state.year, month)) {
+      if (row.bonus_past_is_manual) {
+        badge =
+          '<span class="dg-ops-src-badge dg-ops-src-manual" title="Ручной ввод (очистите ячейку, чтобы вернуть авто)">ручн.</span>';
+      } else {
+        var tipAuto =
+          "Авто: все отгрузки месяца (прошлые + текущие оплаты)";
+        if (row.bonus_past_from_past != null || row.bonus_past_from_current != null) {
+          tipAuto +=
+            ". Из прошлых: " +
+            formatMoney(row.bonus_past_from_past) +
+            "; из текущих: " +
+            formatMoney(row.bonus_past_from_current);
+        }
+        badge =
+          '<span class="dg-ops-src-badge dg-ops-src-auto" title="' +
+          escapeHtml(tipAuto) +
+          '">авто</span>';
+      }
+    }
+    var ordersBtn = "";
+    if (key === "bonus_past" && !row.is_total) {
+      var n = row.bonus_past_orders_count != null ? Number(row.bonus_past_orders_count) : 0;
+      ordersBtn =
+        '<button type="button" class="dg-ops-orders-btn" data-ops-bonus-orders="1" data-ops-month="' +
+        month +
+        '" data-ops-manager="' +
+        escapeHtml(String(row.manager_user_id)) +
+        '" title="Заказы в расчёте премии' +
+        (n ? " (" + n + ")" : "") +
+        '" aria-label="Заказы в расчёте" data-dg-no-activity="1" data-dg-notify-start="Заказы премии…"><i class="pe-7s-info" aria-hidden="true"></i>' +
+        (n > 0 ? '<span class="dg-ops-orders-n">' + n + "</span>" : "") +
+        "</button>";
+    }
+    var pencil = state.can_write
+      ? '<button type="button" class="dg-ops-pencil-btn" data-ops-pencil="1" title="Изменить" aria-label="Изменить" data-dg-no-activity="1"><i class="pe-7s-pen" aria-hidden="true"></i></button>'
+      : "";
+    return (
+      '<span class="dg-ops-manual-wrap">' +
+      '<span class="dg-ops-manual-val">' +
+      money +
+      "</span>" +
+      badge +
+      ordersBtn +
+      pencil +
+      "</span>"
+    );
+  }
+
   function formatCellValue(key, row) {
     var v = row[key];
     if (key === "manager_name") {
@@ -1823,7 +2069,6 @@
     if (MONEY_KEYS[key]) return escapeHtml(formatMoney(v));
     if (PCT_KEYS[key]) return escapeHtml(v == null ? "—" : formatNum(v, 2));
     if (INT_KEYS[key]) return escapeHtml(formatInt(v));
-    if (key === "apps_per_sale" || key === "coefficient") return escapeHtml(v == null ? "—" : formatNum(v, 2));
     return escapeHtml(v == null || v === "" ? "—" : String(v));
   }
 
@@ -1845,6 +2090,7 @@
     var turnover = sum("turnover", true) || 0;
     var profitAfter = sum("profit_after_tax", true) || 0;
     var bonusCurrent = sum("bonus_current", true) || 0;
+    var appsLocal = sum("applications_local", false);
     var apps = sum("applications_count", false);
     var paid = sum("paid_applications", false);
     var bonusPast = sum("bonus_past", true);
@@ -1862,10 +2108,12 @@
       profit_after_tax: profitAfter,
       profit_pct: turnover ? Math.round((profitAfter / turnover) * 10000) / 100 : null,
       bonus_current: bonusCurrent,
+      applications_local: appsLocal,
       applications_count: apps,
-      coefficient: null,
       paid_applications: paid,
-      apps_per_sale: paid && apps != null ? Math.round((apps / paid) * 10000) / 10000 : null,
+      apps_per_sale_local:
+        paid && appsLocal != null ? Math.round(appsLocal / paid) : null,
+      apps_per_sale: paid && apps != null ? Math.round(apps / paid) : null,
       avg_check: paid ? Math.round((turnover / paid) * 100) / 100 : null,
       bonus_past: bonusPast,
       salary: salary,
@@ -1895,9 +2143,9 @@
       "profit_before_tax",
       "profit_after_tax",
       "bonus_current",
+      "applications_local",
       "applications_count",
       "paid_applications",
-      "coefficient",
       "bonus_past",
       "salary",
       "fact_profit",
@@ -1917,13 +2165,16 @@
     return rowMatchesSearch(row) && !rowIsAllZero(row);
   }
 
-  function buildThead() {
-    var cols = visibleCols();
+  function buildThead(month) {
+    var cols = visibleCols(month);
     var ths = cols
       .map(function (c) {
         var key = c[0];
         var sticky = key === "manager_name" ? " dg-ops-sticky-name" : "";
-        var hint = FORMULA_HINTS[key] ? ' title="' + escapeHtml(FORMULA_HINTS[key]) + '"' : "";
+        var tip = FORMULA_HINTS[key] ? String(FORMULA_HINTS[key]) : "";
+        var tipAttr = tip
+          ? ' data-dg-tooltip="' + escapeHtml(tip) + '" title="' + escapeHtml(tip) + '"'
+          : "";
         return (
           '<th class="' +
           sticky +
@@ -1932,7 +2183,7 @@
           '" style="' +
           cellWidthStyle(key) +
           '"' +
-          hint +
+          tipAttr +
           ">" +
           labelHtml(c[1]) +
           "</th>"
@@ -1942,37 +2193,266 @@
     return "<thead><tr>" + ths + "</tr></thead>";
   }
 
+  function mgrAppsKey(managerId, month) {
+    return String(managerId) + ":" + String(month);
+  }
+
+  function buildMgrAppsChildRows(month, managerId, payload) {
+    var cols = visibleCols(month);
+    var colCount = cols.length;
+    var nameIdx = -1;
+    var appsIdx = -1;
+    cols.forEach(function (c, i) {
+      if (c[0] === "manager_name") nameIdx = i;
+      if (c[0] === "applications_local") appsIdx = i;
+    });
+    if (nameIdx < 0) nameIdx = 0;
+    var statuses = (payload && payload.statuses) || [];
+    var rowsHtml = statuses
+      .map(function (s) {
+        var excluded = !!s.excluded;
+        var label = String(s.status_value || "(без статуса)");
+        if (excluded) label += " · не вошло";
+        var tds = cols
+          .map(function (c, i) {
+            var key = c[0];
+            var sticky = key === "manager_name" ? " dg-ops-sticky-name" : "";
+            var cls = sticky + (excluded ? " dg-ops-mgr-apps-excluded" : "");
+            if (i === nameIdx) {
+              return (
+                '<td class="' +
+                cls.trim() +
+                ' dg-ops-mgr-apps-status" style="' +
+                cellWidthStyle(key) +
+                '">' +
+                escapeHtml(label) +
+                "</td>"
+              );
+            }
+            if (i === appsIdx || (appsIdx < 0 && key === "applications_local")) {
+              return (
+                '<td class="dg-ops-num' +
+                (excluded ? " dg-ops-mgr-apps-excluded" : "") +
+                '" style="' +
+                cellWidthStyle(key) +
+                '">' +
+                escapeHtml(formatInt(s.n || 0)) +
+                "</td>"
+              );
+            }
+            return (
+              '<td class="' +
+              (excluded ? "dg-ops-mgr-apps-excluded" : "") +
+              '" style="' +
+              cellWidthStyle(key) +
+              '"></td>'
+            );
+          })
+          .join("");
+        return (
+          '<tr class="dg-ops-mgr-apps-child" data-ops-mgr-apps-child="1" data-ops-month="' +
+          month +
+          '" data-ops-manager="' +
+          escapeHtml(String(managerId)) +
+          '">' +
+          tds +
+          "</tr>"
+        );
+      })
+      .join("");
+    var sumLabel =
+      "В «Кол-во заявок*»: " +
+      formatInt((payload && payload.included_total) || 0) +
+      " · не вошло: " +
+      formatInt((payload && payload.excluded_total) || 0) +
+      " · всего задач: " +
+      formatInt((payload && payload.all_total) || 0);
+    var sumRow =
+      '<tr class="dg-ops-mgr-apps-child dg-ops-mgr-apps-footer" data-ops-mgr-apps-child="1" data-ops-month="' +
+      month +
+      '" data-ops-manager="' +
+      escapeHtml(String(managerId)) +
+      '"><td class="dg-ops-mgr-apps-sum dg-ops-sticky-name" colspan="' +
+      colCount +
+      '">' +
+      escapeHtml(sumLabel) +
+      "</td></tr>";
+    if (!statuses.length) {
+      return (
+        '<tr class="dg-ops-mgr-apps-child" data-ops-mgr-apps-child="1" data-ops-month="' +
+        month +
+        '" data-ops-manager="' +
+        escapeHtml(String(managerId)) +
+        '"><td class="dg-ops-mgr-apps-status text-muted" colspan="' +
+        colCount +
+        '">Нет задач Planfix за месяц у этого постановщика</td></tr>'
+      );
+    }
+    return rowsHtml + sumRow;
+  }
+
   function buildRowHtml(row, month) {
-    var cols = visibleCols();
+    var cols = visibleCols(month);
     var isTotal = !!row.is_total;
+    var mid = row.manager_user_id;
+    var expandKey = !isTotal && mid != null ? mgrAppsKey(mid, month) : "";
+    var open = expandKey && !!state.mgrAppsExpanded[expandKey];
     var trClass = isTotal ? "dg-ops-row-total" : "";
     if (!isTotal && !rowVisibleInSheet(row)) trClass += (trClass ? " " : "") + "dg-ops-row-hidden";
+    if (open) trClass += (trClass ? " " : "") + "dg-ops-mgr-apps-open";
     var tds = cols
       .map(function (c) {
         var key = c[0];
         var sticky = key === "manager_name" ? " dg-ops-sticky-name" : "";
         var classes = sticky;
-        var num = MONEY_KEYS[key] || PCT_KEYS[key] || INT_KEYS[key] || key === "apps_per_sale" || key === "coefficient";
+        var num =
+          MONEY_KEYS[key] ||
+          PCT_KEYS[key] ||
+          INT_KEYS[key] ||
+          key === "apps_per_sale_local" ||
+          key === "apps_per_sale";
         if (num) classes += " dg-ops-num";
         if (PCT_KEYS[key]) classes += " " + pctClass(row[key]);
-        var editable = !isTotal && state.can_write && MANUAL_KEYS[key];
+        var isManualCol = !isTotal && MANUAL_KEYS[key];
+        var editable = isManualCol && state.can_write;
         if (editable) classes += " dg-ops-cell-manual";
         var attrs = ' class="' + classes.trim() + '" data-ops-col="' + escapeHtml(key) + '" style="' + cellWidthStyle(key) + '"';
-        if (editable) {
+        if (isManualCol) {
           attrs +=
-            ' data-ops-edit="1" data-ops-month="' +
+            ' data-ops-month="' +
             month +
             '" data-ops-manager="' +
             escapeHtml(String(row.manager_user_id)) +
             '" data-ops-key="' +
             escapeHtml(key) +
             '"';
+          if (editable) attrs += ' data-ops-edit="1"';
         }
-        var hint = FORMULA_HINTS[key] && !editable ? ' title="' + escapeHtml(FORMULA_HINTS[key]) + '"' : "";
-        return "<td" + attrs + hint + ">" + formatCellValue(key, row) + "</td>";
+        var tip = FORMULA_HINTS[key] ? String(FORMULA_HINTS[key]) : "";
+        var tipAttr = tip
+          ? ' data-dg-tooltip="' + escapeHtml(tip) + '" title="' + escapeHtml(tip) + '"'
+          : "";
+        var inner = isManualCol
+          ? formatManualCellInner(key, row, month)
+          : formatCellValue(key, row);
+        if (key === "manager_name" && !isTotal && mid != null) {
+          var caret =
+            '<button type="button" class="dg-ops-mgr-apps-expand" data-dg-no-activity="1" data-dg-notify-start="Статусы заявок…" aria-expanded="' +
+            (open ? "true" : "false") +
+            '" title="' +
+            (open ? "Свернуть статусы заявок" : "Показать статусы заявок (Кол-во заявок*)") +
+            '"><i class="pe-7s-angle-' +
+            (open ? "down" : "right") +
+            '" aria-hidden="true"></i></button>';
+          inner = caret + '<span class="dg-ops-mgr-name">' + inner + "</span>";
+        }
+        return "<td" + attrs + tipAttr + ">" + inner + "</td>";
       })
       .join("");
-    return '<tr class="' + trClass.trim() + '">' + tds + "</tr>";
+    var parent =
+      '<tr class="' +
+      trClass.trim() +
+      '"' +
+      (!isTotal && mid != null
+        ? ' data-ops-manager="' +
+          escapeHtml(String(mid)) +
+          '" data-ops-month="' +
+          month +
+          '"'
+        : "") +
+      ">" +
+      tds +
+      "</tr>";
+    if (!open || isTotal) return parent;
+    var cached = state.mgrAppsCache[expandKey];
+    if (state.mgrAppsLoading[expandKey]) {
+      return (
+        parent +
+        '<tr class="dg-ops-mgr-apps-child" data-ops-mgr-apps-child="1" data-ops-month="' +
+        month +
+        '" data-ops-manager="' +
+        escapeHtml(String(mid)) +
+        '"><td class="text-muted" colspan="' +
+        cols.length +
+        '">Загружаем статусы…</td></tr>'
+      );
+    }
+    if (!cached) return parent;
+    return parent + buildMgrAppsChildRows(month, mid, cached);
+  }
+
+  function loadMgrAppStatuses(managerId, month) {
+    var key = mgrAppsKey(managerId, month);
+    if (state.mgrAppsCache[key] || state.mgrAppsLoading[key]) {
+      renderAll();
+      return Promise.resolve(state.mgrAppsCache[key]);
+    }
+    state.mgrAppsLoading[key] = 1;
+    renderAll();
+    var url =
+      "/api/ops-sheet/manager-app-statuses?year=" +
+      encodeURIComponent(state.year) +
+      "&month=" +
+      encodeURIComponent(month) +
+      "&manager_user_id=" +
+      encodeURIComponent(managerId);
+    return fetch(url, { credentials: "same-origin" })
+      .then(function (r) {
+        return r.json().then(function (j) {
+          return { ok: r.ok, j: j };
+        });
+      })
+      .then(function (x) {
+        delete state.mgrAppsLoading[key];
+        if (!x.ok || !x.j || !x.j.success) {
+          toast("danger", (x.j && x.j.error) || "Не удалось загрузить статусы заявок");
+          delete state.mgrAppsExpanded[key];
+          renderAll();
+          return null;
+        }
+        state.mgrAppsCache[key] = x.j;
+        renderAll();
+        return x.j;
+      })
+      .catch(function (e) {
+        delete state.mgrAppsLoading[key];
+        delete state.mgrAppsExpanded[key];
+        toast("danger", e.message || "Ошибка загрузки статусов");
+        renderAll();
+        return null;
+      });
+  }
+
+  function bindMgrAppsExpand() {
+    var host = el("dg-ops-months-host");
+    if (!host || host.getAttribute("data-ops-mgr-apps-bound") === "1") return;
+    host.setAttribute("data-ops-mgr-apps-bound", "1");
+    host.addEventListener("click", function (ev) {
+      var t = ev.target;
+      if (!t || !t.closest) return;
+      if (t.closest("td[data-ops-edit], input, a, .dg-ops-mgr-apps-child")) return;
+      var btn = t.closest(".dg-ops-mgr-apps-expand");
+      var tr = t.closest("tr[data-ops-manager][data-ops-month]");
+      if (!btn && tr && t.closest("td[data-ops-col='manager_name']")) {
+        btn = tr.querySelector(".dg-ops-mgr-apps-expand");
+      }
+      if (!btn) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      var row = btn.closest("tr[data-ops-manager][data-ops-month]");
+      if (!row) return;
+      var mid = row.getAttribute("data-ops-manager");
+      var month = Number(row.getAttribute("data-ops-month"));
+      if (!mid || !month) return;
+      var key = mgrAppsKey(mid, month);
+      if (state.mgrAppsExpanded[key]) {
+        delete state.mgrAppsExpanded[key];
+        renderAll();
+        return;
+      }
+      state.mgrAppsExpanded[key] = 1;
+      loadMgrAppStatuses(mid, month);
+    });
   }
 
   function renderAll() {
@@ -1987,7 +2467,6 @@
       return;
     }
     if (empty) empty.classList.add("d-none");
-    var thead = buildThead();
     state.months.forEach(function (block) {
       var visibleRows = (block.rows || []).filter(rowVisibleInSheet);
       var totals = state.search ? deriveClientTotals(visibleRows) : block.totals;
@@ -2011,7 +2490,7 @@
         '<div class="dg-ops-table-scroll-outer">' +
         '<div class="table-responsive">' +
         '<table class="table table-sm dg-ops-month-table mb-0">' +
-        thead +
+        buildThead(block.month) +
         "<tbody></tbody></table></div></div>";
       var tbody = wrap.querySelector("tbody");
       (block.rows || []).forEach(function (row) {
@@ -2030,6 +2509,9 @@
     list.innerHTML = OPS_COLS.map(function (c) {
       var key = c[0];
       var locked = key === "manager_name";
+      var archiveNote = GOOGLE_ARCHIVE_COLS[key]
+        ? ' <span class="text-muted small">(до сент. 2026)</span>'
+        : "";
       return (
         '<div class="col-md-4 col-sm-6">' +
         '<div class="form-check">' +
@@ -2045,6 +2527,7 @@
         escapeHtml(key) +
         '">' +
         escapeHtml(c[1].replace(/\n/g, " ")) +
+        archiveNote +
         "</label></div></div>"
       );
     }).join("");
@@ -2743,13 +3226,42 @@
     opts = opts || {};
     var startedWait = Date.now();
     var seenActive = !!(seed && seed.active);
+    // Весь год на проде ~1–1.5 ч; UI раньше рвал на 40 мин при живом сервере.
+    var IDLE_LIMIT_MS = 45 * 60 * 1000;
+    var HARD_LIMIT_MS = 3 * 60 * 60 * 1000;
+    var lastProgressSig = "";
+    var lastProgressAt = Date.now();
     if (seed && seed.active) {
       patchLiveProgress(seed, Number(seed.elapsed_sec) || 0);
+      lastProgressSig =
+        String(seed.stage || "") +
+        "|" +
+        String(seed.pages || 0) +
+        "|" +
+        String(seed.fetched || 0) +
+        "|" +
+        String(seed.stored || 0) +
+        "|" +
+        String(seed.message || "");
     } else {
       patchLiveProgress({ message: "ждём старт синка на сервере…" }, 0);
     }
     return new Promise(function (resolve, reject) {
       var ticks = 0;
+      function progressSig(j) {
+        if (!j) return "";
+        return (
+          String(j.stage || "") +
+          "|" +
+          String(j.pages || 0) +
+          "|" +
+          String(j.fetched || 0) +
+          "|" +
+          String(j.stored || 0) +
+          "|" +
+          String(j.message || "")
+        );
+      }
       function tick() {
         ticks += 1;
         fetch("/api/ops-sheet/planfix-sync-status", { credentials: "same-origin" })
@@ -2759,6 +3271,12 @@
           .then(function (j) {
             if (j && j.active) seenActive = true;
             var sec = Number(j && j.elapsed_sec) || Math.round((Date.now() - startedWait) / 1000);
+            var waitMs = Date.now() - startedWait;
+            var sig = progressSig(j);
+            if (sig && sig !== lastProgressSig) {
+              lastProgressSig = sig;
+              lastProgressAt = Date.now();
+            }
             if (j && j.success && !j.active) {
               // Пока job ещё не помечен active — не считаем «готово» (гонка с POST).
               if (
@@ -2771,8 +3289,8 @@
                   { message: "ждём старт синка на сервере…", stage: j.stage },
                   sec
                 );
-                if (ticks > 2400) {
-                  reject(new Error("Синк Planfix не стартовал за 40 мин"));
+                if (waitMs > IDLE_LIMIT_MS) {
+                  reject(new Error("Синк Planfix не стартовал за 45 мин"));
                   return;
                 }
                 window.setTimeout(tick, 400);
@@ -2833,15 +3351,28 @@
               return;
             }
             patchLiveProgress(j, sec);
-            if (ticks > 2400) {
-              reject(new Error("Синк Planfix не завершился за 40 мин — обновите страницу и проверьте журнал"));
+            var idleMs = Date.now() - lastProgressAt;
+            if (waitMs > HARD_LIMIT_MS) {
+              reject(
+                new Error(
+                  "Синк Planfix дольше 3 ч — обновите страницу. Если на сервере ещё active, UI подхватит; иначе смотрите журнал / «Остановить»."
+                )
+              );
+              return null;
+            }
+            if (idleMs > IDLE_LIMIT_MS) {
+              reject(
+                new Error(
+                  "Нет прогресса синка Planfix > 45 мин (сервер мог зависнуть). Обновите страницу или нажмите «Остановить», затем синк по месяцам."
+                )
+              );
               return null;
             }
             window.setTimeout(tick, 1000);
             return null;
           })
           .catch(function (e) {
-            if (ticks > 2400) {
+            if (Date.now() - startedWait > HARD_LIMIT_MS) {
               reject(e);
               return;
             }
@@ -3037,6 +3568,8 @@
   function loadYear() {
     state.loading = true;
     setHint("Загружаем операционный лист…");
+    state.mgrAppsCache = {};
+    state.mgrAppsLoading = {};
     var url = "/api/ops-sheet?year=" + encodeURIComponent(String(state.year));
     var run = function () {
       return apiGet(url).then(function (j) {
@@ -3155,6 +3688,11 @@
     });
   }
 
+  function restoreManualTd(td, key, row, month) {
+    if (!td) return;
+    td.innerHTML = formatManualCellInner(key, row, month);
+  }
+
   function startEdit(td) {
     if (!td || td.getAttribute("data-ops-editing") === "1") return;
     if (!state.can_write) return;
@@ -3170,7 +3708,7 @@
     input.type = "text";
     input.setAttribute("data-dg-no-activity", "1");
     if (prev == null || prev === "") input.value = "";
-    else if (MONEY_KEYS[key] || key === "coefficient") input.value = formatNum(prev, key === "coefficient" ? 4 : 2);
+    else if (MONEY_KEYS[key]) input.value = formatNum(prev, 2);
     else input.value = String(prev);
     td.innerHTML = "";
     td.appendChild(input);
@@ -3184,7 +3722,7 @@
       td.removeAttribute("data-ops-editing");
       td.classList.remove("dg-ops-dirty");
       if (!commit) {
-        td.innerHTML = formatCellValue(key, row);
+        restoreManualTd(td, key, row, month);
         return;
       }
       var raw = input.value;
@@ -3194,7 +3732,7 @@
         parsed = parseInput(raw);
         if (parsed == null || parsed < 0 || Math.round(parsed) !== parsed) {
           toast("danger", "Нужно целое число ≥ 0");
-          td.innerHTML = formatCellValue(key, row);
+          restoreManualTd(td, key, row, month);
           return;
         }
         parsed = Math.round(parsed);
@@ -3202,14 +3740,14 @@
         parsed = parseInput(raw);
         if (parsed == null) {
           toast("danger", "Некорректное число");
-          td.innerHTML = formatCellValue(key, row);
+          restoreManualTd(td, key, row, month);
           return;
         }
       }
       td.innerHTML = "…";
       saveManual(month, managerId, key, parsed).catch(function (e) {
         toast("danger", e.message || "Ошибка сохранения");
-        td.innerHTML = formatCellValue(key, row);
+        restoreManualTd(td, key, row, month);
       });
     }
 
@@ -3227,6 +3765,158 @@
         finish(true);
       }, 0);
     });
+  }
+
+  function closeBonusOrdersModal() {
+    var ov = el("dg-ops-bonus-orders-overlay");
+    if (!ov) return;
+    ov.style.display = "none";
+    ov.setAttribute("aria-hidden", "true");
+  }
+
+  function openBonusOrdersModal(month, managerId) {
+    var ov = el("dg-ops-bonus-orders-overlay");
+    var body = el("dg-ops-bonus-orders-body");
+    var title = el("dg-ops-bonus-orders-title");
+    var meta = el("dg-ops-bonus-orders-meta");
+    if (!ov || !body) return;
+    var row = findRow(month, managerId);
+    var name = (row && row.manager_name) || "Менеджер";
+    if (title) {
+      title.textContent =
+        "Премия с прошлых месяцев — " + name + " · " + (MONTH_SHORT[Number(month)] || month);
+    }
+    if (meta) meta.textContent = "Загрузка…";
+    body.innerHTML = '<p class="text-muted mb-0">Загрузка заказов…</p>';
+    ov.style.display = "flex";
+    ov.setAttribute("aria-hidden", "false");
+    var url =
+      "/api/ops-sheet/bonus-past-orders?year=" +
+      encodeURIComponent(state.year) +
+      "&month=" +
+      encodeURIComponent(month) +
+      "&manager_user_id=" +
+      encodeURIComponent(managerId);
+    fetch(url, { credentials: "same-origin" })
+      .then(function (r) {
+        return r.json().then(function (j) {
+          return { ok: r.ok, j: j };
+        });
+      })
+      .then(function (x) {
+        if (!x.ok || !x.j || !x.j.success) {
+          body.innerHTML =
+            '<div class="alert alert-danger mb-0">' +
+            escapeHtml((x.j && x.j.error) || "Не удалось загрузить") +
+            "</div>";
+          if (meta) meta.textContent = "";
+          return;
+        }
+        var j = x.j;
+        var bits = [];
+        bits.push("Заказов: " + (j.orders_count || 0));
+        bits.push("Сумма: " + formatMoney(j.total_bonus));
+        if (j.total_from_past != null || j.total_from_current != null) {
+          bits.push(
+            "прошлые " +
+              formatMoney(j.total_from_past) +
+              " (" +
+              (j.orders_from_past || 0) +
+              ")"
+          );
+          bits.push(
+            "текущие " +
+              formatMoney(j.total_from_current) +
+              " (" +
+              (j.orders_from_current || 0) +
+              ")"
+          );
+        }
+        if (j.ops_auto_era) {
+          bits.push(j.bonus_past_manual ? "в ячейке — ручной override" : "в ячейке — авто");
+        } else {
+          bits.push("архив (до окт. 2026) — авто не применяется к ячейке");
+        }
+        if (meta) meta.textContent = bits.join(" · ");
+        var orders = j.orders || [];
+        if (!orders.length) {
+            body.innerHTML =
+            '<p class="text-muted mb-0">Нет отгруженных заказов за этот месяц. ' +
+            "Статус «Отгружен» / «Частично»; для оплаты в прошлом месяце укажите «Дата отгрузки» в этом месяце (иначе без даты отгрузки заказ остаётся в месяце оплаты).</p>";
+          return;
+        }
+        var note =
+          '<p class="small text-muted mb-2">' +
+          escapeHtml(
+            j.note ||
+              "Все отгрузки месяца. «Премия за текущий месяц» — отдельно по всем продажам. Заказ оплачен раньше, отгружен сейчас — колонка «Дата отгрузки» в таблицах менеджеров."
+          ) +
+          "</p>";
+        var rowsHtml = orders
+          .map(function (o) {
+            var inv = o.our_invoice_no ? escapeHtml(o.our_invoice_no) : "—";
+            var link = o.order_url
+              ? '<a href="' +
+                escapeHtml(o.order_url) +
+                '" target="_blank" rel="noopener">' +
+                inv +
+                "</a>"
+              : inv;
+            var bucket =
+              o.bucket === "current"
+                ? '<span class="badge bg-primary">текущий</span>'
+                : '<span class="badge bg-secondary">прошлый</span>';
+            var shipCell =
+              escapeHtml(o.shipped_at || "—") +
+              (o.shipped_at_inferred
+                ? ' <span class="text-muted" title="Дата отгрузки не была задана — взята дата оплаты">≈опл.</span>'
+                : "");
+            return (
+              "<tr>" +
+              '<td class="dg-ops-num">' +
+              escapeHtml(o.row_no != null ? String(o.row_no) : "—") +
+              "</td>" +
+              "<td>" +
+              link +
+              "</td>" +
+              "<td>" +
+              bucket +
+              "</td>" +
+              "<td>" +
+              escapeHtml(o.paid_at || "—") +
+              "</td>" +
+              "<td>" +
+              shipCell +
+              "</td>" +
+              "<td>" +
+              escapeHtml(o.status || "—") +
+              "</td>" +
+              '<td class="dg-ops-num">' +
+              escapeHtml(formatMoney(o.amount_ex_delivery)) +
+              "</td>" +
+              '<td class="dg-ops-num">' +
+              escapeHtml(formatMoney(o.bonus)) +
+              "</td>" +
+              "</tr>"
+            );
+          })
+          .join("");
+        body.innerHTML =
+          note +
+          '<div class="table-responsive"><table class="table table-sm mb-0 dg-ops-bonus-orders-table">' +
+          "<thead><tr>" +
+          "<th>№</th><th>Счёт / заказ</th><th>Оплата</th><th>Дата опл.</th><th>Отгрузка</th><th>Статус</th><th>Сумма</th><th>Премия</th>" +
+          "</tr></thead><tbody>" +
+          rowsHtml +
+          "</tbody></table></div>";
+      })
+      .catch(function (e) {
+        body.innerHTML =
+          '<div class="alert alert-danger mb-0">' +
+          escapeHtml(e.message || "Ошибка сети") +
+          "</div>";
+        if (meta) meta.textContent = "";
+      });
   }
 
   function columnControls() {
@@ -3650,10 +4340,45 @@
     var host = el("dg-ops-months-host");
     if (!host) return;
     host.addEventListener("click", function (ev) {
+      var ordersBtn =
+        ev.target && ev.target.closest ? ev.target.closest("[data-ops-bonus-orders='1']") : null;
+      if (ordersBtn) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        openBonusOrdersModal(
+          ordersBtn.getAttribute("data-ops-month"),
+          ordersBtn.getAttribute("data-ops-manager")
+        );
+        return;
+      }
+      var pencil =
+        ev.target && ev.target.closest ? ev.target.closest("[data-ops-pencil='1']") : null;
       var td = ev.target && ev.target.closest ? ev.target.closest("td[data-ops-edit='1']") : null;
       if (!td || td.getAttribute("data-ops-editing") === "1") return;
       if (ev.target && ev.target.tagName === "INPUT") return;
-      startEdit(td);
+      if (!state.can_write && !ordersBtn) return;
+      if (!state.can_write) return;
+      if (pencil || ev.target.closest(".dg-ops-manual-val") || !ev.target.closest("button")) {
+        startEdit(td);
+      }
+    });
+  }
+
+  function bindBonusOrdersModal() {
+    var ov = el("dg-ops-bonus-orders-overlay");
+    if (!ov) return;
+    function close() {
+      closeBonusOrdersModal();
+    }
+    var x = el("dg-ops-bonus-orders-x");
+    var cancel = el("dg-ops-bonus-orders-close");
+    if (x) x.addEventListener("click", close);
+    if (cancel) cancel.addEventListener("click", close);
+    ov.addEventListener("click", function (ev) {
+      if (ev.target === ov) close();
+    });
+    document.addEventListener("keydown", function (ev) {
+      if (ev.key === "Escape" && ov.style.display === "flex") close();
     });
   }
 
@@ -3669,6 +4394,8 @@
     bindHeaderSearchMirror();
     bindFilters();
     bindTableEdit();
+    bindBonusOrdersModal();
+    bindMgrAppsExpand();
     bindPlanfix();
     fillPfMonthSelect();
     paintFilterForm();

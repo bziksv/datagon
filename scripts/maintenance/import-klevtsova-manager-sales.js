@@ -3,8 +3,9 @@
 
 /**
  * Импорт годовых листов Google-книги менеджера в dg_manager_sales_rows.
- *   node scripts/maintenance/import-klevtsova-manager-sales.js [username] [/path/to.xlsx]
+ *   node scripts/maintenance/import-klevtsova-manager-sales.js [username] [/path/to.xlsx] [year]
  *   node scripts/maintenance/import-klevtsova-manager-sales.js yuliya_elagina /tmp/elagina-sales.xlsx
+ *   node scripts/maintenance/import-klevtsova-manager-sales.js anna_popova /tmp/popova-sales.xlsx 2024
  */
 
 const path = require('path');
@@ -17,17 +18,31 @@ function parseArgs() {
     const a = process.argv.slice(2);
     let username = 'evgeniya_klevtsova';
     let xlsxPath = '/tmp/klevtsova-sales.xlsx';
-    if (a[0] && /\.xlsx$/i.test(a[0])) {
-        xlsxPath = a[0];
-    } else if (a[0]) {
-        username = a[0];
-        if (a[1]) xlsxPath = a[1];
+    let yearOnly = null;
+    const rest = [];
+    a.forEach((x) => {
+        if (/^\d{4}$/.test(x)) yearOnly = Number(x);
+        else rest.push(x);
+    });
+    if (rest[0] && /\.xlsx$/i.test(rest[0])) {
+        xlsxPath = rest[0];
+    } else if (rest[0]) {
+        username = rest[0];
+        if (rest[1]) xlsxPath = rest[1];
         else if (username === 'yuliya_elagina') xlsxPath = '/tmp/elagina-sales.xlsx';
         else if (username === 'ekaterina_kilanyan') xlsxPath = '/tmp/kilanyan-sales.xlsx';
         else if (username === 'gleb_niklyushin') xlsxPath = '/tmp/niklyushin-sales.xlsx';
         else if (username === 'dmitriy_chizhevskiy') xlsxPath = '/tmp/chizhevskiy-sales.xlsx';
+        else if (username === 'nataliya_veremyanina') xlsxPath = '/tmp/veremyanina-sales.xlsx';
+        else if (username === 'anna_popova') xlsxPath = '/tmp/popova-sales.xlsx';
+        else if (username === 'anzhela_bannova') xlsxPath = '/tmp/bannova-sales.xlsx';
+        else if (username === 'ivan_savchenko') xlsxPath = '/tmp/savchenko-sales.xlsx';
+        else if (username === 'inna_habarova') xlsxPath = '/tmp/khabarova-sales.xlsx';
+        else if (username === 'dmitriy_vlasov') xlsxPath = '/tmp/vlasov-sales.xlsx';
+        else if (username === 'elena_efremova') xlsxPath = '/tmp/efremova-sales.xlsx';
+        else if (username === 'vadim_ermolenko') xlsxPath = '/tmp/ermolenko-sales.xlsx';
     }
-    return { username, xlsxPath: path.resolve(xlsxPath) };
+    return { username, xlsxPath: path.resolve(xlsxPath), yearOnly };
 }
 const HEADER_ALIASES = [
     { key: 'row_no', aliases: ['№', 'no', 'n', 'номер'] },
@@ -155,7 +170,7 @@ function isDataRow(obj) {
 }
 
 async function main() {
-    const { username: USERNAME, xlsxPath } = parseArgs();
+    const { username: USERNAME, xlsxPath, yearOnly } = parseArgs();
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.readFile(xlsxPath);
     const db = await mysql.createConnection(config.db);
@@ -165,7 +180,7 @@ async function main() {
     );
     if (!users.length) throw new Error('Нет пользователя ' + USERNAME);
     const managerId = Number(users[0].id);
-    console.log('manager', users[0]);
+    console.log('manager', users[0], yearOnly ? `year=${yearOnly}` : 'all years');
 
     await db.query(`
         CREATE TABLE IF NOT EXISTS dg_manager_sales_rows (
@@ -209,7 +224,14 @@ async function main() {
         console.warn('alter', e.message);
     }
 
-    await db.query('DELETE FROM dg_manager_sales_rows WHERE manager_user_id = ?', [managerId]);
+    if (yearOnly) {
+        await db.query('DELETE FROM dg_manager_sales_rows WHERE manager_user_id = ? AND year = ?', [
+            managerId,
+            yearOnly,
+        ]);
+    } else {
+        await db.query('DELETE FROM dg_manager_sales_rows WHERE manager_user_id = ?', [managerId]);
+    }
 
     const insertSql = `INSERT INTO dg_manager_sales_rows (
         year, manager_user_id, row_no, payment_terms, paid_at, invoice_org, order_url,
@@ -218,19 +240,28 @@ async function main() {
         diff, pct_r, status, pct_mp, bonus, created_by, updated_by
     ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`;
 
-    const years = wb.worksheets
+    let years = wb.worksheets
         .map((ws) => String(ws.name || '').trim())
         .filter((n) => /^\d{4}$/.test(n))
         .sort();
+    if (yearOnly) {
+        years = years.filter((n) => Number(n) === yearOnly);
+        if (!years.length) throw new Error('В книге нет листа ' + yearOnly);
+    }
 
     let total = 0;
     for (const yearName of years) {
         const year = Number(yearName);
         const ws = wb.getWorksheet(yearName);
-        const headerRow = findHeaderRow(ws);
-        const keys = mapHeaderKeys(ws, headerRow);
+        let keys = mapHeaderKeys(ws, findHeaderRow(ws));
         let n = 0;
-        for (let r = headerRow + 1; r <= ws.rowCount; r += 1) {
+        // В Google-книге у каждого месяца своя шапка; колонки могут сдвигаться (НДС есть/нет).
+        for (let r = 1; r <= ws.rowCount; r += 1) {
+            const row = ws.getRow(r);
+            if (isHeaderRow(row)) {
+                keys = mapHeaderKeys(ws, r);
+                continue;
+            }
             const obj = rowToObj(ws, r, keys);
             if (!isDataRow(obj)) continue;
             const calc = computeRow(obj);

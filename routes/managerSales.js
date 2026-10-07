@@ -46,6 +46,7 @@ const SORT_KEYS = new Set([
     'diff',
     'pct_r',
     'status',
+    'shipped_at',
     'pct_mp',
     'bonus',
     'id',
@@ -67,11 +68,22 @@ const PATCH_FIELDS = new Set([
     'supplier_name',
     'supplier_invoice_no',
     'status',
+    'shipped_at',
     'invoice_mark',
     'our_invoice_mark',
     'year',
     'manager_user_id',
 ]);
+
+const SHIPPED_STATUS_SET = new Set(['Отгружен', 'Частично отгружен']);
+
+function isShippedStatus(status) {
+    return SHIPPED_STATUS_SET.has(String(status || '').trim());
+}
+
+function moscowTodaySql() {
+    return new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Moscow' });
+}
 
 const CSV_HEADERS = [
     { key: 'row_no', aliases: ['№', 'no', 'n', 'номер'] },
@@ -157,6 +169,7 @@ const FIELD_LOG_LABELS = {
     diff: 'Разница',
     pct_r: '% Р.',
     status: 'Статус',
+    shipped_at: 'Дата отгрузки',
     pct_mp: '% МП.',
     bonus: 'Премия',
     archived: 'Архив',
@@ -187,6 +200,7 @@ const LOG_COMPARE_KEYS = [
     'diff',
     'pct_r',
     'status',
+    'shipped_at',
     'pct_mp',
     'bonus',
     'handed_to_user_id',
@@ -590,7 +604,7 @@ async function logRowChanges(db, { rowId, before, after, actor, source, action }
         const newRaw = after[key];
         let oldDisp;
         let newDisp;
-        if (key === 'paid_at') {
+        if (key === 'paid_at' || key === 'shipped_at') {
             oldDisp = sqlDate(oldRaw) || logScalar(oldRaw);
             newDisp = sqlDate(newRaw) || logScalar(newRaw);
         } else if (key === 'our_invoice_mark') {
@@ -754,6 +768,22 @@ async function ensureSchema(db) {
     } catch (_) {}
     try {
         await db.query('ALTER TABLE dg_manager_sales_rows ADD KEY idx_msl_ship_group (ship_group_id)');
+    } catch (_) {}
+    try {
+        await db.query('ALTER TABLE dg_manager_sales_rows ADD COLUMN shipped_at DATE NULL');
+    } catch (_) {}
+    try {
+        await db.query('ALTER TABLE dg_manager_sales_rows ADD KEY idx_msl_shipped (shipped_at)');
+    } catch (_) {}
+    try {
+        await db.query(
+            `UPDATE dg_manager_sales_rows
+                SET shipped_at = paid_at
+              WHERE shipped_at IS NULL
+                AND paid_at IS NOT NULL
+                AND paid_at >= '2026-10-01'
+                AND status IN ('Отгружен', 'Частично отгружен')`
+        );
     } catch (_) {}
     await db.query(`
         CREATE TABLE IF NOT EXISTS dg_manager_sales_comments (
@@ -1013,6 +1043,7 @@ function mapRow(r, pctMpOverride) {
         diff: calc.diff,
         pct_r: calc.pct_r,
         status: r.status || '',
+        shipped_at: sqlDate(r.shipped_at),
         pct_mp: calc.pct_mp,
         bonus: calc.bonus,
         handed_to_user_id: Number.isFinite(handed) && handed > 0 ? handed : null,
@@ -1058,6 +1089,8 @@ function applyBodyToRow(body, base) {
             next.our_invoice_mark = normOurInvoiceMark(v);
         } else if (key === 'status') {
             next[key] = normStatus(v);
+        } else if (key === 'shipped_at') {
+            next.shipped_at = parseDate(v);
         }
     }
     const packed = applySuppliersPatch(next, body || {});
@@ -1069,6 +1102,12 @@ function applyBodyToRow(body, base) {
     next.amount_incl_stock = packed.amount_incl_stock;
     next.delivery_to_us = packed.delivery_to_us;
     next.invoice_mark = packed.suppliers[0] ? normInvoiceMark(packed.suppliers[0].invoice_mark) : '';
+    const wasShipped = isShippedStatus(base && base.status);
+    const nowShipped = isShippedStatus(next.status);
+    if (nowShipped && !next.shipped_at && !wasShipped) {
+        // Переход в «Отгружен» / «Частично» — дата отгрузки = сегодня (МСК), если не задана явно
+        next.shipped_at = moscowTodaySql();
+    }
     const calc = computeRow(next);
     next.amount_ex_delivery = calc.amount_ex_delivery;
     next.amount_incl_stock = calc.amount_incl_stock;
@@ -1101,6 +1140,7 @@ function rowToInsertParams(row, actor) {
         row.diff,
         row.pct_r,
         row.status || null,
+        row.shipped_at || null,
         row.pct_mp,
         row.bonus,
         row.suppliers_json || null,
@@ -1113,14 +1153,14 @@ const INSERT_SQL = `INSERT INTO dg_manager_sales_rows (
     year, manager_user_id, row_no, payment_terms, paid_at, invoice_org, order_url,
     amount_ex_delivery, vat, our_invoice_no, has_contract, supplier_invoice_url,
     amount_incl_stock, delivery_to_us, supplier_name, supplier_invoice_no,
-    diff, pct_r, status, pct_mp, bonus, suppliers_json, created_by, updated_by
-) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`;
+    diff, pct_r, status, shipped_at, pct_mp, bonus, suppliers_json, created_by, updated_by
+) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`;
 
 const UPDATE_SQL = `UPDATE dg_manager_sales_rows SET
     year=?, manager_user_id=?, row_no=?, payment_terms=?, paid_at=?, invoice_org=?, order_url=?,
     amount_ex_delivery=?, vat=?, our_invoice_no=?, has_contract=?, supplier_invoice_url=?,
     amount_incl_stock=?, delivery_to_us=?, supplier_name=?, supplier_invoice_no=?,
-    diff=?, pct_r=?, status=?, pct_mp=?, bonus=?, invoice_mark=?, our_invoice_mark=?, suppliers_json=?, updated_by=?
+    diff=?, pct_r=?, status=?, shipped_at=?, pct_mp=?, bonus=?, invoice_mark=?, our_invoice_mark=?, suppliers_json=?, updated_by=?
     WHERE id=?`;
 
 function parseDelimited(text) {
@@ -1934,7 +1974,8 @@ module.exports = function managerSalesRouterFactory(db) {
                 cloneDefaultSteps();
             res.json({
                 success: true,
-                can_edit: seeAll,
+                // Как PUT /plans/*: только admin / Полный доступ / Бухгалтерия (не делопроизводители и не менеджеры)
+                can_edit: canEditPlans(req),
                 year,
                 default_plan_amount: DEFAULT_PLAN_AMOUNT,
                 fallback: { plan_amount: fallback.plan_amount, steps: fallback.steps },
@@ -2401,6 +2442,7 @@ module.exports = function managerSalesRouterFactory(db) {
                 next.diff,
                 next.pct_r,
                 next.status || null,
+                next.shipped_at || null,
                 next.pct_mp,
                 next.bonus,
                 next.invoice_mark || '',

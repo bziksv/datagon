@@ -2078,7 +2078,7 @@ Query: `year`, `month` (1–12; без параметра — все месяц�
 
 ### GET `/api/manager-sales/plans`
 
-Query: `year`. `{ success, can_edit, year, fallback, year_base: { plan_amount|null, inherited, note, steps: { steps:[[max,pct],…], pct_max }, steps_custom }, managers: [{ id, year_plan, inherited, months[] }], steps }` — `steps` в корне: ступени, уже масштабированные к плану года. Писать планы — Полный доступ / Бухгалтерия / admin.
+Query: `year`. `{ success, can_edit, year, fallback, year_base: { plan_amount|null, inherited, note, steps: { steps:[[max,pct],…], pct_max }, steps_custom }, managers: [{ id, year_plan, inherited, months[] }], steps }` — `steps` в корне: ступени, уже масштабированные к плану года. `can_edit` = true только для admin / Полный доступ / Бухгалтерия (как PUT); делопроизводители и менеджеры — просмотр. Писать планы — те же роли.
 
 ### PUT `/api/manager-sales/plans/base`
 
@@ -2155,8 +2155,12 @@ CSV UTF-8 с BOM по текущему фильтру.
 - Полный свод по **всем** менеджерам специальности «Менеджер по продажам» для любого, у кого страница не `hidden` (без ограничения «только своя таблица»).
 - Режим **`view`** — только чтение; **`full`** — правка ручных ячеек (`PUT /manual`) и синк/маппинг Planfix.
 - Auto-метрики из `dg_manager_sales_rows` (credit = `COALESCE(handed_to_user_id, manager_user_id)`, `archived_at IS NULL`, месяц из `paid_at`) и планов `dg_manager_sales_plans`.
-- Ручные поля в `dg_ops_sheet_manual`: `coefficient`, `bonus_past`, `salary`.
-- **Кол-во заявок** — auto из снимка Planfix `dg_ops_planfix_tasks` (номер задачи, постановщик, «Статус Сделки/Письма», `created_at`). Менеджер = **постановщик**; месяц = **дата создания по `Europe/Moscow`** (как фильтр месяца в Planfix; `dateTime` API в UTC). В счёт входят только статусы с галкой «в кол-во заявок» в `dg_ops_planfix_status_map`.
+- Ручные поля в `dg_ops_sheet_manual`: `bonus_past` (+ флаг `bonus_past_manual`), `salary` (поле `coefficient` в БД остаётся, в UI колонки нет).
+- **С октября 2026** (`ops_auto_from: { year: 2026, month: 10 }`): `bonus_current` = `SUM(diff)×%МП` по credit-менеджеру за месяц — **все** продажи (отгруженные и нет, включая переданные от других). `bonus_past` по умолчанию = SUM(`bonus`) всех отгрузок месяца (`shipped_at` в месяце листа, статус Отгружен/Частично): и с `paid_at` в прошлых месяцах, и в текущем. В ответе: `bonus_past_from_past` / `bonus_past_from_current`. Ручной ввод — `bonus_past_manual=1`; очистка → авто. До октября 2026 — архив.
+- **Кол-во заявок** (`applications_local`) — auto из локального снимка `dg_ops_planfix_tasks`: постановщик = менеджер продаж, месяц = дата создания (`Europe/Moscow`). Считаются **все** статусы, кроме: Товар получен, Заказан товар у поставщика, Поставщик, Информационное письмо, Подбор по Т.з., клиент отказался - мониторинг цен - ГБУЗ (и пустых/разделителей). Список исключений — `APP_COUNT_EXCLUDED_STATUSES` в `lib/opsSheetPlanfix.js`.
+- **Кол-во заявок (с Гугла)** (`applications_count`) — импорт цифр из Google операционного листа (колонка «Кол-во заявок») в `dg_ops_sheet_manual.applications_count` (`scripts/maintenance/import-ops-sheet-google-apps.js`).
+- **Отношение продаж к заявкам** (`apps_per_sale_local`) — `applications_local / paid_applications`.
+- **Отношение продаж к заявкам (с Гугла)** (`apps_per_sale`) — `applications_count / paid_applications`.
 - **Оплаченные заявки** — auto: число продаж credit-менеджера за месяц (`paid_at`, не архив): один **№ нашего счёта** = одна продажа (позиции НДС не удваивают счётчик); строка без номера счёта считается отдельно. Это не корзина Planfix «оплаченная».
 - UI: год → 12 блоков месяцев (строки менеджеров + ИТОГО). Сценарий: [Операционный лист](/docs/ops-sheet). Синк: `lib/opsSheetPlanfixSyncRevision.js`, поле `sync_script`.
 
@@ -2166,13 +2170,21 @@ CSV UTF-8 с BOM по текущему фильтру.
 
 ### GET `/api/ops-sheet`
 
-Query: `year` (по умолчанию текущий). Ответ: `months[{ month, label, rows, totals }]`, `managers` (включая **архивных** менеджеров продаж), `can_write`, `planfix_unmatched`. На `/ops-sheet.html` строка скрыта, если все суммы / заявки / оплаты / ручные поля нули или пустые. У архивного в ФИО пометка «(архив)». Синк Planfix по-прежнему берёт только неархивных постановщиков.
+Query: `year` (по умолчанию текущий). Ответ: `months[{ month, label, rows, totals, ops_auto_era }]`, `managers` (включая **архивных** менеджеров продаж), `can_write`, `planfix_unmatched`, `ops_auto_from`. В строке менеджера дополнительно: `bonus_past_auto`, `bonus_past_is_manual`, `bonus_past_source` (`auto`|`manual`|`archive`), `bonus_past_orders_count`, `ops_auto_era`. На `/ops-sheet.html` строка скрыта, если все суммы / заявки / оплаты / ручные поля нули или пустые. У архивного в ФИО пометка «(архив)». Синк Planfix по-прежнему берёт только неархивных постановщиков. У строки менеджера — стрелка: разворот статусов заявок (`GET /manager-app-statuses`).
 
-В строке: `turnover`, `profit_before_tax`, `profit_after_tax`, `profit_pct`, `bonus_current`, `applications_count` (Planfix), ручные поля, `apps_per_sale`, `avg_check`, `fact_profit`, `salary_paid`, `company_profit`, `company_pct`, `plan_amount`, `plan_status` (`выполнен` / `не выполнен`).
+### GET `/api/ops-sheet/manager-app-statuses`
+
+Query: `year`, `month` (1–12), `manager_user_id`. Разбивка задач Planfix постановщика за месяц по `status_value`: `statuses[{ status_value, n, excluded }]`, `included_total` (входит в «Кол-во заявок*»), `excluded_total` (серые / «не вошло»), `all_total`. Исключения — `APP_COUNT_EXCLUDED_STATUSES` (опечатка Planfix «мориторинг» → «мониторинг» при сравнении; `\b` для кириллицы не используется).
+
+В строке: `turnover`, `profit_before_tax`, `profit_after_tax`, `profit_pct`, `bonus_current`, `applications_local` (локальные задачи), `applications_count` (с Гугла / галка), ручные поля, `apps_per_sale_local`, `apps_per_sale` (с Гугла), `avg_check`, `fact_profit`, `salary_paid`, `company_profit`, `company_pct`, `plan_amount`, `plan_status` (`выполнен` / `не выполнен`).
 
 ### PUT `/api/ops-sheet/manual`
 
-Body: `year`, `month`, `manager_user_id` + `coefficient` / `bonus_past` / `salary`. Только `full`. Ответ: пересчитанная `row` + `totals` месяца.
+Body: `year`, `month`, `manager_user_id` + `bonus_past` / `salary`. Только `full`. Для `bonus_past` в авто-эре: число → ручной override (`bonus_past_manual=1`); `null`/пусто → сброс к авто. Ответ: пересчитанная `row` (+ `bonus_past_auto`, `bonus_past_is_manual`, `bonus_past_orders_count`) + `totals` месяца.
+
+### GET `/api/ops-sheet/bonus-past-orders`
+
+Query: `year`, `month`, `manager_user_id`. Список заказов, входящих в авто-расчёт «Премия с учетом заказов с прошлых месяцев» (отгрузка в месяце, оплата раньше). Ответ: `orders[]`, `total_bonus`, `orders_count`, `ops_auto_era`, `bonus_past_manual` / `bonus_past_override`.
 
 ### GET `/api/ops-sheet/planfix`
 

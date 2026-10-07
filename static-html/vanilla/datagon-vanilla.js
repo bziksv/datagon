@@ -976,10 +976,35 @@
     return String(m);
   }
 
+  /** Разделители сайдбара: скрыть, если нет видимого пункта и сверху, и снизу (иначе пустые линии). */
+  function syncSidebarNavDividers() {
+    document
+      .querySelectorAll(".datagon-vanilla-shell .vertical-nav-menu > .metismenu-container")
+      .forEach(function (ul) {
+        Array.prototype.forEach.call(ul.children, function (li) {
+          if (!li.classList || !li.classList.contains("dg-sidebar-nav-divider")) return;
+          function nearestVisibleContent(from, dir) {
+            var el = from;
+            while (el) {
+              el = dir < 0 ? el.previousElementSibling : el.nextElementSibling;
+              if (!el) return null;
+              if (el.style.display === "none") continue;
+              if (el.classList.contains("dg-sidebar-nav-divider")) continue;
+              return el;
+            }
+            return null;
+          }
+          var hasPrev = !!nearestVisibleContent(li, -1);
+          var hasNext = !!nearestVisibleContent(li, 1);
+          li.style.display = hasPrev && hasNext ? "" : "none";
+        });
+      });
+  }
+
   function applyDatagonRestrictedNavVisibility() {
-    var show = canViewActivityNav();
+    var showRestricted = canViewActivityNav();
     document.querySelectorAll('[data-dg-nav-restricted="activity"]').forEach(function (li) {
-      li.style.display = show ? "" : "none";
+      li.style.display = showRestricted ? "" : "none";
     });
     var isAdmin = false;
     try {
@@ -993,6 +1018,11 @@
       if (!navKey) return;
       var li = a.closest(".metismenu-item");
       if (!li) return;
+      // ArchitectUI / Управление БД / Активность: не открывать снова через pageModes=full
+      if (li.getAttribute("data-dg-nav-restricted") === "activity" && !showRestricted) {
+        li.style.display = "none";
+        return;
+      }
       if (isAdmin) {
         li.style.display = "";
         return;
@@ -1017,6 +1047,7 @@
       });
       parentLi.style.display = anyVisible ? "" : "none";
     });
+    syncSidebarNavDividers();
   }
 
   function removeViewOnlyBanner() {

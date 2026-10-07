@@ -1316,14 +1316,19 @@
                           ></i>
                         </a>
                       </li>
-                      <li class="metismenu-item dg-sidebar-architect-item">
+                      <li class="metismenu-item dg-sidebar-architect-item dg-sidebar-nav-restricted" data-dg-nav-restricted="activity">
                         <a
                           class="metismenu-link"
                           data-nav="architectui-demo"
                           href="/ref/react-demo-index.html"
-                          title="Каталог разделов React-шаблона ArchitectUI"
+                          title="Каталог разделов React-шаблона ArchitectUI (только админ / управление пользователями)"
                         >
                           <i class="metismenu-icon pe-7s-plugin"></i>ArchitectUI
+                          <i
+                            class="pe-7s-lock dg-nav-restricted-icon"
+                            aria-hidden="true"
+                            title="Пункт меню с ограниченным доступом"
+                          ></i>
                         </a>
                       </li>
                       <li class="metismenu-item dg-sidebar-nav-restricted" data-dg-nav-restricted="activity">
@@ -1971,7 +1976,11 @@
                 <p class="small text-muted mb-3">
                   У каждого года свой план и свои пороги % МП.: сначала общий план года, затем персональный у менеджера, затем месяц (отпуск).
                   % МП. считается от суммы «без доставки» за месяц. Пустая ячейка плана наследует значение слева.
+                  Менять планы и пороги могут только <strong>Полный доступ</strong> и <strong>Бухгалтерия</strong>.
                 </p>
+                <div id="dg-msl-plan-readonly-hint" class="alert alert-info py-2 small d-none" role="status">
+                  Режим просмотра: поля плана и порогов % МП. недоступны для изменения.
+                </div>
                 <div class="dg-msl-plan-year-row mb-3">
                   <div class="dg-msl-plan-year-field">
                     <label class="form-label" for="dg-msl-plan-year">Год</label>
@@ -1979,15 +1988,15 @@
                   </div>
                   <div class="dg-msl-plan-base-field">
                     <label class="form-label" for="dg-msl-plan-base">План года для всех, ₽</label>
-                    <input type="text" inputmode="decimal" class="form-control" id="dg-msl-plan-base" />
+                    <input type="text" inputmode="decimal" class="form-control" id="dg-msl-plan-base" readonly disabled />
                   </div>
                 </div>
                 <p class="small mb-2" id="dg-msl-plan-steps-hint"></p>
                 <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-1">
                   <span class="form-label mb-0">Пороги % МП. этого года</span>
                   <div class="d-flex gap-2">
-                    <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-msl-plan-step-add" data-dg-no-activity="1">+ ступень</button>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-msl-plan-step-reset" data-dg-no-activity="1">Как в Google</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary d-none" id="dg-msl-plan-step-add" data-dg-no-activity="1">+ ступень</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary d-none" id="dg-msl-plan-step-reset" data-dg-no-activity="1">Как в Google</button>
                   </div>
                 </div>
                 <div class="table-responsive mb-3">
@@ -2004,7 +2013,7 @@
                 </div>
                 <div class="d-flex align-items-center gap-2 mb-3">
                   <label class="form-label mb-0" for="dg-msl-plan-pct-max">Иначе % МП.</label>
-                  <input type="text" inputmode="decimal" class="form-control form-control-sm" id="dg-msl-plan-pct-max" style="width: 5rem" />
+                  <input type="text" inputmode="decimal" class="form-control form-control-sm" id="dg-msl-plan-pct-max" style="width: 5rem" readonly disabled />
                 </div>
                 <div class="table-responsive dg-msl-plan-grid-wrap">
                   <table class="table table-sm mb-0" id="dg-msl-plan-grid">
@@ -2023,7 +2032,7 @@
               </div>
               <div class="card-footer d-flex justify-content-end gap-2">
                 <button type="button" class="btn btn-outline-secondary" id="dg-msl-plans-cancel" data-dg-no-activity="1">Закрыть</button>
-                <button type="button" class="btn btn-primary" id="dg-msl-plan-matrix-save" data-dg-notify-start="Сохраняем планы…">Сохранить планы</button>
+                <button type="button" class="btn btn-primary d-none" id="dg-msl-plan-matrix-save" data-dg-notify-start="Сохраняем планы…">Сохранить планы</button>
               </div>
             </div>
           </div>
@@ -2154,6 +2163,7 @@
     ["diff", "Разница"],
     ["pct_r", "% Р."],
     ["status", "Статус"],
+    ["shipped_at", "Дата\nотгрузки"],
     ["pct_mp", "% МП."],
     ["bonus", "Премия"],
     ["_hand", "Передан"],
@@ -3428,7 +3438,7 @@
         "</span>" +
         (row.is_archived && state.can_write ? restoreBtnHtml(row) : "") +
         "</div>";
-    } else if (key === "paid_at") html = cellInput(show, key, "date");
+    } else if (key === "paid_at" || key === "shipped_at") html = cellInput(show, key, "date");
     else if (key === "our_invoice_no") html = ourInvoiceChipHtml(show);
     else if (key === "order_url") html = cellInput(show, key, "url");
     else if (SUPP_STACK_KEYS[key]) html = supplierStackHtml(row, key);
@@ -3863,6 +3873,12 @@
           }
           if (field === "status") {
             applyStatusTone(tr.querySelector('[data-msl-col="status"]'), data.row.status);
+            var shipTd = trLive && trLive.querySelector('[data-msl-col="shipped_at"]');
+            if (shipTd) shipTd.innerHTML = renderCell(data.row, "shipped_at");
+          }
+          if (field === "shipped_at") {
+            var shipTd2 = trLive && trLive.querySelector('[data-msl-col="shipped_at"]');
+            if (shipTd2) shipTd2.innerHTML = renderCell(data.row, "shipped_at");
           }
         } else renderTable();
       }
@@ -5582,7 +5598,7 @@
   function planInp(value, placeholder, canEdit, extraAttr) {
     var shown = value == null || value === "" ? "" : num(value);
     var ph = placeholder != null && placeholder !== "" ? num(placeholder) : "";
-    var readonly = canEdit ? "" : " readonly disabled";
+    var lock = canEdit ? "" : " readonly disabled tabindex=\"-1\"";
     return (
       '<input type="text" inputmode="decimal" class="form-control form-control-sm dg-msl-plan-amt" ' +
       (extraAttr || "") +
@@ -5591,9 +5607,29 @@
       '" value="' +
       esc(shown) +
       '"' +
-      readonly +
+      lock +
       " />"
     );
+  }
+
+  /** Блокирует поля плана года / порогов % МП., пока нет права can_edit_plans. */
+  function applyPlansEditMode(canEdit) {
+    var allow = !!canEdit;
+    var baseInp = el("dg-msl-plan-base");
+    if (baseInp) {
+      baseInp.readOnly = !allow;
+      baseInp.disabled = !allow;
+    }
+    var pctMax = el("dg-msl-plan-pct-max");
+    if (pctMax) {
+      pctMax.readOnly = !allow;
+      pctMax.disabled = !allow;
+    }
+    ["dg-msl-plan-step-add", "dg-msl-plan-step-reset", "dg-msl-plan-matrix-save"].forEach(function (id) {
+      if (el(id)) el(id).classList.toggle("d-none", !allow);
+    });
+    var hintLock = el("dg-msl-plan-readonly-hint");
+    if (hintLock) hintLock.classList.toggle("d-none", allow);
   }
 
   function renderPlanGrid(data) {
@@ -5665,16 +5701,17 @@
   }
 
   function renderPlanStepRow(max, pct, canEdit) {
+    var lock = canEdit ? "" : " readonly disabled tabindex=\"-1\"";
     return (
       "<tr>" +
-      "<td><input type=\"text\" inputmode=\"decimal\" class=\"form-control form-control-sm dg-msl-plan-amt\" data-msl-step-max " +
-      (canEdit ? "" : "readonly ") +
-      "value=\"" +
+      "<td><input type=\"text\" inputmode=\"decimal\" class=\"form-control form-control-sm dg-msl-plan-amt\" data-msl-step-max" +
+      lock +
+      " value=\"" +
       esc(max == null ? "" : num(max)) +
       "\"></td>" +
-      "<td><input type=\"text\" inputmode=\"decimal\" class=\"form-control form-control-sm\" style=\"width:4.5rem\" data-msl-step-pct " +
-      (canEdit ? "" : "readonly ") +
-      "value=\"" +
+      "<td><input type=\"text\" inputmode=\"decimal\" class=\"form-control form-control-sm\" style=\"width:4.5rem\" data-msl-step-pct" +
+      lock +
+      " value=\"" +
       esc(pct == null ? "" : String(pct)) +
       "\"></td>" +
       "<td>" +
@@ -5699,10 +5736,9 @@
     if (pctMax) {
       pctMax.value = n.pct_max != null ? String(n.pct_max) : String(DEFAULT_PLAN_PCT_MAX);
       pctMax.readOnly = !canEdit;
+      pctMax.disabled = !canEdit;
     }
-    ["dg-msl-plan-step-add", "dg-msl-plan-step-reset"].forEach(function (id) {
-      if (el(id)) el(id).classList.toggle("d-none", !canEdit);
-    });
+    applyPlansEditMode(canEdit);
   }
 
   function readPlanSteps() {
@@ -5753,10 +5789,10 @@
         plansCache = data;
         var baseInp = el("dg-msl-plan-base");
         var yb = data.year_base || {};
+        var canEdit = !!data.can_edit;
         if (baseInp) {
           baseInp.value = yb.plan_amount != null ? num(yb.plan_amount) : "";
           baseInp.placeholder = yb.inherited != null ? num(yb.inherited) : "";
-          baseInp.readOnly = !data.can_edit;
         }
         var hint = el("dg-msl-plan-steps-hint");
         if (hint) {
@@ -5764,11 +5800,13 @@
             ? "Пороги сохранены для этого года. Если план менеджера меньше последнего порога, ступени сжимаются пропорционально."
             : "Пока шкала как в Google (500 тыс. → 0% … 3,3 млн → 10%, иначе 12%). Сохраните, чтобы закрепить пороги за годом.";
         }
-        renderPlanSteps(yb.steps || (data.fallback && data.fallback.steps), data.can_edit);
-        var saveBtn = el("dg-msl-plan-matrix-save");
-        if (saveBtn) saveBtn.classList.toggle("d-none", !data.can_edit);
+        renderPlanSteps(yb.steps || (data.fallback && data.fallback.steps), canEdit);
+        applyPlansEditMode(canEdit);
         renderPlanGrid(data);
-        setPlanMsg("", "");
+        setPlanMsg(
+          canEdit ? "" : "info",
+          canEdit ? "" : "Просмотр: менять планы и пороги % МП. могут только Полный доступ и Бухгалтерия."
+        );
       });
   }
 
@@ -5776,6 +5814,7 @@
     var ov = el("dg-msl-plans-overlay");
     if (!ov) return Promise.resolve();
     fillPlanSelects();
+    applyPlansEditMode(!!state.can_edit_plans);
     ov.classList.remove("d-none");
     ov.style.display = "flex";
     ov.setAttribute("aria-hidden", "false");
@@ -5783,6 +5822,10 @@
   }
 
   function savePlanMatrix() {
+    if (!state.can_edit_plans) {
+      setPlanMsg("warning", "Нет права менять планы (нужны Полный доступ или Бухгалтерия).");
+      return Promise.reject(new Error("Нет права менять планы"));
+    }
     var year = Number(el("dg-msl-plan-year") && el("dg-msl-plan-year").value);
     var baseRaw = el("dg-msl-plan-base") ? String(el("dg-msl-plan-base").value || "").trim() : "";
     var managers = [];
