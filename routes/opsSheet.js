@@ -2271,7 +2271,9 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
                     ' из ' +
                     managers.length +
                     (unmatchedNames.length
-                        ? '; не в Planfix: ' + unmatchedNames.join(', ')
+                        ? '; нет в /user/list (не «нет в отчёте»): ' +
+                          unmatchedNames.join(', ') +
+                          ' — догрузим с задач'
                         : ''),
             });
             if (!assignerQueue.length) {
@@ -2290,17 +2292,17 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
                 return;
             }
             // Planfix /user/list часто без уволенных и с урезанным name («Глеб» без фамилии).
-            // Несматченные менеджеры всё ещё постановщики на старых задачах — без доп. прохода
-            // prune вычищает их из листа → «(не в заявках листа)» с нулём справа.
+            // Они МОГУТ быть в отчёте 450694 и на старых задачах — «не в /user/list» ≠ «нет в Planfix».
+            // Без доп. прохода prune вычищал их из листа → «(не в заявках листа)» с нулём справа.
             let recoverUnmatchedPass = false;
             if (unmatchedNames.length) {
                 recoverUnmatchedPass = true;
                 errors.push({
                     code: 'assigners_partial',
                     error:
-                        'Не нашли в Planfix /user/list: ' +
+                        'Нет в активном /user/list Planfix (часто уволенные; в отчёте 450694 они всё равно могут быть): ' +
                         unmatchedNames.join(', ') +
-                        ' — будет доп. проход по периоду без фильтра постановщика; в лист пишем только задачи менеджеров продаж (в т.ч. несматченных по ФИО с задачи).',
+                        ' — доп. проход без фильтра постановщика; в лист только задачи менеджеров продаж по ФИО с заявки.',
                 });
                 if (assignerQueue.indexOf(null) < 0) assignerQueue.push(null);
             }
