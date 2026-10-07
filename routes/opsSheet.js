@@ -2033,7 +2033,7 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
                 success: true,
                 months,
                 year,
-                month: b.month || 0,
+                month: pr.labelMonth != null ? pr.labelMonth : months.length === 1 ? months[0] : 0,
                 period: periodLabel,
                 account: account || 'almamed',
                 q,
