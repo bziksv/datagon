@@ -1098,6 +1098,14 @@
                 </button>
                 <button
                   type="button"
+                  class="btn btn-outline-secondary"
+                  id="dg-ops-pf-sync-report"
+                  data-dg-notify-start="Только отчёт Planfix (без заявок)…"
+                >
+                  Только отчёт
+                </button>
+                <button
+                  type="button"
                   class="btn btn-outline-warning d-none"
                   id="dg-ops-pf-sync-cancel"
                   data-dg-notify-start="Останавливаем синк Planfix…"
@@ -1121,11 +1129,11 @@
             </div>
             <div class="card-body" id="dg-ops-pf-body">
               <p class="text-muted small mb-2">
-                Одна кнопка <strong>Синхронизировать Planfix</strong>. Пока идёт синк — рядом <strong>Остановить</strong> (между страницами и ожиданиями generate).
-                <strong>В отчёте Planfix</strong> — 1:1 со свежим generate (даты как в UI Planfix; сохранять отчёт в Planfix не нужно).
-                Старые сейвы больше не подставляются. Если только что жали «сформировать» в Planfix — синк подождёт лимит 10 мин и повторит generate.
-                <strong>В заявках листа</strong> — постановщик = менеджер продаж (без отбора шаблона КП).
-                Строку статуса можно раскрыть — внутри постановщики, как в отчёте Planfix. Токен —
+                <strong>Синхронизировать Planfix</strong> — заявки + отчёт.
+                <strong>Только отчёт</strong> — generate 450694 и статусы, без повторной выгрузки задач (если период в UI Planfix ≠ периоду Datagon — синк стоп, гистограмма не затирается).
+                Пока идёт синк — <strong>Остановить</strong>.
+                <strong>В отчёте Planfix</strong> — снимок по выбранному году/месяцу (короткий синк не убивает полный год).
+                Даты generate — как в UI Planfix. Токен —
                 <a href="/settings.html">Настройки → Planfix</a>.
               </p>
               <div id="dg-ops-pf-insight" class="alert alert-warning py-2 px-3 d-none" role="status"></div>
@@ -2367,7 +2375,7 @@
 
   function renderPlanfixPanel() {
     var write = !!state.can_write;
-    ["dg-ops-pf-sync", "dg-ops-pf-save-map"].forEach(function (id) {
+    ["dg-ops-pf-sync", "dg-ops-pf-sync-report", "dg-ops-pf-save-map"].forEach(function (id) {
       var b = el(id);
       if (b) b.disabled = !write || !!state.pf.syncing;
     });
@@ -2681,11 +2689,12 @@
 
   function runPlanfixSync(opts) {
     opts = opts || {};
+    var reportOnly = !!opts.reportOnly;
     var started = Date.now();
     var year = state.year;
     state.pf.syncing = true;
     renderPlanfixPanel();
-    patchLiveProgress({ message: "старт…" }, 0);
+    patchLiveProgress({ message: reportOnly ? "только отчёт…" : "старт…" }, 0);
     var lastProg = null;
     var timer = setInterval(function () {
       var sec = Math.round((Date.now() - started) / 1000);
@@ -2702,6 +2711,7 @@
         });
     }, 1000);
     var body = { year: year, month: pfMonthFromUi() };
+    if (reportOnly) body.report_only = 1;
     var run = function () {
       return fetch("/api/ops-sheet/planfix-sync", {
         method: "POST",
@@ -2723,7 +2733,7 @@
         });
       });
     };
-    var btn = el("dg-ops-pf-sync");
+    var btn = el(reportOnly ? "dg-ops-pf-sync-report" : "dg-ops-pf-sync");
     var p =
       window.DatagonNotify && window.DatagonNotify.busyRun && btn
         ? window.DatagonNotify.busyRun(btn, run)
@@ -2749,7 +2759,11 @@
           });
         }
         applyPlanfixPanel(j);
-        showActionLog("success", formatPlanfixSummary(j), true);
+        showActionLog(
+          "success",
+          formatPlanfixSummary(j, reportOnly ? "Только отчёт Planfix" : "Синхронизация Planfix"),
+          true
+        );
         return loadYear();
       })
       .catch(function (e) {
@@ -2758,6 +2772,7 @@
         renderPlanfixPanel();
         showActionLog("danger", "Ошибка: " + escapeHtml(e.message || e) + "<br>Фильтры: " + planfixFiltersLine(), true);
         toast("danger", e.message || "Planfix");
+        return loadPlanfix();
       });
   }
 
@@ -3371,6 +3386,18 @@
             : "Забираем весь год одним прогоном (все 12 месяцев, без помесячных запусков)…"
         );
         runPlanfixSync();
+      });
+    }
+    if (el("dg-ops-pf-sync-report")) {
+      el("dg-ops-pf-sync-report").addEventListener("click", function () {
+        var m = pfMonthFromUi();
+        this.setAttribute(
+          "data-dg-notify-start",
+          m
+            ? "Только отчёт Planfix за выбранный месяц (без заявок)…"
+            : "Только отчёт Planfix за весь год (без заявок)…"
+        );
+        runPlanfixSync({ reportOnly: true });
       });
     }
     if (el("dg-ops-pf-sync-cancel")) {

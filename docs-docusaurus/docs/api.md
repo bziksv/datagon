@@ -2196,9 +2196,15 @@ Preflight матча «Менеджер по продажам» ↔ Planfix `/us
 
 ### POST `/api/ops-sheet/planfix-sync`
 
-Только `full`. Body: `{ year, month }`. Ответ сразу `{ success: true, started: true, …planfix-sync-status }` — работа **в фоне**. UI опрашивает `GET /planfix-sync-status` до `active: false`.
+Только `full`. Body: `{ year, month, report_only? }`. Ответ сразу `{ success: true, started: true, …planfix-sync-status }` — работа **в фоне**. UI опрашивает `GET /planfix-sync-status` до `active: false`.
 
 Один прогон: сотрудники → постановщики «Менеджер по продажам» → `POST /task/list` **только по сматченным** `user:id` за период (без фильтра шаблона КП) → системный статус → generate отчёта **450694**. **Нет** прохода «все постановщики» (rev.22). Несматченные ФИО — в `errors` / `unmatched_managers`, без дампа года. Опрос generate до **30 мин**. Год по числу менеджеров × страницы, не × весь аккаунт. Остановка — `POST /planfix-sync-cancel`.
+
+`report_only: 1` — только generate/чтение отчёта и запись статусов/гистограммы **без** повторной выгрузки `/task/list` (кнопка **Только отчёт** на `/ops-sheet.html`).
+
+Снимки отчёта хранятся **по `(year, month)`** (`dg_ops_planfix_report_task` / `report_status_counts` / `report_meta`). Синк за месяц или другой год **не** делает глобальный `DELETE` чужого периода.
+
+Если после generate сейв **не пересекается** с задачами листа выбранного периода Datagon → код `REPORT_PERIOD_MISMATCH` (409 в журнале), гистограмма этого периода **не** перезаписывается. Раньше `covers_period: true` после любого generate скрывал рассинхрон UI Planfix vs Datagon.
 
 Перед синком в UI Planfix у отчёта выставьте тот же период (API generate даты не принимает). Обрыв TLS Planfix повторяется до 4 раз.
 

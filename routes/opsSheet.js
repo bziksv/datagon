@@ -254,21 +254,27 @@ async function ensureSchema(db) {
     }
     await db.query(`
         CREATE TABLE IF NOT EXISTS dg_ops_planfix_report_status_counts (
-            status_value VARCHAR(191) NOT NULL PRIMARY KEY,
+            year INT NOT NULL DEFAULT 0,
+            month INT NOT NULL DEFAULT 0,
+            status_value VARCHAR(191) NOT NULL,
             n INT NOT NULL DEFAULT 0,
             report_id INT NOT NULL DEFAULT 0,
             save_id INT NOT NULL DEFAULT 0,
-            synced_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            synced_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (year, month, status_value)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
     await db.query(`
         CREATE TABLE IF NOT EXISTS dg_ops_planfix_report_task (
-            task_id BIGINT NOT NULL PRIMARY KEY,
+            year INT NOT NULL DEFAULT 0,
+            month INT NOT NULL DEFAULT 0,
+            task_id BIGINT NOT NULL,
             status_value VARCHAR(191) NOT NULL,
             report_id INT NOT NULL DEFAULT 0,
             save_id INT NOT NULL DEFAULT 0,
             synced_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            KEY idx_ops_pf_report_task_status (status_value)
+            PRIMARY KEY (year, month, task_id),
+            KEY idx_ops_pf_report_task_status (year, month, status_value)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
     await db.query(`
@@ -280,20 +286,138 @@ async function ensureSchema(db) {
     `);
     await db.query(`
         CREATE TABLE IF NOT EXISTS dg_ops_planfix_report_meta (
-            id TINYINT NOT NULL PRIMARY KEY DEFAULT 1,
+            year INT NOT NULL,
+            month INT NOT NULL,
             report_id INT NOT NULL DEFAULT 0,
             save_id INT NOT NULL DEFAULT 0,
-            year INT NOT NULL DEFAULT 0,
-            month INT NOT NULL DEFAULT 0,
             scope VARCHAR(16) NOT NULL DEFAULT 'all',
             is_generated TINYINT NOT NULL DEFAULT 0,
-            synced_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            synced_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (year, month)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
+    await migrateReportPeriodSnapshots(db);
     await seedDealStatusCatalog(db);
     await assignMissingCatalogOrder(db);
     await migratePlanfixCreatedAtToMoscow(db);
     schemaReady = true;
+}
+
+async function tableColumnNames(db, table) {
+    const [cols] = await db.query(
+        `SELECT COLUMN_NAME AS c FROM INFORMATION_SCHEMA.COLUMNS
+          WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?`,
+        [table]
+    );
+    return new Set((cols || []).map((r) => String(r.c)));
+}
+
+/** Снимки отчёта 450694 — по (year, month); короткий синк не затирает полный год. */
+async function migrateReportPeriodSnapshots(db) {
+    const taskCols = await tableColumnNames(db, 'dg_ops_planfix_report_task');
+    if (!taskCols.size) return;
+
+    let metaYear = 0;
+    let metaMonth = 0;
+    try {
+        const metaCols = await tableColumnNames(db, 'dg_ops_planfix_report_meta');
+        if (metaCols.has('id')) {
+            const [mr] = await db.query(
+                `SELECT year, month, report_id, save_id, scope, is_generated, synced_at
+                   FROM dg_ops_planfix_report_meta WHERE id = 1 LIMIT 1`
+            );
+            if (mr && mr[0]) {
+                metaYear = Number(mr[0].year) || 0;
+                metaMonth = Number(mr[0].month) || 0;
+                const row = mr[0];
+                await db.query('DROP TABLE dg_ops_planfix_report_meta');
+                await db.query(`
+                    CREATE TABLE dg_ops_planfix_report_meta (
+                        year INT NOT NULL,
+                        month INT NOT NULL,
+                        report_id INT NOT NULL DEFAULT 0,
+                        save_id INT NOT NULL DEFAULT 0,
+                        scope VARCHAR(16) NOT NULL DEFAULT 'all',
+                        is_generated TINYINT NOT NULL DEFAULT 0,
+                        synced_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        PRIMARY KEY (year, month)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+                `);
+                if (metaYear || metaMonth) {
+                    await db.query(
+                        `INSERT INTO dg_ops_planfix_report_meta
+                            (year, month, report_id, save_id, scope, is_generated, synced_at)
+                         VALUES (?, ?, ?, ?, ?, ?, ?)
+                         ON DUPLICATE KEY UPDATE report_id = VALUES(report_id)`,
+                        [
+                            metaYear,
+                            metaMonth,
+                            Number(row.report_id) || 0,
+                            Number(row.save_id) || 0,
+                            String(row.scope || 'period'),
+                            Number(row.is_generated) ? 1 : 0,
+                            row.synced_at || mysqlNow(),
+                        ]
+                    );
+                }
+            } else {
+                await db.query('DROP TABLE dg_ops_planfix_report_meta');
+                await db.query(`
+                    CREATE TABLE dg_ops_planfix_report_meta (
+                        year INT NOT NULL,
+                        month INT NOT NULL,
+                        report_id INT NOT NULL DEFAULT 0,
+                        save_id INT NOT NULL DEFAULT 0,
+                        scope VARCHAR(16) NOT NULL DEFAULT 'all',
+                        is_generated TINYINT NOT NULL DEFAULT 0,
+                        synced_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        PRIMARY KEY (year, month)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+                `);
+            }
+        }
+    } catch (e) {
+        if (!(e && (e.errno === 1146 || /doesn't exist/i.test(String(e.message || ''))))) throw e;
+    }
+
+    if (!taskCols.has('year')) {
+        await db.query(
+            `ALTER TABLE dg_ops_planfix_report_task
+               ADD COLUMN year INT NOT NULL DEFAULT 0,
+               ADD COLUMN month INT NOT NULL DEFAULT 0`
+        );
+        if (metaYear || metaMonth) {
+            await db.query(`UPDATE dg_ops_planfix_report_task SET year = ?, month = ?`, [
+                metaYear,
+                metaMonth,
+            ]);
+        }
+        await db.query(
+            `ALTER TABLE dg_ops_planfix_report_task
+               DROP PRIMARY KEY,
+               ADD PRIMARY KEY (year, month, task_id)`
+        );
+    }
+
+    const countCols = await tableColumnNames(db, 'dg_ops_planfix_report_status_counts');
+    if (countCols.size && !countCols.has('year')) {
+        await db.query(
+            `ALTER TABLE dg_ops_planfix_report_status_counts
+               ADD COLUMN year INT NOT NULL DEFAULT 0,
+               ADD COLUMN month INT NOT NULL DEFAULT 0`
+        );
+        if (metaYear || metaMonth) {
+            await db.query(`UPDATE dg_ops_planfix_report_status_counts SET year = ?, month = ?`, [
+                metaYear,
+                metaMonth,
+            ]);
+        }
+        await db.query(
+            `ALTER TABLE dg_ops_planfix_report_status_counts
+               DROP PRIMARY KEY,
+               ADD PRIMARY KEY (year, month, status_value)`
+        );
+    }
 }
 
 const OPS_PLANFIX_CREATED_TZ_KEY = 'ops_planfix_created_at_tz';
@@ -1052,37 +1176,53 @@ async function readDealStatusReportPairs(appSettings, reportId, save, onProgress
     return { byTask, unique, chunks: Math.max(1, c), save_id: save.id };
 }
 
+function periodMonthNorm(month) {
+    return Number(month) >= 1 && Number(month) <= 12 ? Number(month) : 0;
+}
+
 async function upsertReportMeta(db, meta) {
     const rid = meta && Number(meta.report_id) ? Number(meta.report_id) : 0;
     const sid = meta && Number(meta.save_id) ? Number(meta.save_id) : 0;
     const year = meta && Number(meta.year) ? Number(meta.year) : 0;
-    const month = meta && Number(meta.month) ? Number(meta.month) : 0;
+    const month = periodMonthNorm(meta && meta.month);
     const scope = meta && meta.scope === 'period' ? 'period' : 'all';
     const isGenerated = meta && meta.generated ? 1 : 0;
     const ts = mysqlNow();
     await db.query(
         `INSERT INTO dg_ops_planfix_report_meta
-            (id, report_id, save_id, year, month, scope, is_generated, synced_at)
-         VALUES (1, ?, ?, ?, ?, ?, ?, ?)
+            (year, month, report_id, save_id, scope, is_generated, synced_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
          ON DUPLICATE KEY UPDATE
             report_id = VALUES(report_id),
             save_id = VALUES(save_id),
-            year = VALUES(year),
-            month = VALUES(month),
             scope = VALUES(scope),
             is_generated = VALUES(is_generated),
             synced_at = VALUES(synced_at)`,
-        [rid, sid, year, month, scope, isGenerated, ts]
+        [year, month, rid, sid, scope, isGenerated, ts]
     );
 }
 
-async function loadReportMeta(db) {
+async function loadReportMeta(db, year, month) {
     try {
-        const [rows] = await db.query(
+        const y = Number(year) || 0;
+        const m = periodMonthNorm(month);
+        if (y) {
+            const [rows] = await db.query(
+                `SELECT report_id, save_id, year, month, scope, is_generated, synced_at
+                   FROM dg_ops_planfix_report_meta
+                  WHERE year = ? AND month = ?
+                  LIMIT 1`,
+                [y, m]
+            );
+            return rows && rows[0] ? rows[0] : null;
+        }
+        const [fallback] = await db.query(
             `SELECT report_id, save_id, year, month, scope, is_generated, synced_at
-               FROM dg_ops_planfix_report_meta WHERE id = 1 LIMIT 1`
+               FROM dg_ops_planfix_report_meta
+              ORDER BY synced_at DESC
+              LIMIT 1`
         );
-        return rows && rows[0] ? rows[0] : null;
+        return fallback && fallback[0] ? fallback[0] : null;
     } catch (e) {
         if (e && (e.errno === 1146 || /doesn't exist/i.test(String(e.message || '')))) return null;
         throw e;
@@ -1115,8 +1255,13 @@ async function applyReportStatuses(db, byTask) {
     return applied;
 }
 
-async function upsertReportStatusCounts(db, byTask, meta) {
-    await db.query('DELETE FROM dg_ops_planfix_report_status_counts');
+async function upsertReportStatusCounts(db, byTask, meta, year, month) {
+    const y = Number(year) || 0;
+    const m = periodMonthNorm(month);
+    await db.query('DELETE FROM dg_ops_planfix_report_status_counts WHERE year = ? AND month = ?', [
+        y,
+        m,
+    ]);
     const countBy = new Map();
     (byTask || new Map()).forEach((status) => {
         const s = String(status || '').trim();
@@ -1125,24 +1270,27 @@ async function upsertReportStatusCounts(db, byTask, meta) {
     });
     if (!countBy.size) return 0;
     const rows = [...countBy.entries()];
-    const ph = rows.map(() => '(?,?,?,?,?)').join(',');
+    const ph = rows.map(() => '(?,?,?,?,?,?,?)').join(',');
     const args = [];
     const rid = meta && Number(meta.report_id) ? Number(meta.report_id) : 0;
     const sid = meta && Number(meta.save_id) ? Number(meta.save_id) : 0;
     const ts = mysqlNow();
     rows.forEach(([status, n]) => {
-        args.push(status.slice(0, 191), n, rid, sid, ts);
+        args.push(y, m, status.slice(0, 191), n, rid, sid, ts);
     });
     await db.query(
-        `INSERT INTO dg_ops_planfix_report_status_counts (status_value, n, report_id, save_id, synced_at)
+        `INSERT INTO dg_ops_planfix_report_status_counts
+            (year, month, status_value, n, report_id, save_id, synced_at)
          VALUES ${ph}`,
         args
     );
     return rows.length;
 }
 
-async function upsertReportTasks(db, byTask, meta) {
-    await db.query('DELETE FROM dg_ops_planfix_report_task');
+async function upsertReportTasks(db, byTask, meta, year, month) {
+    const y = Number(year) || 0;
+    const m = periodMonthNorm(month);
+    await db.query('DELETE FROM dg_ops_planfix_report_task WHERE year = ? AND month = ?', [y, m]);
     const rows = [];
     (byTask || new Map()).forEach((status, tid) => {
         const s = String(status || '').trim();
@@ -1157,13 +1305,14 @@ async function upsertReportTasks(db, byTask, meta) {
     const ts = mysqlNow();
     for (let i = 0; i < rows.length; i += 400) {
         const slice = rows.slice(i, i + 400);
-        const ph = slice.map(() => '(?,?,?,?,?)').join(',');
+        const ph = slice.map(() => '(?,?,?,?,?,?,?)').join(',');
         const args = [];
         slice.forEach((r) => {
-            args.push(r.task_id, r.status_value, rid, sid, ts);
+            args.push(y, m, r.task_id, r.status_value, rid, sid, ts);
         });
         await db.query(
-            `INSERT INTO dg_ops_planfix_report_task (task_id, status_value, report_id, save_id, synced_at)
+            `INSERT INTO dg_ops_planfix_report_task
+                (year, month, task_id, status_value, report_id, save_id, synced_at)
              VALUES ${ph}`,
             args
         );
@@ -1306,6 +1455,20 @@ async function enrichFromDealStatusReport(appSettings, db, onProgress, year, mon
         if (score < 1) continue;
         const dealUniques = (read.unique || []).filter((s) => s && !pf.isPlanfixProcessStatusName(s));
 
+        if (year && !overlaps) {
+            const label = periodMonth
+                ? `${MONTH_LABELS[periodMonth]} ${year}`
+                : `весь ${year}`;
+            const err = new Error(
+                `Сейв отчёта Planfix (${id}) не пересекается с периодом Datagon «${label}». ` +
+                    `В UI отчёта https://almamed.planfix.ru/?action=report&id=${id} выставьте тот же год/месяц и повторите. ` +
+                    `Гистограмма «В отчёте» за этот период не изменена.`
+            );
+            err.status = 409;
+            err.code = 'REPORT_PERIOD_MISMATCH';
+            throw err;
+        }
+
         read.byTask.forEach((val, tid) => {
             if (!val || pf.isPlanfixProcessStatusName(val)) return;
             merged.set(tid, val);
@@ -1319,7 +1482,7 @@ async function enrichFromDealStatusReport(appSettings, db, onProgress, year, mon
             chunks: read.chunks,
             report_rows: read.byTask.size,
             score,
-            covers_period: localGenerated ? true : !!overlaps,
+            covers_period: true,
         });
         // Первый годный отчёт — стоп. Не идём в 450690 (1 чанк), он затирал гистограмму.
         break;
@@ -1337,8 +1500,8 @@ async function enrichFromDealStatusReport(appSettings, db, onProgress, year, mon
     }
     const applied = await applyReportStatuses(db, merged);
     await upsertCatalog(db, unique, 'report');
-    await upsertReportStatusCounts(db, merged, used[0]);
-    await upsertReportTasks(db, merged, used[0]);
+    await upsertReportStatusCounts(db, merged, used[0], year, periodMonth);
+    await upsertReportTasks(db, merged, used[0], year, periodMonth);
     await upsertReportMeta(db, {
         report_id: used[0].report_id,
         save_id: used[0].save_id,
@@ -1357,7 +1520,7 @@ async function enrichFromDealStatusReport(appSettings, db, onProgress, year, mon
         statuses_applied: applied,
         unique_statuses: unique,
         generated,
-        covers_period: used.some((r) => r.covers_period),
+        covers_period: true,
         scope: 'period',
         generate_error: generate_error || undefined,
     };
@@ -1391,7 +1554,7 @@ function mergeStatusManagers(sheetBy, reportBy, hasReportCounts) {
     return out;
 }
 
-async function loadStatusManagerBreakdown(db, bounds, { periodScoped, hasReportCounts }) {
+async function loadStatusManagerBreakdown(db, bounds, { periodScoped, hasReportCounts, snapYear, snapMonth }) {
     const sheetBy = {};
     const [sheetRows] = await db.query(
         `SELECT status_value, assigner_name, COUNT(*) AS n
@@ -1414,18 +1577,24 @@ async function loadStatusManagerBreakdown(db, bounds, { periodScoped, hasReportC
                     WHEN TRIM(IFNULL(t.assigner_name,'')) = '' THEN '(без постановщика)'
                     ELSE t.assigner_name
                  END`;
+            const sy = Number(snapYear) || 0;
+            const sm = periodMonthNorm(snapMonth);
             const sql = periodScoped
                 ? `SELECT r.status_value, ${nameExpr} AS assigner_name, COUNT(*) AS n
                      FROM dg_ops_planfix_report_task r
                      LEFT JOIN dg_ops_planfix_tasks t ON t.task_id = r.task_id
+                    WHERE r.year = ? AND r.month = ?
                     GROUP BY r.status_value, ${nameExpr}`
                 : `SELECT r.status_value, ${nameExpr} AS assigner_name, COUNT(*) AS n
                      FROM dg_ops_planfix_report_task r
                      INNER JOIN dg_ops_planfix_task_dates d ON d.task_id = r.task_id
                      LEFT JOIN dg_ops_planfix_tasks t ON t.task_id = r.task_id
-                    WHERE d.created_at >= ? AND d.created_at < ?
+                    WHERE r.year = ? AND r.month = ?
+                      AND d.created_at >= ? AND d.created_at < ?
                     GROUP BY r.status_value, ${nameExpr}`;
-            const args = periodScoped ? [] : [bounds.fromSql, bounds.toSql];
+            const args = periodScoped
+                ? [sy, sm]
+                : [sy, sm, bounds.fromSql, bounds.toSql];
             const [rr] = await db.query(sql, args);
             (rr || []).forEach((r) => {
                 const st = String(r.status_value || '');
@@ -1476,9 +1645,11 @@ async function loadPlanfixPanel(db, year, managers, month) {
     let reportMeta = null;
     let hasReportCounts = false;
     let periodScoped = false;
+    let snapYear = Number(year) || 0;
+    let snapMonth = Number(b.month) || 0;
     try {
-        const metaRow = await loadReportMeta(db);
         const reqMonth = Number(b.month) || 0;
+        const metaRow = await loadReportMeta(db, year, reqMonth);
         periodScoped = !!(
             metaRow &&
             String(metaRow.scope || '') === 'period' &&
@@ -1486,9 +1657,14 @@ async function loadPlanfixPanel(db, year, managers, month) {
             Number(metaRow.month) === reqMonth
         );
         if (periodScoped) {
-            // Сейв сгенерирован при синке этого месяца (период в Planfix UI) — гистограмма 1:1 с Planfix.
+            snapYear = Number(metaRow.year) || 0;
+            snapMonth = Number(metaRow.month) || 0;
+            // Сейв этого (year, month) — гистограмма 1:1 с Planfix.
             const [rr] = await db.query(
-                `SELECT status_value, n, report_id, save_id, synced_at FROM dg_ops_planfix_report_status_counts`
+                `SELECT status_value, n, report_id, save_id, synced_at
+                   FROM dg_ops_planfix_report_status_counts
+                  WHERE year = ? AND month = ?`,
+                [snapYear, snapMonth]
             );
             reportCountRows = rr || [];
             hasReportCounts = reportCountRows.length > 0;
@@ -1497,31 +1673,65 @@ async function loadPlanfixPanel(db, year, managers, month) {
                 save_id: Number(metaRow.save_id) || 0,
                 synced_at: metaRow.synced_at || null,
                 scope: 'period',
-                year: Number(metaRow.year) || 0,
-                month: Number(metaRow.month) || 0,
+                year: snapYear,
+                month: snapMonth,
             };
         } else {
-            const [[snap]] = await db.query(
-                `SELECT COUNT(*) AS n, MAX(report_id) AS report_id, MAX(save_id) AS save_id, MAX(synced_at) AS synced_at
-                   FROM dg_ops_planfix_report_task`
-            );
-            hasReportCounts = Number(snap && snap.n) > 0;
-            if (hasReportCounts) {
-                reportMeta = {
-                    report_id: Number(snap.report_id) || 0,
-                    save_id: Number(snap.save_id) || 0,
-                    synced_at: snap.synced_at || null,
-                    scope: metaRow ? String(metaRow.scope || 'all') : 'all',
-                };
+            // Нет точного снимка: пробуем полный год того же year (month=0), иначе даты.
+            const yearMeta = await loadReportMeta(db, year, 0);
+            if (yearMeta && Number(yearMeta.year) === Number(year) && Number(yearMeta.month) === 0) {
+                snapYear = Number(year) || 0;
+                snapMonth = 0;
                 const [rr] = await db.query(
                     `SELECT r.status_value, COUNT(*) AS n
                        FROM dg_ops_planfix_report_task r
                        INNER JOIN dg_ops_planfix_task_dates d ON d.task_id = r.task_id
-                      WHERE d.created_at >= ? AND d.created_at < ?
+                      WHERE r.year = ? AND r.month = 0
+                        AND d.created_at >= ? AND d.created_at < ?
                       GROUP BY r.status_value`,
-                    [b.fromSql, b.toSql]
+                    [snapYear, b.fromSql, b.toSql]
                 );
                 reportCountRows = rr || [];
+                hasReportCounts = reportCountRows.length > 0;
+                if (hasReportCounts) {
+                    reportMeta = {
+                        report_id: Number(yearMeta.report_id) || 0,
+                        save_id: Number(yearMeta.save_id) || 0,
+                        synced_at: yearMeta.synced_at || null,
+                        scope: 'all',
+                        year: snapYear,
+                        month: 0,
+                    };
+                }
+            } else {
+                const [[snap]] = await db.query(
+                    `SELECT COUNT(*) AS n, MAX(report_id) AS report_id, MAX(save_id) AS save_id,
+                            MAX(synced_at) AS synced_at, MAX(year) AS y, MAX(month) AS m
+                       FROM dg_ops_planfix_report_task
+                      WHERE year = ?`,
+                    [Number(year) || 0]
+                );
+                hasReportCounts = Number(snap && snap.n) > 0;
+                if (hasReportCounts) {
+                    snapYear = Number(snap.y) || Number(year) || 0;
+                    snapMonth = Number(snap.m) || 0;
+                    reportMeta = {
+                        report_id: Number(snap.report_id) || 0,
+                        save_id: Number(snap.save_id) || 0,
+                        synced_at: snap.synced_at || null,
+                        scope: metaRow ? String(metaRow.scope || 'all') : 'all',
+                    };
+                    const [rr] = await db.query(
+                        `SELECT r.status_value, COUNT(*) AS n
+                           FROM dg_ops_planfix_report_task r
+                           INNER JOIN dg_ops_planfix_task_dates d ON d.task_id = r.task_id
+                          WHERE r.year = ? AND r.month = ?
+                            AND d.created_at >= ? AND d.created_at < ?
+                          GROUP BY r.status_value`,
+                        [snapYear, snapMonth, b.fromSql, b.toSql]
+                    );
+                    reportCountRows = rr || [];
+                }
             }
         }
     } catch (e) {
@@ -1548,7 +1758,12 @@ async function loadPlanfixPanel(db, year, managers, month) {
         reportBy[k] = n;
         reportTotal += n;
     });
-    const mgrByStatus = await loadStatusManagerBreakdown(db, b, { periodScoped, hasReportCounts });
+    const mgrByStatus = await loadStatusManagerBreakdown(db, b, {
+        periodScoped,
+        hasReportCounts,
+        snapYear,
+        snapMonth,
+    });
     const names = {};
     const catMeta = {};
     const catOrder = [];
@@ -2216,7 +2431,10 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
                 } catch (e) {
                     if (e && e.code === 'PF_SYNC_CANCELLED') throw e;
                     errors.push({
-                        code: 'status_report',
+                        code:
+                            e && e.code === 'REPORT_PERIOD_MISMATCH'
+                                ? 'status_report_period'
+                                : 'status_report',
                         error: e && e.message ? e.message : 'Не удалось прочитать отчёт «Статус Сделки/Письма»',
                     });
                 }
