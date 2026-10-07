@@ -1092,6 +1092,7 @@
                   type="button"
                   class="btn btn-outline-primary"
                   id="dg-ops-pf-sync"
+                  data-dg-tooltip="Полный синк: заявки менеджеров продаж за выбранный период + статусы из отчёта Planfix 450694. В UI отчёта должен быть тот же год/месяц, что в Datagon."
                   data-dg-notify-start="Забираем заявки из Planfix…"
                 >
                   Синхронизировать Planfix
@@ -1100,7 +1101,8 @@
                   type="button"
                   class="btn btn-outline-secondary"
                   id="dg-ops-pf-sync-report"
-                  data-dg-notify-start="Только отчёт Planfix (без заявок)…"
+                  data-dg-tooltip="Только статусы и гистограмма «В отчёте Planfix» из отчёта 450694. Заявки листа не качает — быстро, если лист уже есть. Период в UI Planfix = периоду Datagon, иначе синк остановится и старую гистограмму не затрёт."
+                  data-dg-notify-start="Обновляем только отчёт Planfix (без заявок)…"
                 >
                   Только отчёт
                 </button>
@@ -3394,8 +3396,8 @@
         this.setAttribute(
           "data-dg-notify-start",
           m
-            ? "Только отчёт Planfix за выбранный месяц (без заявок)…"
-            : "Только отчёт Planfix за весь год (без заявок)…"
+            ? "Обновляем отчёт Planfix за месяц (заявки не трогаем)…"
+            : "Обновляем отчёт Planfix за год (заявки не трогаем)…"
         );
         runPlanfixSync({ reportOnly: true });
       });
