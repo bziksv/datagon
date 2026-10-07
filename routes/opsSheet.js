@@ -937,7 +937,11 @@ async function listPlanfixUsers(appSettings, onProgress) {
             appSettings,
             'POST',
             '/user/list',
-            { offset, pageSize: 100, fields: 'id,name,lastName,firstName' },
+            {
+                offset,
+                pageSize: 100,
+                fields: 'id,name,lastName,firstName,midName,patronymic,email,login',
+            },
             30000
         );
         const users = pf.collectUsers(payload);
@@ -945,7 +949,20 @@ async function listPlanfixUsers(appSettings, onProgress) {
         users.forEach((u) => {
             const id = Number(u && u.id);
             if (!Number.isFinite(id) || id <= 0) return;
-            out.push({ id, name: pf.pickUserDisplayName(u) });
+            // Не схлопывать в {id,name}: иначе pfUserNameCandidates теряет last/first
+            // и порядок «Имя Фамилия» / «Фамилия Имя» — менеджеры уходят в несматченные,
+            // prune потом вычищает их заявки из листа.
+            out.push({
+                id,
+                name: pf.pickUserDisplayName(u),
+                lastName: u.lastName,
+                firstName: u.firstName,
+                midName: u.midName || u.patronymic,
+                patronymic: u.patronymic || u.midName,
+                email: u.email,
+                login: u.login || u.username,
+                fullName: u.fullName || u.name,
+            });
         });
         if (users.length < 100) break;
         offset += users.length;
@@ -2229,20 +2246,25 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
                 });
                 return;
             }
+            // Planfix /user/list часто без уволенных и с урезанным name («Глеб» без фамилии).
+            // Несматченные менеджеры всё ещё постановщики на старых задачах — без доп. прохода
+            // prune вычищает их из листа → «(не в заявках листа)» с нулём справа.
+            let recoverUnmatchedPass = false;
             if (unmatchedNames.length) {
+                recoverUnmatchedPass = true;
                 errors.push({
                     code: 'assigners_partial',
                     error:
-                        'Не нашли в Planfix: ' +
+                        'Не нашли в Planfix /user/list: ' +
                         unmatchedNames.join(', ') +
-                        ' — их задачи в этот прогон не попадут. Полный дамп «все постановщики» отключён; поправьте ФИО (Datagon = Planfix) и пересинхронизируйте.',
+                        ' — будет доп. проход по периоду без фильтра постановщика; в лист пишем только задачи менеджеров продаж (в т.ч. несматченных по ФИО с задачи).',
                 });
+                if (assignerQueue.indexOf(null) < 0) assignerQueue.push(null);
             }
             const templateQueue =
                 (pf.DEAL_STATUS_TEMPLATE_IDS || []).length > 0
                     ? pf.DEAL_STATUS_TEMPLATE_IDS.slice()
                     : [null];
-            // removed: assignerQueue.push(null) full-year dump (rev.21) — see rev.22
 
             const field = await findDealStatusField(settings, (msg) => {
                 markPfSync({ stage: 'fields', message: msg });
@@ -2263,17 +2285,20 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
                     templateId,
                 });
             }
+            const firstAssigner = assignerQueue[0];
             try {
                 markPfSync({
                     stage: 'first_page',
                     message: `Первая страница за ${periodLabel} (постановщики: ${
-                        matchedAssigners.ids.length || 'все, потом отсев'
+                        recoverUnmatchedPass
+                            ? matchedAssigners.ids.length + '+догрузка несматченных'
+                            : matchedAssigners.ids.length || '—'
                     }, шаблон=${templateQueue[0] || 'любой'}, дата=${dateType})`,
                 });
-                await loadPage(0, assignerQueue[0], templateQueue[0]);
+                await loadPage(0, firstAssigner, templateQueue[0]);
             } catch (e) {
                 dateType = 'otherPeriod';
-                await loadPage(0, assignerQueue[0], templateQueue[0]);
+                await loadPage(0, firstAssigner, templateQueue[0]);
             }
 
             const syncedAt = mysqlNow();
@@ -2342,7 +2367,9 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
                     markPfSync({
                         stage: 'pages',
                         message:
-                            (assignerId ? `Постановщик user:${assignerId}` : 'Постановщик') +
+                            (assignerId
+                                ? `Постановщик user:${assignerId}`
+                                : 'Догрузка несматченных (все постановщики периода → только менеджеры продаж)') +
                             (templateId ? `, шаблон ${templateId}` : '') +
                             `, offset ${localOffset}`,
                     });
@@ -2378,18 +2405,35 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
 
             if (!dryRun) {
                 throwIfPfSyncCancelled();
+                const b = pf.periodBounds(year, month);
+                // Несматченные менеджеры в этот прогон не выгружались — их старые строки
+                // нельзя резать, иначе улетают в «(не в заявках листа)» без ФИО.
+                const keepNames = unmatchedNames
+                    .map((n) => String(n || '').trim())
+                    .filter(Boolean);
                 markPfSync({
                     stage: 'prune',
-                    message: month
-                        ? `Чистим задачи ${periodLabel}, которых не было в этом прогоне`
-                        : `Чистим задачи года ${year}, которых не было в этом прогоне`,
+                    message: keepNames.length
+                        ? `Чистим ${periodLabel}, кроме несматченных (${keepNames.length}): ${keepNames.join(', ')}`
+                        : month
+                          ? `Чистим задачи ${periodLabel}, которых не было в этом прогоне`
+                          : `Чистим задачи года ${year}, которых не было в этом прогоне`,
                 });
-                const b = pf.periodBounds(year, month);
-                await db.query(
-                    `DELETE FROM dg_ops_planfix_tasks
-                      WHERE created_at >= ? AND created_at < ? AND synced_at < ?`,
-                    [b.fromSql, b.toSql, syncedAt]
-                );
+                if (keepNames.length) {
+                    const ph = keepNames.map(() => '?').join(',');
+                    await db.query(
+                        `DELETE FROM dg_ops_planfix_tasks
+                          WHERE created_at >= ? AND created_at < ? AND synced_at < ?
+                            AND TRIM(IFNULL(assigner_name,'')) NOT IN (${ph})`,
+                        [b.fromSql, b.toSql, syncedAt, ...keepNames]
+                    );
+                } else {
+                    await db.query(
+                        `DELETE FROM dg_ops_planfix_tasks
+                          WHERE created_at >= ? AND created_at < ? AND synced_at < ?`,
+                        [b.fromSql, b.toSql, syncedAt]
+                    );
+                }
                 await upsertCatalog(db, field.enumValues || [], 'enum');
                 await upsertCatalog(db, Object.keys(seenStatuses), 'task');
                 let reportMeta = null;
