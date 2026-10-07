@@ -741,17 +741,21 @@
   }
 
   function patchLiveProgress(j, sec) {
+    // active:false — не трогаем DOM: иначе ensureProgressShell затирает журнал
+    // пустой зелёной/синей плашкой (гонка с late-poll после завершения).
+    if (j && j.success && j.active === false) return;
     var box = ensureProgressShell();
     if (!box) return;
-    // После рестарта Node job мёртв (active:false) — не крутим «идёт…» со старым offset
-    if (j && j.success && j.active === false) return;
     setLogType(box, "info");
     var title = "Синхронизация идёт, прошло " + fmtIntRu(sec) + " с…";
     setNodeText("dg-ops-pf-prog-title", title);
     setNodeText("dg-ops-pf-prog-filters", "Фильтры: " + planfixFiltersLine());
-    setNodeText("dg-ops-pf-prog-stage", "Этап: " + ((j && j.message) || "ждём ответ сервера…"));
+    setNodeText(
+      "dg-ops-pf-prog-stage",
+      "Этап: " + ((j && (j.message || j.stage)) || "ждём ответ сервера…")
+    );
     var counts = "";
-    if (j && (j.pages || j.fetched || j.stored)) {
+    if (j && (j.pages || j.fetched || j.stored || j.assigners_matched)) {
       counts =
         "Страниц: " +
         fmtIntRu(j.pages) +
@@ -771,6 +775,8 @@
             })
             .join(", ");
       }
+    } else {
+      counts = "Ждём первую страницу / generate отчёта…";
     }
     setNodeText("dg-ops-pf-prog-counts", counts);
   }
@@ -1255,18 +1261,12 @@
   function waitForActivePfSync(seed, opts) {
     opts = opts || {};
     var startedWait = Date.now();
-    if (seed) {
+    var seenActive = !!(seed && seed.active);
+    if (seed && seed.active) {
       patchLiveProgress(seed, Number(seed.elapsed_sec) || 0);
+    } else {
+      patchLiveProgress({ message: "ждём старт синка на сервере…" }, 0);
     }
-    showActionLog(
-      "info",
-      (opts.existing
-        ? "На сервере уже идёт синк Planfix — ждём окончания."
-        : "Синхронизация Planfix запущена, журнал обновляется, пока идёт выборка.") +
-        "<br>Фильтры: " +
-        planfixFiltersLine(),
-      true
-    );
     return new Promise(function (resolve, reject) {
       var ticks = 0;
       function tick() {
@@ -1276,8 +1276,27 @@
             return r.json();
           })
           .then(function (j) {
-            patchLiveProgress(j, Number(j.elapsed_sec) || Math.round((Date.now() - startedWait) / 1000));
+            if (j && j.active) seenActive = true;
+            var sec = Number(j && j.elapsed_sec) || Math.round((Date.now() - startedWait) / 1000);
             if (j && j.success && !j.active) {
+              // Пока job ещё не помечен active — не считаем «готово» (гонка с POST).
+              if (
+                !seenActive &&
+                j.stage !== "done" &&
+                j.stage !== "error" &&
+                j.stage !== "cancelled"
+              ) {
+                patchLiveProgress(
+                  { message: "ждём старт синка на сервере…", stage: j.stage },
+                  sec
+                );
+                if (ticks > 2400) {
+                  reject(new Error("Синк Planfix не стартовал за 40 мин"));
+                  return;
+                }
+                window.setTimeout(tick, 400);
+                return;
+              }
               if (j.stage === "cancelled") {
                 resolve({
                   success: true,
@@ -1294,6 +1313,14 @@
                 reject(new Error(j.last_error || j.message || "Синк Planfix завершился с ошибкой"));
                 return;
               }
+              // Не patchLiveProgress(active:false) — затрёт прогресс пустой плашкой.
+              showActionLog(
+                "info",
+                "Синк завершён на сервере, обновляем таблицу статусов…<br>Фильтры: " +
+                  planfixFiltersLine() +
+                  (j.message ? "<br>Последний этап: " + escapeHtml(j.message) : ""),
+                true
+              );
               loadPlanfix()
                 .then(function (panel) {
                   resolve({
@@ -1304,6 +1331,7 @@
                     stored: j.stored,
                     total: j.fetched,
                     fetched: j.fetched,
+                    duration_sec: sec,
                     period: j.year
                       ? Number(j.month)
                         ? "месяц " + j.month + " / " + j.year
@@ -1317,11 +1345,13 @@
                     with_status: panel && panel.with_status,
                     unmatched_assigners: panel && panel.unmatched_assigners,
                     sync_script: panel && panel.sync_script,
+                    status_report: j.status_report || (panel && panel.status_report) || null,
                   });
                 })
                 .catch(reject);
               return;
             }
+            patchLiveProgress(j, sec);
             if (ticks > 2400) {
               reject(new Error("Синк Planfix не завершился за 40 мин — обновите страницу и проверьте журнал"));
               return null;
@@ -1348,19 +1378,28 @@
     var year = state.year;
     state.pf.syncing = true;
     renderPlanfixPanel();
-    patchLiveProgress({ message: reportOnly ? "только отчёт…" : "старт…" }, 0);
+    patchLiveProgress(
+      { message: reportOnly ? "только отчёт Planfix…" : "старт полного синка Planfix…" },
+      0
+    );
     var lastProg = null;
+    var pollAlive = true;
     var timer = setInterval(function () {
+      if (!pollAlive) return;
       var sec = Math.round((Date.now() - started) / 1000);
       fetch("/api/ops-sheet/planfix-sync-status", { credentials: "same-origin" })
         .then(function (r) {
           return r.json();
         })
         .then(function (j) {
+          if (!pollAlive) return;
           if (j && j.success) lastProg = j;
+          // Late-ответ после clearInterval не должен затирать итоговый журнал.
+          if (j && j.active === false) return;
           patchLiveProgress(lastProg || j, sec);
         })
         .catch(function () {
+          if (!pollAlive) return;
           patchLiveProgress(lastProg, sec);
         });
     }, 1000);
@@ -1394,6 +1433,7 @@
         : run();
     return p
       .then(function (j) {
+        pollAlive = false;
         clearInterval(timer);
         state.pf.syncing = false;
         renderPlanfixPanel();
@@ -1418,9 +1458,11 @@
           formatPlanfixSummary(j, reportOnly ? "Только отчёт Planfix" : "Синхронизация Planfix"),
           true
         );
+        toast("success", reportOnly ? "Отчёт Planfix обновлён" : "Синк Planfix завершён");
         return loadYear();
       })
       .catch(function (e) {
+        pollAlive = false;
         clearInterval(timer);
         state.pf.syncing = false;
         renderPlanfixPanel();
