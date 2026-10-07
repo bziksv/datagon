@@ -3852,12 +3852,56 @@
   }
   function latestSyncedAt(list) {
     var best = null;
+    var bestMs = -1;
     (list || []).forEach(function (a) {
       if (!a || !a.synced_at) return;
-      var t = String(a.synced_at);
-      if (!best || t > best) best = t;
+      var d = a.synced_at instanceof Date ? a.synced_at : new Date(a.synced_at);
+      var ms = d.getTime();
+      if (!Number.isFinite(ms)) return;
+      if (ms > bestMs) {
+        bestMs = ms;
+        best = a.synced_at;
+      }
     });
     return best;
+  }
+
+  /** MySQL DATETIME уходит в JSON как ISO UTC; на экране — стенка МСК (как расписание автосинка). */
+  function formatSyncedAtMsk(value) {
+    if (value == null || value === "") return "—";
+    var d = value instanceof Date ? value : new Date(value);
+    if (!Number.isFinite(d.getTime())) {
+      var raw = String(value).replace("T", " ").slice(0, 19);
+      return raw || "—";
+    }
+    var parts = new Intl.DateTimeFormat("sv-SE", {
+      timeZone: "Europe/Moscow",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    }).formatToParts(d);
+    var map = {};
+    parts.forEach(function (p) {
+      if (p.type !== "literal") map[p.type] = p.value;
+    });
+    return (
+      map.year +
+      "-" +
+      map.month +
+      "-" +
+      map.day +
+      " " +
+      map.hour +
+      ":" +
+      map.minute +
+      ":" +
+      map.second +
+      " МСК"
+    );
   }
   function groupAccountsByBank(list) {
     var order = [];
@@ -3974,7 +4018,7 @@
     var main = availLines[0];
     var rest = availLines.slice(1);
     var syn = latestSyncedAt(viewAccounts);
-    var synTxt = syn ? String(syn).replace("T", " ").slice(0, 19) : "—";
+    var synTxt = formatSyncedAtMsk(syn);
     var blockedHtml = "";
     if (blockedLines.length) {
       var blockedPositive = blockedLines.some(function (x) { return Number(x.amount) > 0; });

@@ -2150,7 +2150,7 @@ CSV UTF-8 с BOM по текущему фильтру.
 
 ## Операционный лист
 
-Страница `/ops-sheet.html`, роутер `routes/opsSheet.js`, формулы `lib/opsSheetCalc.js`. Матрица: ключ **`ops-sheet`**. Адрес после «Применить»: `year`, `month` (`all` или 1–12 — период Planfix), `search`, `q` / `page` (таблица задач), `jump` (прокрутка к месяцу в листе).
+Страница `/ops-sheet.html`, роутер `routes/opsSheet.js`, формулы `lib/opsSheetCalc.js`. Матрица: ключ **`ops-sheet`**. Адрес после «Применить»: `year`, `month` (`all` или 1–12) либо `months=1,3,5` (мультивыбор периода Planfix), `search`, `q` / `page` (таблица задач), `jump` (прокрутка к месяцу в листе).
 
 - Полный свод по **всем** менеджерам специальности «Менеджер по продажам» для любого, у кого страница не `hidden` (без ограничения «только своя таблица»).
 - Режим **`view`** — только чтение; **`full`** — правка ручных ячеек (`PUT /manual`) и синк/маппинг Planfix.
@@ -2176,11 +2176,11 @@ Body: `year`, `month`, `manager_user_id` + `coefficient` / `bonus_past` / `salar
 
 ### GET `/api/ops-sheet/planfix`
 
-Query: `year`, `month` (`0` = весь год, `1–12` = месяц). Локальная панель статусов **за период**: `statuses[]` (`status_value`, `tasks_n` / `tasks_in_year` — заявки листа: постановщик=менеджер продаж, без фильтра шаблона КП; `managers[]` — разворот по постановщику `{ name, tasks_n, tasks_n_report }`; `bucket`, `suggested_bucket`, `count_in_apps`, `mapped`), `buckets`, `unmatched_assigners`, `local_total`, `empty_status`, `with_status`, `period`, `last_synced_at`, `sync_script`. Поля `tasks_n_report` / `report_total` / `report_meta` — гистограмма отчёта.
+Query: `year`, `month` (`0` = весь год, `1–12` = месяц) и/или `months` (список `1,3,5` / JSON-массив — несколько месяцев; приоритет у `months`). Локальная панель статусов **за период**: `statuses[]` (`status_value`, `tasks_n` / `tasks_in_year` — заявки листа: постановщик=менеджер продаж, без фильтра шаблона КП; `managers[]` — разворот по постановщику `{ name, tasks_n, tasks_n_report }`; `bucket`, `suggested_bucket`, `count_in_apps`, `mapped`), `buckets`, `unmatched_assigners`, `local_total`, `empty_status`, `with_status`, `period`, `last_synced_at`, `sync_script`. Поля `tasks_n_report` / `report_total` / `report_meta` — гистограмма отчёта.
 
 ### GET `/api/ops-sheet/planfix-tasks`
 
-Query: `year`, `month`, `q` (номер / постановщик / статус), `page`, `limit` (по умолчанию 100, макс. 200). Строки из `dg_ops_planfix_tasks` за период: `rows[]` (`task_id`, `assigner_name`, `status_value`, `created_at`, `synced_at`), `account` (для ссылки `https://{account}.planfix.ru/task/{id}`), `total`, `pages`, `shown`, `empty_status`, `with_status`.
+Query: `year`, `month` и/или `months` (как у панели), `q` (номер / постановщик / статус), `page`, `limit` (по умолчанию 100, макс. 200). Строки из `dg_ops_planfix_tasks` за период: `rows[]` (`task_id`, `assigner_name`, `status_value`, `created_at`, `synced_at`), `account` (для ссылки `https://{account}.planfix.ru/task/{id}`), `total`, `pages`, `shown`, `empty_status`, `with_status`.
 
 ### GET `/api/ops-sheet/planfix-sync-status`
 
@@ -2196,7 +2196,7 @@ Preflight матча «Менеджер по продажам» ↔ Planfix `/us
 
 ### POST `/api/ops-sheet/planfix-sync`
 
-Только `full`. Body: `{ year, month, report_only? }`. Ответ сразу `{ success: true, started: true, …planfix-sync-status }` — работа **в фоне**. UI опрашивает `GET /planfix-sync-status` до `active: false`.
+Только `full`. Body: `{ year, month?, months?, report_only? }`. `months` — массив или строка `1,3,5` (несколько месяцев; синк заявок помесячно в одной задаче). Без `months` — как раньше один `month` (`0` = весь год). При `months.length > 1` отчёт 450694 — один generate (`reportMonth=0`). Ответ сразу `{ success: true, started: true, …planfix-sync-status }` — работа **в фоне**. UI опрашивает `GET /planfix-sync-status` до `active: false`. `sync_script` — текущая ревизия (**v2.5.0 · rev.25**: мультивыбор месяцев).
 
 Один прогон: сотрудники → постановщики «Менеджер по продажам» → `POST /task/list` **только по сматченным** `user:id` за период (без фильтра шаблона КП) → системный статус → generate отчёта **450694**. **Нет** прохода «все постановщики» (rev.22). Несматченные ФИО — в `errors` / `unmatched_managers`, без дампа года. Опрос generate до **30 мин**. Год по числу менеджеров × страницы, не × весь аккаунт. Остановка — `POST /planfix-sync-cancel`.
 

@@ -1571,14 +1571,15 @@ function mergeStatusManagers(sheetBy, reportBy, hasReportCounts) {
     return out;
 }
 
-async function loadStatusManagerBreakdown(db, bounds, { periodScoped, hasReportCounts, snapYear, snapMonth }) {
+async function loadStatusManagerBreakdown(db, ranges, { periodScoped, hasReportCounts, snapYear, snapMonth }) {
     const sheetBy = {};
+    const sheetClause = pf.createdAtRangesSql('created_at', ranges);
     const [sheetRows] = await db.query(
         `SELECT status_value, assigner_name, COUNT(*) AS n
            FROM dg_ops_planfix_tasks
-          WHERE created_at >= ? AND created_at < ?
+          WHERE ${sheetClause.sql}
           GROUP BY status_value, assigner_name`,
-        [bounds.fromSql, bounds.toSql]
+        sheetClause.args
     );
     (sheetRows || []).forEach((r) => {
         const st = String(r.status_value || '');
@@ -1596,6 +1597,7 @@ async function loadStatusManagerBreakdown(db, bounds, { periodScoped, hasReportC
                  END`;
             const sy = Number(snapYear) || 0;
             const sm = periodMonthNorm(snapMonth);
+            const datesClause = pf.createdAtRangesSql('d.created_at', ranges);
             const sql = periodScoped
                 ? `SELECT r.status_value, ${nameExpr} AS assigner_name, COUNT(*) AS n
                      FROM dg_ops_planfix_report_task r
@@ -1607,11 +1609,9 @@ async function loadStatusManagerBreakdown(db, bounds, { periodScoped, hasReportC
                      INNER JOIN dg_ops_planfix_task_dates d ON d.task_id = r.task_id
                      LEFT JOIN dg_ops_planfix_tasks t ON t.task_id = r.task_id
                     WHERE r.year = ? AND r.month = ?
-                      AND d.created_at >= ? AND d.created_at < ?
+                      AND (${datesClause.sql})
                     GROUP BY r.status_value, ${nameExpr}`;
-            const args = periodScoped
-                ? [sy, sm]
-                : [sy, sm, bounds.fromSql, bounds.toSql];
+            const args = periodScoped ? [sy, sm] : [sy, sm, ...datesClause.args];
             const [rr] = await db.query(sql, args);
             (rr || []).forEach((r) => {
                 const st = String(r.status_value || '');
@@ -1626,10 +1626,20 @@ async function loadStatusManagerBreakdown(db, bounds, { periodScoped, hasReportC
     return mergeStatusManagers(sheetBy, reportBy, hasReportCounts);
 }
 
-async function loadPlanfixPanel(db, year, managers, month) {
-    const m = month == null ? 0 : month;
-    const b = pf.periodBounds(year, m);
-    const periodLabel = b.month ? `${MONTH_LABELS[b.month]} ${year}` : `весь ${year}`;
+async function loadPlanfixPanel(db, year, managers, monthOrMonths) {
+    const monthsList = pf.normalizeMonthsList(
+        monthOrMonths == null ? 0 : monthOrMonths,
+        0
+    );
+    const pr = pf.periodRanges(year, monthsList);
+    const b = pr.ranges[0] || pf.periodBounds(year, 0);
+    const periodLabel =
+        monthsList[0] === 0
+            ? `весь ${year}`
+            : monthsList.length === 1
+              ? `${MONTH_LABELS[monthsList[0]]} ${year}`
+              : `${monthsList.map((m) => MONTH_LABELS[m]).join(', ')} ${year}`;
+    const createdClause = pf.createdAtRangesSql('created_at', pr.ranges);
     const [mapRows] = await db.query(
         `SELECT status_value, bucket, count_in_apps FROM dg_ops_planfix_status_map ORDER BY status_value`
     );
@@ -1648,26 +1658,28 @@ async function loadPlanfixPanel(db, year, managers, month) {
     const [taskStatusRows] = await db.query(
         `SELECT status_value, COUNT(*) AS n
            FROM dg_ops_planfix_tasks
-          WHERE created_at >= ? AND created_at < ?
+          WHERE ${createdClause.sql}
           GROUP BY status_value`,
-        [b.fromSql, b.toSql]
+        createdClause.args
     );
     const [totRows] = await db.query(
         `SELECT COUNT(*) AS n, MAX(synced_at) AS last_synced_at
            FROM dg_ops_planfix_tasks
-          WHERE created_at >= ? AND created_at < ?`,
-        [b.fromSql, b.toSql]
+          WHERE ${createdClause.sql}`,
+        createdClause.args
     );
     let reportCountRows = [];
     let reportMeta = null;
     let hasReportCounts = false;
     let periodScoped = false;
     let snapYear = Number(year) || 0;
-    let snapMonth = Number(b.month) || 0;
+    let snapMonth = Number(pr.labelMonth) || 0;
+    const datesOnReport = pf.createdAtRangesSql('d.created_at', pr.ranges);
     try {
-        const reqMonth = Number(b.month) || 0;
+        const reqMonth = monthsList.length === 1 ? monthsList[0] : 0;
         const metaRow = await loadReportMeta(db, year, reqMonth);
         periodScoped = !!(
+            monthsList.length === 1 &&
             metaRow &&
             String(metaRow.scope || '') === 'period' &&
             Number(metaRow.year) === Number(year) &&
@@ -1704,9 +1716,9 @@ async function loadPlanfixPanel(db, year, managers, month) {
                        FROM dg_ops_planfix_report_task r
                        INNER JOIN dg_ops_planfix_task_dates d ON d.task_id = r.task_id
                       WHERE r.year = ? AND r.month = 0
-                        AND d.created_at >= ? AND d.created_at < ?
+                        AND (${datesOnReport.sql})
                       GROUP BY r.status_value`,
-                    [snapYear, b.fromSql, b.toSql]
+                    [snapYear, ...datesOnReport.args]
                 );
                 reportCountRows = rr || [];
                 hasReportCounts = reportCountRows.length > 0;
@@ -1743,9 +1755,9 @@ async function loadPlanfixPanel(db, year, managers, month) {
                            FROM dg_ops_planfix_report_task r
                            INNER JOIN dg_ops_planfix_task_dates d ON d.task_id = r.task_id
                           WHERE r.year = ? AND r.month = ?
-                            AND d.created_at >= ? AND d.created_at < ?
+                            AND (${datesOnReport.sql})
                           GROUP BY r.status_value`,
-                        [snapYear, snapMonth, b.fromSql, b.toSql]
+                        [snapYear, snapMonth, ...datesOnReport.args]
                     );
                     reportCountRows = rr || [];
                 }
@@ -1775,7 +1787,7 @@ async function loadPlanfixPanel(db, year, managers, month) {
         reportBy[k] = n;
         reportTotal += n;
     });
-    const mgrByStatus = await loadStatusManagerBreakdown(db, b, {
+    const mgrByStatus = await loadStatusManagerBreakdown(db, pr.ranges, {
         periodScoped,
         hasReportCounts,
         snapYear,
@@ -1852,13 +1864,29 @@ async function loadPlanfixPanel(db, year, managers, month) {
         local_total: Number(tot.n) || 0,
         last_synced_at: tot.last_synced_at || null,
         unmapped: statuses.filter((s) => !s.is_separator && !s.mapped && s.status_value).length,
-        month: b.month || 0,
+        month: monthsList.length === 1 ? monthsList[0] : 0,
+        months: monthsList,
         period: periodLabel,
         empty_status: emptyStatus,
         with_status: Math.max(0, (Number(tot.n) || 0) - emptyStatus),
         report_total: hasReportCounts ? reportTotal : null,
         report_meta: reportMeta,
     };
+}
+
+function monthsFromRequest(req, body) {
+    const src = body && typeof body === 'object' ? body : {};
+    if (src.months != null) return pf.normalizeMonthsList(src.months, 0);
+    if (req && req.query && req.query.months != null) {
+        return pf.normalizeMonthsList(req.query.months, 0);
+    }
+    const single =
+        src.month != null
+            ? src.month
+            : req && req.query
+              ? req.query.month
+              : null;
+    return pf.normalizeMonthsList(single, 0);
 }
 
 function composeMonthRow(mgr, agg, plan, manual) {
@@ -1931,14 +1959,16 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
         try {
             await ensureSchema(db);
             const year = normYear(req.query.year, currentYear());
-            const month = normSyncMonth(req.query.month, 0);
+            const months = monthsFromRequest(req, null);
+            const month = months.length === 1 ? months[0] : 0;
             const managers = await listSalesManagers(db);
-            const panel = await loadPlanfixPanel(db, year, managers, month);
+            const panel = await loadPlanfixPanel(db, year, managers, months);
             const { token, account, base } = credsFromSettings(settings);
             res.json({
                 success: true,
                 year,
                 month,
+                months,
                 configured: !!token,
                 account,
                 base,
@@ -1958,8 +1988,9 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
         try {
             await ensureSchema(db);
             const year = normYear(req.query.year, currentYear());
-            const month = normSyncMonth(req.query.month, 0);
-            const b = pf.periodBounds(year, month);
+            const months = monthsFromRequest(req, null);
+            const pr = pf.periodRanges(year, months);
+            const createdClause = pf.createdAtRangesSql('created_at', pr.ranges);
             const q = String(req.query.q || req.query.search || '').trim();
             let limit = Number(req.query.limit);
             if (!Number.isFinite(limit) || limit < 1) limit = 100;
@@ -1967,8 +1998,8 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
             let page = Number(req.query.page);
             if (!Number.isFinite(page) || page < 1) page = 1;
             const offset = (page - 1) * limit;
-            const args = [b.fromSql, b.toSql];
-            let where = 'created_at >= ? AND created_at < ?';
+            const args = createdClause.args.slice();
+            let where = `(${createdClause.sql})`;
             if (q) {
                 where += ' AND (CAST(task_id AS CHAR) LIKE ? OR assigner_name LIKE ? OR status_value LIKE ? OR planfix_status LIKE ?)';
                 const like = `%${q}%`;
@@ -1992,9 +2023,15 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
                 [...args, limit, offset]
             );
             const { account } = credsFromSettings(settings);
-            const periodLabel = b.month ? `${MONTH_LABELS[b.month]} ${year}` : `весь ${year}`;
+            const periodLabel =
+                months[0] === 0
+                    ? `весь ${year}`
+                    : months.length === 1
+                      ? `${MONTH_LABELS[months[0]]} ${year}`
+                      : `${months.map((m) => MONTH_LABELS[m]).join(', ')} ${year}`;
             res.json({
                 success: true,
+                months,
                 year,
                 month: b.month || 0,
                 period: periodLabel,
@@ -2105,11 +2142,16 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
             }
             const body = req.body || {};
             const year = normYear(body.year != null ? body.year : req.query.year, currentYear());
-            const month = normSyncMonth(
-                body.month != null ? body.month : req.query.month,
-                new Date().getMonth() + 1
-            );
-            const periodLabel = month ? `${MONTH_LABELS[month]} ${year}` : `весь ${year}`;
+            const monthsQueue = monthsFromRequest(req, body);
+            let month = monthsQueue[0];
+            const periodLabelFor = (m) =>
+                m ? `${MONTH_LABELS[m]} ${year}` : `весь ${year}`;
+            const periodLabel =
+                monthsQueue[0] === 0
+                    ? `весь ${year}`
+                    : monthsQueue.length === 1
+                      ? periodLabelFor(monthsQueue[0])
+                      : `${monthsQueue.map((m) => MONTH_LABELS[m]).join(', ')} ${year}`;
             const dryRun =
                 body.dry_run === 1 ||
                 body.dry_run === true ||
@@ -2140,9 +2182,9 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
                     ? `Пробный просмотр (${periodLabel}): справочник полей`
                     : reportOnly
                       ? `Только отчёт Planfix «${pf.STATUS_FIELD_NAME}» за ${periodLabel} (без повторной выгрузки задач)`
-                      : month
-                        ? `Справочник полей Planfix (${periodLabel})`
-                        : `Весь ${year}: все 12 месяцев одним прогоном (заявки листа, без второго обхода аккаунта)`,
+                      : monthsQueue[0] === 0
+                        ? `Весь ${year}: заявки листа одним прогоном`
+                        : `Синк Planfix за ${periodLabel}`,
                 pages: 0,
                 fetched: 0,
                 stored: 0,
@@ -2153,15 +2195,16 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
                 (async () => {
             if (reportOnly && !dryRun) {
                 const errors = [];
+                const reportMonth = monthsQueue.length === 1 ? monthsQueue[0] : 0;
                 markPfSync({
                     stage: 'status_report',
-                    message: `Generate отчёта за ${periodLabel} (задачи листа не трогаем)`,
+                    message: `Generate отчёта за ${periodLabelFor(reportMonth)} (задачи листа не трогаем)`,
                 });
                 let reportMeta = null;
                 try {
                     reportMeta = await enrichFromDealStatusReport(settings, db, (msg) => {
                         markPfSync({ stage: 'status_report', message: msg });
-                    }, year, month);
+                    }, year, reportMonth);
                 } catch (e) {
                     errors.push({
                         code: 'status_report',
@@ -2385,66 +2428,81 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
                 } while (pageLen === 100);
             }
 
-            for (let ai = 0; ai < assignerQueue.length; ai += 1) {
-                throwIfPfSyncCancelled();
-                for (let ti = 0; ti < templateQueue.length; ti += 1) {
-                    await paginateAssigner(assignerQueue[ai], templateQueue[ti]);
+            for (let mi = 0; mi < monthsQueue.length; mi += 1) {
+                month = monthsQueue[mi];
+                const sliceLabel = periodLabelFor(month);
+                markPfSync({
+                    stage: 'pages',
+                    message:
+                        monthsQueue.length > 1
+                            ? `Период ${mi + 1}/${monthsQueue.length}: ${sliceLabel}`
+                            : `Выгрузка заявок: ${sliceLabel}`,
+                    year,
+                    month,
+                });
+                for (let ai = 0; ai < assignerQueue.length; ai += 1) {
+                    throwIfPfSyncCancelled();
+                    for (let ti = 0; ti < templateQueue.length; ti += 1) {
+                        await paginateAssigner(assignerQueue[ai], templateQueue[ti]);
+                    }
+                }
+
+                if (!dryRun) {
+                    throwIfPfSyncCancelled();
+                    markPfSync({
+                        stage: 'task_dates',
+                        message: `Копируем даты из заявок листа (${sliceLabel})`,
+                    });
+                    await indexAllTaskDatesForPeriod(settings, db, year, month, (msg) => {
+                        markPfSync({ stage: 'task_dates', message: msg });
+                    });
+                }
+
+                if (!dryRun) {
+                    throwIfPfSyncCancelled();
+                    const b = pf.periodBounds(year, month);
+                    const keepNames = unmatchedNames
+                        .map((n) => String(n || '').trim())
+                        .filter(Boolean);
+                    markPfSync({
+                        stage: 'prune',
+                        message: keepNames.length
+                            ? `Чистим ${sliceLabel}, кроме несматченных (${keepNames.length})`
+                            : month
+                              ? `Чистим задачи ${sliceLabel}, которых не было в этом прогоне`
+                              : `Чистим задачи года ${year}, которых не было в этом прогоне`,
+                    });
+                    if (keepNames.length) {
+                        const ph = keepNames.map(() => '?').join(',');
+                        await db.query(
+                            `DELETE FROM dg_ops_planfix_tasks
+                              WHERE created_at >= ? AND created_at < ? AND synced_at < ?
+                                AND TRIM(IFNULL(assigner_name,'')) NOT IN (${ph})`,
+                            [b.fromSql, b.toSql, syncedAt, ...keepNames]
+                        );
+                    } else {
+                        await db.query(
+                            `DELETE FROM dg_ops_planfix_tasks
+                              WHERE created_at >= ? AND created_at < ? AND synced_at < ?`,
+                            [b.fromSql, b.toSql, syncedAt]
+                        );
+                    }
                 }
             }
 
             if (!dryRun) {
-                throwIfPfSyncCancelled();
-                markPfSync({
-                    stage: 'task_dates',
-                    message: `Копируем даты из заявок листа (${periodLabel})`,
-                });
-                await indexAllTaskDatesForPeriod(settings, db, year, month, (msg) => {
-                    markPfSync({ stage: 'task_dates', message: msg });
-                });
-            }
-
-            if (!dryRun) {
-                throwIfPfSyncCancelled();
-                const b = pf.periodBounds(year, month);
-                // Несматченные менеджеры в этот прогон не выгружались — их старые строки
-                // нельзя резать, иначе улетают в «(не в заявках листа)» без ФИО.
-                const keepNames = unmatchedNames
-                    .map((n) => String(n || '').trim())
-                    .filter(Boolean);
-                markPfSync({
-                    stage: 'prune',
-                    message: keepNames.length
-                        ? `Чистим ${periodLabel}, кроме несматченных (${keepNames.length}): ${keepNames.join(', ')}`
-                        : month
-                          ? `Чистим задачи ${periodLabel}, которых не было в этом прогоне`
-                          : `Чистим задачи года ${year}, которых не было в этом прогоне`,
-                });
-                if (keepNames.length) {
-                    const ph = keepNames.map(() => '?').join(',');
-                    await db.query(
-                        `DELETE FROM dg_ops_planfix_tasks
-                          WHERE created_at >= ? AND created_at < ? AND synced_at < ?
-                            AND TRIM(IFNULL(assigner_name,'')) NOT IN (${ph})`,
-                        [b.fromSql, b.toSql, syncedAt, ...keepNames]
-                    );
-                } else {
-                    await db.query(
-                        `DELETE FROM dg_ops_planfix_tasks
-                          WHERE created_at >= ? AND created_at < ? AND synced_at < ?`,
-                        [b.fromSql, b.toSql, syncedAt]
-                    );
-                }
                 await upsertCatalog(db, field.enumValues || [], 'enum');
                 await upsertCatalog(db, Object.keys(seenStatuses), 'task');
                 let reportMeta = null;
+                const reportMonth = monthsQueue.length === 1 ? monthsQueue[0] : 0;
                 try {
                     markPfSync({
                         stage: 'status_report',
-                        message: `Отдельно забираем «${pf.STATUS_FIELD_NAME}» из отчёта Planfix`,
+                        message: `Отдельно забираем «${pf.STATUS_FIELD_NAME}» из отчёта Planfix (${periodLabelFor(reportMonth)})`,
                     });
                     reportMeta = await enrichFromDealStatusReport(settings, db, (msg) => {
                         markPfSync({ stage: 'status_report', message: msg });
-                    }, year, month);
+                    }, year, reportMonth);
                     (reportMeta.unique_statuses || []).forEach((s) => {
                         if (s) seenStatuses[s] = true;
                     });
@@ -2455,19 +2513,20 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
                                 'Отчёт «Отчет за месяц по всем» не содержит задач этого периода (сейв без пересечения с выборкой). В Planfix откройте отчёт, выставьте даты нужного месяца и сформируйте; API не передаёт период в generate. Затем синхронизируйте снова.',
                         });
                     }
-                    const b2 = pf.periodBounds(year, month);
+                    const prDone = pf.periodRanges(year, monthsQueue);
+                    const emptyClause = pf.createdAtRangesSql('created_at', prDone.ranges);
                     const [emptyRows] = await db.query(
                         `SELECT COUNT(*) AS n FROM dg_ops_planfix_tasks
-                          WHERE created_at >= ? AND created_at < ?
+                          WHERE (${emptyClause.sql})
                             AND (status_value IS NULL OR status_value = '')`,
-                        [b2.fromSql, b2.toSql]
+                        emptyClause.args
                     );
                     emptyStatus = Number(emptyRows && emptyRows[0] && emptyRows[0].n) || 0;
                     const [seenRows] = await db.query(
                         `SELECT DISTINCT status_value FROM dg_ops_planfix_tasks
-                          WHERE created_at >= ? AND created_at < ?
+                          WHERE (${emptyClause.sql})
                             AND status_value IS NOT NULL AND status_value <> ''`,
-                        [b2.fromSql, b2.toSql]
+                        emptyClause.args
                     );
                     (seenRows || []).forEach((r) => {
                         if (r.status_value) seenStatuses[r.status_value] = true;
@@ -2548,6 +2607,7 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
                 report_only: !!reportOnly,
                 year,
                 month,
+                months: monthsQueue,
                 period: periodLabel,
                 ...pfSyncPublic(),
             });

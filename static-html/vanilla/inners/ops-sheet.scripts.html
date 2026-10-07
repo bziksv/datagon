@@ -75,9 +75,9 @@
   var state = {
     year: cy,
     search: "",
-    pf_month: curMonth,
+    pf_months: [curMonth],
     jump_month: 0,
-    pending: { year: cy, search: "", pf_month: curMonth },
+    pending: { year: cy, search: "", pf_months: [curMonth] },
     months: [],
     managers: [],
     years: [],
@@ -182,12 +182,41 @@
     }
   }
 
-  function parseShareMonth(raw) {
-    var m = String(raw == null ? "" : raw).trim();
-    if (m === "all" || m === "0") return 0;
-    var n = Number(m);
-    if (Number.isFinite(n) && n >= 1 && n <= 12) return n;
-    return null;
+  function normalizeMonthsList(raw, fallback) {
+    var fb = Number(fallback);
+    if (!Number.isFinite(fb) || fb < 0 || fb > 12) fb = curMonth;
+    var arr = [];
+    if (Array.isArray(raw)) arr = raw.slice();
+    else if (raw == null || raw === "") arr = [fb];
+    else {
+      var s = String(raw).trim().toLowerCase();
+      if (s === "all" || s === "0") return [0];
+      arr = s.split(/[,;\s]+/).filter(Boolean);
+    }
+    var out = [];
+    var whole = false;
+    arr.forEach(function (x) {
+      var n = Math.round(Number(x));
+      if (!Number.isFinite(n)) return;
+      if (n === 0) {
+        whole = true;
+        return;
+      }
+      if (n >= 1 && n <= 12 && out.indexOf(n) < 0) out.push(n);
+    });
+    if (whole || out.length >= 12) return [0];
+    if (!out.length) return [fb === 0 ? 0 : fb];
+    out.sort(function (a, b) {
+      return a - b;
+    });
+    return out;
+  }
+
+  function parseShareMonths(raw) {
+    if (raw == null || raw === "") return null;
+    var m = String(raw).trim();
+    if (m === "all" || m === "0") return [0];
+    return normalizeMonthsList(m, curMonth);
   }
 
   function applyShareQueryToPending() {
@@ -195,9 +224,9 @@
     var p = new URLSearchParams(window.location.search || "");
     var y = Number(p.get("year"));
     if (Number.isFinite(y) && y >= 2019 && y <= 2100) state.pending.year = y;
-    if (p.has("month")) {
-      var pm = parseShareMonth(p.get("month"));
-      if (pm != null) state.pending.pf_month = pm;
+    if (p.has("months") || p.has("month")) {
+      var pm = parseShareMonths(p.get("months") || p.get("month"));
+      if (pm) state.pending.pf_months = pm;
     }
     if (p.has("search")) state.pending.search = p.get("search") || "";
     if (p.has("q")) state.pf.task_q = String(p.get("q") || "").trim();
@@ -213,7 +242,15 @@
   function syncUrlFromState() {
     var params = new URLSearchParams();
     params.set("year", String(state.year || cy));
-    params.set("month", Number(state.pf_month) === 0 ? "all" : String(state.pf_month || curMonth));
+    var months = pfMonthsFromUi();
+    if (months[0] === 0) {
+      params.set("month", "all");
+    } else if (months.length === 1) {
+      params.set("month", String(months[0]));
+    } else {
+      params.set("months", months.join(","));
+      params.set("month", months.join(","));
+    }
     if (state.search) params.set("search", state.search);
     if (state.pf.task_q) params.set("q", state.pf.task_q);
     if (Number(state.pf.task_page) > 1) params.set("page", String(state.pf.task_page));
@@ -234,14 +271,11 @@
 
   function paintFilterForm() {
     var y = el("dg-ops-f-year");
-    var s = el("dg-ops-search");
     var mirr = el("dg-ops-table-search-mirror");
-    var pfSel = el("dg-ops-pf-month");
     var tq = el("dg-ops-pf-tasks-search");
     if (y) y.value = String(state.pending.year || cy);
-    if (s) s.value = String(state.pending.search || "");
     if (mirr) mirr.value = String(state.pending.search || "");
-    if (pfSel) pfSel.value = String(Number(state.pending.pf_month) === 0 ? 0 : state.pending.pf_month || curMonth);
+    paintPfMonthSelect(state.pending.pf_months);
     if (tq) tq.value = String(state.pf.task_q || "");
   }
 
@@ -320,7 +354,7 @@
     if (!btn) return;
     var dirty =
       Number(state.pending.year) !== Number(state.year) ||
-      Number(state.pending.pf_month) !== Number(state.pf_month) ||
+      monthsListKey(state.pending.pf_months) !== monthsListKey(state.pf_months) ||
       String(state.pending.search || "") !== String(state.search || "");
     btn.classList.toggle("dg-flt-dirty", dirty);
     btn.textContent = dirty ? "Применить •" : "Применить";
@@ -605,9 +639,13 @@
       if (totals && totals.turnover != null) metaParts.push("оборот " + formatMoney(totals.turnover));
       if (totals && totals.profit_after_tax != null) metaParts.push("прибыль " + formatMoney(totals.profit_after_tax));
       if (totals && totals.profit_pct != null) metaParts.push(formatNum(totals.profit_pct, 2) + "%");
+      var monthTitle = String(block.label || MONTH_SHORT[block.month] || "").trim();
+      if (state.year) {
+        monthTitle = monthTitle ? monthTitle.toUpperCase() + " — " + state.year : String(state.year);
+      }
       wrap.innerHTML =
         '<div class="dg-ops-month-banner"><span>' +
-        escapeHtml(block.label || MONTH_SHORT[block.month] || "") +
+        escapeHtml(monthTitle) +
         '</span><span class="dg-ops-month-meta">' +
         escapeHtml(metaParts.join(" · ")) +
         "</span></div>" +
@@ -794,35 +832,106 @@
     return Number(n || 0).toLocaleString("ru-RU");
   }
 
+  function monthsListKey(arr) {
+    return normalizeMonthsList(arr, curMonth).join(",");
+  }
+
+  function pfMonthsFromUi() {
+    return normalizeMonthsList(state.pf_months, curMonth);
+  }
+
+  /** @deprecated single-month helper for back-compat call sites */
   function pfMonthFromUi() {
-    var n = Number(state.pf_month);
-    if (n === 0) return 0;
-    if (n >= 1 && n <= 12) return n;
-    return curMonth;
+    var a = pfMonthsFromUi();
+    return a.length === 1 ? a[0] : 0;
+  }
+
+  function pfMonthsLabel(arr) {
+    var a = normalizeMonthsList(arr != null ? arr : state.pf_months, curMonth);
+    if (a[0] === 0) return "весь год";
+    return a
+      .map(function (m) {
+        return MONTH_SHORT[m] || String(m);
+      })
+      .join(", ");
+  }
+
+  function readPfMonthsFromSelect() {
+    return normalizeMonthsList(state.pending.pf_months, curMonth);
+  }
+
+  function paintPfMonthSelect(months) {
+    var host = el("dg-ops-pf-months");
+    if (!host) return;
+    var want = normalizeMonthsList(months, curMonth);
+    var wantSet = {};
+    want.forEach(function (m) {
+      wantSet[String(m)] = 1;
+    });
+    var btns = host.querySelectorAll("button[data-ops-pf-month]");
+    for (var i = 0; i < btns.length; i += 1) {
+      var b = btns[i];
+      var v = b.getAttribute("data-ops-pf-month");
+      var on = !!wantSet[v];
+      b.classList.toggle("btn-primary", on);
+      b.classList.toggle("btn-outline-secondary", !on);
+      b.setAttribute("aria-pressed", on ? "true" : "false");
+    }
+  }
+
+  function togglePfMonth(rawMonth) {
+    var clicked = Math.round(Number(rawMonth));
+    if (!Number.isFinite(clicked) || clicked < 0 || clicked > 12) return;
+    var prev = normalizeMonthsList(state.pending.pf_months, curMonth);
+    var next;
+    if (clicked === 0) {
+      next = [0];
+    } else if (prev.indexOf(0) >= 0) {
+      next = [clicked];
+    } else if (prev.indexOf(clicked) >= 0) {
+      next = prev.filter(function (m) {
+        return m !== clicked;
+      });
+      if (!next.length) next = [clicked];
+    } else {
+      next = prev.concat([clicked]);
+    }
+    next = normalizeMonthsList(next, curMonth);
+    state.pending.pf_months = next;
+    paintPfMonthSelect(next);
+    syncDirtyMarker();
   }
 
   function fillPfMonthSelect() {
-    var sel = el("dg-ops-pf-month");
-    if (!sel) return;
-    var html = '<option value="0">Весь год</option>';
-    for (var m = 1; m <= 12; m += 1) {
-      html += '<option value="' + m + '">' + MONTH_SHORT[m] + "</option>";
+    var host = el("dg-ops-pf-months");
+    if (!host) return;
+    host.innerHTML = "";
+    function addBtn(val, label, extraClass) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = "btn btn-sm btn-outline-secondary" + (extraClass ? " " + extraClass : "");
+      b.textContent = label;
+      b.setAttribute("data-ops-pf-month", String(val));
+      b.setAttribute("data-dg-no-activity", "1");
+      b.setAttribute("aria-pressed", "false");
+      b.addEventListener("click", function () {
+        togglePfMonth(val);
+      });
+      host.appendChild(b);
     }
-    sel.innerHTML = html;
-    var want = Number(state.pending.pf_month);
-    if (want === 0) sel.value = "0";
-    else if (want >= 1 && want <= 12) sel.value = String(want);
-    else sel.value = String(curMonth);
+    addBtn(0, "Весь год", "is-year");
+    for (var m = 1; m <= 12; m += 1) {
+      addBtn(m, MONTH_SHORT[m]);
+    }
+    paintPfMonthSelect(state.pending.pf_months);
   }
 
   function planfixFiltersLine() {
-    var m = pfMonthFromUi();
-    var period = m ? MONTH_SHORT[m] : "весь год";
     return (
       "год листа: " +
       String(state.year) +
       "; период Planfix: " +
-      period +
+      pfMonthsLabel() +
       "; постановщик = менеджер продаж; месяц заявки = дата создания"
     );
   }
@@ -1139,11 +1248,14 @@
   }
 
   function planfixYearMonthQs() {
+    var months = pfMonthsFromUi();
     return (
       "year=" +
       encodeURIComponent(String(state.year)) +
+      "&months=" +
+      encodeURIComponent(months.join(",")) +
       "&month=" +
-      encodeURIComponent(String(pfMonthFromUi()))
+      encodeURIComponent(String(months.length === 1 ? months[0] : 0))
     );
   }
 
@@ -1403,7 +1515,8 @@
           patchLiveProgress(lastProg, sec);
         });
     }, 1000);
-    var body = { year: year, month: pfMonthFromUi() };
+    var months = pfMonthsFromUi();
+    var body = { year: year, month: months.length === 1 ? months[0] : 0, months: months };
     if (reportOnly) body.report_only = 1;
     var run = function () {
       return fetch("/api/ops-sheet/planfix-sync", {
@@ -1493,7 +1606,12 @@
         method: "PUT",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ year: state.year, month: pfMonthFromUi(), items: items }),
+        body: JSON.stringify({
+          year: state.year,
+          month: pfMonthFromUi(),
+          months: pfMonthsFromUi(),
+          items: items,
+        }),
       }).then(function (r) {
         return r.json().then(function (j) {
           if (!r.ok || !j || j.success === false) {
@@ -1582,18 +1700,14 @@
 
   function commitFilters(opts) {
     var ySel = el("dg-ops-f-year");
-    var sInp = el("dg-ops-search");
-    var pfSel = el("dg-ops-pf-month");
+    var mirr = el("dg-ops-table-search-mirror");
     if (ySel) state.pending.year = Number(ySel.value) || cy;
-    if (sInp) state.pending.search = sInp.value;
-    if (pfSel) {
-      var pm = Number(pfSel.value);
-      state.pending.pf_month = pm === 0 ? 0 : pm >= 1 && pm <= 12 ? pm : curMonth;
-    }
+    if (mirr) state.pending.search = mirr.value;
+    state.pending.pf_months = readPfMonthsFromSelect();
     state.year = Number(state.pending.year) || cy;
     state.search = String(state.pending.search || "").trim();
-    state.pf_month = Number(state.pending.pf_month);
-    if (state.pf_month !== 0 && (state.pf_month < 1 || state.pf_month > 12)) state.pf_month = curMonth;
+    state.pf_months = normalizeMonthsList(state.pending.pf_months, curMonth);
+    state.pending.pf_months = state.pf_months.slice();
     if (!(opts && opts.keepTaskPage)) state.pf.task_page = 1;
     syncDirtyMarker();
     scheduleUrlSync();
@@ -1610,7 +1724,7 @@
   function resetFilters() {
     state.pending.year = cy;
     state.pending.search = "";
-    state.pending.pf_month = curMonth;
+    state.pending.pf_months = [curMonth];
     state.jump_month = 0;
     state.pf.task_q = "";
     state.pf.task_page = 1;
@@ -1875,35 +1989,17 @@
   }
 
   function bindHeaderSearchMirror() {
-    var a = el("dg-ops-search");
     var b = el("dg-ops-table-search-mirror");
-    if (!a || !b) return;
-    var syncing = false;
-    function sync(from, to) {
-      if (syncing) return;
-      syncing = true;
-      to.value = from.value;
-      state.pending.search = from.value;
+    if (!b) return;
+    b.addEventListener("input", function () {
+      state.pending.search = b.value;
       syncDirtyMarker();
-      syncing = false;
-    }
-    a.addEventListener("input", function () { sync(a, b); });
-    b.addEventListener("input", function () { sync(b, a); });
-    function onEnter(ev) {
+    });
+    b.addEventListener("keydown", function (ev) {
       if (ev.key === "Enter") {
         ev.preventDefault();
         if (el("dg-ops-apply")) el("dg-ops-apply").click();
       } else if (ev.key === "Escape") {
-        a.value = "";
-        b.value = "";
-        state.pending.search = "";
-        commitFilters();
-      }
-    }
-    a.addEventListener("keydown", onEnter);
-    b.addEventListener("keydown", onEnter);
-    a.addEventListener("search", function () {
-      if (!a.value) {
         b.value = "";
         state.pending.search = "";
         commitFilters();
@@ -1911,7 +2007,6 @@
     });
     b.addEventListener("search", function () {
       if (!b.value) {
-        a.value = "";
         state.pending.search = "";
         commitFilters();
       }
@@ -1923,14 +2018,6 @@
     if (y) {
       y.addEventListener("change", function () {
         state.pending.year = Number(y.value) || cy;
-        syncDirtyMarker();
-      });
-    }
-    var pfSel = el("dg-ops-pf-month");
-    if (pfSel) {
-      pfSel.addEventListener("change", function () {
-        var n = Number(pfSel.value);
-        state.pending.pf_month = n === 0 ? 0 : n >= 1 && n <= 12 ? n : curMonth;
         syncDirtyMarker();
       });
     }
@@ -2074,24 +2161,23 @@
   function bindPlanfix() {
     if (el("dg-ops-pf-sync")) {
       el("dg-ops-pf-sync").addEventListener("click", function () {
-        var m = pfMonthFromUi();
+        var months = pfMonthsFromUi();
         this.setAttribute(
           "data-dg-notify-start",
-          m
-            ? "Забираем заявки Planfix за выбранный месяц…"
-            : "Забираем весь год одним прогоном (все 12 месяцев, без помесячных запусков)…"
+          months[0] === 0
+            ? "Забираем весь год одним прогоном…"
+            : months.length === 1
+              ? "Забираем заявки Planfix за " + pfMonthsLabel(months) + "…"
+              : "Забираем заявки Planfix за " + months.length + " мес.: " + pfMonthsLabel(months) + "…"
         );
         runPlanfixSync();
       });
     }
     if (el("dg-ops-pf-sync-report")) {
       el("dg-ops-pf-sync-report").addEventListener("click", function () {
-        var m = pfMonthFromUi();
         this.setAttribute(
           "data-dg-notify-start",
-          m
-            ? "Обновляем отчёт Planfix за месяц (заявки не трогаем)…"
-            : "Обновляем отчёт Planfix за год (заявки не трогаем)…"
+          "Обновляем отчёт Planfix (" + pfMonthsLabel() + ", заявки не трогаем)…"
         );
         runPlanfixSync({ reportOnly: true });
       });
