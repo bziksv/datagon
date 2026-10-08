@@ -2344,7 +2344,7 @@ function composeMonthRow(mgr, agg, plan, manual, opts) {
     );
 }
 
-module.exports = function opsSheetRouterFactory(db, appSettings) {
+function opsSheetRouterFactory(db, appSettings) {
     const router = express.Router();
     const settings = appSettings || {};
 
@@ -3531,4 +3531,115 @@ module.exports = function opsSheetRouterFactory(db, appSettings) {
     });
 
     return router;
-};
+}
+
+/**
+ * Автосинк / ручной «Запустить сейчас»: только отчёт 450694 (как кнопка «Только отчёт»).
+ * Период generate — как в UI Planfix (API дат не принимает). Снимок пишем в (year, month) МСК «сейчас».
+ */
+async function triggerOpsPlanfixReportSyncFromSettings(db, appSettings, opts) {
+    const o = opts || {};
+    await ensureSchema(db);
+    if (pfSyncJob.active) {
+        if (pfSyncLockIsStale()) {
+            markPfSync({
+                active: false,
+                stage: 'idle',
+                message: 'Сбросили зависший синк (нет прогресса > 45 мин)',
+            });
+        } else {
+            const err = new Error('Синхронизация Planfix уже идёт');
+            err.code = 'ALREADY_RUNNING';
+            throw err;
+        }
+    }
+    const { token } = credsFromSettings(appSettings);
+    if (!token) {
+        const err = new Error('Сначала сохраните REST-токен в Настройки → Planfix');
+        err.code = 'NO_TOKEN';
+        throw err;
+    }
+    const ym = moscowYearMonthNow();
+    const year = ym.year;
+    const month = ym.month;
+    const started = Date.now();
+    const onProgress = typeof o.onProgress === 'function' ? o.onProgress : null;
+    markPfSync({
+        active: true,
+        dry_run: false,
+        year,
+        month,
+        last_error: null,
+        cancelRequested: false,
+        stage: 'status_report',
+        message: `Автосинк отчёта Planfix за ${MONTH_LABELS[month]} ${year} (период как в UI Planfix)`,
+        pages: 0,
+        fetched: 0,
+        stored: 0,
+        started_ms: started,
+    });
+    try {
+        const reportMeta = await enrichFromDealStatusReport(
+            appSettings,
+            db,
+            (msg) => {
+                markPfSync({ stage: 'status_report', message: msg });
+                if (onProgress) onProgress({ message: msg });
+            },
+            year,
+            month
+        );
+        const durationSec = Math.round((Date.now() - started) / 10) / 100;
+        const message = `Отчёт готов: ${reportMeta.report_rows || 0} задач в сейве, статусов записано ${reportMeta.statuses_applied || 0}, ${durationSec} с`;
+        markPfSync({
+            active: false,
+            stage: 'done',
+            last_error: null,
+            message,
+            pages: 0,
+            fetched: reportMeta.report_rows || 0,
+            stored: reportMeta.statuses_applied || 0,
+        });
+        return {
+            success: true,
+            message,
+            year,
+            month,
+            report_rows: reportMeta.report_rows || 0,
+            statuses_applied: reportMeta.statuses_applied || 0,
+            duration_sec: durationSec,
+            sync_script: getOpsPlanfixSyncMeta(),
+        };
+    } catch (e) {
+        const msg = e && e.message ? e.message : String(e);
+        markPfSync({
+            active: false,
+            stage: 'error',
+            last_error: msg,
+            message: msg,
+        });
+        throw e;
+    }
+}
+
+function moscowYearMonthNow() {
+    const fmt = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Europe/Moscow',
+        year: 'numeric',
+        month: '2-digit',
+    });
+    const parts = fmt.formatToParts(new Date());
+    const get = (t) => {
+        const hit = parts.find((p) => p.type === t);
+        return hit ? hit.value : '';
+    };
+    return {
+        year: Number(get('year')) || currentYear(),
+        month: Number(get('month')) || 1,
+    };
+}
+
+opsSheetRouterFactory.triggerOpsPlanfixReportSyncFromSettings = triggerOpsPlanfixReportSyncFromSettings;
+opsSheetRouterFactory.getPlanfixSyncState = pfSyncPublic;
+
+module.exports = opsSheetRouterFactory;

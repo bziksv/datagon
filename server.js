@@ -115,6 +115,9 @@ let appSettings = {
     auto_sync_finance_tochka_time: '07:00',
     auto_sync_finance_tochka_days: 30,
     auto_sync_finance_tochka_weekdays: '',
+    auto_sync_ops_planfix_enabled: 1,
+    auto_sync_ops_planfix_time: '20:00',
+    auto_sync_ops_planfix_weekdays: '',
     auto_sync_moysklad_enabled: 0,
     auto_sync_moysklad_time: '04:00',
     auto_sync_ms_orders_enabled: 0,
@@ -270,6 +273,7 @@ const medmarketRouterFactory = require('./routes/medmarket');
 const myProductsRouterFactory = require('./routes/myproducts');
 const networkPricesRouterFactory = require('./routes/networkPrices');
 const financeRouterFactory = require('./routes/finance');
+const opsSheetRouterFactory = require('./routes/opsSheet');
 /** Whitelist для POST /api/settings/auto-sync-run (фиксируется при старте процесса). */
 const AUTO_SYNC_ALLOWED_TASK_KEYS = new Set([
     ...getAutoSyncTaskKeys(),
@@ -455,6 +459,9 @@ async function initDB() {
             ['auto_sync_finance_tochka_time','07:00'],
             ['auto_sync_finance_tochka_days','30'],
             ['auto_sync_finance_tochka_weekdays',''],
+            ['auto_sync_ops_planfix_enabled','1'],
+            ['auto_sync_ops_planfix_time','20:00'],
+            ['auto_sync_ops_planfix_weekdays',''],
             ['auto_sync_moysklad_enabled','0'],['auto_sync_moysklad_time','04:00'],
             ['auto_sync_ms_orders_enabled','0'],['auto_sync_ms_orders_time','08:00'],['auto_sync_ms_orders_weekdays',''],
             ['discover_max_sitemaps','200'],['discover_max_urls','50000'],
@@ -2713,6 +2720,35 @@ async function processAutoSyncQueue() {
                 }
                 await finishAutoSyncRun('finance_tochka', statusFt, messageFt);
                 console.log(`[AUTO SYNC] Queue done: finance_tochka — ${statusFt}`);
+            } else if (task === 'ops_planfix') {
+                console.log('[AUTO SYNC] Queue start: ops_planfix');
+                await startAutoSyncRun('ops_planfix', triggerType);
+                let statusPf = 'failed';
+                let messagePf = 'Ошибка синка отчёта Planfix';
+                try {
+                    if (typeof opsSheetRouterFactory.triggerOpsPlanfixReportSyncFromSettings !== 'function') {
+                        throw new Error('triggerOpsPlanfixReportSyncFromSettings недоступен');
+                    }
+                    await touchAutoSyncRunMessage('ops_planfix', 'Planfix отчёт: старт…').catch(() => {});
+                    const result = await opsSheetRouterFactory.triggerOpsPlanfixReportSyncFromSettings(
+                        db,
+                        appSettings,
+                        {
+                            onProgress: (p) => {
+                                touchAutoSyncRunMessage(
+                                    'ops_planfix',
+                                    String((p && p.message) || 'Planfix отчёт…').slice(0, 480)
+                                ).catch(() => {});
+                            },
+                        }
+                    );
+                    messagePf = String((result && result.message) || 'Готово').slice(0, 480);
+                    statusPf = result && result.success === false ? 'failed' : 'completed';
+                } catch (e) {
+                    messagePf = ('Ошибка Planfix: ' + (e && e.message ? e.message : e)).slice(0, 480);
+                }
+                await finishAutoSyncRun('ops_planfix', statusPf, messagePf);
+                console.log(`[AUTO SYNC] Queue done: ops_planfix — ${statusPf}`);
             } else if (task === 'mssales') {
                 console.log('[AUTO SYNC] Queue start: mssales');
                 await startAutoSyncRun('mssales', triggerType);
@@ -3102,6 +3138,12 @@ function startAutoSyncScheduler() {
                     enabled: Number(appSettings.auto_sync_finance_tochka_enabled || 0) === 1,
                     time: String(appSettings.auto_sync_finance_tochka_time || '07:00').slice(0, 5),
                     weekdays: parseAutoSyncWeekdaysMon17(appSettings.auto_sync_finance_tochka_weekdays)
+                },
+                {
+                    type: 'ops_planfix',
+                    enabled: Number(appSettings.auto_sync_ops_planfix_enabled || 0) === 1,
+                    time: String(appSettings.auto_sync_ops_planfix_time || '20:00').slice(0, 5),
+                    weekdays: parseAutoSyncWeekdaysMon17(appSettings.auto_sync_ops_planfix_weekdays)
                 }
             ];
             for (const t of tasks) {
@@ -3260,7 +3302,7 @@ initDB().then(async () => {
     app.use('/api/db-admin', require('./routes/dbAdmin')(db));
     app.use('/api/finance', financeRouterFactory(db, appSettings));
     app.use('/api/manager-sales', require('./routes/managerSales')(db));
-    app.use('/api/ops-sheet', require('./routes/opsSheet')(db, appSettings));
+    app.use('/api/ops-sheet', opsSheetRouterFactory(db, appSettings));
     app.use('/api/specialties', require('./routes/specialties')(db));
     app.post('/api/settings/auto-sync-run', async (req, res) => {
         try {

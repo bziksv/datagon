@@ -121,6 +121,9 @@
         auto_sync_finance_tochka_time: "07:00",
         auto_sync_finance_tochka_days: 30,
         auto_sync_finance_tochka_weekdays: "",
+        auto_sync_ops_planfix_enabled: 1,
+        auto_sync_ops_planfix_time: "20:00",
+        auto_sync_ops_planfix_weekdays: "",
         ms_dimensions_log_retention_days: 180,
         dg_purchase_overrides_log_retention_days: 180,
         auto_sync_runs_retention_days: 180,
@@ -1154,6 +1157,10 @@
         set("dg-set-auto_finance_tochka_time", merged.auto_sync_finance_tochka_time || "07:00");
         set("dg-set-auto_finance_tochka_days", merged.auto_sync_finance_tochka_days != null ? String(merged.auto_sync_finance_tochka_days) : "30");
         applyAutoSyncWeekdayChecks("dg-set-auto_finance_tochka_wd", merged.auto_sync_finance_tochka_weekdays);
+        var opsPlanfixEn = document.getElementById("dg-set-auto_ops_planfix_en");
+        if (opsPlanfixEn) opsPlanfixEn.checked = Number(merged.auto_sync_ops_planfix_enabled) === 1;
+        set("dg-set-auto_ops_planfix_time", merged.auto_sync_ops_planfix_time || "20:00");
+        applyAutoSyncWeekdayChecks("dg-set-auto_ops_planfix_wd", merged.auto_sync_ops_planfix_weekdays);
         document.getElementById("dg-set-auto_ms_en").checked = Number(merged.auto_sync_moysklad_enabled) === 1;
         set("dg-set-auto_ms_time", merged.auto_sync_moysklad_time || "04:00");
         var msOrdersAutoEn = document.getElementById("dg-set-auto_ms_orders_en");
@@ -2339,6 +2346,11 @@
           auto_sync_finance_tochka_time: getStr("dg-set-auto_finance_tochka_time") || "07:00",
           auto_sync_finance_tochka_days: getStr("dg-set-auto_finance_tochka_days") || "30",
           auto_sync_finance_tochka_weekdays: collectAutoSyncWeekdayCsv("dg-set-auto_finance_tochka_wd"),
+          auto_sync_ops_planfix_enabled: document.getElementById("dg-set-auto_ops_planfix_en")
+            ? document.getElementById("dg-set-auto_ops_planfix_en").checked
+            : false,
+          auto_sync_ops_planfix_time: getStr("dg-set-auto_ops_planfix_time") || "20:00",
+          auto_sync_ops_planfix_weekdays: collectAutoSyncWeekdayCsv("dg-set-auto_ops_planfix_wd"),
           auto_sync_moysklad_enabled: document.getElementById("dg-set-auto_ms_en").checked,
           auto_sync_moysklad_time: getStr("dg-set-auto_ms_time") || "04:00",
           auto_sync_ms_orders_enabled: document.getElementById("dg-set-auto_ms_orders_en")
@@ -2426,6 +2438,9 @@
             "auto_sync_finance_tochka_time",
             "auto_sync_finance_tochka_days",
             "auto_sync_finance_tochka_weekdays",
+            "auto_sync_ops_planfix_enabled",
+            "auto_sync_ops_planfix_time",
+            "auto_sync_ops_planfix_weekdays",
             "auto_sync_moysklad_time",
             "auto_sync_ms_orders_time",
             "auto_sync_ms_orders_weekdays",
@@ -2479,6 +2494,7 @@
         price_comp_sync: "Цены с конкурента (ДМ/МК)",
         network_prices: "Цены сети",
         finance_tochka: "Финансы: Точка",
+        ops_planfix: "Операционный лист: Planfix",
       };
       function escAutoRunHtml(s) {
         return String(s || "")
@@ -3948,6 +3964,12 @@
       if (financeTochkaRunBtn) {
         financeTochkaRunBtn.addEventListener("click", function () {
           runAutoSyncNow("finance_tochka", "Финансы: Точка", "dg-set-auto_finance_tochka_run");
+        });
+      }
+      var opsPlanfixRunBtn = document.getElementById("dg-set-auto_ops_planfix_run");
+      if (opsPlanfixRunBtn) {
+        opsPlanfixRunBtn.addEventListener("click", function () {
+          runAutoSyncNow("ops_planfix", "Операционный лист: Planfix", "dg-set-auto_ops_planfix_run");
         });
       }
       if (document.getElementById("dg-set-auto_price_comp_live")) {
