@@ -1589,22 +1589,37 @@ async function indexAllTaskDatesForPeriod(appSettings, db, year, month, onProgre
     return 0;
 }
 
-async function reportOverlapsLocalPeriod(db, byTask, year, month) {
+/**
+ * Пересечение сейва отчёта с локальным периодом.
+ * Раньше хватало 1 совпавшего task_id (LIMIT 1) — сейв за 2024 проходил как «весь 2025»,
+ * гистограмма писалась, а статусы в заявки 2025 почти не попадали → нули в таблице.
+ */
+async function reportPeriodCoverage(db, byTask, year, month) {
     const ids = [...(byTask || new Map()).keys()];
-    if (!ids.length) return false;
+    const reportN = ids.length;
+    const empty = { report_n: reportN, in_period: 0, ok: false };
+    if (!reportN || !year) return empty;
     const b = pf.periodBounds(year, month);
+    let inPeriod = 0;
     for (let i = 0; i < ids.length; i += 400) {
         const slice = ids.slice(i, i + 400);
         const ph = slice.map(() => '?').join(',');
         const [rows] = await db.query(
-            `SELECT 1 AS x FROM dg_ops_planfix_tasks
-              WHERE task_id IN (${ph}) AND created_at >= ? AND created_at < ?
-              LIMIT 1`,
+            `SELECT COUNT(*) AS n FROM dg_ops_planfix_tasks
+              WHERE task_id IN (${ph}) AND created_at >= ? AND created_at < ?`,
             [...slice, b.fromSql, b.toSql]
         );
-        if (rows && rows.length) return true;
+        inPeriod += Number(rows && rows[0] && rows[0].n) || 0;
     }
-    return false;
+    // ≥10% строк сейва и ≥100 задач в периоде (иначе чужой год с парой совпадений)
+    const ratio = inPeriod / reportN;
+    const ok = inPeriod >= 100 && ratio >= 0.1;
+    return { report_n: reportN, in_period: inPeriod, ratio, ok };
+}
+
+async function reportOverlapsLocalPeriod(db, byTask, year, month) {
+    const cov = await reportPeriodCoverage(db, byTask, year, month);
+    return !!cov.ok;
 }
 
 async function enrichFromDealStatusReport(appSettings, db, onProgress, year, month, opts) {
@@ -1673,19 +1688,22 @@ async function enrichFromDealStatusReport(appSettings, db, onProgress, year, mon
         let read = await readDealStatusReportPairs(appSettings, id, save, onProgress);
         const overlapMonths =
             splitMonths.length > 1 ? splitMonths : periodMonth ? [periodMonth] : [0];
-        let overlaps = !year;
+        let coverage = { report_n: 0, in_period: 0, ok: !year };
         if (year) {
             for (let oi = 0; oi < overlapMonths.length; oi += 1) {
-                if (await reportOverlapsLocalPeriod(db, read.byTask, year, overlapMonths[oi])) {
-                    overlaps = true;
+                const cov = await reportPeriodCoverage(db, read.byTask, year, overlapMonths[oi]);
+                if (cov.in_period > (coverage.in_period || 0)) coverage = cov;
+                if (cov.ok) {
+                    coverage = cov;
                     break;
                 }
             }
         }
+        let overlaps = !!coverage.ok;
         if (!overlaps && !localGenerated) {
             if (typeof onProgress === 'function') {
                 onProgress(
-                    `Сейв отчёта ${id} не содержит задач выбранного периода — generate в Planfix`
+                    `Сейв отчёта ${id}: в периоде Datagon только ${coverage.in_period || 0} из ${coverage.report_n || 0} задач — generate в Planfix`
                 );
             }
             try {
@@ -1695,16 +1713,18 @@ async function enrichFromDealStatusReport(appSettings, db, onProgress, year, mon
                     generated = true;
                     save = await resolveSaveChunks(appSettings, id, fresh);
                     read = await readDealStatusReportPairs(appSettings, id, save, onProgress);
+                    coverage = { report_n: 0, in_period: 0, ok: false };
                     overlaps = false;
                     for (let oi = 0; oi < overlapMonths.length; oi += 1) {
-                        if (
-                            await reportOverlapsLocalPeriod(
-                                db,
-                                read.byTask,
-                                year,
-                                overlapMonths[oi]
-                            )
-                        ) {
+                        const cov = await reportPeriodCoverage(
+                            db,
+                            read.byTask,
+                            year,
+                            overlapMonths[oi]
+                        );
+                        if (cov.in_period > (coverage.in_period || 0)) coverage = cov;
+                        if (cov.ok) {
+                            coverage = cov;
                             overlaps = true;
                             break;
                         }
@@ -1727,13 +1747,19 @@ async function enrichFromDealStatusReport(appSettings, db, onProgress, year, mon
                       ? `${MONTH_LABELS[periodMonth]} ${year}`
                       : `весь ${year}`;
             const err = new Error(
-                `Сейв отчёта Planfix (${id}) не пересекается с периодом Datagon «${label}». ` +
-                    `В UI отчёта https://almamed.planfix.ru/?action=report&id=${id} выставьте тот же год/месяц и повторите. ` +
+                `Сейв отчёта Planfix (${id}) не пересекается с периодом Datagon «${label}» ` +
+                    `(в периоде ${coverage.in_period || 0} из ${coverage.report_n || 0} задач сейва; нужно ≥10% и ≥100). ` +
+                    `В UI отчёта https://almamed.planfix.ru/?action=report&id=${id} выставьте тот же год/месяц, generate, и повторите синк. ` +
                     `Гистограмма «В отчёте» за этот период не изменена.`
             );
             err.status = 409;
             err.code = 'REPORT_PERIOD_MISMATCH';
             throw err;
+        }
+        if (typeof onProgress === 'function' && year) {
+            onProgress(
+                `Период ок: ${coverage.in_period} из ${coverage.report_n} задач сейва в «${periodMonth ? MONTH_LABELS[periodMonth] + ' ' : 'весь '}${year}»`
+            );
         }
 
         read.byTask.forEach((val, tid) => {
@@ -2073,14 +2099,46 @@ async function loadPlanfixPanel(db, year, managers, monthOrMonths) {
             );
             reportCountRows = rr || [];
             hasReportCounts = reportCountRows.length > 0;
-            reportMeta = {
-                report_id: Number(metaRow.report_id) || 0,
-                save_id: Number(metaRow.save_id) || 0,
-                synced_at: metaRow.synced_at || null,
-                scope: 'period',
-                year: snapYear,
-                month: snapMonth,
-            };
+            if (!hasReportCounts) {
+                // Счётчики могли уйти в year=0; пробуем пересобрать из report_task этого снимка.
+                const [fromTasks] = await db.query(
+                    `SELECT status_value, COUNT(*) AS n
+                       FROM dg_ops_planfix_report_task
+                      WHERE year = ? AND month = ?
+                      GROUP BY status_value`,
+                    [snapYear, snapMonth]
+                );
+                const byTask = new Map();
+                const [idRows] = await db.query(
+                    `SELECT task_id, status_value FROM dg_ops_planfix_report_task
+                      WHERE year = ? AND month = ?`,
+                    [snapYear, snapMonth]
+                );
+                (idRows || []).forEach((r) => {
+                    byTask.set(Number(r.task_id), r.status_value);
+                });
+                const cov = await reportPeriodCoverage(db, byTask, snapYear, snapMonth);
+                if (cov.ok && fromTasks && fromTasks.length) {
+                    reportCountRows = fromTasks;
+                    hasReportCounts = true;
+                } else {
+                    // Снимок чужого периода (как «2025» с данными 2024) — не показываем как отчёт года
+                    periodScoped = false;
+                    reportMeta = null;
+                    reportCountRows = [];
+                    hasReportCounts = false;
+                }
+            }
+            if (hasReportCounts) {
+                reportMeta = {
+                    report_id: Number(metaRow.report_id) || 0,
+                    save_id: Number(metaRow.save_id) || 0,
+                    synced_at: metaRow.synced_at || null,
+                    scope: 'period',
+                    year: snapYear,
+                    month: snapMonth,
+                };
+            }
         } else if (!multiSumOk) {
             // Нет точного снимка: пробуем полный год того же year (month=0), иначе даты.
             const yearMeta = await loadReportMeta(db, year, 0);
