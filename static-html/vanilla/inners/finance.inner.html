@@ -109,46 +109,6 @@
             </div>
           </div>
 
-          <div class="dg-fin-balances mb-3" id="dg-fin-balances" aria-label="Балансы">
-            <div id="dg-fin-total-wrap"></div>
-            <div class="dg-fin-banks" id="dg-fin-banks-wrap"></div>
-            <p id="dg-fin-api-note" class="small text-muted mt-2 mb-0 d-none" role="note"></p>
-          </div>
-
-          <div class="main-card mb-3 card" id="dg-fin-analytics-card">
-            <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
-              <div class="d-flex align-items-center gap-2 flex-wrap">
-                <i class="header-icon pe-7s-graph1 icon-gradient bg-happy-itmeo me-1"></i>
-                <span>Аналитика по месяцам</span>
-                <span class="badge bg-light text-muted border" id="dg-fin-analytics-scope">Все организации</span>
-              </div>
-              <div class="d-flex align-items-center gap-2 flex-wrap">
-                <label class="mb-0 small text-muted d-inline-flex align-items-center gap-1" for="dg-fin-analytics-deposits" title="То же, что галка в фильтрах: депозиты, фонды, дивиденды.">
-                  <input type="checkbox" class="form-check-input m-0" id="dg-fin-analytics-deposits" />
-                  <span>включая внутренние</span>
-                </label>
-                <label class="mb-0 small text-muted" for="dg-fin-analytics-months">Период</label>
-                <select id="dg-fin-analytics-months" class="form-select form-select-sm" style="width:auto" data-dg-notify-start="Обновляем график…">
-                  <option value="6">6 мес.</option>
-                  <option value="12" selected>12 мес.</option>
-                  <option value="24">24 мес.</option>
-                  <option value="y0">Текущий год</option>
-                  <option value="y-1">Прошлый год</option>
-                </select>
-                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-fin-analytics-refresh" data-dg-notify-start="Обновляем график…">Обновить</button>
-                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-fin-analytics-toggle">Свернуть</button>
-              </div>
-            </div>
-            <div class="card-body" id="dg-fin-analytics-body">
-              <div class="dg-fin-analytics-kpis" id="dg-fin-analytics-kpis" aria-live="polite"></div>
-              <div class="dg-fin-analytics-chart-wrap">
-                <canvas id="dg-fin-analytics-chart" height="280" aria-label="График поступлений и списаний по месяцам"></canvas>
-                <div id="dg-fin-analytics-empty" class="dg-fin-analytics-empty d-none">Нет проводок за выбранный период — загрузите выписки.</div>
-              </div>
-              <p class="small text-muted mb-0 mt-2">По снимку из БД. Организация и счёт — из применённых фильтров. По умолчанию без <strong>внутреннего оборота</strong>: тело депозита (UNV), «Перевод собственных средств» (расчётный ↔ фонд) и <strong>выплаты дивидендов</strong>. <strong>Капитал / займ учредителей</strong> (галка «займ» в таблице движения) никогда не входит в график: это не деньги фирмы. Галка <strong>«Не учитывать расход на ИНН 362903774541»</strong> (вкл. по умолчанию) убирает из графика и топа контрагентов исходящие платежи на этот ИНН — в «Движении» они остаются. Проценты и реальные платежи из фонда остаются. Зелёный — входящие, красный — исходящие, линия — чистый поток. <strong>Клик по столбцу месяца</strong> подставляет «С даты» / «По дату» (и направление) — остаётся нажать «Применить».</p>
-            </div>
-          </div>
-
           <div class="main-card mb-3 card">
             <div class="card-header d-flex align-items-center justify-content-between gap-2">
               <div class="d-flex align-items-center">
@@ -180,7 +140,11 @@
               <div class="row g-2 align-items-end">
                 <div class="col-md-3" data-dg-fin-filter-field="search" data-dg-filter-field-title="Умный поиск">
                   <label class="form-label" for="dg-fin-search">Умный поиск</label>
-                  <input type="search" id="dg-fin-search" class="form-control" placeholder="Назначение, контрагент, ИНН, номер, счёт…" autocomplete="off" />
+                  <input type="search" id="dg-fin-search" class="form-control" placeholder="Назначение, контрагент, номер, счёт…" autocomplete="off" />
+                </div>
+                <div class="col-md-2" data-dg-fin-filter-field="inn" data-dg-filter-field-title="ИНН контрагента">
+                  <label class="form-label" for="dg-fin-inn">ИНН</label>
+                  <input type="search" id="dg-fin-inn" class="form-control" placeholder="10 или 12 цифр" inputmode="numeric" autocomplete="off" title="Фильтр по ИНН контрагента (отдельно от умного поиска)" />
                 </div>
                 <div class="col-md-3" data-dg-fin-filter-field="org" data-dg-filter-field-title="Организация">
                   <label class="form-label" for="dg-fin-org-btn">Организация</label>
@@ -283,6 +247,57 @@
               <p class="small text-muted mt-2 mb-0">«Загрузить выписки» берёт период дат, организацию и счёт из фильтров и тянет проводки из Точки, Райфа и Т‑Банка. Без дат — окно «Выписка, дн.».</p>
               <div id="dg-fin-action-log" class="alert alert-secondary py-2 px-3 mt-3 mb-0 d-none" role="status"></div>
               <p class="small text-muted mt-2 mb-0 d-none" id="dg-fin-status-hint"></p>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card" id="dg-fin-balances-card">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2">
+              <div class="d-flex align-items-center">
+                <i class="header-icon pe-7s-wallet icon-gradient bg-happy-green me-2"></i>
+                <span>Балансы</span>
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-fin-balances-toggle">Свернуть</button>
+            </div>
+            <div class="card-body" id="dg-fin-balances-body">
+              <div class="dg-fin-balances mb-0" id="dg-fin-balances" aria-label="Балансы">
+                <div id="dg-fin-total-wrap"></div>
+                <div class="dg-fin-banks" id="dg-fin-banks-wrap"></div>
+                <p id="dg-fin-api-note" class="small text-muted mt-2 mb-0 d-none" role="note"></p>
+              </div>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card" id="dg-fin-analytics-card">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <i class="header-icon pe-7s-graph1 icon-gradient bg-happy-itmeo me-1"></i>
+                <span>Аналитика по месяцам</span>
+                <span class="badge bg-light text-muted border" id="dg-fin-analytics-scope">Все организации</span>
+              </div>
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <label class="mb-0 small text-muted d-inline-flex align-items-center gap-1" for="dg-fin-analytics-deposits" title="То же, что галка в фильтрах: депозиты, фонды, дивиденды.">
+                  <input type="checkbox" class="form-check-input m-0" id="dg-fin-analytics-deposits" />
+                  <span>включая внутренние</span>
+                </label>
+                <label class="mb-0 small text-muted" for="dg-fin-analytics-months">Период</label>
+                <select id="dg-fin-analytics-months" class="form-select form-select-sm" style="width:auto" data-dg-notify-start="Обновляем график…">
+                  <option value="6">6 мес.</option>
+                  <option value="12" selected>12 мес.</option>
+                  <option value="24">24 мес.</option>
+                  <option value="y0">Текущий год</option>
+                  <option value="y-1">Прошлый год</option>
+                </select>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-fin-analytics-refresh" data-dg-notify-start="Обновляем график…">Обновить</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-fin-analytics-toggle">Свернуть</button>
+              </div>
+            </div>
+            <div class="card-body" id="dg-fin-analytics-body">
+              <div class="dg-fin-analytics-kpis" id="dg-fin-analytics-kpis" aria-live="polite"></div>
+              <div class="dg-fin-analytics-chart-wrap">
+                <canvas id="dg-fin-analytics-chart" height="280" aria-label="График поступлений и списаний по месяцам"></canvas>
+                <div id="dg-fin-analytics-empty" class="dg-fin-analytics-empty d-none">Нет проводок за выбранный период — загрузите выписки.</div>
+              </div>
+              <p class="small text-muted mb-0 mt-2">По снимку из БД. Организация и счёт — из применённых фильтров. По умолчанию без <strong>внутреннего оборота</strong>: тело депозита (UNV), «Перевод собственных средств» (расчётный ↔ фонд) и <strong>выплаты дивидендов</strong>. <strong>Капитал / займ учредителей</strong> (галка «займ» в таблице движения) никогда не входит в график: это не деньги фирмы. Галка <strong>«Не учитывать расход на ИНН 362903774541»</strong> (вкл. по умолчанию) убирает из графика и топа контрагентов исходящие платежи на этот ИНН — в «Движении» они остаются. Проценты и реальные платежи из фонда остаются. Зелёный — входящие, красный — исходящие, синяя линия — чистый поток (как в фильтре графика). <strong>Оранжевая линия — остаток</strong> на конец месяца (= расчётные + оценка депозитов, как «Всего доступно»; walkback по полной выписке); в подсказке — <strong>разница</strong> к предыдущему месяцу и разбивка. KPI «Разница» — изменение остатка за весь выбранный период. <strong>Клик по столбцу месяца</strong> подставляет «С даты» / «По дату» (и направление) — остаётся нажать «Применить».</p>
             </div>
           </div>
 
@@ -409,6 +424,34 @@
               <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-fin-cash-toggle">Свернуть</button>
             </div>
             <div class="card-body" id="dg-fin-cash-body">
+              <div class="dg-fin-cash-dash mb-4" id="dg-fin-cash-dash">
+                <div class="dg-fin-analytics-kpis dg-fin-cash-kpis" id="dg-fin-cash-kpis" aria-live="polite"></div>
+                <div class="row g-3">
+                  <div class="col-lg-8">
+                    <div class="dg-fin-plans-chart-card">
+                      <div class="dg-fin-plans-chart-head">
+                        <span class="dg-fin-plans-chart-title">Динамика наличных по месяцам</span>
+                        <span class="small text-muted" id="dg-fin-cash-chart-period"></span>
+                      </div>
+                      <div class="dg-fin-analytics-chart-wrap dg-fin-cash-chart-wrap">
+                        <canvas id="dg-fin-cash-chart-main" height="260" aria-label="Вход и исход наличных по месяцам"></canvas>
+                        <div id="dg-fin-cash-chart-main-empty" class="dg-fin-analytics-empty d-none">Нет наличных за период.</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="col-lg-4">
+                    <div class="dg-fin-plans-chart-card dg-fin-cash-forecast-card">
+                      <div class="dg-fin-plans-chart-head">
+                        <span class="dg-fin-plans-chart-title">Прогноз на след. месяц</span>
+                        <span class="small text-muted" id="dg-fin-cash-forecast-ym"></span>
+                      </div>
+                      <div class="dg-fin-cash-forecast-body" id="dg-fin-cash-forecast">
+                        <div class="text-muted small">Загрузка…</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
               <ul class="nav nav-pills mb-3" role="tablist">
                 <li class="nav-item">
                   <button type="button" class="nav-link active" id="dg-fin-cash-tab-once" data-cash-tab="once">Разовые</button>
@@ -456,6 +499,14 @@
                     <select id="dg-fin-cash-once-org" class="form-select form-select-sm"></select>
                   </div>
                 </div>
+                <div class="row g-2 align-items-end mt-1">
+                  <div class="col-md-5">
+                    <label class="form-label" for="dg-fin-cash-once-plan">Статья плана</label>
+                    <select id="dg-fin-cash-once-plan" class="form-select form-select-sm">
+                      <option value="">— не привязана —</option>
+                    </select>
+                  </div>
+                </div>
                 <div class="mt-2 d-flex flex-wrap align-items-center gap-3">
                   <label class="mb-0 small d-inline-flex align-items-center gap-1">
                     <input type="checkbox" class="form-check-input m-0" id="dg-fin-cash-once-chart" checked />
@@ -463,6 +514,26 @@
                   </label>
                   <button type="button" class="btn btn-sm btn-primary" id="dg-fin-cash-once-save" data-dg-notify-start="Сохраняем разовую…">Добавить разовую</button>
                   <button type="button" class="btn btn-sm btn-outline-secondary d-none" id="dg-fin-cash-once-cancel">Отмена</button>
+                </div>
+                <div id="dg-fin-cash-once-save-msg" class="alert mt-2 mb-0 d-none" role="status"></div>
+                <div id="dg-fin-cash-review-wrap" class="dg-fin-cash-review-wrap mt-3 d-none">
+                  <div class="dg-fin-cash-review-head">
+                    Ждут проверки (автопроводки из шаблонов с галкой «Требуется проверка»)
+                  </div>
+                  <div class="table-responsive">
+                    <table class="table table-hover mb-0 dg-fin-table dg-fin-cash-table" id="dg-fin-cash-review-table">
+                      <thead>
+                        <tr>
+                          <th>Дата</th>
+                          <th>Направление</th>
+                          <th>Сумма</th>
+                          <th>Назначение</th>
+                          <th></th>
+                        </tr>
+                      </thead>
+                      <tbody id="dg-fin-cash-review-tbody"></tbody>
+                    </table>
+                  </div>
                 </div>
                 <div class="table-responsive mt-3">
                   <table class="table table-hover table-striped mb-0 dg-fin-table dg-fin-cash-table" id="dg-fin-cash-once-table">
@@ -472,12 +543,13 @@
                         <th>Направление</th>
                         <th>Сумма</th>
                         <th>Назначение</th>
+                        <th>Статья плана</th>
                         <th>Привязка</th>
                         <th>График</th>
                         <th></th>
                       </tr>
                     </thead>
-                    <tbody id="dg-fin-cash-once-tbody"><tr><td colspan="7" class="text-muted small">Загрузка…</td></tr></tbody>
+                    <tbody id="dg-fin-cash-once-tbody"><tr><td colspan="8" class="text-muted small">Загрузка…</td></tr></tbody>
                   </table>
                 </div>
               </div>
@@ -524,15 +596,28 @@
                     <select id="dg-fin-cash-tmpl-org" class="form-select form-select-sm"></select>
                   </div>
                 </div>
+                <div class="row g-2 align-items-end mt-1">
+                  <div class="col-md-5">
+                    <label class="form-label" for="dg-fin-cash-tmpl-plan">Статья плана</label>
+                    <select id="dg-fin-cash-tmpl-plan" class="form-select form-select-sm">
+                      <option value="">— не привязана —</option>
+                    </select>
+                  </div>
+                </div>
                 <div class="mt-2 d-flex flex-wrap align-items-center gap-3">
                   <label class="mb-0 small d-inline-flex align-items-center gap-1">
                     <input type="checkbox" class="form-check-input m-0" id="dg-fin-cash-tmpl-chart" checked />
                     <span>В графике по умолчанию</span>
                   </label>
+                  <label class="mb-0 small d-inline-flex align-items-center gap-1" title="В «Движении» автопроводка подсветится, пока её не подтвердят">
+                    <input type="checkbox" class="form-check-input m-0" id="dg-fin-cash-tmpl-review" />
+                    <span>Требуется проверка</span>
+                  </label>
                   <button type="button" class="btn btn-sm btn-primary" id="dg-fin-cash-tmpl-save" data-dg-notify-start="Сохраняем шаблон…">Добавить шаблон</button>
                   <button type="button" class="btn btn-sm btn-outline-secondary d-none" id="dg-fin-cash-tmpl-cancel">Отмена</button>
                 </div>
-                <p class="small text-muted mt-2 mb-0">Шаблон разворачивается на каждый месяц периода в «Движении». Клик по ежемес. строке — правка фикса/премии за месяц.</p>
+                <div id="dg-fin-cash-tmpl-save-msg" class="alert mt-2 mb-0 d-none" role="status"></div>
+                <p class="small text-muted mt-2 mb-0">Шаблон разворачивается на каждый месяц периода в «Движении». Клик по ежемес. строке — правка фикса/премии за месяц. Галка «Требуется проверка» — подсветка и кнопка «Подтвердить» у автопроводки.</p>
                 <div class="table-responsive mt-3">
                   <table class="table table-hover table-striped mb-0 dg-fin-table dg-fin-cash-table" id="dg-fin-cash-tmpl-table">
                     <thead>
@@ -542,16 +627,213 @@
                         <th>Фикс</th>
                         <th>Премия</th>
                         <th>Назначение</th>
+                        <th>Статья плана</th>
                         <th>Привязка</th>
+                        <th>Проверка</th>
                         <th>Вкл.</th>
                         <th></th>
                       </tr>
                     </thead>
-                    <tbody id="dg-fin-cash-tmpl-tbody"><tr><td colspan="8" class="text-muted small">Загрузка…</td></tr></tbody>
+                    <tbody id="dg-fin-cash-tmpl-tbody"><tr><td colspan="10" class="text-muted small">Загрузка…</td></tr></tbody>
                   </table>
                 </div>
               </div>
               <div id="dg-fin-cash-msg" class="alert mt-3 mb-0 d-none" role="status"></div>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card" id="dg-fin-plans-card">
+            <div class="card-header d-flex justify-content-between align-items-center gap-2 flex-wrap">
+              <div class="d-flex align-items-center gap-3 flex-grow-1" style="min-width:0">
+                <i class="header-icon pe-7s-wallet icon-gradient bg-happy-itmeo me-0 flex-shrink-0"></i>
+                <span class="flex-shrink-0">Плановые денежные операции</span>
+                <div class="input-group input-group-sm dg-fin-header-search" style="flex:0 1 380px;min-width:220px">
+                  <span class="input-group-text">🔎</span>
+                  <input type="search" class="form-control" id="dg-fin-plans-search" placeholder="Поиск: статья, ИНН…" autocomplete="off" />
+                </div>
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-fin-plans-toggle">Свернуть</button>
+            </div>
+            <div class="card-body" id="dg-fin-plans-body">
+              <div class="dg-fin-plans-dash mb-4" id="dg-fin-plans-dash">
+                <div class="dg-fin-analytics-kpis dg-fin-plans-kpis" id="dg-fin-plans-kpis" aria-live="polite"></div>
+                <div class="row g-3">
+                  <div class="col-lg-8">
+                    <div class="dg-fin-plans-chart-card">
+                      <div class="dg-fin-plans-chart-head">
+                        <span class="dg-fin-plans-chart-title">План vs факт по месяцам</span>
+                        <span class="small text-muted" id="dg-fin-plans-chart-period"></span>
+                      </div>
+                      <div class="dg-fin-analytics-chart-wrap dg-fin-plans-chart-wrap">
+                        <canvas id="dg-fin-plans-chart-main" height="260" aria-label="План и факт по месяцам"></canvas>
+                        <div id="dg-fin-plans-chart-main-empty" class="dg-fin-analytics-empty d-none">Нет статей плана за период — добавьте статью выше.</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="col-lg-4">
+                    <div class="dg-fin-plans-chart-card">
+                      <div class="dg-fin-plans-chart-head">
+                        <span class="dg-fin-plans-chart-title">Факт по форме оплаты</span>
+                      </div>
+                      <div class="dg-fin-analytics-chart-wrap dg-fin-plans-chart-wrap dg-fin-plans-chart-wrap-sm">
+                        <canvas id="dg-fin-plans-chart-pay" height="260" aria-label="Факт безнал / нал / оба"></canvas>
+                        <div id="dg-fin-plans-chart-pay-empty" class="dg-fin-analytics-empty d-none">Нет факта за период.</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="dg-fin-plans-chart-card mt-3">
+                  <div class="dg-fin-plans-chart-head">
+                    <span class="dg-fin-plans-chart-title">Статьи: перерасход / остаток</span>
+                    <span class="small text-muted">за период матрицы</span>
+                  </div>
+                  <div class="dg-fin-analytics-chart-wrap dg-fin-plans-chart-wrap dg-fin-plans-chart-wrap-items">
+                    <canvas id="dg-fin-plans-chart-items" height="220" aria-label="Перерасход и остаток по статьям"></canvas>
+                    <div id="dg-fin-plans-chart-items-empty" class="dg-fin-analytics-empty d-none">Нет статей для сравнения.</div>
+                  </div>
+                </div>
+              </div>
+              <div class="dg-fin-plan-form mb-3">
+                <div class="dg-fin-plan-form__head">Новая статья / правка</div>
+                <p class="small text-muted mb-3">Форма оплаты задаёт источник факта: <strong>безнал</strong> — исходящие банка по ИНН; <strong>нал</strong> — наличные с привязкой к статье (подтягиваются в матрицу сами).</p>
+                <div class="row g-3">
+                  <div class="col-md-3">
+                    <label class="form-label d-block">Форма оплаты</label>
+                    <div class="dg-fin-plan-pay-toggle btn-group btn-group-sm" role="group" aria-label="Форма оплаты">
+                      <input type="radio" class="btn-check" name="dg-fin-plan-pay" id="dg-fin-plan-pay-bank" value="bank" checked autocomplete="off" />
+                      <label class="btn btn-outline-primary" for="dg-fin-plan-pay-bank">Безнал</label>
+                      <input type="radio" class="btn-check" name="dg-fin-plan-pay" id="dg-fin-plan-pay-cash" value="cash" autocomplete="off" />
+                      <label class="btn btn-outline-primary" for="dg-fin-plan-pay-cash">Нал</label>
+                      <input type="radio" class="btn-check" name="dg-fin-plan-pay" id="dg-fin-plan-pay-both" value="both" autocomplete="off" />
+                      <label class="btn btn-outline-secondary" for="dg-fin-plan-pay-both">Оба</label>
+                    </div>
+                  </div>
+                  <div class="col-md-3">
+                    <label class="form-label" for="dg-fin-plan-category">Категория трат</label>
+                    <div class="input-group input-group-sm">
+                      <select id="dg-fin-plan-category" class="form-select">
+                        <option value="">— без категории —</option>
+                      </select>
+                      <button type="button" class="btn btn-outline-secondary" id="dg-fin-plan-cat-add" data-dg-notify-start="Добавляем категорию…" title="Добавить категорию">+</button>
+                    </div>
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label" for="dg-fin-plan-title">Название статьи</label>
+                    <input type="text" class="form-control form-control-sm" id="dg-fin-plan-title" placeholder="Кратко: канцелярия, аренда склада…" />
+                  </div>
+                  <div class="col-md-2">
+                    <label class="form-label" for="dg-fin-plan-amount">План / месяц, ₽</label>
+                    <input type="text" class="form-control form-control-sm" id="dg-fin-plan-amount" inputmode="decimal" placeholder="100 000" />
+                  </div>
+                </div>
+                <div class="row g-3 mt-0">
+                  <div class="col-md-2">
+                    <label class="form-label" for="dg-fin-plan-dir">Направление</label>
+                    <select id="dg-fin-plan-dir" class="form-select form-select-sm">
+                      <option value="out" selected>Исходящий</option>
+                      <option value="in">Входящий</option>
+                    </select>
+                  </div>
+                  <div class="col-md-3">
+                    <label class="form-label" for="dg-fin-plan-scope">Привязка к нашим орг.</label>
+                    <select id="dg-fin-plan-scope" class="form-select form-select-sm">
+                      <option value="all" selected>Все компании</option>
+                      <option value="org">Организация</option>
+                    </select>
+                  </div>
+                  <div class="col-md-7 d-none" id="dg-fin-plan-org-wrap">
+                    <div class="row g-2">
+                      <div class="col-md-5">
+                        <label class="form-label" for="dg-fin-plan-org-q">Поиск организации</label>
+                        <input type="search" class="form-control form-control-sm" id="dg-fin-plan-org-q" placeholder="Название…" autocomplete="off" />
+                      </div>
+                      <div class="col-md-7">
+                        <label class="form-label" for="dg-fin-plan-org">Организация</label>
+                        <select id="dg-fin-plan-org" class="form-select form-select-sm"></select>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="dg-fin-plan-cps mt-3" id="dg-fin-plan-cps-wrap">
+                  <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+                    <div class="fw-semibold small mb-0">Контрагенты (фирмы) — для безнала</div>
+                    <button type="button" class="btn btn-sm btn-outline-primary" id="dg-fin-plan-cp-add" data-dg-notify-start="Добавляем строку контрагента…">+ Фирма</button>
+                  </div>
+                  <div id="dg-fin-plan-cps" class="dg-fin-plan-cps__list"></div>
+                  <div class="form-text mt-1" id="dg-fin-plan-cps-hint">У каждой фирмы — название и ИНН. Факт безнала = сумма исходящих банка по всем ИНН.</div>
+                </div>
+                <div class="alert alert-info py-2 small mt-3 mb-0 d-none" id="dg-fin-plan-cash-hint" role="status">
+                  <strong>Нал:</strong> отметьте шаблоны наличных ниже — их расход пойдёт в «Ушло (нал)» матрицы. Без привязки строка нала в матрице будет 0 (безнал по ИНН при этом считается отдельно).
+                  <div id="dg-fin-plan-cash-links" class="dg-fin-plan-cash-links mt-2"></div>
+                </div>
+                <div class="mt-3 d-flex flex-wrap align-items-center gap-3">
+                  <label class="mb-0 small d-inline-flex align-items-center gap-1">
+                    <input type="checkbox" class="form-check-input m-0" id="dg-fin-plan-active" checked />
+                    <span>Активна</span>
+                  </label>
+                  <button type="button" class="btn btn-sm btn-primary" id="dg-fin-plan-save" data-dg-notify-start="Сохраняем статью плана…">Добавить статью</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary d-none" id="dg-fin-plan-cancel">Отмена</button>
+                </div>
+                <div id="dg-fin-plan-save-msg" class="alert mt-3 mb-0 d-none" role="status"></div>
+              </div>
+              <div class="table-responsive mt-3">
+                <table class="table table-hover table-striped mb-0 dg-fin-table dg-fin-plans-table" id="dg-fin-plans-table">
+                  <thead>
+                    <tr>
+                      <th class="dg-fin-plan-expand-col" title="Развернуть план / факт по месяцам"></th>
+                      <th>Статья</th>
+                      <th>Категория</th>
+                      <th>Оплата</th>
+                      <th>Фирмы / ИНН</th>
+                      <th>План/мес</th>
+                      <th>Фактически</th>
+                      <th>Привязка</th>
+                      <th>Вкл.</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="dg-fin-plans-tbody"><tr><td colspan="10" class="text-muted small">Загрузка…</td></tr></tbody>
+                </table>
+              </div>
+              <p class="small text-muted mt-2 mb-0">Стрелка ▶ слева от статьи — матрица план / факт по месяцам (как позиции в заказах МС).</p>
+              <div id="dg-fin-plans-matrix" class="d-none" aria-hidden="true"></div>
+            </div>
+          </div>
+
+          <div id="dg-fin-plan-cat-overlay" class="dg-fin-confirm-overlay d-none" role="dialog" aria-modal="true" aria-labelledby="dg-fin-plan-cat-title">
+            <div class="dg-fin-confirm-dialog card shadow" style="max-width:420px">
+              <div class="card-body">
+                <h5 class="card-title" id="dg-fin-plan-cat-title">Новая категория трат</h5>
+                <div class="mb-2">
+                  <label class="form-label" for="dg-fin-plan-cat-title-input">Название</label>
+                  <input type="text" class="form-control form-control-sm" id="dg-fin-plan-cat-title-input" placeholder="Аренда, Зарплата, Логистика…" maxlength="120" />
+                </div>
+                <div class="d-flex justify-content-end gap-2 mt-3">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-fin-plan-cat-cancel">Отмена</button>
+                  <button type="button" class="btn btn-sm btn-primary" id="dg-fin-plan-cat-ok" data-dg-notify-start="Сохраняем категорию…">Добавить</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-fin-plan-month-overlay" class="dg-fin-confirm-overlay d-none" role="dialog" aria-modal="true" aria-labelledby="dg-fin-plan-month-title">
+            <div class="dg-fin-confirm-dialog card shadow" style="max-width:420px">
+              <div class="card-body">
+                <h5 class="card-title" id="dg-fin-plan-month-title">Правка плана месяца</h5>
+                <p class="small text-muted" id="dg-fin-plan-month-sub"></p>
+                <div class="mb-2">
+                  <label class="form-label" for="dg-fin-plan-month-amount">План за месяц</label>
+                  <input type="text" class="form-control form-control-sm" id="dg-fin-plan-month-amount" inputmode="decimal" />
+                </div>
+                <label class="mb-0 small d-inline-flex align-items-center gap-1">
+                  <input type="checkbox" class="form-check-input m-0" id="dg-fin-plan-month-skip" />
+                  <span>Пропустить месяц (план = 0)</span>
+                </label>
+                <div class="d-flex justify-content-end gap-2 mt-3">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-fin-plan-month-cancel">Отмена</button>
+                  <button type="button" class="btn btn-sm btn-primary" id="dg-fin-plan-month-ok" data-dg-notify-start="Сохраняем план месяца…">Сохранить</button>
+                </div>
+              </div>
             </div>
           </div>
 

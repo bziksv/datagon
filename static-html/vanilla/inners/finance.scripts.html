@@ -31,6 +31,7 @@
   };
   var FILTERS_KEY = "datagon_finance_filters_collapsed_v1";
   var BANK_KEY = "datagon_finance_bank_collapsed_v1";
+  var BALANCES_KEY = "dg.finance.balances-card.collapsed.v1";
   var TABLE_KEY = "dg.finance.table-card.collapsed.v1";
   var ANALYTICS_KEY = "dg.finance.analytics-card.collapsed.v1";
   var ANALYTICS_MONTHS_KEY = "dg.finance.analytics.months.v1";
@@ -38,6 +39,7 @@
   var CP_KEY = "dg.finance.counterparties-card.collapsed.v1";
   var CP_LIMIT_KEY = "dg.finance.counterparties.limit.v1";
   var CASH_KEY = "dg.finance.cash-card.collapsed.v1";
+  var PLANS_KEY = "dg.finance.plans-card.collapsed.v1";
   var COLS_KEY = "datagon_finance_visible_cols_v1";
   var WIDTHS_KEY = "datagon_finance_col_widths_v1";
   var FIELD_GROUPS = [
@@ -45,6 +47,7 @@
       title: "Основные",
       items: [
         { key: "search", title: "Умный поиск" },
+        { key: "inn", title: "ИНН контрагента" },
         { key: "org", title: "Организация" },
         { key: "date_from", title: "С даты" },
         { key: "date_to", title: "По дату" },
@@ -69,6 +72,7 @@
   function emptyFilters() {
     return {
       search: "",
+      inn: "",
       org: [],
       date_from: "",
       date_to: "",
@@ -84,12 +88,17 @@
     };
   }
 
+  function normalizeInnInput(raw) {
+    return String(raw || "").replace(/\D+/g, "").slice(0, 12);
+  }
+
   var state = {
     canWrite: false,
     credentials: [],
     raiffeisenCredentials: [],
     tbankCredentials: [],
     accounts: [],
+    depositEstimate: { items: [], totals: [], note: "", method: "" },
     orgAliases: {},
     page: 1,
     total: 0,
@@ -103,15 +112,28 @@
     analyticsMonths: 12,
     cashTemplates: [],
     cashOnce: [],
+    cashPendingReviews: [],
     cashSearch: "",
     cashOrgCodes: [],
     cashOnceEditId: null,
     cashTmplEditId: null,
     cashMonthEdit: null,
+    planItems: [],
+    planCategories: [],
+    planMatrix: null,
+    planSearch: "",
+    planEditId: null,
+    planMonthEdit: null,
+    planExpandedId: null,
   };
 
   var chartJsPromise = null;
   var monthlyChart = null;
+  var plansChartMain = null;
+  var plansChartPay = null;
+  var plansChartItems = null;
+  var cashChartMain = null;
+  var cashSummaryLoadSeq = 0;
   var txLoadSeq = 0;
   var analyticsLoadSeq = 0;
   var cpLoadSeq = 0;
@@ -275,6 +297,7 @@
 
   function readPendingFromForm() {
     state.pending.search = String((el("dg-fin-search") && el("dg-fin-search").value) || "").trim();
+    state.pending.inn = normalizeInnInput(el("dg-fin-inn") && el("dg-fin-inn").value);
     var orgBoxes = document.querySelectorAll("#dg-fin-org-menu input.dg-fin-org-cb");
     if (orgBoxes.length) {
       var picked = [];
@@ -301,6 +324,7 @@
   function writeFormFromPending() {
     if (el("dg-fin-search")) el("dg-fin-search").value = state.pending.search;
     if (el("dg-fin-table-search-mirror")) el("dg-fin-table-search-mirror").value = state.pending.search;
+    if (el("dg-fin-inn")) el("dg-fin-inn").value = state.pending.inn || "";
     syncOrgChecksFromPending();
     if (el("dg-fin-date-from")) el("dg-fin-date-from").value = state.pending.date_from;
     if (el("dg-fin-date-to")) el("dg-fin-date-to").value = state.pending.date_to;
@@ -322,6 +346,7 @@
     if (!btn) return;
     var dirty =
       state.pending.search !== state.applied.search ||
+      String(state.pending.inn || "") !== String(state.applied.inn || "") ||
       orgsKey(state.pending.org) !== orgsKey(state.applied.org) ||
       state.pending.date_from !== state.applied.date_from ||
       state.pending.date_to !== state.applied.date_to ||
@@ -340,6 +365,8 @@
   var URL_FILTER_KEYS = [
     "search",
     "q",
+    "inn",
+    "counterparty_inn",
     "org",
     "customer_code",
     "customer_codes",
@@ -379,6 +406,12 @@
     var touched = false;
     if (p.has("search") || p.has("q")) {
       state.pending.search = String(p.get("search") || p.get("q") || "").trim();
+      touched = true;
+    }
+    if (p.has("inn") || p.has("counterparty_inn")) {
+      state.pending.inn = normalizeInnInput(
+        p.get("inn") != null ? p.get("inn") : p.get("counterparty_inn")
+      );
       touched = true;
     }
     var orgBits = [];
@@ -476,6 +509,7 @@
     } catch (e) {}
     var a = state.applied || {};
     if (a.search) keep.set("search", String(a.search));
+    if (a.inn) keep.set("inn", String(a.inn));
     normalizeOrgs(a.org).forEach(function (c) {
       keep.append("customer_code", c);
     });
@@ -531,6 +565,7 @@
     loadTx();
     loadMonthlyAnalytics();
     loadCounterparties();
+    loadPlans();
     scheduleUrlSync();
   }
 
@@ -670,6 +705,38 @@
         esc(dyn.label) +
         "</span></div>";
     }
+    var balNow = t.balance != null ? Number(t.balance) : null;
+    var balDiff = t.balance_diff != null ? Number(t.balance_diff) : null;
+    var balAcc = t.balance_accounts != null ? Number(t.balance_accounts) : null;
+    var balDep = t.balance_deposits != null ? Number(t.balance_deposits) : null;
+    var balSub = "сейчас · как «Всего»";
+    if (balAcc != null && Number.isFinite(balAcc) && balDep != null && Number.isFinite(balDep) && balDep > 0) {
+      balSub = "расчётные " + fmtMoney(balAcc, cur) + " + депозиты " + fmtMoney(balDep, cur);
+    }
+    var balHtml =
+      balNow != null && Number.isFinite(balNow)
+        ? '<div class="dg-fin-kpi is-bal"><div class="dg-fin-kpi-label">Остаток на счетах</div><div class="dg-fin-kpi-value">' +
+          esc(fmtMoney(balNow, cur)) +
+          '</div><div class="dg-fin-kpi-sub">' +
+          esc(balSub) +
+          "</div></div>"
+        : '<div class="dg-fin-kpi is-bal"><div class="dg-fin-kpi-label">Остаток на счетах</div><div class="dg-fin-kpi-value">—</div><div class="dg-fin-kpi-sub">нет данных</div></div>';
+    var diffCls =
+      balDiff == null || !Number.isFinite(balDiff)
+        ? ""
+        : balDiff > 0.5
+          ? "is-pos"
+          : balDiff < -0.5
+            ? "is-neg"
+            : "";
+    var diffHtml =
+      balDiff != null && Number.isFinite(balDiff)
+        ? '<div class="dg-fin-kpi is-diff"><div class="dg-fin-kpi-label">Разница</div><div class="dg-fin-kpi-value ' +
+          diffCls +
+          '">' +
+          esc((balDiff > 0 ? "+" : "") + fmtMoney(balDiff, cur)) +
+          '</div><div class="dg-fin-kpi-sub">остаток: конец − начало периода</div></div>'
+        : '<div class="dg-fin-kpi is-diff"><div class="dg-fin-kpi-label">Разница</div><div class="dg-fin-kpi-value">—</div><div class="dg-fin-kpi-sub">нет данных</div></div>';
     box.innerHTML =
       '<div class="dg-fin-kpi is-in"><div class="dg-fin-kpi-label">Входящие</div><div class="dg-fin-kpi-value">' +
       esc(fmtMoney(t.in, cur)) +
@@ -687,6 +754,8 @@
       "</div>" +
       dynHtml +
       "</div>" +
+      balHtml +
+      diffHtml +
       '<div class="dg-fin-kpi"><div class="dg-fin-kpi-label">Операций</div><div class="dg-fin-kpi-value">' +
       esc(String(Number(t.count) || 0)) +
       '</div><div class="dg-fin-kpi-sub">в снимке за период</div></div>';
@@ -746,7 +815,11 @@
     if (!canvas) return;
     var rows = Array.isArray(series) ? series : [];
     var hasAny = rows.some(function (r) {
-      return Number(r.in) > 0 || Number(r.out) > 0;
+      return (
+        Number(r.in) > 0 ||
+        Number(r.out) > 0 ||
+        (r.balance != null && Number.isFinite(Number(r.balance)))
+      );
     });
     if (!hasAny) {
       if (monthlyChart) {
@@ -764,6 +837,10 @@
     var inVals = rows.map(function (r) { return Number(r.in) || 0; });
     var outVals = rows.map(function (r) { return Number(r.out) || 0; });
     var netVals = rows.map(function (r) { return Number(r.net) || 0; });
+    var balVals = rows.map(function (r) {
+      return r.balance != null && Number.isFinite(Number(r.balance)) ? Number(r.balance) : null;
+    });
+    var hasBalance = balVals.some(function (v) { return v != null; });
     var cur = currency || "RUB";
 
     loadChartJs()
@@ -780,50 +857,113 @@
         gradOut.addColorStop(0, "rgba(239, 68, 68, 0.8)");
         gradOut.addColorStop(1, "rgba(239, 68, 68, 0.32)");
 
+        var datasets = [
+          {
+            type: "bar",
+            label: "Входящие",
+            data: inVals,
+            backgroundColor: gradIn,
+            borderColor: "rgba(22, 163, 74, 1)",
+            borderWidth: 1,
+            borderRadius: 6,
+            maxBarThickness: 22,
+            order: 3,
+            yAxisID: "y",
+          },
+          {
+            type: "bar",
+            label: "Исходящие",
+            data: outVals,
+            backgroundColor: gradOut,
+            borderColor: "rgba(185, 28, 28, 1)",
+            borderWidth: 1,
+            borderRadius: 6,
+            maxBarThickness: 22,
+            order: 3,
+            yAxisID: "y",
+          },
+          {
+            type: "line",
+            label: "Чистый поток",
+            data: netVals,
+            borderColor: "#3f6ad8",
+            backgroundColor: "rgba(63, 106, 216, 0.12)",
+            borderWidth: 2.5,
+            pointRadius: 3.5,
+            pointHoverRadius: 5,
+            pointBackgroundColor: "#fff",
+            pointBorderColor: "#3f6ad8",
+            pointBorderWidth: 2,
+            tension: 0.35,
+            yAxisID: "y",
+            order: 2,
+          },
+        ];
+        if (hasBalance) {
+          datasets.push({
+            type: "line",
+            label: "Остаток на счетах",
+            data: balVals,
+            borderColor: "#b45309",
+            backgroundColor: "rgba(245, 158, 11, 0.1)",
+            borderWidth: 2.5,
+            borderDash: [6, 4],
+            pointRadius: 3.5,
+            pointHoverRadius: 5,
+            pointBackgroundColor: "#fff",
+            pointBorderColor: "#b45309",
+            pointBorderWidth: 2,
+            tension: 0.25,
+            spanGaps: true,
+            yAxisID: "yBal",
+            order: 1,
+          });
+        }
+
+        var scales = {
+          x: {
+            ticks: { font: { size: 11 }, color: "#64748b" },
+            grid: { display: false },
+          },
+          y: {
+            beginAtZero: true,
+            position: "left",
+            ticks: {
+              font: { size: 11 },
+              color: "#64748b",
+              callback: function (v) {
+                var n = Number(v);
+                if (Math.abs(n) >= 1000000) return (n / 1000000).toLocaleString("ru-RU", { maximumFractionDigits: 1 }) + " млн";
+                if (Math.abs(n) >= 1000) return (n / 1000).toLocaleString("ru-RU", { maximumFractionDigits: 0 }) + " тыс";
+                return n.toLocaleString("ru-RU");
+              },
+            },
+            grid: { color: "rgba(15, 23, 42, 0.06)" },
+          },
+        };
+        if (hasBalance) {
+          scales.yBal = {
+            position: "right",
+            beginAtZero: false,
+            ticks: {
+              font: { size: 11 },
+              color: "#b45309",
+              callback: function (v) {
+                var n = Number(v);
+                if (Math.abs(n) >= 1000000) return (n / 1000000).toLocaleString("ru-RU", { maximumFractionDigits: 1 }) + " млн";
+                if (Math.abs(n) >= 1000) return (n / 1000).toLocaleString("ru-RU", { maximumFractionDigits: 0 }) + " тыс";
+                return n.toLocaleString("ru-RU");
+              },
+            },
+            grid: { drawOnChartArea: false },
+          };
+        }
+
         monthlyChart = new Chart(ctx, {
           type: "bar",
           data: {
             labels: labels,
-            datasets: [
-              {
-                type: "bar",
-                label: "Входящие",
-                data: inVals,
-                backgroundColor: gradIn,
-                borderColor: "rgba(22, 163, 74, 1)",
-                borderWidth: 1,
-                borderRadius: 6,
-                maxBarThickness: 22,
-                order: 2,
-              },
-              {
-                type: "bar",
-                label: "Исходящие",
-                data: outVals,
-                backgroundColor: gradOut,
-                borderColor: "rgba(185, 28, 28, 1)",
-                borderWidth: 1,
-                borderRadius: 6,
-                maxBarThickness: 22,
-                order: 2,
-              },
-              {
-                type: "line",
-                label: "Чистый поток",
-                data: netVals,
-                borderColor: "#3f6ad8",
-                backgroundColor: "rgba(63, 106, 216, 0.12)",
-                borderWidth: 2.5,
-                pointRadius: 3.5,
-                pointHoverRadius: 5,
-                pointBackgroundColor: "#fff",
-                pointBorderColor: "#3f6ad8",
-                pointBorderWidth: 2,
-                tension: 0.35,
-                yAxisID: "y",
-                order: 1,
-              },
-            ],
+            datasets: datasets,
           },
           options: {
             responsive: true,
@@ -867,41 +1007,34 @@
               tooltip: {
                 callbacks: {
                   label: function (ctx2) {
-                    var v = Number(ctx2.parsed.y || 0);
-                    return ctx2.dataset.label + ": " + fmtMoney(v, cur);
+                    var v = ctx2.parsed.y;
+                    if (v == null || !Number.isFinite(Number(v))) return ctx2.dataset.label + ": —";
+                    return ctx2.dataset.label + ": " + fmtMoney(Number(v), cur);
                   },
                   afterBody: function (items) {
                     var idx = items && items[0] ? items[0].dataIndex : -1;
                     var src = rows[idx] || {};
-                    return [
+                    var lines = [
                       "Операций в: " + (Number(src.count_in) || 0),
                       "Операций исх.: " + (Number(src.count_out) || 0),
-                      "Клик — даты месяца в фильтр",
                     ];
+                    if (src.diff != null && Number.isFinite(Number(src.diff))) {
+                      var d = Number(src.diff);
+                      lines.push("Разница остатка: " + (d > 0 ? "+" : "") + fmtMoney(d, cur));
+                    }
+                    if (src.balance_accounts != null && Number.isFinite(Number(src.balance_accounts))) {
+                      lines.push("Расчётные: " + fmtMoney(Number(src.balance_accounts), cur));
+                    }
+                    if (src.balance_deposits != null && Number.isFinite(Number(src.balance_deposits)) && Number(src.balance_deposits) > 0) {
+                      lines.push("Депозиты (оценка): " + fmtMoney(Number(src.balance_deposits), cur));
+                    }
+                    lines.push("Клик — даты месяца в фильтр");
+                    return lines;
                   },
                 },
               },
             },
-            scales: {
-              x: {
-                ticks: { font: { size: 11 }, color: "#64748b" },
-                grid: { display: false },
-              },
-              y: {
-                beginAtZero: true,
-                ticks: {
-                  font: { size: 11 },
-                  color: "#64748b",
-                  callback: function (v) {
-                    var n = Number(v);
-                    if (Math.abs(n) >= 1000000) return (n / 1000000).toLocaleString("ru-RU", { maximumFractionDigits: 1 }) + " млн";
-                    if (Math.abs(n) >= 1000) return (n / 1000).toLocaleString("ru-RU", { maximumFractionDigits: 0 }) + " тыс";
-                    return n.toLocaleString("ru-RU");
-                  },
-                },
-                grid: { color: "rgba(15, 23, 42, 0.06)" },
-              },
-            },
+            scales: scales,
           },
         });
       })
@@ -977,12 +1110,21 @@
 
   function applyCounterpartyToFilters(name, direction, inn) {
     var n = String(name || "").trim();
-    var innStr = String(inn || "").replace(/\s+/g, "").trim();
-    // По ИНН ловим все варианты названия одной конторы в выписке.
-    var q = innStr || (n && n !== "(без названия)" ? n : "");
-    if (!q) return;
+    var innStr = normalizeInnInput(inn);
+    if (!innStr && (!n || n === "(без названия)")) return;
     readPendingFromForm();
-    state.pending.search = q;
+    // ИНН — в отдельное поле; умный поиск только если ИНН нет.
+    state.pending.inn = innStr;
+    if (innStr) {
+      if (
+        normalizeInnInput(state.pending.search) === innStr ||
+        String(state.pending.search || "").trim() === "ИНН " + innStr
+      ) {
+        state.pending.search = "";
+      }
+    } else {
+      state.pending.search = n;
+    }
     if (direction === "in" || direction === "out") state.pending.direction = direction;
     writeFormFromPending();
     markDirty();
@@ -1377,9 +1519,32 @@
   function cashBadgeHtml(row) {
     if (!isCashRow(row)) return "";
     if (row.cash_kind === "recurring") {
-      return ' <span class="badge bg-warning text-dark border" title="Ежемесячный шаблон">ежемес.</span>';
+      var badges =
+        ' <span class="badge bg-warning text-dark border" title="Ежемесячный шаблон">ежемес.</span>';
+      if (row.review_pending) {
+        badges +=
+          ' <span class="badge bg-danger border dg-fin-review-badge" title="Шаблон с галкой «Требуется проверка»: подтвердите сумму за месяц">проверка</span>';
+      } else if (Number(row.needs_review) === 1 && Number(row.review_confirmed) === 1) {
+        badges +=
+          ' <span class="badge bg-success-subtle text-success border" title="Проверка за месяц подтверждена">ок</span>';
+      }
+      return badges;
     }
     return ' <span class="badge bg-success-subtle text-success border" title="Разовая наличная">нал</span>';
+  }
+  function cashReviewConfirmHtml(row) {
+    if (!row || !row.review_pending || !state.canWrite) return "";
+    return (
+      '<div class="dg-fin-review-actions mt-1">' +
+      '<button type="button" class="btn btn-sm btn-warning dg-fin-cash-review-confirm" data-template-id="' +
+      esc(row.template_id) +
+      '" data-ym="' +
+      esc(row.ym) +
+      '" data-dg-notify-start="Подтверждаем проводку…" title="Подтвердить сумму за ' +
+      esc(row.ym || "") +
+      '">Подтвердить</button>' +
+      "</div>"
+    );
   }
   function finCashChartToggle(row) {
     var checked = !row.chart_excluded && Number(row.include_chart) !== 0;
@@ -1430,7 +1595,8 @@
         "</span>" +
         cashBadgeHtml(row) +
         (autoMark ? " " + autoMark : "") +
-        premHint
+        premHint +
+        cashReviewConfirmHtml(row)
       );
     }
     if (key === "founder") {
@@ -1526,11 +1692,24 @@
       tb.innerHTML = '<tr><td colspan="' + Math.max(1, cols.length) + '" class="text-muted">Нет проводок по фильтрам. Обновите из банка, если снимок пуст.</td></tr>';
     } else {
       tb.innerHTML = rows.map(function (r) {
-        var trCls = r.chart_excluded || r.founder_capital ? ' class="dg-fin-row-chart-excl"' : "";
-        if (isCashRow(r) && r.cash_kind === "recurring") {
-          trCls = trCls ? trCls.replace('"', ' dg-fin-cash-recurring"') : ' class="dg-fin-cash-recurring"';
-        }
-        return "<tr" + trCls + ">" + cols.map(function (c) { return "<td>" + renderCell(r, c[0]) + "</td>"; }).join("") + "</tr>";
+        var classes = [];
+        if (r.chart_excluded || r.founder_capital) classes.push("dg-fin-row-chart-excl");
+        if (isCashRow(r) && r.cash_kind === "recurring") classes.push("dg-fin-cash-recurring");
+        if (r.review_pending) classes.push("dg-fin-row-needs-review");
+        var trCls = classes.length ? ' class="' + classes.join(" ") + '"' : "";
+        var trTitle = r.review_pending
+          ? ' title="Требуется проверка: автопроводка из шаблона. Нажмите «Подтвердить», если сумма верна."'
+          : "";
+        return (
+          "<tr" +
+          trCls +
+          trTitle +
+          ">" +
+          cols.map(function (c) {
+            return "<td>" + renderCell(r, c[0]) + "</td>";
+          }).join("") +
+          "</tr>"
+        );
       }).join("");
     }
     var st = el("dg-fin-pager-status");
@@ -1627,6 +1806,75 @@
       " МСК"
     );
   }
+  function depositEstimateItemsForOrgs(orgCodes) {
+    var codes = normalizeOrgs(orgCodes);
+    var items = (state.depositEstimate && state.depositEstimate.items) || [];
+    if (!codes.length) return items.slice();
+    return items.filter(function (it) {
+      return codes.indexOf(String(it.customer_code || "")) >= 0;
+    });
+  }
+
+  function depositEstimateForGroup(g) {
+    var code = String((g && g.customer_code) || "").trim();
+    var bank = String((g && g.bank_code) || "").toLowerCase();
+    return depositEstimateItemsForOrgs(state.applied.org).filter(function (it) {
+      if (String(it.bank || "").toLowerCase() !== bank) return false;
+      if (code) return String(it.customer_code || "") === code;
+      return String(it.org_label || "").trim() === String((g && g.org_label) || "").trim();
+    });
+  }
+
+  function mergeCurrencyMaps() {
+    var map = Object.create(null);
+    for (var i = 0; i < arguments.length; i++) {
+      var src = arguments[i] || {};
+      Object.keys(src).forEach(function (cur) {
+        map[cur] = (map[cur] || 0) + Number(src[cur] || 0);
+      });
+    }
+    return map;
+  }
+
+  function depositAmountsByCurrency(items) {
+    var map = Object.create(null);
+    (items || []).forEach(function (it) {
+      var n = Number(it && it.amount);
+      if (!Number.isFinite(n) || n <= 0) return;
+      var cur = normalizeCurrency(it.currency);
+      map[cur] = (map[cur] || 0) + n;
+    });
+    return map;
+  }
+
+  function renderDepositEstimateCard(it) {
+    var amt = Number(it && it.amount);
+    if (!Number.isFinite(amt) || amt <= 0) return "";
+    var cur = normalizeCurrency(it.currency);
+    var tip =
+      "Оценка из выписки: открытия " +
+      fmtMoney(it.openings, cur) +
+      " − возвраты тела " +
+      fmtMoney(it.returns_body, cur);
+    return (
+      '<div class="col-sm-6 col-lg-4 col-xl-3">' +
+      '<div class="card dg-fin-bal-card is-deposit" title="' +
+      esc(tip) +
+      '">' +
+      '<div class="card-body">' +
+      '<div class="dg-fin-acc-top">' +
+      '<span class="dg-fin-type-pill is-deposit">Депозит</span>' +
+      '<span class="dg-fin-acc-mask">оценка</span>' +
+      "</div>" +
+      '<div class="dg-fin-acc-title-row"><span class="dg-fin-acc-title dg-fin-name-text">На депозитах</span></div>' +
+      '<div class="dg-fin-acc-amount dg-fin-bal-num">' +
+      esc(fmtMoney(amt, cur)) +
+      "</div>" +
+      '<div class="dg-fin-acc-blocked text-muted">открытия − возвраты тела</div>' +
+      "</div></div></div>"
+    );
+  }
+
   function groupAccountsByBank(list) {
     var order = [];
     var map = Object.create(null);
@@ -1737,7 +1985,12 @@
       return;
     }
 
-    var availLines = moneyMapLines(sumByCurrency(viewAccounts, accountAvailable));
+    var depositItemsView = depositEstimateItemsForOrgs(state.applied.org);
+    var depositMap = depositAmountsByCurrency(depositItemsView);
+    var depositLines = moneyMapLines(depositMap);
+    var availMap = sumByCurrency(viewAccounts, accountAvailable);
+    var totalMap = mergeCurrencyMaps(availMap, depositMap);
+    var availLines = moneyMapLines(totalMap);
     var blockedLines = moneyMapLines(sumByCurrency(viewAccounts, accountBlocked));
     var main = availLines[0];
     var rest = availLines.slice(1);
@@ -1759,6 +2012,12 @@
           esc(formatMoneyList(rest)) +
           "</div>"
         : "";
+    var depositExtra =
+      depositLines.length > 0
+        ? '<div class="dg-fin-total-extra small text-muted">Из них на депозитах (оценка): <strong class="text-dark">' +
+          esc(formatMoneyList(depositLines)) +
+          "</strong></div>"
+        : "";
 
     totalWrap.innerHTML =
       '<div class="card dg-fin-total-card">' +
@@ -1775,7 +2034,9 @@
       viewAccounts.length +
       " · снимок: " +
       esc(synTxt) +
+      (depositLines.length ? " · расчётные + оценка депозитов" : "") +
       "</div>" +
+      depositExtra +
       multiCur +
       blockedHtml +
       "</div></div>";
@@ -1783,12 +2044,19 @@
     var groups = groupAccountsByBank(viewAccounts);
     banksWrap.innerHTML = groups
       .map(function (g) {
-        var bankAvail = formatMoneyList(moneyMapLines(sumByCurrency(g.accounts, accountAvailable)));
+        var depForG = depositEstimateForGroup(g);
+        var bankAvail = formatMoneyList(
+          moneyMapLines(
+            mergeCurrencyMaps(sumByCurrency(g.accounts, accountAvailable), depositAmountsByCurrency(depForG))
+          )
+        );
         var checkingN = g.accounts.filter(function (a) { return !a.is_fund; }).length;
         var fundN = g.accounts.length - checkingN;
+        var depN = depForG.filter(function (it) { return Number(it.amount) > 0; }).length;
         var metaBits = [];
         if (checkingN) metaBits.push(checkingN + " расчётн.");
         if (fundN) metaBits.push(fundN + " фонд" + (fundN === 1 ? "" : fundN < 5 ? "а" : "ов"));
+        if (depN) metaBits.push("депозит (оценка)");
         var cards = g.accounts
           .map(function (a) {
             var isFund = !!a.is_fund;
@@ -1870,6 +2138,7 @@
             );
           })
           .join("");
+        var depositCards = depForG.map(renderDepositEstimateCard).join("");
         return (
           '<div class="dg-fin-bank-block" data-fin-bank="' +
           esc(g.key) +
@@ -1911,6 +2180,7 @@
           "</div>" +
           '<div class="row g-3 dg-fin-balances-row">' +
           cards +
+          depositCards +
           "</div></div>"
         );
       })
@@ -2407,6 +2677,13 @@
       .then(function (j) {
         if (!j || !j.success) throw new Error((j && j.error) || "accounts");
         state.accounts = j.accounts || [];
+        var de = j.deposit_estimate && typeof j.deposit_estimate === "object" ? j.deposit_estimate : {};
+        state.depositEstimate = {
+          method: String(de.method || ""),
+          note: String(de.note || ""),
+          items: Array.isArray(de.items) ? de.items : [],
+          totals: Array.isArray(de.totals) ? de.totals : [],
+        };
         state.orgAliases = j.org_aliases && typeof j.org_aliases === "object" ? j.org_aliases : {};
         if (typeof j.can_write === "boolean") state.canWrite = j.can_write;
         setApiNote(j.api_note || "");
@@ -2417,8 +2694,11 @@
         var tmplSave = el("dg-fin-cash-tmpl-save");
         if (onceSave) onceSave.disabled = !state.canWrite;
         if (tmplSave) tmplSave.disabled = !state.canWrite;
+        var planSave = el("dg-fin-plan-save");
+        if (planSave) planSave.disabled = !state.canWrite;
         renderCashOnceList();
         renderCashTmplList();
+        fillCashPlanSelects();
       });
   }
 
@@ -2426,6 +2706,7 @@
     var seq = ++txLoadSeq;
     var q = new URLSearchParams();
     q.set("search", state.applied.search || "");
+    if (state.applied.inn) q.set("inn", String(state.applied.inn));
     appendOrgQuery(q, state.applied.org);
     q.set("direction", state.applied.direction || "");
     q.set("account_id", state.applied.account_id || "");
@@ -2814,15 +3095,25 @@
         sel.value = code;
       }
     }
+    fillCashPlanSelects();
+    if (el("dg-fin-cash-once-plan")) {
+      el("dg-fin-cash-once-plan").value = row.plan_item_id ? String(row.plan_item_id) : "";
+    }
     syncCashOnceSaveUi();
-    setCashMsg("info", "Редактирование разовой №" + esc(row.id) + ". Измените поля и нажмите «Сохранить изменения».");
+    clearCashFieldErrors("once");
+    setCashMsg(
+      "info",
+      "Редактирование разовой №" + esc(row.id) + ". Измените поля и нажмите «Сохранить изменения».",
+      "once"
+    );
     var card = el("dg-fin-cash-card");
     if (card && card.scrollIntoView) card.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
   function cancelEditCashOnce() {
     state.cashOnceEditId = null;
     syncCashOnceSaveUi();
-    hideCashMsg();
+    clearCashFieldErrors("once");
+    hideCashMsg("once");
   }
   function beginEditCashTemplate(id) {
     var row = (state.cashTemplates || []).find(function (r) {
@@ -2843,8 +3134,13 @@
     }
     if (el("dg-fin-cash-tmpl-purpose")) el("dg-fin-cash-tmpl-purpose").value = row.purpose || "";
     if (el("dg-fin-cash-tmpl-chart")) el("dg-fin-cash-tmpl-chart").checked = Number(row.include_chart) !== 0;
+    if (el("dg-fin-cash-tmpl-review")) el("dg-fin-cash-tmpl-review").checked = Number(row.needs_review) !== 0;
     if (el("dg-fin-cash-tmpl-scope")) el("dg-fin-cash-tmpl-scope").value = row.scope === "org" ? "org" : "all";
     syncCashScopeUi("tmpl");
+    fillCashPlanSelects();
+    if (el("dg-fin-cash-tmpl-plan")) {
+      el("dg-fin-cash-tmpl-plan").value = row.plan_item_id ? String(row.plan_item_id) : "";
+    }
     if (row.scope === "org") {
       renderCashOrgSelect("tmpl", false);
       if (el("dg-fin-cash-tmpl-org") && row.customer_code) {
@@ -2860,25 +3156,106 @@
       }
     }
     syncCashTmplSaveUi();
-    setCashMsg("info", "Редактирование шаблона №" + esc(row.id) + ". Измените поля и нажмите «Сохранить изменения».");
+    clearCashFieldErrors("tmpl");
+    setCashMsg(
+      "info",
+      "Редактирование шаблона №" + esc(row.id) + ". Измените поля и нажмите «Сохранить изменения».",
+      "tmpl"
+    );
     var card = el("dg-fin-cash-card");
     if (card && card.scrollIntoView) card.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
   function cancelEditCashTemplate() {
     state.cashTmplEditId = null;
     syncCashTmplSaveUi();
-    hideCashMsg();
+    clearCashFieldErrors("tmpl");
+    hideCashMsg("tmpl");
   }
-  function setCashMsg(type, html) {
-    var box = el("dg-fin-cash-msg");
+  var CASH_INVALID_IDS = [
+    "dg-fin-cash-once-date",
+    "dg-fin-cash-once-amount",
+    "dg-fin-cash-once-purpose",
+    "dg-fin-cash-once-scope",
+    "dg-fin-cash-once-org",
+    "dg-fin-cash-once-org-q",
+    "dg-fin-cash-tmpl-day",
+    "dg-fin-cash-tmpl-fix",
+    "dg-fin-cash-tmpl-prem",
+    "dg-fin-cash-tmpl-purpose",
+    "dg-fin-cash-tmpl-scope",
+    "dg-fin-cash-tmpl-org",
+    "dg-fin-cash-tmpl-org-q",
+  ];
+
+  function clearCashFieldErrors(prefix) {
+    var ids = CASH_INVALID_IDS.filter(function (id) {
+      if (!prefix) return true;
+      return id.indexOf("dg-fin-cash-" + prefix + "-") === 0;
+    });
+    ids.forEach(function (id) {
+      var node = el(id);
+      if (!node) return;
+      node.classList.remove("is-invalid", "dg-fin-cash-invalid");
+      var wrap = node.closest ? node.closest(".col-md-1, .col-md-2, .col-md-3, .col-md-4, .col") : null;
+      if (wrap) wrap.classList.remove("dg-fin-cash-field-error");
+    });
+  }
+
+  function markCashFieldError(fieldId, focus) {
+    var node = el(fieldId);
+    if (!node) return;
+    node.classList.add("is-invalid", "dg-fin-cash-invalid");
+    var wrap = node.closest ? node.closest(".col-md-1, .col-md-2, .col-md-3, .col-md-4, .col") : null;
+    if (wrap) wrap.classList.add("dg-fin-cash-field-error");
+    if (focus) {
+      try {
+        node.focus();
+        if (typeof node.scrollIntoView === "function") {
+          node.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+      } catch (e) {}
+    }
+  }
+
+  function cashMsgBoxId(which) {
+    if (which === "once") return "dg-fin-cash-once-save-msg";
+    if (which === "tmpl") return "dg-fin-cash-tmpl-save-msg";
+    return "dg-fin-cash-msg";
+  }
+
+  function setCashMsg(type, html, which) {
+    var target = which || "card";
+    // Ошибки/итоги формы — под кнопкой сохранения активной вкладки.
+    if (target === "card" && (type === "danger" || type === "warning" || type === "success" || type === "info")) {
+      var tmplPane = el("dg-fin-cash-pane-tmpl");
+      if (tmplPane && !tmplPane.classList.contains("d-none")) target = "tmpl";
+      else target = "once";
+    }
+    ["once", "tmpl", "card"].forEach(function (w) {
+      if (w === target) return;
+      var other = el(cashMsgBoxId(w));
+      if (other && w !== "card") other.classList.add("d-none");
+    });
+    var box = el(cashMsgBoxId(target));
+    if (!box) box = el("dg-fin-cash-msg");
     if (!box) return;
-    box.className = "alert mt-3 mb-0 alert-" + (type || "secondary");
+    box.className =
+      "alert mb-0 alert-" +
+      (type || "secondary") +
+      (target === "card" ? " mt-3" : " mt-2");
     box.innerHTML = html || "";
     box.classList.remove("d-none");
   }
-  function hideCashMsg() {
-    var box = el("dg-fin-cash-msg");
-    if (box) box.classList.add("d-none");
+  function hideCashMsg(which) {
+    if (which) {
+      var one = el(cashMsgBoxId(which));
+      if (one) one.classList.add("d-none");
+      return;
+    }
+    ["dg-fin-cash-once-save-msg", "dg-fin-cash-tmpl-save-msg", "dg-fin-cash-msg"].forEach(function (id) {
+      var box = el(id);
+      if (box) box.classList.add("d-none");
+    });
   }
   function setCashTab(tab) {
     var oncePane = el("dg-fin-cash-pane-once");
@@ -2897,6 +3274,417 @@
     if (!scopeEl || !wrap) return;
     wrap.classList.toggle("d-none", String(scopeEl.value) !== "org");
   }
+  function planItemTitleById(id) {
+    if (!id) return "";
+    var row = (state.planItems || []).find(function (r) {
+      return Number(r.id) === Number(id);
+    });
+    return row ? String(row.title || "") : "";
+  }
+  function destroyCashCharts() {
+    if (cashChartMain) {
+      try {
+        cashChartMain.destroy();
+      } catch (e) {}
+    }
+    cashChartMain = null;
+  }
+  function setCashChartEmpty(canvasId, emptyId, empty) {
+    var canvas = el(canvasId);
+    var emptyEl = el(emptyId);
+    if (canvas) canvas.style.display = empty ? "none" : "";
+    if (emptyEl) emptyEl.classList.toggle("d-none", !empty);
+  }
+  function renderCashKpis(summary) {
+    var box = el("dg-fin-cash-kpis");
+    if (!box) return;
+    var cur = (summary && summary.currency) || "RUB";
+    var t = (summary && summary.totals) || {};
+    var fc = (summary && summary.forecast) || {};
+    var totIn = Number(t.in) || 0;
+    var totOut = Number(t.out) || 0;
+    var net = Number(t.net) || 0;
+    var netCls = Math.abs(net) < 0.005 ? "" : net >= 0 ? "is-pos" : "is-neg";
+    var fcOut = Number(fc.out) || 0;
+    var fcIn = Number(fc.in) || 0;
+    var fcYm = fc.ym ? fmtMonthLabel(fc.ym) : "—";
+    var onceOut = Number(t.once_out) || 0;
+    var tmplOut = Number(t.tmpl_out) || 0;
+    box.innerHTML =
+      '<div class="dg-fin-kpi is-cash-out"><div class="dg-fin-kpi-label">Факт исход (разовые)</div><div class="dg-fin-kpi-value">' +
+      esc(fmtMoney(onceOut, cur)) +
+      '</div><div class="dg-fin-kpi-sub">на графике динамики · ' +
+      esc(String(Number(t.count) || 0)) +
+      " оп.</div></div>" +
+      '<div class="dg-fin-kpi is-cash-in"><div class="dg-fin-kpi-label">Факт вход (разовые)</div><div class="dg-fin-kpi-value">' +
+      esc(fmtMoney(totIn, cur)) +
+      '</div><div class="dg-fin-kpi-sub">только разовые проводки</div></div>' +
+      '<div class="dg-fin-kpi is-diff"><div class="dg-fin-kpi-label">Чистый факт</div><div class="dg-fin-kpi-value ' +
+      netCls +
+      '">' +
+      esc((net > 0 ? "+" : "") + fmtMoney(net, cur)) +
+      '</div><div class="dg-fin-kpi-sub">вход − исход (без шаблонов)</div></div>' +
+      '<div class="dg-fin-kpi is-cash-fc"><div class="dg-fin-kpi-label">Шаблоны за период</div><div class="dg-fin-kpi-value">' +
+      esc(fmtMoney(tmplOut, cur)) +
+      '</div><div class="dg-fin-kpi-sub">справка · не в факте графика</div></div>' +
+      '<div class="dg-fin-kpi is-cash-fc"><div class="dg-fin-kpi-label">Потребуется (прогноз)</div><div class="dg-fin-kpi-value">' +
+      esc(fmtMoney(fcOut, cur)) +
+      '</div><div class="dg-fin-kpi-sub">' +
+      esc(fcYm) +
+      " · " +
+      esc(String(Number(fc.templates_active) || 0)) +
+      " шабл." +
+      (Number(fc.in) > 0.005 ? " · вход " + esc(fmtMoney(fcIn, cur)) : "") +
+      "</div></div>" +
+      '<div class="dg-fin-kpi is-net"><div class="dg-fin-kpi-label">Шаблонов в прогнозе</div><div class="dg-fin-kpi-value">' +
+      esc(String(Number(fc.templates_active) || 0)) +
+      '</div><div class="dg-fin-kpi-sub">' +
+      (Number(fc.templates_skipped) ? "пропуск " + esc(String(fc.templates_skipped)) + " · " : "") +
+      (Number(fc.review_pending) ? "проверка " + esc(String(fc.review_pending)) : "без ожидания проверки") +
+      "</div></div>";
+  }
+  function renderCashForecast(summary) {
+    var box = el("dg-fin-cash-forecast");
+    var ymEl = el("dg-fin-cash-forecast-ym");
+    if (!box) return;
+    var cur = (summary && summary.currency) || "RUB";
+    var fc = (summary && summary.forecast) || null;
+    if (ymEl) ymEl.textContent = fc && fc.ym ? fmtMonthLabel(fc.ym) : "";
+    if (!fc || !(fc.items || []).length) {
+      box.innerHTML =
+        '<div class="dg-fin-cash-fc-big">' +
+        esc(fmtMoney(0, cur)) +
+        '</div><div class="dg-fin-cash-fc-sub">Нет активных шаблонов на следующий месяц' +
+        (fc && Number(fc.templates_skipped)
+          ? " (пропущено: " + esc(String(fc.templates_skipped)) + ")"
+          : "") +
+        ".</div>";
+      return;
+    }
+    var items = (fc.items || []).slice().sort(function (a, b) {
+      if (a.direction !== b.direction) return a.direction === "out" ? -1 : 1;
+      return (Number(b.amount) || 0) - (Number(a.amount) || 0);
+    });
+    var listHtml = items
+      .slice(0, 12)
+      .map(function (it) {
+        var out = it.direction === "out";
+        var name = String(it.purpose || "Шаблон") + (it.day_of_month ? " · д." + it.day_of_month : "");
+        if (it.review_pending) name += " ⚠";
+        return (
+          "<li><span class=\"dg-fin-cash-fc-name\" title=\"" +
+          esc(name) +
+          "\">" +
+          esc(name) +
+          '</span><span class="dg-fin-cash-fc-amt ' +
+          (out ? "is-out" : "is-in") +
+          '">' +
+          esc((out ? "−" : "+") + fmtMoney(Number(it.amount) || 0, cur)) +
+          "</span></li>"
+        );
+      })
+      .join("");
+    if (items.length > 12) {
+      listHtml +=
+        '<li><span class="dg-fin-cash-fc-name text-muted">ещё ' +
+        esc(String(items.length - 12)) +
+        "…</span><span></span></li>";
+    }
+    box.innerHTML =
+      '<div class="dg-fin-cash-fc-big">' +
+      esc(fmtMoney(Number(fc.out) || 0, cur)) +
+      '</div><div class="dg-fin-cash-fc-sub">предварительный исход по шаблонам' +
+      (Number(fc.in) > 0.005 ? " · вход " + esc(fmtMoney(Number(fc.in) || 0, cur)) : "") +
+      " · " +
+      esc(String(fc.templates_active || 0)) +
+      " шт.</div><ul class=\"dg-fin-cash-fc-list\">" +
+      listHtml +
+      "</ul>";
+  }
+  function renderCashDashboardCharts(summary) {
+    var series = (summary && summary.series) || [];
+    var cur = (summary && summary.currency) || "RUB";
+    var periodEl = el("dg-fin-cash-chart-period");
+    if (periodEl) {
+      var months = (summary && summary.months) || [];
+      periodEl.textContent = months.length
+        ? fmtMonthLabel(months[0]) + (months.length > 1 ? " — " + fmtMonthLabel(months[months.length - 1]) : "")
+        : "нет периода";
+    }
+    destroyCashCharts();
+    var hasAny = series.some(function (s) {
+      return (Number(s.in) || 0) > 0.005 || (Number(s.out) || 0) > 0.005;
+    });
+    setCashChartEmpty("dg-fin-cash-chart-main", "dg-fin-cash-chart-main-empty", !hasAny);
+    if (!hasAny) return;
+    loadChartJs()
+      .then(function (Chart) {
+        var tickFmt = function (v) {
+          var n = Number(v);
+          if (Math.abs(n) >= 1000000)
+            return (n / 1000000).toLocaleString("ru-RU", { maximumFractionDigits: 1 }) + " млн";
+          if (Math.abs(n) >= 1000)
+            return (n / 1000).toLocaleString("ru-RU", { maximumFractionDigits: 0 }) + " тыс";
+          return n.toLocaleString("ru-RU");
+        };
+        if (hasAny) {
+          var canvas = el("dg-fin-cash-chart-main");
+          if (canvas) {
+            var ctx = canvas.getContext("2d");
+            var gradIn = ctx.createLinearGradient(0, 0, 0, 240);
+            gradIn.addColorStop(0, "rgba(16, 185, 129, 0.65)");
+            gradIn.addColorStop(1, "rgba(16, 185, 129, 0.18)");
+            var gradOut = ctx.createLinearGradient(0, 0, 0, 240);
+            gradOut.addColorStop(0, "rgba(239, 68, 68, 0.7)");
+            gradOut.addColorStop(1, "rgba(239, 68, 68, 0.2)");
+            /* На графике — только факт месяца (вход/исход/чистый), без стека разовые+шаблоны.
+               Разбивка once/tmpl — в KPI; иначе «исход» визуально удваивается с «чистым». */
+            cashChartMain = new Chart(ctx, {
+              type: "bar",
+              data: {
+                labels: series.map(function (s) {
+                  return fmtMonthLabel(s.month);
+                }),
+                datasets: [
+                  {
+                    type: "bar",
+                    label: "Вход",
+                    data: series.map(function (s) {
+                      return Number(s.in) || 0;
+                    }),
+                    backgroundColor: gradIn,
+                    borderColor: "rgba(5, 150, 105, 0.95)",
+                    borderWidth: 1,
+                    borderRadius: 6,
+                    maxBarThickness: 18,
+                    order: 2,
+                  },
+                  {
+                    type: "bar",
+                    label: "Исход",
+                    data: series.map(function (s) {
+                      return -(Number(s.out) || 0);
+                    }),
+                    backgroundColor: gradOut,
+                    borderColor: "rgba(185, 28, 28, 0.95)",
+                    borderWidth: 1,
+                    borderRadius: 6,
+                    maxBarThickness: 18,
+                    order: 2,
+                  },
+                  {
+                    type: "line",
+                    label: "Чистый",
+                    data: series.map(function (s) {
+                      return Number(s.net) || 0;
+                    }),
+                    borderColor: "#3f6ad8",
+                    backgroundColor: "rgba(63, 106, 216, 0.12)",
+                    borderWidth: 2.4,
+                    pointRadius: 3.2,
+                    pointHoverRadius: 5,
+                    pointBackgroundColor: "#fff",
+                    pointBorderColor: "#3f6ad8",
+                    pointBorderWidth: 2,
+                    tension: 0.35,
+                    order: 1,
+                  },
+                ],
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: "index", intersect: false },
+                plugins: {
+                  legend: { position: "top", labels: { boxWidth: 12, font: { size: 11 } } },
+                  tooltip: {
+                    callbacks: {
+                      label: function (ctx) {
+                        var v = Number(ctx.parsed.y) || 0;
+                        var name = ctx.dataset.label || "";
+                        if (name === "Исход") return name + ": " + fmtMoney(Math.abs(v), cur);
+                        if (name === "Чистый") {
+                          return name + ": " + (v > 0 ? "+" : "") + fmtMoney(v, cur);
+                        }
+                        return name + ": " + fmtMoney(v, cur);
+                      },
+                      afterBody: function (items) {
+                        var idx = items && items[0] ? items[0].dataIndex : -1;
+                        var s = series[idx] || {};
+                        var lines = [
+                          "Факт = разовые · оп.: " +
+                            ((Number(s.count_in) || 0) + (Number(s.count_out) || 0)),
+                        ];
+                        if ((Number(s.tmpl_out) || 0) > 0.005) {
+                          lines.push(
+                            "Шаблоны (не в факте): " + fmtMoney(Number(s.tmpl_out) || 0, cur)
+                          );
+                        }
+                        return lines;
+                      },
+                    },
+                  },
+                },
+                scales: {
+                  x: {
+                    ticks: { font: { size: 11 }, color: "#64748b" },
+                    grid: { display: false },
+                  },
+                  y: {
+                    ticks: { font: { size: 11 }, color: "#64748b", callback: tickFmt },
+                    grid: { color: "rgba(15, 23, 42, 0.06)" },
+                  },
+                },
+              },
+            });
+          }
+        }
+      })
+      .catch(function () {
+        /* Chart.js недоступен — KPI и прогноз всё равно видны */
+      });
+  }
+  function renderCashDashboard(summary) {
+    renderCashKpis(summary);
+    renderCashForecast(summary);
+    renderCashDashboardCharts(summary);
+  }
+  function loadCashSummary() {
+    var seq = ++cashSummaryLoadSeq;
+    var q = new URLSearchParams();
+    applyAnalyticsPeriodQuery(q, true);
+    appendOrgQuery(q, state.applied.org);
+    if (state.applied.account_id) q.set("account_id", String(state.applied.account_id));
+    return fetch("/api/finance/cash/summary?" + q.toString(), { credentials: "same-origin" })
+      .then(function (r) {
+        return r.json();
+      })
+      .then(function (j) {
+        if (seq !== cashSummaryLoadSeq) return null;
+        if (!j || !j.success) throw new Error((j && j.error) || "cash summary");
+        renderCashDashboard(j);
+        return j;
+      })
+      .catch(function (e) {
+        if (seq !== cashSummaryLoadSeq) return null;
+        var box = el("dg-fin-cash-kpis");
+        if (box) {
+          box.innerHTML =
+            '<div class="alert alert-warning mb-0 py-2 small">Не удалось загрузить сводку наличных: ' +
+            esc(e.message || String(e)) +
+            "</div>";
+        }
+        var fc = el("dg-fin-cash-forecast");
+        if (fc) fc.innerHTML = '<div class="text-muted small">Прогноз недоступен.</div>';
+        destroyCashCharts();
+        setCashChartEmpty("dg-fin-cash-chart-main", "dg-fin-cash-chart-main-empty", true);
+      });
+  }
+  function renderCashPendingReviews() {
+    var wrap = el("dg-fin-cash-review-wrap");
+    var tb = el("dg-fin-cash-review-tbody");
+    if (!wrap || !tb) return;
+    var rows = state.cashPendingReviews || [];
+    if (!rows.length) {
+      wrap.classList.add("d-none");
+      tb.innerHTML = "";
+      return;
+    }
+    wrap.classList.remove("d-none");
+    tb.innerHTML = rows
+      .map(function (r) {
+        var dirOut = r.direction === "out";
+        var amt = Number(r.amount_abs != null ? r.amount_abs : r.amount) || 0;
+        if (dirOut) amt = -Math.abs(amt);
+        return (
+          '<tr class="dg-fin-row-needs-review dg-fin-cash-recurring" title="Автопроводка из шаблона с галкой «Требуется проверка». Подтвердите сумму за месяц.">' +
+          "<td>" +
+          esc(String(r.booked_date || "").slice(0, 10)) +
+          "</td>" +
+          "<td>" +
+          esc(dirOut ? "Исходящий" : "Входящий") +
+          "</td>" +
+          "<td>" +
+          '<span class="' +
+          (dirOut ? "dg-fin-dir-out" : "dg-fin-dir-in") +
+          '">' +
+          esc(fmtMoney(amt, "RUB")) +
+          "</span>" +
+          ' <span class="badge bg-warning text-dark border">ежемес.</span>' +
+          ' <span class="badge bg-danger border dg-fin-review-badge">проверка</span>' +
+          "</td>" +
+          "<td>" +
+          esc(r.purpose || "—") +
+          "</td>" +
+          '<td class="dg-fin-cash-actions">' +
+          (state.canWrite
+            ? '<button type="button" class="btn btn-sm btn-outline-primary me-1 dg-fin-cash-review-edit" data-tx-id="' +
+              esc(r.tx_id || "") +
+              '" data-dg-notify-start="Открываем правку месяца…">Изменить</button>' +
+              '<button type="button" class="btn btn-sm btn-warning dg-fin-cash-review-confirm" data-template-id="' +
+              esc(r.template_id) +
+              '" data-ym="' +
+              esc(r.ym || "") +
+              '" data-dg-notify-start="Подтверждаем проводку…">Подтвердить</button>'
+            : "") +
+          "</td>" +
+          "</tr>"
+        );
+      })
+      .join("");
+  }
+  function loadCashPendingReviews() {
+    var q = new URLSearchParams();
+    // Окно как у аналитики (не фильтр «Движения») — иначе широкий date_from раздувает список с 2000 г.
+    var per = readAnalyticsPeriod();
+    if (per.date_from && per.date_to) {
+      q.set("date_from", per.date_from);
+      q.set("date_to", per.date_to);
+    } else {
+      var months = Math.max(1, Math.min(36, Number(per.months) || 12));
+      var now = moscowNowParts();
+      var endY = Number(now.y);
+      var endM = Number(now.m);
+      var startMIdx = endY * 12 + (endM - 1) - (months - 1);
+      var startY = Math.floor(startMIdx / 12);
+      var startM = (startMIdx % 12) + 1;
+      q.set(
+        "date_from",
+        startY + "-" + String(startM).padStart(2, "0") + "-01"
+      );
+      q.set("date_to", now.ymd);
+    }
+    appendOrgQuery(q, state.applied.org);
+    q.set("source", "cash");
+    q.set("page", "1");
+    q.set("page_size", "200");
+    q.set("sort_by", "booked_date");
+    q.set("sort_dir", "desc");
+    return fetch("/api/finance/transactions?" + q.toString(), { credentials: "same-origin" })
+      .then(function (r) {
+        return r.json();
+      })
+      .then(function (j) {
+        var now = moscowNowParts();
+        var today = now.ymd;
+        var todayYm = now.y + "-" + now.m;
+        var rows = (j && j.success && Array.isArray(j.rows) ? j.rows : []).filter(function (r) {
+          if (!r || !r.review_pending || r.cash_kind !== "recurring") return false;
+          var bd = String(r.booked_date || "").slice(0, 10);
+          var rowYm = String(r.ym || bd).slice(0, 7);
+          return bd && bd <= today && rowYm === todayYm;
+        });
+        state.cashPendingReviews = rows;
+        renderCashPendingReviews();
+        if (rows.length) setCashTab("once");
+        return rows;
+      })
+      .catch(function () {
+        state.cashPendingReviews = [];
+        renderCashPendingReviews();
+        return [];
+      });
+  }
   function renderCashOnceList() {
     var tb = el("dg-fin-cash-once-tbody");
     if (!tb) return;
@@ -2911,18 +3699,19 @@
           r.scope,
           r.customer_code,
           orgOptionLabel(r.customer_code),
+          planItemTitleById(r.plan_item_id),
           Number(r.include_chart) !== 0 ? "график" : "не в графике",
         ],
         q
       );
     });
     if (!(state.cashOnce || []).length) {
-      tb.innerHTML = '<tr><td colspan="7" class="text-muted small">Разовых проводок пока нет.</td></tr>';
+      tb.innerHTML = '<tr><td colspan="8" class="text-muted small">Разовых проводок пока нет.</td></tr>';
       return;
     }
     if (!rows.length) {
       tb.innerHTML =
-        '<tr><td colspan="7" class="text-muted small">Ничего не найдено по запросу «' + esc(q) + '».</td></tr>';
+        '<tr><td colspan="8" class="text-muted small">Ничего не найдено по запросу «' + esc(q) + '».</td></tr>';
       return;
     }
     tb.innerHTML = rows
@@ -2932,6 +3721,7 @@
         if (dirOut) amt = -Math.abs(amt);
         var scopeLab =
           r.scope === "org" ? orgOptionLabel(r.customer_code) || r.customer_code || "орг" : "все компании";
+        var planLab = planItemTitleById(r.plan_item_id) || "—";
         return (
           "<tr>" +
           "<td>" +
@@ -2949,6 +3739,9 @@
           "</td>" +
           "<td>" +
           esc(r.purpose || "—") +
+          "</td>" +
+          "<td class=\"small\">" +
+          esc(planLab) +
           "</td>" +
           "<td>" +
           esc(scopeLab) +
@@ -2986,18 +3779,20 @@
           r.scope,
           r.customer_code,
           orgOptionLabel(r.customer_code),
+          planItemTitleById(r.plan_item_id),
+          Number(r.needs_review) !== 0 ? "проверка" : "",
           Number(r.active) !== 0 ? "вкл" : "выкл",
         ],
         q
       );
     });
     if (!(state.cashTemplates || []).length) {
-      tb.innerHTML = '<tr><td colspan="8" class="text-muted small">Шаблонов пока нет.</td></tr>';
+      tb.innerHTML = '<tr><td colspan="10" class="text-muted small">Шаблонов пока нет.</td></tr>';
       return;
     }
     if (!rows.length) {
       tb.innerHTML =
-        '<tr><td colspan="8" class="text-muted small">Ничего не найдено по запросу «' + esc(q) + '».</td></tr>';
+        '<tr><td colspan="10" class="text-muted small">Ничего не найдено по запросу «' + esc(q) + '».</td></tr>';
       return;
     }
     tb.innerHTML = rows
@@ -3018,6 +3813,8 @@
         }
         var scopeLab =
           r.scope === "org" ? orgOptionLabel(r.customer_code) || r.customer_code || "орг" : "все компании";
+        var planLab = planItemTitleById(r.plan_item_id) || "—";
+        var needReview = Number(r.needs_review) !== 0;
         return (
           "<tr>" +
           "<td>" +
@@ -3039,8 +3836,16 @@
           "<td>" +
           esc(r.purpose || "—") +
           "</td>" +
+          '<td class="small">' +
+          esc(planLab) +
+          "</td>" +
           "<td>" +
           esc(scopeLab) +
+          "</td>" +
+          "<td>" +
+          (needReview
+            ? '<span class="badge bg-warning text-dark border" title="Автопроводки в «Движении» ждут подтверждения">да</span>'
+            : "нет") +
           "</td>" +
           "<td>" +
           (Number(r.active) !== 0 ? "да" : "нет") +
@@ -3077,6 +3882,9 @@
       else state.cashTemplates = [];
       renderCashOnceList();
       renderCashTmplList();
+      var pay = readPlanPaymentForm();
+      if (pay === "cash" || pay === "both") renderPlanCashLinks();
+      return Promise.all([loadCashSummary(), loadCashPendingReviews()]);
     }).catch(function (e) {
       setCashMsg("danger", "Не удалось загрузить наличные: " + esc(e.message || String(e)));
     });
@@ -3086,23 +3894,32 @@
       toast("warning", "Нет прав на запись");
       return Promise.resolve();
     }
+    clearCashFieldErrors("once");
     var amount = parseCashMoney(el("dg-fin-cash-once-amount") && el("dg-fin-cash-once-amount").value);
     var booked = String((el("dg-fin-cash-once-date") && el("dg-fin-cash-once-date").value) || "").trim();
     var purpose = String((el("dg-fin-cash-once-purpose") && el("dg-fin-cash-once-purpose").value) || "").trim();
     var scope = String((el("dg-fin-cash-once-scope") && el("dg-fin-cash-once-scope").value) || "all");
     var org = String((el("dg-fin-cash-once-org") && el("dg-fin-cash-once-org").value) || "").trim();
     if (!booked || amount == null || amount <= 0) {
-      setCashMsg("danger", "Укажите дату и сумму больше 0.");
+      if (!booked) markCashFieldError("dg-fin-cash-once-date", true);
+      if (amount == null || amount <= 0) markCashFieldError("dg-fin-cash-once-amount", !booked ? false : true);
+      setCashMsg("danger", "Укажите дату и сумму больше 0.", "once");
       return Promise.resolve();
     }
     if (!purpose) {
-      setCashMsg("danger", "Укажите назначение.");
+      markCashFieldError("dg-fin-cash-once-purpose", true);
+      setCashMsg("danger", "Укажите назначение.", "once");
       return Promise.resolve();
     }
     if (scope === "org" && !org) {
-      setCashMsg("danger", "Выберите организацию или «Все компании».");
+      syncCashScopeUi("once");
+      markCashFieldError("dg-fin-cash-once-scope", false);
+      markCashFieldError("dg-fin-cash-once-org", true);
+      markCashFieldError("dg-fin-cash-once-org-q", false);
+      setCashMsg("danger", "Выберите организацию или «Все компании».", "once");
       return Promise.resolve();
     }
+    var planRaw = String((el("dg-fin-cash-once-plan") && el("dg-fin-cash-once-plan").value) || "").trim();
     var body = {
       booked_date: booked,
       direction: String((el("dg-fin-cash-once-dir") && el("dg-fin-cash-once-dir").value) || "out"),
@@ -3111,11 +3928,13 @@
       scope: scope === "org" ? "org" : "all",
       customer_code: scope === "org" ? org : "",
       include_chart: !!(el("dg-fin-cash-once-chart") && el("dg-fin-cash-once-chart").checked),
+      plan_item_id: planRaw ? parseInt(planRaw, 10) : null,
     };
     var editId = state.cashOnceEditId;
     var btn = el("dg-fin-cash-once-save");
     var run = function () {
-      setCashMsg("warning", editId ? "Сохраняем изменения…" : "Сохраняем разовую…");
+      clearCashFieldErrors("once");
+      setCashMsg("warning", editId ? "Сохраняем изменения…" : "Сохраняем разовую…", "once");
       var url = editId
         ? "/api/finance/cash/tx/" + encodeURIComponent(editId)
         : "/api/finance/cash/tx";
@@ -3135,16 +3954,24 @@
           if (editId) {
             state.cashOnceEditId = null;
             syncCashOnceSaveUi();
-            setCashMsg("success", "<strong>Разовая обновлена.</strong> Поля формы оставлены — можно править дальше или добавить копию.");
+            setCashMsg(
+              "success",
+              "<strong>Разовая обновлена.</strong> Поля формы оставлены — можно править дальше или добавить копию.",
+              "once"
+            );
             toast("success", "Разовая обновлена");
           } else {
-            setCashMsg("success", "<strong>Разовая добавлена.</strong> Поля формы не сброшены — можно добавить ещё с теми же значениями.");
+            setCashMsg(
+              "success",
+              "<strong>Разовая добавлена.</strong> Поля формы не сброшены — можно добавить ещё с теми же значениями.",
+              "once"
+            );
             toast("success", "Разовая наличная сохранена");
           }
-          return Promise.all([loadCashLists(), loadTx(), loadMonthlyAnalytics(), loadCounterparties()]);
+          return Promise.all([loadCashLists(), loadTx(), loadMonthlyAnalytics(), loadCounterparties(), loadPlans()]);
         })
         .catch(function (e) {
-          setCashMsg("danger", esc(e.message || String(e)));
+          setCashMsg("danger", esc(e.message || String(e)), "once");
           toast("danger", e.message || String(e));
         });
     };
@@ -3156,6 +3983,7 @@
       toast("warning", "Нет прав на запись");
       return Promise.resolve();
     }
+    clearCashFieldErrors("tmpl");
     var fix = parseCashMoney(el("dg-fin-cash-tmpl-fix") && el("dg-fin-cash-tmpl-fix").value);
     var premRaw = el("dg-fin-cash-tmpl-prem") && el("dg-fin-cash-tmpl-prem").value;
     var prem = String(premRaw || "").trim() === "" ? null : parseCashMoney(premRaw);
@@ -3164,17 +3992,24 @@
     var scope = String((el("dg-fin-cash-tmpl-scope") && el("dg-fin-cash-tmpl-scope").value) || "all");
     var org = String((el("dg-fin-cash-tmpl-org") && el("dg-fin-cash-tmpl-org").value) || "").trim();
     if (fix == null || fix < 0) {
-      setCashMsg("danger", "Укажите фикс (≥ 0).");
+      markCashFieldError("dg-fin-cash-tmpl-fix", true);
+      setCashMsg("danger", "Укажите фикс (≥ 0).", "tmpl");
       return Promise.resolve();
     }
     if (!purpose) {
-      setCashMsg("danger", "Укажите назначение.");
+      markCashFieldError("dg-fin-cash-tmpl-purpose", true);
+      setCashMsg("danger", "Укажите назначение.", "tmpl");
       return Promise.resolve();
     }
     if (scope === "org" && !org) {
-      setCashMsg("danger", "Выберите организацию или «Все компании».");
+      syncCashScopeUi("tmpl");
+      markCashFieldError("dg-fin-cash-tmpl-scope", false);
+      markCashFieldError("dg-fin-cash-tmpl-org", true);
+      markCashFieldError("dg-fin-cash-tmpl-org-q", false);
+      setCashMsg("danger", "Выберите организацию или «Все компании».", "tmpl");
       return Promise.resolve();
     }
+    var planRaw = String((el("dg-fin-cash-tmpl-plan") && el("dg-fin-cash-tmpl-plan").value) || "").trim();
     var body = {
       day_of_month: day,
       direction: String((el("dg-fin-cash-tmpl-dir") && el("dg-fin-cash-tmpl-dir").value) || "out"),
@@ -3184,12 +4019,15 @@
       scope: scope === "org" ? "org" : "all",
       customer_code: scope === "org" ? org : "",
       include_chart: !!(el("dg-fin-cash-tmpl-chart") && el("dg-fin-cash-tmpl-chart").checked),
+      needs_review: !!(el("dg-fin-cash-tmpl-review") && el("dg-fin-cash-tmpl-review").checked),
       active: true,
+      plan_item_id: planRaw ? parseInt(planRaw, 10) : null,
     };
     var editId = state.cashTmplEditId;
     var btn = el("dg-fin-cash-tmpl-save");
     var run = function () {
-      setCashMsg("warning", editId ? "Сохраняем изменения шаблона…" : "Сохраняем шаблон…");
+      clearCashFieldErrors("tmpl");
+      setCashMsg("warning", editId ? "Сохраняем изменения шаблона…" : "Сохраняем шаблон…", "tmpl");
       var url = editId
         ? "/api/finance/cash/templates/" + encodeURIComponent(editId)
         : "/api/finance/cash/templates";
@@ -3209,16 +4047,20 @@
           if (editId) {
             state.cashTmplEditId = null;
             syncCashTmplSaveUi();
-            setCashMsg("success", "<strong>Шаблон обновлён.</strong> Поля формы оставлены.");
+            setCashMsg("success", "<strong>Шаблон обновлён.</strong> Поля формы оставлены.", "tmpl");
             toast("success", "Шаблон обновлён");
           } else {
-            setCashMsg("success", "<strong>Шаблон добавлен.</strong> Поля формы не сброшены — можно добавить ещё.");
+            setCashMsg(
+              "success",
+              "<strong>Шаблон добавлен.</strong> Поля формы не сброшены — можно добавить ещё.",
+              "tmpl"
+            );
             toast("success", "Ежемесячный шаблон сохранён");
           }
-          return Promise.all([loadCashLists(), loadTx(), loadMonthlyAnalytics(), loadCounterparties()]);
+          return Promise.all([loadCashLists(), loadTx(), loadMonthlyAnalytics(), loadCounterparties(), loadPlans()]);
         })
         .catch(function (e) {
-          setCashMsg("danger", esc(e.message || String(e)));
+          setCashMsg("danger", esc(e.message || String(e)), "tmpl");
           toast("danger", e.message || String(e));
         });
     };
@@ -3270,6 +4112,40 @@
           return Promise.all([loadCashLists(), loadTx(), loadMonthlyAnalytics(), loadCounterparties()]);
         });
     });
+  }
+  function confirmCashMonthReview(templateId, ym, btn) {
+    if (!templateId || !ym) return Promise.resolve();
+    var run = function () {
+      return fetch(
+        "/api/finance/cash/templates/" +
+          encodeURIComponent(templateId) +
+          "/months/" +
+          encodeURIComponent(ym),
+        {
+          method: "PUT",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ review_confirmed: 1 }),
+        }
+      )
+        .then(function (r) {
+          return r.json().then(function (j) {
+            return { ok: r.ok, j: j };
+          });
+        })
+        .then(function (x) {
+          if (!x.ok || !x.j || !x.j.success) throw new Error((x.j && x.j.error) || "Не удалось подтвердить");
+          toast("success", "Проводка за " + ym + " подтверждена");
+          return Promise.all([loadTx(), loadCashPendingReviews()]);
+        })
+        .catch(function (e) {
+          toast("danger", e.message || String(e));
+        });
+    };
+    if (window.DatagonNotify && window.DatagonNotify.busyRun && btn) {
+      return window.DatagonNotify.busyRun(btn, run);
+    }
+    return run();
   }
   function saveCashIncludeChart(cbEl, want) {
     var kind = cbEl.getAttribute("data-cash-kind") || "once";
@@ -3336,7 +4212,11 @@
   }
   function findCashRowByTxId(txId) {
     var id = String(txId || "");
-    return (state.rows || []).find(function (r) {
+    var fromTx = (state.rows || []).find(function (r) {
+      return String(r.tx_id) === id;
+    });
+    if (fromTx) return fromTx;
+    return (state.cashPendingReviews || []).find(function (r) {
       return String(r.tx_id) === id;
     });
   }
@@ -3405,7 +4285,12 @@
           if (!x.ok || !x.j || !x.j.success) throw new Error((x.j && x.j.error) || "Не удалось сохранить");
           closeCashMonthEditor();
           toast("success", "Месяц обновлён");
-          return Promise.all([loadTx(), loadMonthlyAnalytics(), loadCounterparties()]);
+          return Promise.all([
+            loadTx(),
+            loadCashLists(),
+            loadMonthlyAnalytics(),
+            loadCounterparties(),
+          ]);
         });
     };
     if (window.DatagonNotify && window.DatagonNotify.busyRun && btn) {
@@ -3426,6 +4311,7 @@
       var scopeEl = el("dg-fin-cash-" + prefix + "-scope");
       if (scopeEl) {
         scopeEl.addEventListener("change", function () {
+          clearCashFieldErrors(prefix);
           syncCashScopeUi(prefix);
           if (String(scopeEl.value) === "org") {
             renderCashOrgSelect(prefix, true);
@@ -3436,7 +4322,14 @@
       var orgQ = el("dg-fin-cash-" + prefix + "-org-q");
       if (orgQ) {
         orgQ.addEventListener("input", function () {
+          clearCashFieldErrors(prefix);
           renderCashOrgSelect(prefix, true);
+        });
+      }
+      var orgSel = el("dg-fin-cash-" + prefix + "-org");
+      if (orgSel) {
+        orgSel.addEventListener("change", function () {
+          clearCashFieldErrors(prefix);
         });
       }
     });
@@ -3481,6 +4374,27 @@
         });
       });
     }
+    var reviewTb = el("dg-fin-cash-review-tbody");
+    if (reviewTb) {
+      reviewTb.addEventListener("click", function (ev) {
+        var editBtn =
+          ev.target && ev.target.closest ? ev.target.closest(".dg-fin-cash-review-edit") : null;
+        if (editBtn && reviewTb.contains(editBtn)) {
+          ev.preventDefault();
+          openCashMonthEditor(editBtn.getAttribute("data-tx-id"));
+          return;
+        }
+        var confirmBtn =
+          ev.target && ev.target.closest ? ev.target.closest(".dg-fin-cash-review-confirm") : null;
+        if (!confirmBtn || !reviewTb.contains(confirmBtn)) return;
+        ev.preventDefault();
+        confirmCashMonthReview(
+          confirmBtn.getAttribute("data-template-id"),
+          confirmBtn.getAttribute("data-ym"),
+          confirmBtn
+        );
+      });
+    }
     var tmplTb = el("dg-fin-cash-tmpl-tbody");
     if (tmplTb) {
       tmplTb.addEventListener("click", function (ev) {
@@ -3520,6 +4434,1568 @@
         String(n.getMonth() + 1).padStart(2, "0") +
         "-" +
         String(n.getDate()).padStart(2, "0");
+    }
+  }
+
+  function planItemCounterparties(item) {
+    if (!item) return [];
+    if (Array.isArray(item.counterparties) && item.counterparties.length) {
+      return item.counterparties
+        .map(function (c) {
+          if (!c) return null;
+          if (typeof c === "string") {
+            var innOnly = String(c).replace(/\D+/g, "");
+            return innOnly ? { inn: innOnly, name: "" } : null;
+          }
+          var inn = String(c.inn || "").replace(/\D+/g, "");
+          if (!inn) return null;
+          return { inn: inn, name: String(c.name || "").trim() };
+        })
+        .filter(Boolean);
+    }
+    if (Array.isArray(item.inns) && item.inns.length) {
+      return item.inns
+        .map(function (x) {
+          var inn = String(x || "").replace(/\D+/g, "");
+          return inn ? { inn: inn, name: "" } : null;
+        })
+        .filter(Boolean);
+    }
+    return String(item.counterparty_inn || "")
+      .split(/[\s,;]+/)
+      .map(function (x) {
+        var inn = String(x || "").replace(/\D+/g, "");
+        return inn.length === 10 || inn.length === 12 ? { inn: inn, name: "" } : null;
+      })
+      .filter(Boolean);
+  }
+  function planItemInns(item) {
+    return planItemCounterparties(item).map(function (c) {
+      return c.inn;
+    });
+  }
+  function planCounterpartiesLabel(item) {
+    if (item && item.counterparties_label) return String(item.counterparties_label);
+    return planItemCounterparties(item)
+      .map(function (c) {
+        return c.name ? c.name + " (" + c.inn + ")" : c.inn;
+      })
+      .join("; ");
+  }
+  function planItemLabel(item) {
+    if (!item) return "";
+    var t = String(item.title || "").trim();
+    var cps = planCounterpartiesLabel(item);
+    var cat = String(item.category_title || "").trim();
+    var pay = String(item.payment_form_label || planPaymentFormLabel(item.payment_form) || "").trim();
+    return (pay ? "[" + pay + "] " : "") + (cat ? cat + " · " : "") + t + (cps ? " · " + cps : "");
+  }
+  function planPaymentFormLabel(form) {
+    var f = String(form || "bank").toLowerCase();
+    if (f === "cash") return "Нал";
+    if (f === "both") return "Оба";
+    return "Безнал";
+  }
+  function readPlanPaymentForm() {
+    var checked = document.querySelector('input[name="dg-fin-plan-pay"]:checked');
+    var v = checked ? String(checked.value || "bank") : "bank";
+    if (v !== "cash" && v !== "both") return "bank";
+    return v;
+  }
+  function setPlanPaymentForm(form) {
+    var f = String(form || "bank").toLowerCase();
+    if (f !== "cash" && f !== "both") f = "bank";
+    var radio = el("dg-fin-plan-pay-" + f);
+    if (radio) radio.checked = true;
+    syncPlanPaymentFormUi();
+  }
+  function syncPlanPaymentFormUi() {
+    var form = readPlanPaymentForm();
+    var cpsWrap = el("dg-fin-plan-cps-wrap");
+    var cashHint = el("dg-fin-plan-cash-hint");
+    var usesBank = form === "bank" || form === "both";
+    var usesCash = form === "cash" || form === "both";
+    if (cpsWrap) cpsWrap.classList.toggle("d-none", !usesBank && form === "cash");
+    if (cashHint) cashHint.classList.toggle("d-none", !usesCash);
+    if (usesCash) renderPlanCashLinks();
+  }
+  function renderPlanCashLinks(selectedIds) {
+    var host = el("dg-fin-plan-cash-links");
+    if (!host) return;
+    var editId = state.planEditId;
+    var selected = Object.create(null);
+    if (Array.isArray(selectedIds)) {
+      selectedIds.forEach(function (id) {
+        selected[Number(id)] = true;
+      });
+    } else if (editId) {
+      var row = (state.planItems || []).find(function (r) {
+        return Number(r.id) === Number(editId);
+      });
+      ((row && row.cash_template_ids) || []).forEach(function (id) {
+        selected[Number(id)] = true;
+      });
+    }
+    var tmpls = (state.cashTemplates || []).filter(function (t) {
+      return Number(t.active) !== 0 || selected[Number(t.id)];
+    });
+    if (!tmpls.length) {
+      host.innerHTML =
+        '<span class="text-muted">Шаблонов наличных пока нет — добавьте их в карточке «Наличные», затем отметьте здесь.</span>';
+      return;
+    }
+    host.innerHTML = tmpls
+      .map(function (t) {
+        var tid = Number(t.id);
+        var other =
+          t.plan_item_id && Number(t.plan_item_id) !== Number(editId || 0)
+            ? ' <span class="text-muted">(сейчас: ' +
+              esc(planItemTitleById(t.plan_item_id) || "#" + t.plan_item_id) +
+              ")</span>"
+            : "";
+        var amt = Number(t.amount_fix) || 0;
+        return (
+          '<label><input type="checkbox" class="form-check-input m-0 dg-fin-plan-cash-tmpl" value="' +
+          esc(tid) +
+          '"' +
+          (selected[tid] ? " checked" : "") +
+          (state.canWrite ? "" : " disabled") +
+          " /> " +
+          esc(t.purpose || "Шаблон #" + tid) +
+          " · " +
+          esc(fmtMoney(amt, "RUB")) +
+          "/мес" +
+          other +
+          "</label>"
+        );
+      })
+      .join("");
+  }
+  function readPlanCashTemplateIds() {
+    var host = el("dg-fin-plan-cash-links");
+    if (!host) return [];
+    return [].slice
+      .call(host.querySelectorAll(".dg-fin-plan-cash-tmpl:checked"))
+      .map(function (n) {
+        return parseInt(n.value, 10);
+      })
+      .filter(function (n) {
+        return Number.isFinite(n) && n > 0;
+      });
+  }
+  function renderPlanCpRows(list) {
+    var host = el("dg-fin-plan-cps");
+    if (!host) return;
+    var rows = Array.isArray(list) && list.length ? list : [{ inn: "", name: "" }];
+    host.innerHTML = rows
+      .map(function (c, idx) {
+        return (
+          '<div class="dg-fin-plan-cp-row" data-cp-idx="' +
+          idx +
+          '">' +
+          '<div><label class="form-label">Фирма</label>' +
+          '<input type="text" class="form-control form-control-sm dg-fin-plan-cp-name" placeholder="ООО «Офисмаг»" value="' +
+          esc(c.name || "") +
+          '" /></div>' +
+          '<div><label class="form-label">ИНН</label>' +
+          '<input type="text" class="form-control form-control-sm dg-fin-plan-cp-inn" inputmode="numeric" maxlength="12" placeholder="10 или 12 цифр" value="' +
+          esc(c.inn || "") +
+          '" /></div>' +
+          '<div class="pb-1">' +
+          '<button type="button" class="btn btn-sm btn-outline-danger dg-fin-plan-cp-del" title="Убрать" data-dg-notify-start="Убираем контрагента…">×</button>' +
+          "</div></div>"
+        );
+      })
+      .join("");
+  }
+  function readPlanCounterpartiesFromForm() {
+    var host = el("dg-fin-plan-cps");
+    if (!host) return [];
+    var seen = Object.create(null);
+    var out = [];
+    [].slice.call(host.querySelectorAll(".dg-fin-plan-cp-row")).forEach(function (row) {
+      var nameInp = row.querySelector(".dg-fin-plan-cp-name");
+      var innInp = row.querySelector(".dg-fin-plan-cp-inn");
+      var inn = String((innInp && innInp.value) || "").replace(/\D+/g, "");
+      var name = String((nameInp && nameInp.value) || "")
+        .trim()
+        .replace(/[,\s]+$/g, "")
+        .trim();
+      if (!inn || (inn.length !== 10 && inn.length !== 12)) return;
+      if (seen[inn]) return;
+      seen[inn] = 1;
+      out.push({ inn: inn, name: name });
+    });
+    return out;
+  }
+  function openPlanItemBankTx(item) {
+    var inns = planItemInns(item);
+    var inn = inns[0] || "";
+    if (!inn) {
+      toast("warning", "У статьи нет ИНН контрагента");
+      return;
+    }
+    applyCounterpartyToFilters(
+      planCounterpartiesLabel(item) || "",
+      String(item.direction || "out") === "in" ? "in" : "out",
+      inn
+    );
+    state.pending.source = "bank";
+    writeFormFromPending();
+    markDirty();
+    commitFilters();
+    toast("success", "Движение: ИНН " + inn + " · банк");
+    var tableCard = el("dg-fin-table-body") || el("dg-fin-table-toggle");
+    if (tableCard && tableCard.scrollIntoView) {
+      try {
+        tableCard.scrollIntoView({ behavior: "smooth", block: "start" });
+      } catch (e) {
+        tableCard.scrollIntoView();
+      }
+    }
+  }
+  function addPlanCpRow() {
+    var cur = readPlanCounterpartiesFromForm();
+    cur.push({ inn: "", name: "" });
+    renderPlanCpRows(cur);
+  }
+  function removePlanCpRow(rowEl) {
+    var host = el("dg-fin-plan-cps");
+    if (!host || !rowEl) return;
+    var rows = [].slice.call(host.querySelectorAll(".dg-fin-plan-cp-row"));
+    if (rows.length <= 1) {
+      renderPlanCpRows([{ inn: "", name: "" }]);
+      return;
+    }
+    rowEl.remove();
+  }
+  function fillPlanCategorySelect(preferId) {
+    var sel = el("dg-fin-plan-category");
+    if (!sel) return;
+    var cur = preferId != null ? String(preferId) : sel.value;
+    sel.innerHTML =
+      '<option value="">— без категории —</option>' +
+      (state.planCategories || [])
+        .filter(function (c) {
+          return Number(c.active) !== 0 || c.active === true || String(c.id) === cur;
+        })
+        .map(function (c) {
+          return (
+            '<option value="' +
+            esc(c.id) +
+            '">' +
+            esc(c.title || "—") +
+            (Number(c.active) === 0 ? " (выкл.)" : "") +
+            "</option>"
+          );
+        })
+        .join("");
+    if (cur) sel.value = cur;
+  }
+  function fillCashPlanSelects() {
+    var opts =
+      '<option value="">— не привязана —</option>' +
+      (state.planItems || [])
+        .filter(function (it) {
+          return Number(it.active) !== 0 || it.active === true;
+        })
+        .map(function (it) {
+          return (
+            '<option value="' +
+            esc(it.id) +
+            '">' +
+            esc(planItemLabel(it)) +
+            "</option>"
+          );
+        })
+        .join("");
+    ["dg-fin-cash-once-plan", "dg-fin-cash-tmpl-plan"].forEach(function (id) {
+      var sel = el(id);
+      if (!sel) return;
+      var cur = sel.value;
+      sel.innerHTML = opts;
+      if (cur) sel.value = cur;
+    });
+  }
+  function setPlanMsg(type, html) {
+    var box = el("dg-fin-plan-save-msg");
+    if (!box) return;
+    box.className = "alert alert-" + (type || "secondary") + " mt-2 mb-0";
+    box.innerHTML = html || "";
+    box.classList.remove("d-none");
+  }
+  function hidePlanMsg() {
+    var box = el("dg-fin-plan-save-msg");
+    if (box) box.classList.add("d-none");
+  }
+  function clearPlanFieldErrors() {
+    ["dg-fin-plan-title", "dg-fin-plan-amount", "dg-fin-plan-org", "dg-fin-plan-category"].forEach(function (id) {
+      var n = el(id);
+      if (n) {
+        n.classList.remove("is-invalid", "dg-fin-cash-invalid");
+        if (n.parentElement) n.parentElement.classList.remove("dg-fin-cash-field-error");
+      }
+    });
+    var host = el("dg-fin-plan-cps");
+    if (host) {
+      [].slice.call(host.querySelectorAll(".is-invalid")).forEach(function (n) {
+        n.classList.remove("is-invalid", "dg-fin-cash-invalid");
+      });
+      host.classList.remove("dg-fin-cash-field-error");
+    }
+  }
+  function markPlanFieldError(id, on) {
+    var n = el(id);
+    if (!n) return;
+    n.classList.toggle("is-invalid", !!on);
+    n.classList.toggle("dg-fin-cash-invalid", !!on);
+    if (n.parentElement) n.parentElement.classList.toggle("dg-fin-cash-field-error", !!on);
+  }
+  function syncPlanScopeUi() {
+    var scopeEl = el("dg-fin-plan-scope");
+    var wrap = el("dg-fin-plan-org-wrap");
+    if (!scopeEl || !wrap) return;
+    wrap.classList.toggle("d-none", String(scopeEl.value) !== "org");
+  }
+  function renderPlanOrgSelect(keepQuery) {
+    var sel = el("dg-fin-plan-org");
+    var qEl = el("dg-fin-plan-org-q");
+    if (!sel) return;
+    var cur = sel.value;
+    var q = keepQuery && qEl ? String(qEl.value || "").trim().toLowerCase() : "";
+    if (!keepQuery && qEl) qEl.value = "";
+    var list = state.cashOrgCodes || [];
+    var filtered = !q
+      ? list
+      : list.filter(function (code) {
+          var lab = String(orgOptionLabel(code) || code).toLowerCase();
+          return lab.indexOf(q) >= 0 || String(code).toLowerCase().indexOf(q) >= 0;
+        });
+    sel.innerHTML =
+      '<option value="">— выберите —</option>' +
+      filtered
+        .map(function (code) {
+          return '<option value="' + esc(code) + '">' + esc(orgOptionLabel(code) || code) + "</option>";
+        })
+        .join("");
+    if (cur && filtered.indexOf(cur) >= 0) sel.value = cur;
+  }
+  function syncPlanSaveUi() {
+    var btn = el("dg-fin-plan-save");
+    var cancel = el("dg-fin-plan-cancel");
+    var editing = !!state.planEditId;
+    if (btn) {
+      btn.textContent = editing ? "Сохранить изменения" : "Добавить статью";
+      btn.setAttribute(
+        "data-dg-notify-start",
+        editing ? "Сохраняем изменения статьи…" : "Сохраняем статью плана…"
+      );
+    }
+    if (cancel) cancel.classList.toggle("d-none", !editing);
+  }
+  function plansListQuery() {
+    return String((el("dg-fin-plans-search") && el("dg-fin-plans-search").value) || state.planSearch || "")
+      .trim()
+      .toLowerCase();
+  }
+  function planListFocusYm() {
+    var now = moscowNowParts();
+    var cur = String(now.y) + "-" + String(now.m);
+    var months = (state.planMatrix && state.planMatrix.months) || [];
+    if (months.indexOf(cur) >= 0) return cur;
+    if (months.length) return months[months.length - 1];
+    return cur;
+  }
+  function planMatrixSeries(itemId) {
+    var m = state.planMatrix;
+    if (!m || !Array.isArray(m.items)) return null;
+    return (
+      m.items.find(function (it) {
+        return Number(it.id) === Number(itemId);
+      }) || null
+    );
+  }
+  function planMatrixMonthCell(itemId, ym) {
+    var series = planMatrixSeries(itemId);
+    if (!series || !Array.isArray(series.months) || !ym) return null;
+    for (var i = 0; i < series.months.length; i++) {
+      if (String(series.months[i].ym) === String(ym)) return series.months[i];
+    }
+    return null;
+  }
+  function planMatrixPeriodLabel() {
+    var months = (state.planMatrix && state.planMatrix.months) || [];
+    if (!months.length) return "за период";
+    if (months.length === 1) return fmtMonthLabel(months[0]);
+    return fmtMonthLabel(months[0]) + "–" + fmtMonthLabel(months[months.length - 1]);
+  }
+  /** HTML: факт за период матрицы + перерасход/остаток; текущий месяц — второй строкой. */
+  function fmtPlanFactVsPlanHtml(itemId) {
+    var series = planMatrixSeries(itemId);
+    if (!series || !series.totals) {
+      return '<span class="text-muted small">—</span>';
+    }
+    var tot = series.totals;
+    var fact = Number(tot.fact) || 0;
+    var plan = tot.plan == null ? null : Number(tot.plan);
+    var delta = tot.delta == null ? null : Number(tot.delta);
+    var cur = "RUB";
+    var periodLab = planMatrixPeriodLabel();
+    var lines =
+      '<div class="dg-fin-plan-fact-cell">' +
+      "<div>" +
+      esc(fmtMoney(fact, cur)) +
+      "</div>" +
+      '<div class="small text-muted">' +
+      esc(periodLab) +
+      "</div>";
+    if (plan == null || delta == null) {
+      lines += '<div class="small text-muted">план не задан</div>';
+    } else if (Math.abs(delta) < 0.005) {
+      lines += '<div class="small text-muted">в плане</div>';
+    } else if (delta > 0) {
+      lines +=
+        '<div class="small dg-fin-dir-out">перерасход ' +
+        esc(fmtMoney(Math.abs(delta), cur)) +
+        "</div>";
+    } else {
+      lines +=
+        '<div class="small dg-fin-dir-in">остаток ' +
+        esc(fmtMoney(Math.abs(delta), cur)) +
+        "</div>";
+    }
+    var focusYm = planListFocusYm();
+    var monthCell = planMatrixMonthCell(itemId, focusYm);
+    if (monthCell && (state.planMatrix.months || []).length > 1) {
+      var mFact = Number(monthCell.fact) || 0;
+      var mPlan = monthCell.plan == null ? null : Number(monthCell.plan);
+      var mDelta = monthCell.delta == null ? null : Number(monthCell.delta);
+      var mHint = esc(fmtMonthLabel(focusYm)) + ": " + esc(fmtMoney(mFact, cur));
+      if (mPlan != null && mDelta != null && Math.abs(mDelta) >= 0.005) {
+        mHint +=
+          mDelta > 0
+            ? " · перерасход " + esc(fmtMoney(Math.abs(mDelta), cur))
+            : " · остаток " + esc(fmtMoney(Math.abs(mDelta), cur));
+      }
+      lines += '<div class="small text-muted">' + mHint + "</div>";
+    }
+    lines += "</div>";
+    return lines;
+  }
+  function buildPlanItemMatrixHtml(it) {
+    var m = state.planMatrix;
+    var months = (m && m.months) || [];
+    if (!it || !months.length) {
+      return '<span class="text-muted small">Нет данных матрицы за период. Задайте период в фильтрах или окне аналитики.</span>';
+    }
+    var metrics = [
+      { key: "plan", label: "План" },
+      { key: "fact_bank", label: "Ушло (банк)" },
+      { key: "fact_cash", label: "Ушло (нал)" },
+      { key: "fact", label: "Итого ушло" },
+      { key: "delta", label: "Перерасход / остаток" },
+    ];
+    var head =
+      "<thead><tr><th>Метрика</th>" +
+      months
+        .map(function (ym) {
+          return "<th>" + esc(fmtMonthLabel(ym)) + "</th>";
+        })
+        .join("") +
+      "<th>Итого</th></tr></thead>";
+    var body = metrics
+      .map(function (met) {
+        var cells = months
+          .map(function (ym, yi) {
+            var cell = (it.months && it.months[yi]) || {};
+            var val = cell[met.key];
+            var skipped = met.key === "plan" && cell.skipped;
+            var txt = "—";
+            var cls = "";
+            if (met.key === "delta") {
+              if (val != null) {
+                var d = Number(val) || 0;
+                var absD = Math.abs(d);
+                if (Math.abs(d) < 0.005) {
+                  txt = "в плане";
+                } else if (d > 0) {
+                  txt = "перерасход " + fmtMoney(absD, "RUB");
+                  cls = "dg-fin-dir-out";
+                } else {
+                  txt = "остаток " + fmtMoney(absD, "RUB");
+                  cls = "dg-fin-dir-in";
+                }
+              }
+            } else if (val != null) {
+              txt = fmtMoney(Number(val) || 0, "RUB");
+            }
+            var clickable =
+              state.canWrite && met.key === "plan"
+                ? ' class="dg-fin-plan-month-cell' +
+                  (cls ? " " + cls : "") +
+                  '" data-item-id="' +
+                  esc(it.id) +
+                  '" data-ym="' +
+                  esc(ym) +
+                  '" title="Правка плана месяца" style="cursor:pointer"'
+                : cls
+                  ? ' class="' + cls + '"'
+                  : "";
+            return (
+              "<td" +
+              clickable +
+              ">" +
+              esc(txt) +
+              (skipped ? ' <span class="text-muted">(проп.)</span>' : "") +
+              "</td>"
+            );
+          })
+          .join("");
+        var totVal = it.totals ? it.totals[met.key] : null;
+        var totTxt = "—";
+        var totCls = "";
+        if (met.key === "delta" && totVal != null) {
+          var td = Number(totVal) || 0;
+          var tAbs = Math.abs(td);
+          if (Math.abs(td) < 0.005) totTxt = "в плане";
+          else if (td > 0) {
+            totTxt = "перерасход " + fmtMoney(tAbs, "RUB");
+            totCls = "dg-fin-dir-out";
+          } else {
+            totTxt = "остаток " + fmtMoney(tAbs, "RUB");
+            totCls = "dg-fin-dir-in";
+          }
+        } else if (totVal != null) {
+          totTxt = fmtMoney(Number(totVal) || 0, "RUB");
+        }
+        return (
+          "<tr><td>" +
+          esc(met.label) +
+          "</td>" +
+          cells +
+          "<td" +
+          (totCls ? ' class="' + totCls + '"' : "") +
+          ">" +
+          esc(totTxt) +
+          "</td></tr>"
+        );
+      })
+      .join("");
+    return (
+      '<table class="table table-sm table-bordered mb-0 dg-fin-plans-matrix-table">' +
+      head +
+      "<tbody>" +
+      body +
+      "</tbody></table>"
+    );
+  }
+  function togglePlanExpand(id) {
+    var nid = id != null ? Number(id) : null;
+    if (!Number.isFinite(nid) || nid < 1) return;
+    state.planExpandedId = Number(state.planExpandedId) === nid ? null : nid;
+    renderPlansList();
+  }
+  function destroyPlansCharts() {
+    [plansChartMain, plansChartPay, plansChartItems].forEach(function (ch) {
+      if (!ch) return;
+      try {
+        ch.destroy();
+      } catch (e) {}
+    });
+    plansChartMain = null;
+    plansChartPay = null;
+    plansChartItems = null;
+  }
+  function plansFilteredMatrixItems() {
+    var m = state.planMatrix;
+    if (!m || !Array.isArray(m.items)) return [];
+    var q = plansListQuery();
+    return (m.items || []).filter(function (it) {
+      return cashRowMatchesSearch(
+        [it.title, it.category_title, planCounterpartiesLabel(it), planItemInns(it).join(" "), it.counterparty_inn],
+        q
+      );
+    });
+  }
+  function buildPlansMonthAgg(items, months) {
+    return (months || []).map(function (ym, yi) {
+      var plan = 0;
+      var fact = 0;
+      var factBank = 0;
+      var factCash = 0;
+      (items || []).forEach(function (it) {
+        var cell = (it.months && it.months[yi]) || {};
+        if (cell.plan != null) plan += Number(cell.plan) || 0;
+        fact += Number(cell.fact) || 0;
+        factBank += Number(cell.fact_bank) || 0;
+        factCash += Number(cell.fact_cash) || 0;
+      });
+      return {
+        ym: ym,
+        plan: Math.round(plan * 100) / 100,
+        fact: Math.round(fact * 100) / 100,
+        fact_bank: Math.round(factBank * 100) / 100,
+        fact_cash: Math.round(factCash * 100) / 100,
+        delta: Math.round((fact - plan) * 100) / 100,
+      };
+    });
+  }
+  function renderPlansKpis(items, monthAgg, byPay) {
+    var box = el("dg-fin-plans-kpis");
+    if (!box) return;
+    var cur = "RUB";
+    var totPlan = 0;
+    var totFact = 0;
+    var totBank = 0;
+    var totCash = 0;
+    (monthAgg || []).forEach(function (m) {
+      totPlan += Number(m.plan) || 0;
+      totFact += Number(m.fact) || 0;
+      totBank += Number(m.fact_bank) || 0;
+      totCash += Number(m.fact_cash) || 0;
+    });
+    totPlan = Math.round(totPlan * 100) / 100;
+    totFact = Math.round(totFact * 100) / 100;
+    totBank = Math.round(totBank * 100) / 100;
+    totCash = Math.round(totCash * 100) / 100;
+    var delta = Math.round((totFact - totPlan) * 100) / 100;
+    var activeN = (items || []).filter(function (it) {
+      return it.active !== false && Number(it.active) !== 0;
+    }).length;
+    if (!(items || []).length) activeN = 0;
+    var deltaCls = Math.abs(delta) < 0.005 ? "" : delta > 0 ? "is-neg" : "is-pos";
+    var deltaLab =
+      Math.abs(delta) < 0.005
+        ? "в плане"
+        : delta > 0
+          ? "перерасход"
+          : "остаток";
+    var deltaVal =
+      Math.abs(delta) < 0.005
+        ? "0"
+        : (delta > 0 ? "" : "") + fmtMoney(Math.abs(delta), cur);
+    var pct =
+      totPlan > 0.005 ? Math.round((totFact / totPlan) * 1000) / 10 : null;
+    box.innerHTML =
+      '<div class="dg-fin-kpi is-plan"><div class="dg-fin-kpi-label">План периода</div><div class="dg-fin-kpi-value">' +
+      esc(fmtMoney(totPlan, cur)) +
+      '</div><div class="dg-fin-kpi-sub">' +
+      esc(String((monthAgg || []).length)) +
+      " мес. · сумма планов</div></div>" +
+      '<div class="dg-fin-kpi is-fact"><div class="dg-fin-kpi-label">Факт периода</div><div class="dg-fin-kpi-value">' +
+      esc(fmtMoney(totFact, cur)) +
+      '</div><div class="dg-fin-kpi-sub">' +
+      (pct != null ? esc(String(pct) + "% от плана") : "ушло всего") +
+      "</div></div>" +
+      '<div class="dg-fin-kpi is-diff"><div class="dg-fin-kpi-label">' +
+      esc(deltaLab) +
+      '</div><div class="dg-fin-kpi-value ' +
+      deltaCls +
+      '">' +
+      esc(deltaVal) +
+      '</div><div class="dg-fin-kpi-sub">факт − план</div></div>' +
+      '<div class="dg-fin-kpi is-out"><div class="dg-fin-kpi-label">Безнал</div><div class="dg-fin-kpi-value">' +
+      esc(fmtMoney(totBank, cur)) +
+      '</div><div class="dg-fin-kpi-sub">банк по ИНН</div></div>' +
+      '<div class="dg-fin-kpi is-bal"><div class="dg-fin-kpi-label">Нал</div><div class="dg-fin-kpi-value">' +
+      esc(fmtMoney(totCash, cur)) +
+      '</div><div class="dg-fin-kpi-sub">привязанные шаблоны</div></div>' +
+      '<div class="dg-fin-kpi is-net"><div class="dg-fin-kpi-label">Статей</div><div class="dg-fin-kpi-value">' +
+      esc(String((items || []).length)) +
+      '</div><div class="dg-fin-kpi-sub">' +
+      esc(String(activeN)) +
+      " активных" +
+      (byPay && byPay.bank
+        ? " · б " +
+          (byPay.bank.items || 0) +
+          " / н " +
+          ((byPay.cash && byPay.cash.items) || 0) +
+          " / о " +
+          ((byPay.both && byPay.both.items) || 0)
+        : "") +
+      "</div></div>";
+  }
+  function setPlansChartEmpty(canvasId, emptyId, empty) {
+    var canvas = el(canvasId);
+    var emptyEl = el(emptyId);
+    if (canvas) canvas.style.display = empty ? "none" : "";
+    if (emptyEl) emptyEl.classList.toggle("d-none", !empty);
+  }
+  function renderPlansDashboard() {
+    var items = plansFilteredMatrixItems();
+    var months = (state.planMatrix && state.planMatrix.months) || [];
+    var monthAgg = buildPlansMonthAgg(items, months);
+    var byPay = (state.planMatrix && state.planMatrix.by_payment_form) || null;
+    var periodEl = el("dg-fin-plans-chart-period");
+    if (periodEl) {
+      periodEl.textContent = months.length
+        ? planMatrixPeriodLabel() + (plansListQuery() ? " · фильтр поиска" : "")
+        : "нет периода";
+    }
+    renderPlansKpis(items, monthAgg, byPay);
+    destroyPlansCharts();
+    var hasMonths = months.length > 0 && items.length > 0;
+    setPlansChartEmpty("dg-fin-plans-chart-main", "dg-fin-plans-chart-main-empty", !hasMonths);
+    var payVals = [
+      (byPay && byPay.bank && byPay.bank.fact) || 0,
+      (byPay && byPay.cash && byPay.cash.fact) || 0,
+      (byPay && byPay.both && byPay.both.fact) || 0,
+    ].map(function (n) {
+      return Math.round((Number(n) || 0) * 100) / 100;
+    });
+    var hasPay = payVals.some(function (v) {
+      return v > 0.005;
+    });
+    setPlansChartEmpty("dg-fin-plans-chart-pay", "dg-fin-plans-chart-pay-empty", !hasPay);
+    var itemBars = (items || [])
+      .map(function (it) {
+        var d = it.totals && it.totals.delta != null ? Number(it.totals.delta) : 0;
+        return {
+          title: String(it.title || "Статья"),
+          delta: Math.round(d * 100) / 100,
+          fact: it.totals ? Number(it.totals.fact) || 0 : 0,
+          plan: it.totals && it.totals.plan != null ? Number(it.totals.plan) : 0,
+        };
+      })
+      .sort(function (a, b) {
+        return Math.abs(b.delta) - Math.abs(a.delta);
+      })
+      .slice(0, 10);
+    setPlansChartEmpty(
+      "dg-fin-plans-chart-items",
+      "dg-fin-plans-chart-items-empty",
+      !itemBars.length
+    );
+    if (!hasMonths && !hasPay && !itemBars.length) return;
+    loadChartJs()
+      .then(function (Chart) {
+        var cur = "RUB";
+        var tickFmt = function (v) {
+          var n = Number(v);
+          if (Math.abs(n) >= 1000000)
+            return (n / 1000000).toLocaleString("ru-RU", { maximumFractionDigits: 1 }) + " млн";
+          if (Math.abs(n) >= 1000)
+            return (n / 1000).toLocaleString("ru-RU", { maximumFractionDigits: 0 }) + " тыс";
+          return n.toLocaleString("ru-RU");
+        };
+        if (hasMonths) {
+          var canvas = el("dg-fin-plans-chart-main");
+          if (canvas) {
+            var ctx = canvas.getContext("2d");
+            var gradPlan = ctx.createLinearGradient(0, 0, 0, 240);
+            gradPlan.addColorStop(0, "rgba(109, 40, 217, 0.55)");
+            gradPlan.addColorStop(1, "rgba(109, 40, 217, 0.18)");
+            var gradFact = ctx.createLinearGradient(0, 0, 0, 240);
+            gradFact.addColorStop(0, "rgba(194, 65, 12, 0.7)");
+            gradFact.addColorStop(1, "rgba(194, 65, 12, 0.22)");
+            plansChartMain = new Chart(ctx, {
+              type: "bar",
+              data: {
+                labels: monthAgg.map(function (m) {
+                  return fmtMonthLabel(m.ym);
+                }),
+                datasets: [
+                  {
+                    type: "bar",
+                    label: "План",
+                    data: monthAgg.map(function (m) {
+                      return m.plan;
+                    }),
+                    backgroundColor: gradPlan,
+                    borderColor: "rgba(109, 40, 217, 0.95)",
+                    borderWidth: 1,
+                    borderRadius: 6,
+                    maxBarThickness: 20,
+                    order: 2,
+                  },
+                  {
+                    type: "bar",
+                    label: "Факт",
+                    data: monthAgg.map(function (m) {
+                      return m.fact;
+                    }),
+                    backgroundColor: gradFact,
+                    borderColor: "rgba(194, 65, 12, 0.95)",
+                    borderWidth: 1,
+                    borderRadius: 6,
+                    maxBarThickness: 20,
+                    order: 2,
+                  },
+                  {
+                    type: "line",
+                    label: "Перерасход / остаток",
+                    data: monthAgg.map(function (m) {
+                      return m.delta;
+                    }),
+                    borderColor: "#3f6ad8",
+                    backgroundColor: "rgba(63, 106, 216, 0.12)",
+                    borderWidth: 2.4,
+                    pointRadius: 3.2,
+                    pointHoverRadius: 5,
+                    pointBackgroundColor: "#fff",
+                    pointBorderColor: "#3f6ad8",
+                    pointBorderWidth: 2,
+                    tension: 0.35,
+                    order: 1,
+                  },
+                ],
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: "index", intersect: false },
+                plugins: {
+                  legend: { position: "top", labels: { boxWidth: 12, font: { size: 11 } } },
+                  tooltip: {
+                    callbacks: {
+                      label: function (ctx) {
+                        var v = Number(ctx.parsed.y) || 0;
+                        var name = ctx.dataset.label || "";
+                        if (name.indexOf("Перерасход") >= 0) {
+                          if (Math.abs(v) < 0.005) return name + ": в плане";
+                          return (
+                            name +
+                            ": " +
+                            (v > 0 ? "перерасход " : "остаток ") +
+                            fmtMoney(Math.abs(v), cur)
+                          );
+                        }
+                        return name + ": " + fmtMoney(v, cur);
+                      },
+                    },
+                  },
+                },
+                scales: {
+                  x: {
+                    ticks: { font: { size: 11 }, color: "#64748b" },
+                    grid: { display: false },
+                  },
+                  y: {
+                    beginAtZero: true,
+                    ticks: { font: { size: 11 }, color: "#64748b", callback: tickFmt },
+                    grid: { color: "rgba(15, 23, 42, 0.06)" },
+                  },
+                },
+              },
+            });
+          }
+        }
+        if (hasPay) {
+          var payCanvas = el("dg-fin-plans-chart-pay");
+          if (payCanvas) {
+            plansChartPay = new Chart(payCanvas.getContext("2d"), {
+              type: "doughnut",
+              data: {
+                labels: ["Безнал", "Нал", "Оба"],
+                datasets: [
+                  {
+                    data: payVals,
+                    backgroundColor: [
+                      "rgba(63, 106, 216, 0.85)",
+                      "rgba(245, 158, 11, 0.85)",
+                      "rgba(139, 92, 246, 0.85)",
+                    ],
+                    borderColor: "#fff",
+                    borderWidth: 2,
+                    hoverOffset: 6,
+                  },
+                ],
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: "62%",
+                plugins: {
+                  legend: { position: "bottom", labels: { boxWidth: 10, font: { size: 11 } } },
+                  tooltip: {
+                    callbacks: {
+                      label: function (ctx) {
+                        var v = Number(ctx.parsed) || 0;
+                        var sum = payVals.reduce(function (a, b) {
+                          return a + b;
+                        }, 0);
+                        var p = sum > 0 ? Math.round((v / sum) * 1000) / 10 : 0;
+                        return ctx.label + ": " + fmtMoney(v, cur) + " (" + p + "%)";
+                      },
+                    },
+                  },
+                },
+              },
+            });
+          }
+        }
+        if (itemBars.length) {
+          var itemsCanvas = el("dg-fin-plans-chart-items");
+          if (itemsCanvas) {
+            var labels = itemBars.map(function (r) {
+              var t = r.title;
+              return t.length > 28 ? t.slice(0, 26) + "…" : t;
+            });
+            var colors = itemBars.map(function (r) {
+              if (Math.abs(r.delta) < 0.005) return "rgba(100, 116, 139, 0.55)";
+              return r.delta > 0 ? "rgba(185, 28, 28, 0.75)" : "rgba(21, 128, 61, 0.75)";
+            });
+            plansChartItems = new Chart(itemsCanvas.getContext("2d"), {
+              type: "bar",
+              data: {
+                labels: labels,
+                datasets: [
+                  {
+                    label: "Перерасход (+) / остаток (−)",
+                    data: itemBars.map(function (r) {
+                      return r.delta;
+                    }),
+                    backgroundColor: colors,
+                    borderColor: colors.map(function (c) {
+                      return c.replace("0.75", "1").replace("0.55", "0.9");
+                    }),
+                    borderWidth: 1,
+                    borderRadius: 5,
+                    maxBarThickness: 18,
+                  },
+                ],
+              },
+              options: {
+                indexAxis: "y",
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                  legend: { display: false },
+                  tooltip: {
+                    callbacks: {
+                      title: function (items) {
+                        var i = items && items[0] && items[0].dataIndex;
+                        return itemBars[i] ? itemBars[i].title : "";
+                      },
+                      label: function (ctx) {
+                        var i = ctx.dataIndex;
+                        var row = itemBars[i] || {};
+                        var v = Number(ctx.parsed.x) || 0;
+                        var line =
+                          Math.abs(v) < 0.005
+                            ? "в плане"
+                            : (v > 0 ? "перерасход " : "остаток ") + fmtMoney(Math.abs(v), cur);
+                        return [
+                          line,
+                          "план " + fmtMoney(row.plan || 0, cur),
+                          "факт " + fmtMoney(row.fact || 0, cur),
+                        ];
+                      },
+                    },
+                  },
+                },
+                scales: {
+                  x: {
+                    ticks: { font: { size: 11 }, color: "#64748b", callback: tickFmt },
+                    grid: { color: "rgba(15, 23, 42, 0.06)" },
+                  },
+                  y: {
+                    ticks: { font: { size: 11 }, color: "#475569" },
+                    grid: { display: false },
+                  },
+                },
+              },
+            });
+          }
+        }
+      })
+      .catch(function () {
+        /* Chart.js недоступен — KPI всё равно видны */
+      });
+  }
+  function renderPlansList() {
+    var tb = el("dg-fin-plans-tbody");
+    if (!tb) return;
+    var q = plansListQuery();
+    var rows = (state.planItems || []).filter(function (r) {
+      return cashRowMatchesSearch(
+        [
+          r.title,
+          r.category_title,
+          planCounterpartiesLabel(r),
+          planItemInns(r).join(" "),
+          r.counterparty_inn,
+          r.amount_plan,
+          r.scope,
+          r.customer_code,
+          orgOptionLabel(r.customer_code),
+        ],
+        q
+      );
+    });
+    if (!(state.planItems || []).length) {
+      tb.innerHTML = '<tr><td colspan="10" class="text-muted small">Статей плана пока нет.</td></tr>';
+      return;
+    }
+    if (!rows.length) {
+      tb.innerHTML =
+        '<tr><td colspan="10" class="text-muted small">Ничего не найдено по запросу «' + esc(q) + '».</td></tr>';
+      return;
+    }
+    if (
+      state.planExpandedId != null &&
+      !rows.some(function (r) {
+        return Number(r.id) === Number(state.planExpandedId);
+      })
+    ) {
+      state.planExpandedId = null;
+    }
+    tb.innerHTML = rows
+      .map(function (r) {
+        var scopeLab =
+          r.scope === "org" ? orgOptionLabel(r.customer_code) || r.customer_code || "орг" : "все компании";
+        var active = Number(r.active) !== 0 && r.active !== false;
+        var pay = r.payment_form_label || planPaymentFormLabel(r.payment_form);
+        var cpsLab =
+          String(r.payment_form || "") === "cash"
+            ? "—"
+            : planCounterpartiesLabel(r) || "—";
+        var payForm = String(r.payment_form || "");
+        var usesCash = payForm === "cash" || payForm === "both";
+        var cashLinks = Number(r.cash_links_count) || 0;
+        var payCell =
+          esc(pay) +
+          (usesCash
+            ? cashLinks
+              ? '<div class="small text-muted">нал: ' + cashLinks + " привяз.</div>"
+              : '<div class="small dg-fin-dir-out">нал: нет привязок</div>'
+            : "");
+        var open = Number(state.planExpandedId) === Number(r.id);
+        var main =
+          '<tr class="dg-fin-plan-row-expandable' +
+          (open ? " dg-fin-plan-row-open" : "") +
+          '" data-plan-id="' +
+          esc(r.id) +
+          '">' +
+          '<td class="dg-fin-plan-expand-cell" data-dg-plan-toggle="1" title="' +
+          (open ? "Свернуть месяцы" : "Развернуть план / факт по месяцам") +
+          '"><span class="dg-fin-plan-row-toggle" aria-hidden="true">' +
+          (open ? "▼" : "▶") +
+          "</span></td>" +
+          "<td>" +
+          esc(r.title || "—") +
+          "</td>" +
+          "<td>" +
+          esc(r.category_title || "—") +
+          "</td>" +
+          "<td>" +
+          payCell +
+          "</td>" +
+          '<td class="small">' +
+          (cpsLab !== "—" && planItemInns(r).length
+            ? '<button type="button" class="btn btn-link btn-sm p-0 text-start dg-fin-plan-show-tx" data-id="' +
+              esc(r.id) +
+              '" title="Открыть исходящие банка по ИНН в «Движении»" data-dg-notify-start="Открываем проводки…">' +
+              esc(cpsLab) +
+              "</button>"
+            : esc(cpsLab)) +
+          "</td>" +
+          "<td>" +
+          esc(fmtMoney(Number(r.amount_plan) || 0, "RUB")) +
+          "</td>" +
+          "<td>" +
+          fmtPlanFactVsPlanHtml(r.id) +
+          "</td>" +
+          "<td>" +
+          esc(scopeLab) +
+          "</td>" +
+          "<td>" +
+          (active ? "да" : "нет") +
+          "</td>" +
+          '<td class="dg-fin-cash-actions">' +
+          (planItemInns(r).length
+            ? '<button type="button" class="btn btn-sm btn-outline-secondary me-1 dg-fin-plan-show-tx" data-id="' +
+              esc(r.id) +
+              '" data-dg-notify-start="Открываем проводки…">Проводки</button>'
+            : "") +
+          (state.canWrite
+            ? '<button type="button" class="btn btn-sm btn-outline-primary me-1 dg-fin-plan-edit" data-id="' +
+              esc(r.id) +
+              '" data-dg-notify-start="Открываем редактирование…">Изменить</button>' +
+              '<button type="button" class="btn btn-sm btn-outline-danger dg-fin-plan-del" data-id="' +
+              esc(r.id) +
+              '" data-dg-notify-start="Удаляем статью…">Удалить</button>'
+            : "") +
+          "</td>" +
+          "</tr>";
+        if (!open) return main;
+        var series = planMatrixSeries(r.id);
+        return (
+          main +
+          '<tr class="dg-fin-plan-detail-row"><td colspan="10"><div class="dg-fin-plan-detail-panel">' +
+          buildPlanItemMatrixHtml(series) +
+          "</div></td></tr>"
+        );
+      })
+      .join("");
+    renderPlansDashboard();
+  }
+  function renderPlansMatrix() {
+    /* матрица теперь внутри раскрытой строки списка */
+    renderPlansList();
+  }
+  function loadPlans() {
+    var q = new URLSearchParams();
+    applyAnalyticsPeriodQuery(q, true);
+    appendOrgQuery(q, state.applied.org);
+    return Promise.all([
+      fetch("/api/finance/plans/items", { credentials: "same-origin" }).then(function (r) {
+        return r.json();
+      }),
+      fetch("/api/finance/plans/categories", { credentials: "same-origin" }).then(function (r) {
+        return r.json();
+      }),
+      fetch("/api/finance/plans/matrix?" + q.toString(), { credentials: "same-origin" }).then(function (r) {
+        return r.json();
+      }),
+    ])
+      .then(function (triple) {
+        var itemsJ = triple[0];
+        var catsJ = triple[1];
+        var matrixJ = triple[2];
+        if (itemsJ && itemsJ.success) state.planItems = itemsJ.rows || [];
+        else state.planItems = [];
+        if (catsJ && catsJ.success) state.planCategories = catsJ.rows || [];
+        else state.planCategories = [];
+        if (matrixJ && matrixJ.success) state.planMatrix = matrixJ;
+        else state.planMatrix = null;
+        fillPlanCategorySelect(el("dg-fin-plan-category") && el("dg-fin-plan-category").value);
+        fillCashPlanSelects();
+        renderPlansList();
+        renderPlansMatrix();
+      })
+      .catch(function (e) {
+        setPlanMsg("danger", "Не удалось загрузить планы: " + esc(e.message || String(e)));
+      });
+  }
+  function beginEditPlan(id) {
+    var row = (state.planItems || []).find(function (r) {
+      return String(r.id) === String(id);
+    });
+    if (!row) {
+      toast("warning", "Статья не найдена");
+      return;
+    }
+    state.planEditId = row.id;
+    if (el("dg-fin-plan-title")) el("dg-fin-plan-title").value = row.title || "";
+    renderPlanCpRows(planItemCounterparties(row));
+    fillPlanCategorySelect(row.category_id || "");
+    setPlanPaymentForm(row.payment_form || (Number(row.include_cash) !== 0 ? "both" : "bank"));
+    if (el("dg-fin-plan-dir")) el("dg-fin-plan-dir").value = row.direction === "in" ? "in" : "out";
+    if (el("dg-fin-plan-amount")) el("dg-fin-plan-amount").value = formatCashMoneyInput(row.amount_plan);
+    if (el("dg-fin-plan-scope")) el("dg-fin-plan-scope").value = row.scope === "org" ? "org" : "all";
+    if (el("dg-fin-plan-active")) el("dg-fin-plan-active").checked = Number(row.active) !== 0;
+    syncPlanScopeUi();
+    if (row.scope === "org") {
+      renderPlanOrgSelect(false);
+      if (el("dg-fin-plan-org") && row.customer_code) {
+        el("dg-fin-plan-org").value = String(row.customer_code);
+      }
+    }
+    renderPlanCashLinks(row.cash_template_ids || []);
+    syncPlanSaveUi();
+    clearPlanFieldErrors();
+    setPlanMsg("info", "Редактирование статьи №" + esc(row.id) + ".");
+    var card = el("dg-fin-plans-card");
+    if (card && card.scrollIntoView) card.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+  function cancelEditPlan() {
+    state.planEditId = null;
+    syncPlanSaveUi();
+    clearPlanFieldErrors();
+    hidePlanMsg();
+    renderPlanCpRows([{ inn: "", name: "" }]);
+    renderPlanCashLinks([]);
+  }
+  function savePlanItem() {
+    if (!state.canWrite) {
+      toast("warning", "Нет прав на запись");
+      return Promise.resolve();
+    }
+    clearPlanFieldErrors();
+    var title = String((el("dg-fin-plan-title") && el("dg-fin-plan-title").value) || "").trim();
+    var paymentForm = readPlanPaymentForm();
+    var counterparties = readPlanCounterpartiesFromForm();
+    var amount = parseCashMoney(el("dg-fin-plan-amount") && el("dg-fin-plan-amount").value);
+    var scope = String((el("dg-fin-plan-scope") && el("dg-fin-plan-scope").value) || "all");
+    var org = String((el("dg-fin-plan-org") && el("dg-fin-plan-org").value) || "").trim();
+    var catRaw = String((el("dg-fin-plan-category") && el("dg-fin-plan-category").value) || "").trim();
+    if (!title) {
+      markPlanFieldError("dg-fin-plan-title", true);
+      setPlanMsg("danger", "Укажите название статьи.");
+      return Promise.resolve();
+    }
+    if ((paymentForm === "bank" || paymentForm === "both") && !counterparties.length) {
+      var host = el("dg-fin-plan-cps");
+      if (host) {
+        [].slice.call(host.querySelectorAll(".dg-fin-plan-cp-inn")).forEach(function (n) {
+          n.classList.add("is-invalid", "dg-fin-cash-invalid");
+        });
+      }
+      setPlanMsg("danger", "Для безнала добавьте хотя бы одну фирму с ИНН (10 или 12 цифр).");
+      return Promise.resolve();
+    }
+    if (amount == null || amount < 0) {
+      markPlanFieldError("dg-fin-plan-amount", true);
+      setPlanMsg("danger", "Укажите плановую сумму ≥ 0.");
+      return Promise.resolve();
+    }
+    if (scope === "org" && !org) {
+      syncPlanScopeUi();
+      markPlanFieldError("dg-fin-plan-org", true);
+      setPlanMsg("danger", "Выберите организацию или «Все компании».");
+      return Promise.resolve();
+    }
+    var body = {
+      title: title,
+      payment_form: paymentForm,
+      counterparties: paymentForm === "cash" ? counterparties : counterparties,
+      category_id: catRaw ? parseInt(catRaw, 10) : null,
+      direction: String((el("dg-fin-plan-dir") && el("dg-fin-plan-dir").value) || "out"),
+      amount_plan: amount,
+      scope: scope === "org" ? "org" : "all",
+      customer_code: scope === "org" ? org : "",
+      active: !!(el("dg-fin-plan-active") && el("dg-fin-plan-active").checked),
+    };
+    if (paymentForm === "cash" || paymentForm === "both") {
+      body.cash_template_ids = readPlanCashTemplateIds();
+    } else {
+      body.cash_template_ids = [];
+    }
+    var editId = state.planEditId;
+    var btn = el("dg-fin-plan-save");
+    var run = function () {
+      clearPlanFieldErrors();
+      setPlanMsg("warning", editId ? "Сохраняем изменения…" : "Сохраняем статью…");
+      var url = editId
+        ? "/api/finance/plans/items/" + encodeURIComponent(editId)
+        : "/api/finance/plans/items";
+      return fetch(url, {
+        method: editId ? "PATCH" : "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
+        .then(function (r) {
+          return r.json().then(function (j) {
+            return { ok: r.ok, j: j };
+          });
+        })
+        .then(function (x) {
+          if (!x.ok || !x.j || !x.j.success) throw new Error((x.j && x.j.error) || "Не удалось сохранить");
+          if (editId) {
+            state.planEditId = null;
+            syncPlanSaveUi();
+            setPlanMsg("success", "<strong>Статья обновлена.</strong>");
+            toast("success", "Статья плана обновлена");
+          } else {
+            setPlanMsg("success", "<strong>Статья добавлена.</strong> Поля формы не сброшены.");
+            toast("success", "Статья плана сохранена");
+          }
+          return Promise.all([loadPlans(), loadCashLists()]);
+        })
+        .catch(function (e) {
+          setPlanMsg("danger", esc(e.message || String(e)));
+          toast("danger", e.message || String(e));
+        });
+    };
+    if (window.DatagonNotify && window.DatagonNotify.busyRun && btn) return window.DatagonNotify.busyRun(btn, run);
+    return run();
+  }
+  function deletePlanItem(id) {
+    return openFinConfirm({
+      title: "Удалить статью плана?",
+      text: "Статья и помесячные правки будут удалены. Привязки наличных к этой статье снимутся.",
+      okLabel: "Удалить",
+    }).then(function (ok) {
+      if (!ok) return null;
+      return fetch("/api/finance/plans/items/" + encodeURIComponent(id), {
+        method: "DELETE",
+        credentials: "same-origin",
+      })
+        .then(function (r) {
+          return r.json().then(function (j) {
+            return { ok: r.ok, j: j };
+          });
+        })
+        .then(function (x) {
+          if (!x.ok || !x.j || !x.j.success) throw new Error((x.j && x.j.error) || "Ошибка удаления");
+          toast("success", "Статья удалена");
+          return loadPlans();
+        });
+    });
+  }
+  function openPlanMonthEditor(itemId, ym) {
+    var item = (state.planItems || []).find(function (r) {
+      return String(r.id) === String(itemId);
+    });
+    var monthCell = null;
+    if (state.planMatrix && Array.isArray(state.planMatrix.items)) {
+      var series = state.planMatrix.items.find(function (it) {
+        return String(it.id) === String(itemId);
+      });
+      if (series && Array.isArray(series.months)) {
+        monthCell = series.months.find(function (c) {
+          return String(c.ym) === String(ym);
+        });
+      }
+    }
+    state.planMonthEdit = { id: itemId, ym: ym };
+    var ov = el("dg-fin-plan-month-overlay");
+    var sub = el("dg-fin-plan-month-sub");
+    var amt = el("dg-fin-plan-month-amount");
+    var skip = el("dg-fin-plan-month-skip");
+    if (sub) {
+      sub.textContent =
+        (item ? item.title + " · " : "") + fmtMonthLabel(ym) + " · базовый план " + fmtMoney(Number(item && item.amount_plan) || 0, "RUB");
+    }
+    if (amt) {
+      amt.value =
+        monthCell && monthCell.plan != null && !monthCell.skipped
+          ? formatCashMoneyInput(monthCell.plan)
+          : formatCashMoneyInput(item && item.amount_plan);
+    }
+    if (skip) skip.checked = !!(monthCell && monthCell.skipped);
+    if (ov) ov.classList.remove("d-none");
+  }
+  function closePlanMonthEditor() {
+    state.planMonthEdit = null;
+    var ov = el("dg-fin-plan-month-overlay");
+    if (ov) ov.classList.add("d-none");
+  }
+  function savePlanMonthOverride() {
+    var ed = state.planMonthEdit;
+    if (!ed || !ed.id || !ed.ym) return Promise.resolve();
+    var btn = el("dg-fin-plan-month-ok");
+    var amount = parseCashMoney(el("dg-fin-plan-month-amount") && el("dg-fin-plan-month-amount").value);
+    var skipped = !!(el("dg-fin-plan-month-skip") && el("dg-fin-plan-month-skip").checked);
+    if (!skipped && (amount == null || amount < 0)) {
+      toast("danger", "Укажите план ≥ 0 или отметьте «Пропустить»");
+      return Promise.resolve();
+    }
+    var run = function () {
+      return fetch(
+        "/api/finance/plans/items/" + encodeURIComponent(ed.id) + "/months/" + encodeURIComponent(ed.ym),
+        {
+          method: "PUT",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ amount_plan: skipped ? null : amount, skipped: skipped }),
+        }
+      )
+        .then(function (r) {
+          return r.json().then(function (j) {
+            return { ok: r.ok, j: j };
+          });
+        })
+        .then(function (x) {
+          if (!x.ok || !x.j || !x.j.success) throw new Error((x.j && x.j.error) || "Не удалось сохранить");
+          closePlanMonthEditor();
+          toast("success", "План месяца сохранён");
+          return loadPlans();
+        });
+    };
+    if (window.DatagonNotify && window.DatagonNotify.busyRun && btn) {
+      return window.DatagonNotify.busyRun(btn, run).catch(function (e) {
+        toast("danger", e.message || String(e));
+      });
+    }
+    return run().catch(function (e) {
+      toast("danger", e.message || String(e));
+    });
+  }
+  function openPlanCatOverlay() {
+    var ov = el("dg-fin-plan-cat-overlay");
+    var inp = el("dg-fin-plan-cat-title-input");
+    if (inp) inp.value = "";
+    if (ov) ov.classList.remove("d-none");
+    if (inp && inp.focus) setTimeout(function () { inp.focus(); }, 0);
+  }
+  function closePlanCatOverlay() {
+    var ov = el("dg-fin-plan-cat-overlay");
+    if (ov) ov.classList.add("d-none");
+  }
+  function savePlanCategory() {
+    if (!state.canWrite) {
+      toast("warning", "Нет прав на запись");
+      return Promise.resolve();
+    }
+    var title = String((el("dg-fin-plan-cat-title-input") && el("dg-fin-plan-cat-title-input").value) || "").trim();
+    if (!title) {
+      toast("danger", "Укажите название категории");
+      return Promise.resolve();
+    }
+    var btn = el("dg-fin-plan-cat-ok");
+    var run = function () {
+      return fetch("/api/finance/plans/categories", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: title }),
+      })
+        .then(function (r) {
+          return r.json().then(function (j) {
+            return { ok: r.ok, j: j };
+          });
+        })
+        .then(function (x) {
+          if (!x.ok || !x.j || !x.j.success) throw new Error((x.j && x.j.error) || "Не удалось сохранить");
+          closePlanCatOverlay();
+          toast("success", x.j.existing ? "Категория уже есть — выбрана" : "Категория добавлена");
+          return fetch("/api/finance/plans/categories", { credentials: "same-origin" })
+            .then(function (r) {
+              return r.json();
+            })
+            .then(function (j) {
+              if (j && j.success) state.planCategories = j.rows || [];
+              fillPlanCategorySelect(x.j.id);
+            });
+        });
+    };
+    if (window.DatagonNotify && window.DatagonNotify.busyRun && btn) {
+      return window.DatagonNotify.busyRun(btn, run).catch(function (e) {
+        toast("danger", e.message || String(e));
+      });
+    }
+    return run().catch(function (e) {
+      toast("danger", e.message || String(e));
+    });
+  }
+  function bindPlansUi() {
+    var scopeEl = el("dg-fin-plan-scope");
+    if (scopeEl) {
+      scopeEl.addEventListener("change", function () {
+        clearPlanFieldErrors();
+        syncPlanScopeUi();
+        if (String(scopeEl.value) === "org") renderPlanOrgSelect(true);
+      });
+      syncPlanScopeUi();
+    }
+    var orgQ = el("dg-fin-plan-org-q");
+    if (orgQ) {
+      orgQ.addEventListener("input", function () {
+        clearPlanFieldErrors();
+        renderPlanOrgSelect(true);
+      });
+    }
+    var search = el("dg-fin-plans-search");
+    if (search) {
+      search.addEventListener("input", function () {
+        state.planSearch = String(search.value || "").trim();
+        renderPlansList();
+        renderPlansMatrix();
+      });
+      search.addEventListener("keydown", function (ev) {
+        if (ev.key === "Escape") {
+          search.value = "";
+          state.planSearch = "";
+          renderPlansList();
+          renderPlansMatrix();
+        }
+      });
+    }
+    var saveBtn = el("dg-fin-plan-save");
+    if (saveBtn) saveBtn.addEventListener("click", savePlanItem);
+    var cancelBtn = el("dg-fin-plan-cancel");
+    if (cancelBtn) cancelBtn.addEventListener("click", cancelEditPlan);
+    syncPlanSaveUi();
+    renderPlanCpRows([{ inn: "", name: "" }]);
+    syncPlanPaymentFormUi();
+    ["dg-fin-plan-pay-bank", "dg-fin-plan-pay-cash", "dg-fin-plan-pay-both"].forEach(function (id) {
+      var r = el(id);
+      if (r) r.addEventListener("change", syncPlanPaymentFormUi);
+    });
+    var cpAdd = el("dg-fin-plan-cp-add");
+    if (cpAdd) cpAdd.addEventListener("click", addPlanCpRow);
+    var cpsHost = el("dg-fin-plan-cps");
+    if (cpsHost) {
+      cpsHost.addEventListener("click", function (ev) {
+        var del = ev.target && ev.target.closest ? ev.target.closest(".dg-fin-plan-cp-del") : null;
+        if (!del) return;
+        var row = del.closest(".dg-fin-plan-cp-row");
+        removePlanCpRow(row);
+      });
+    }
+    var catAdd = el("dg-fin-plan-cat-add");
+    if (catAdd) catAdd.addEventListener("click", openPlanCatOverlay);
+    var catCancel = el("dg-fin-plan-cat-cancel");
+    var catOk = el("dg-fin-plan-cat-ok");
+    var catOverlay = el("dg-fin-plan-cat-overlay");
+    if (catCancel) catCancel.addEventListener("click", closePlanCatOverlay);
+    if (catOk) catOk.addEventListener("click", savePlanCategory);
+    if (catOverlay) {
+      catOverlay.addEventListener("click", function (ev) {
+        if (ev.target === catOverlay) closePlanCatOverlay();
+      });
+    }
+    var catInp = el("dg-fin-plan-cat-title-input");
+    if (catInp) {
+      catInp.addEventListener("keydown", function (ev) {
+        if (ev.key === "Enter") {
+          ev.preventDefault();
+          savePlanCategory();
+        }
+      });
+    }
+    var tb = el("dg-fin-plans-tbody");
+    if (tb) {
+      tb.addEventListener("click", function (ev) {
+        var monthCell = ev.target && ev.target.closest ? ev.target.closest(".dg-fin-plan-month-cell") : null;
+        if (monthCell) {
+          openPlanMonthEditor(monthCell.getAttribute("data-item-id"), monthCell.getAttribute("data-ym"));
+          return;
+        }
+        var toggle =
+          ev.target && ev.target.closest
+            ? ev.target.closest("[data-dg-plan-toggle], .dg-fin-plan-expand-cell")
+            : null;
+        if (toggle) {
+          var tr = toggle.closest("tr[data-plan-id]");
+          if (tr) togglePlanExpand(tr.getAttribute("data-plan-id"));
+          return;
+        }
+        var showTx = ev.target && ev.target.closest ? ev.target.closest(".dg-fin-plan-show-tx") : null;
+        if (showTx) {
+          ev.preventDefault();
+          var showId = showTx.getAttribute("data-id");
+          var showItem = (state.planItems || []).find(function (it) {
+            return String(it.id) === String(showId);
+          });
+          if (showItem) openPlanItemBankTx(showItem);
+          return;
+        }
+        var editBtn = ev.target && ev.target.closest ? ev.target.closest(".dg-fin-plan-edit") : null;
+        if (editBtn) {
+          beginEditPlan(editBtn.getAttribute("data-id"));
+          return;
+        }
+        var delBtn = ev.target && ev.target.closest ? ev.target.closest(".dg-fin-plan-del") : null;
+        if (!delBtn) return;
+        deletePlanItem(delBtn.getAttribute("data-id")).catch(function (e) {
+          toast("danger", e.message || String(e));
+        });
+      });
+    }
+    var monthCancel = el("dg-fin-plan-month-cancel");
+    var monthOk = el("dg-fin-plan-month-ok");
+    var monthOverlay = el("dg-fin-plan-month-overlay");
+    if (monthCancel) monthCancel.addEventListener("click", closePlanMonthEditor);
+    if (monthOk) monthOk.addEventListener("click", savePlanMonthOverride);
+    if (monthOverlay) {
+      monthOverlay.addEventListener("click", function (ev) {
+        if (ev.target === monthOverlay) closePlanMonthEditor();
+      });
+      document.addEventListener("keydown", function (ev) {
+        if (ev.key === "Escape") {
+          if (catOverlay && !catOverlay.classList.contains("d-none")) {
+            closePlanCatOverlay();
+            return;
+          }
+          if (monthOverlay && !monthOverlay.classList.contains("d-none")) {
+            closePlanMonthEditor();
+          }
+        }
+      });
     }
   }
 
@@ -4199,15 +6675,36 @@
       }
     });
   }
-  ["dg-fin-search", "dg-fin-date-from", "dg-fin-date-to", "dg-fin-direction", "dg-fin-account", "dg-fin-page-size", "dg-fin-sync-days", "dg-fin-include-internal", "dg-fin-founder-only", "dg-fin-dividend-only"].forEach(function (id) {
+  ["dg-fin-search", "dg-fin-inn", "dg-fin-date-from", "dg-fin-date-to", "dg-fin-direction", "dg-fin-account", "dg-fin-page-size", "dg-fin-sync-days", "dg-fin-include-internal", "dg-fin-founder-only", "dg-fin-dividend-only"].forEach(function (id) {
     var n = el(id);
     if (!n) return;
-    n.addEventListener("input", function () { readPendingFromForm(); markDirty(); });
+    n.addEventListener("input", function () {
+      if (id === "dg-fin-inn") {
+        var dig = normalizeInnInput(n.value);
+        if (n.value !== dig) n.value = dig;
+      }
+      readPendingFromForm();
+      markDirty();
+    });
     n.addEventListener("change", function () {
       readPendingFromForm();
       markDirty();
     });
   });
+  var innInp = el("dg-fin-inn");
+  if (innInp) {
+    innInp.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        var btn = el("dg-fin-apply");
+        if (btn) btn.click();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        innInp.value = "";
+        commitFilters();
+      }
+    });
+  }
   var orgMenu = el("dg-fin-org-menu");
   if (orgMenu) {
     orgMenu.addEventListener("click", function (ev) {
@@ -4299,6 +6796,17 @@
       });
     });
     txTbody.addEventListener("click", function (ev) {
+      var confirmBtn =
+        ev.target && ev.target.closest ? ev.target.closest(".dg-fin-cash-review-confirm") : null;
+      if (confirmBtn && txTbody.contains(confirmBtn)) {
+        ev.preventDefault();
+        confirmCashMonthReview(
+          confirmBtn.getAttribute("data-template-id"),
+          confirmBtn.getAttribute("data-ym"),
+          confirmBtn
+        );
+        return;
+      }
       var btn = ev.target && ev.target.closest ? ev.target.closest(".dg-fin-cash-month-open") : null;
       if (!btn || !txTbody.contains(btn)) return;
       ev.preventDefault();
@@ -4307,11 +6815,13 @@
   }
 
   bindCollapse("dg-fin-bank-toggle", "dg-fin-bank-body", BANK_KEY);
+  bindCollapse("dg-fin-balances-toggle", "dg-fin-balances-body", BALANCES_KEY);
   bindCollapse("dg-fin-filters-toggle", "dg-fin-filters-body", FILTERS_KEY);
   bindCollapse("dg-fin-table-toggle", "dg-fin-table-body", TABLE_KEY);
   bindCollapse("dg-fin-analytics-toggle", "dg-fin-analytics-body", ANALYTICS_KEY);
   bindCollapse("dg-fin-cp-toggle", "dg-fin-cp-body", CP_KEY);
   bindCollapse("dg-fin-cash-toggle", "dg-fin-cash-body", CASH_KEY);
+  bindCollapse("dg-fin-plans-toggle", "dg-fin-plans-body", PLANS_KEY);
   try {
     var savedMonths = localStorage.getItem(ANALYTICS_MONTHS_KEY);
     if (savedMonths && el("dg-fin-analytics-months")) {
@@ -4411,6 +6921,7 @@
   columnControls();
   buildThead();
   bindCashUi();
+  bindPlansUi();
   if (window.DatagonFilterFieldsVisibility && window.DatagonFilterFieldsVisibility.init) {
     window.DatagonFilterFieldsVisibility.init({
       storageKeyPrefix: "datagon_finance_filter_fields_v1",
@@ -4428,7 +6939,7 @@
       state.applied = Object.assign({}, state.pending);
       markDirty();
       scheduleUrlSync();
-      return Promise.all([loadTx(), loadMonthlyAnalytics(), loadCounterparties(), loadCashLists()]);
+      return Promise.all([loadTx(), loadMonthlyAnalytics(), loadCounterparties(), loadCashLists(), loadPlans()]);
     })
     .catch(function (e) {
       toast("danger", e.message || String(e));

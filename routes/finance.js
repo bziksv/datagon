@@ -7,6 +7,7 @@ const raiff = require('../lib/datagonRaiffeisenClient');
 const tbank = require('../lib/datagonTbankClient');
 const finCred = require('../lib/datagonFinanceCredentials');
 const finCash = require('../lib/datagonFinanceCash');
+const finPlans = require('../lib/datagonFinancePlans');
 
 const DEFAULT_TX_DAYS = 30;
 const MAX_TX_DAYS = 1095; // до ~3 лет (1 + 2)
@@ -133,6 +134,7 @@ async function ensureFinanceTables(db) {
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         `);
         await finCash.ensureCashTables(db);
+        await finPlans.ensurePlanTables(db);
     })();
     return tablesReady;
 }
@@ -406,6 +408,190 @@ function monthKeysInclusive(start, end) {
     return keys.length ? keys : [tochka.ymd(end).slice(0, 7)];
 }
 
+function prevMonthKey(ym) {
+    const s = String(ym || '');
+    const y = parseInt(s.slice(0, 4), 10);
+    const m = parseInt(s.slice(5, 7), 10);
+    if (!y || !m) return '';
+    if (m === 1) return y - 1 + '-12';
+    return y + '-' + String(m - 1).padStart(2, '0');
+}
+
+/**
+ * Остаток «как Всего доступно» на конец месяца:
+ * расчётные (снимок available + walkback по полной выписке) + оценка депозитов
+ * (накопительно открытия − возвраты тела на конец месяца).
+ * diff = изменение к предыдущему месяцу.
+ */
+async function loadAccountBalanceSeries(db, opts) {
+    const currency = finCred.normalizeCurrency((opts && opts.currency) || 'RUB');
+    const customerCodes = (opts && opts.customerCodes) || [];
+    const accountId = String((opts && opts.accountId) || '').trim();
+    const monthKeys = Array.isArray(opts && opts.monthKeys) ? opts.monthKeys.slice() : [];
+    const empty = {
+        balance_now: null,
+        balance_start: null,
+        balance_diff: null,
+        accounts_now: null,
+        deposits_now: null,
+        balance_note:
+            'Остаток = расчётные (снимок) + оценка депозитов; помесячно — реконструкция по полной выписке.',
+        by_ym: Object.create(null),
+    };
+    if (!monthKeys.length) return empty;
+
+    const accWhere = [];
+    const accParams = [];
+    if (currency === 'RUB') {
+        accWhere.push("(UPPER(IFNULL(a.currency,'')) IN ('RUB','RUR','') OR a.currency IS NULL)");
+    } else {
+        accWhere.push('UPPER(IFNULL(a.currency,\'\')) = ?');
+        accParams.push(currency);
+    }
+    if (accountId) {
+        accWhere.push('a.account_id = ?');
+        accParams.push(accountId);
+    }
+    sqlCustomerCodeIn('a', customerCodes, accWhere, accParams);
+    const [balRows] = await db.query(
+        `SELECT SUM(COALESCE(a.available, a.balance, 0)) AS s
+           FROM dg_finance_accounts a
+          WHERE ${accWhere.join(' AND ')}`,
+        accParams
+    );
+    const accountsNow = Math.round((Number(balRows && balRows[0] && balRows[0].s) || 0) * 100) / 100;
+
+    const firstYm = monthKeys[0];
+    const startYmd = firstYm + '-01';
+    const todayYmd = tochka.ymd(new Date());
+    const now = new Date();
+    const walkKeys = monthKeysInclusive(
+        new Date(Number(firstYm.slice(0, 4)), Number(firstYm.slice(5, 7)) - 1, 1),
+        now
+    );
+    const walkSet = new Set(walkKeys);
+    monthKeys.forEach((ym) => walkSet.add(ym));
+    const allKeys = Array.from(walkSet).sort();
+
+    const txWhere = ['t.booked_date IS NOT NULL', 't.booked_date >= ?', 't.booked_date <= ?', 't.currency = ?'];
+    const txParams = [startYmd, todayYmd, currency];
+    if (accountId) {
+        txWhere.push('t.account_id = ?');
+        txParams.push(accountId);
+    }
+    sqlCustomerCodeIn('a', customerCodes, txWhere, txParams);
+    const [netRows] = await db.query(
+        `SELECT DATE_FORMAT(t.booked_date, '%Y-%m') AS ym,
+                SUM(CASE WHEN t.direction = 'out' THEN -t.amount_abs ELSE t.amount_abs END) AS net
+           FROM dg_finance_tx t
+           LEFT JOIN dg_finance_accounts a ON a.bank = t.bank AND a.account_id = t.account_id
+          WHERE ${txWhere.join(' AND ')}
+          GROUP BY ym`,
+        txParams
+    );
+    const netByYm = Object.create(null);
+    (netRows || []).forEach((r) => {
+        const ym = String(r.ym || '');
+        if (/^\d{4}-\d{2}$/.test(ym)) netByYm[ym] = Number(r.net) || 0;
+    });
+
+    // Оценка депозитов: накопительно с начала истории (не только окно графика).
+    const depWhere = ['t.booked_date IS NOT NULL', 't.currency = ?'];
+    const depParams = [currency];
+    if (accountId) {
+        depWhere.push('t.account_id = ?');
+        depParams.push(accountId);
+    }
+    sqlCustomerCodeIn('a', customerCodes, depWhere, depParams);
+    depWhere.push(
+        `(LOWER(IFNULL(t.purpose,'')) LIKE '%открытия депозита%' OR t.purpose LIKE '%Возврат средств по депозитной сделке%')`
+    );
+    const [depRows] = await db.query(
+        `SELECT DATE_FORMAT(t.booked_date, '%Y-%m') AS ym,
+                SUM(CASE
+                      WHEN LOWER(IFNULL(t.purpose,'')) LIKE '%открытия депозита%'
+                       AND t.direction IN ('out','Debit','debit')
+                      THEN ABS(t.amount) ELSE 0 END) AS openings,
+                SUM(CASE
+                      WHEN t.purpose LIKE '%Возврат средств по депозитной сделке%'
+                       AND t.direction IN ('in','Credit','credit')
+                      THEN ABS(t.amount) ELSE 0 END) AS returns_body
+           FROM dg_finance_tx t
+           LEFT JOIN dg_finance_accounts a ON a.bank = t.bank AND a.account_id = t.account_id
+          WHERE ${depWhere.join(' AND ')}
+          GROUP BY ym
+          ORDER BY ym ASC`,
+        depParams
+    );
+    let cumOpen = 0;
+    let cumRet = 0;
+    const depByYm = Object.create(null);
+    (depRows || []).forEach((r) => {
+        const ym = String(r.ym || '');
+        if (!/^\d{4}-\d{2}$/.test(ym)) return;
+        cumOpen += Number(r.openings) || 0;
+        cumRet += Number(r.returns_body) || 0;
+        depByYm[ym] = Math.max(0, Math.round((cumOpen - cumRet) * 100) / 100);
+    });
+    // Проброс депозита на месяцы без движений телом.
+    let lastDep = 0;
+    const depSorted = Object.keys(depByYm).sort();
+    if (depSorted.length) {
+        const fillFrom = depSorted[0];
+        const fillTo = allKeys.length ? allKeys[allKeys.length - 1] : depSorted[depSorted.length - 1];
+        const fillKeys = monthKeysInclusive(
+            new Date(Number(fillFrom.slice(0, 4)), Number(fillFrom.slice(5, 7)) - 1, 1),
+            new Date(Number(fillTo.slice(0, 4)), Number(fillTo.slice(5, 7)) - 1, 28)
+        );
+        fillKeys.forEach((ym) => {
+            if (depByYm[ym] != null) lastDep = depByYm[ym];
+            else depByYm[ym] = lastDep;
+        });
+    }
+    const depositsNow = depByYm[allKeys[allKeys.length - 1]] != null
+        ? depByYm[allKeys[allKeys.length - 1]]
+        : Math.max(0, Math.round((cumOpen - cumRet) * 100) / 100);
+
+    // accounts_end[ym] = accountsNow − Σ net(m) for m > ym
+    let after = 0;
+    const accountsByYm = Object.create(null);
+    for (let i = allKeys.length - 1; i >= 0; i--) {
+        const ym = allKeys[i];
+        accountsByYm[ym] = Math.round((accountsNow - after) * 100) / 100;
+        after += Number(netByYm[ym]) || 0;
+    }
+    const accountsStart = Math.round((accountsNow - after) * 100) / 100;
+    const depStartYm = prevMonthKey(firstYm);
+    const depositsStart = depStartYm && depByYm[depStartYm] != null ? depByYm[depStartYm] : 0;
+
+    const balanceByYm = Object.create(null);
+    allKeys.forEach((ym) => {
+        const acc = accountsByYm[ym] != null ? accountsByYm[ym] : 0;
+        const dep = depByYm[ym] != null ? depByYm[ym] : 0;
+        balanceByYm[ym] = Math.round((acc + dep) * 100) / 100;
+    });
+
+    const balanceNow = Math.round((accountsNow + depositsNow) * 100) / 100;
+    const balanceStart = Math.round((accountsStart + depositsStart) * 100) / 100;
+    const lastYm = monthKeys[monthKeys.length - 1];
+    const lastBal = balanceByYm[lastYm] != null ? balanceByYm[lastYm] : balanceNow;
+    const balanceDiff = Math.round((lastBal - balanceStart) * 100) / 100;
+
+    return {
+        balance_now: balanceNow,
+        balance_start: balanceStart,
+        balance_diff: balanceDiff,
+        accounts_now: accountsNow,
+        deposits_now: depositsNow,
+        balance_note:
+            'Остаток = расчётные (available, walkback по полной выписке) + оценка депозитов (открытия − возвраты тела). Совпадает с «Всего доступно». Разница — к предыдущему месяцу. Ранние месяцы могут уходить в минус, если в снимке нет входного остатка до первой выписки.',
+        by_ym: balanceByYm,
+        accounts_by_ym: accountsByYm,
+        deposits_by_ym: depByYm,
+        balance_start_ym: depStartYm || null,
+    };
+}
+
 function truthyQueryFlag(v) {
     return ['1', 'true', 'yes', 'on'].includes(String(v == null ? '' : v).trim().toLowerCase());
 }
@@ -462,6 +648,17 @@ function sqlExcludeOutgoingToInn(alias, inn) {
     return `(${a}direction <> 'out' OR REPLACE(REPLACE(IFNULL(${a}counterparty_inn,''), ' ', ''), '-', '') <> ?)`;
 }
 
+/** Фильтр «ИНН контрагента»: только цифры, подстрока в нормализованном ИНН. */
+function sqlFilterCounterpartyInn(alias, innDigits) {
+    const a = alias ? alias + '.' : '';
+    const digits = normalizeInnDigits(innDigits).slice(0, 12);
+    if (!digits) return { sql: '1=1', params: [] };
+    return {
+        sql: `REPLACE(REPLACE(IFNULL(${a}counterparty_inn,''), ' ', ''), '-', '') LIKE ?`,
+        params: ['%' + digits + '%'],
+    };
+}
+
 function normalizeChartTag(raw) {
     const s = String(raw || '')
         .trim()
@@ -502,6 +699,69 @@ function chartExcludeReason(purpose) {
     if (p.includes('Перевод собственных средств')) return 'перевод своих';
     if (p.includes('Выплата дивидендов')) return 'дивиденды';
     return 'внутр.';
+}
+
+/**
+ * Оценка остатка «на депозитах» из выписки: сумма открытий − возвраты тела.
+ * Проценты не входят (они остаются в доходе/графике). Не зависит от include_internal.
+ */
+async function loadDepositStockEstimate(db) {
+    const [rows] = await db.query(
+        `SELECT a.customer_code, a.org_label, t.bank, t.currency,
+                SUM(CASE
+                      WHEN LOWER(IFNULL(t.purpose,'')) LIKE '%открытия депозита%'
+                       AND t.direction IN ('out','Debit','debit')
+                      THEN ABS(t.amount) ELSE 0 END) AS openings,
+                SUM(CASE
+                      WHEN t.purpose LIKE '%Возврат средств по депозитной сделке%'
+                       AND t.direction IN ('in','Credit','credit')
+                      THEN ABS(t.amount) ELSE 0 END) AS returns_body
+           FROM dg_finance_tx t
+           LEFT JOIN dg_finance_accounts a
+             ON a.bank = t.bank AND a.account_id = t.account_id
+          WHERE LOWER(IFNULL(t.purpose,'')) LIKE '%открытия депозита%'
+             OR t.purpose LIKE '%Возврат средств по депозитной сделке%'
+          GROUP BY a.customer_code, a.org_label, t.bank, t.currency`
+    );
+    const items = [];
+    const totalsMap = Object.create(null);
+    for (const r of rows || []) {
+        const openings = Number(r.openings) || 0;
+        const returnsBody = Number(r.returns_body) || 0;
+        const amount = Math.max(0, openings - returnsBody);
+        const currency = finCred.normalizeCurrency(r.currency);
+        const bank = String(r.bank || 'tochka').toLowerCase() || 'tochka';
+        const customerCode = r.customer_code != null ? String(r.customer_code).trim() : '';
+        items.push({
+            customer_code: customerCode,
+            org_label: String(r.org_label || '').trim(),
+            bank,
+            currency,
+            openings: Math.round(openings * 100) / 100,
+            returns_body: Math.round(returnsBody * 100) / 100,
+            amount: Math.round(amount * 100) / 100,
+        });
+        if (amount > 0) {
+            totalsMap[currency] = (totalsMap[currency] || 0) + amount;
+        }
+    }
+    items.sort((a, b) => {
+        if (b.amount !== a.amount) return b.amount - a.amount;
+        return String(a.customer_code).localeCompare(String(b.customer_code), 'ru');
+    });
+    const totals = Object.keys(totalsMap)
+        .sort((a, b) => (a === 'RUB' ? -1 : b === 'RUB' ? 1 : a.localeCompare(b)))
+        .map((currency) => ({
+            currency,
+            amount: Math.round(totalsMap[currency] * 100) / 100,
+        }));
+    return {
+        method: 'statement_openings_minus_returns',
+        note:
+            'Оценка остатка на депозитах: открытия − возвраты тела по назначению платежа. Проценты не входят. Не зависит от галки «внутренние».',
+        items,
+        totals,
+    };
 }
 
 /** Период выписки: date_from/date_to или окно days. */
@@ -919,6 +1179,27 @@ async function syncOneRaiffeisenCredential(db, appSettings, cred, opts) {
                 await persistRaiffCred(db, appSettings, cred);
                 txs = st.transactions || [];
                 if (st.lastBalance != null) balance = st.lastBalance;
+                const booked = txs
+                    .map(function (t) {
+                        return String((t && t.booked_at) || '').slice(0, 10);
+                    })
+                    .filter(function (d) {
+                        return /^\d{4}-\d{2}-\d{2}$/.test(d);
+                    })
+                    .sort();
+                syncJob.message =
+                    'Райф · ' +
+                    accountOrgLabel +
+                    ': ' +
+                    (acc.account_number || acc.account_id) +
+                    ' запрос ' +
+                    window.startYmd +
+                    '…' +
+                    window.endYmd +
+                    (booked.length
+                        ? ' → в ответе ' + booked[0] + '…' + booked[booked.length - 1] + ' (' + txs.length + ' оп.)'
+                        : ' → операций 0');
+                onProgress({ message: syncJob.message, account_id: acc.account_id });
             } catch (e) {
                 errors.push({ code: acc.account_id, error: e.message || String(e) });
             }
@@ -1842,14 +2123,16 @@ function factory(db, appSettings) {
                 a.currency = finCred.normalizeCurrency(a.currency);
             }
             const org_aliases = await finCred.loadOrgAliases(db, appSettings);
+            const deposit_estimate = await loadDepositStockEstimate(db);
             res.json({
                 success: true,
                 accounts: rows || [],
                 account_sub_types: subtypes,
                 org_aliases,
+                deposit_estimate,
                 can_write: pageMode(req) === 'full',
                 api_note:
-                    'Банк — в шапке организации (Точка / Райффайзен / Т‑Банк). Фонд: галка при редактировании названия (карандаш) или клик по бейджу типа.',
+                    'Банк — в шапке организации (Точка / Райффайзен / Т‑Банк). Фонд: галка при редактировании названия (карандаш) или клик по бейджу типа. «На депозитах» — оценка из выписки (открытия − возвраты тела), всегда в карточках и в «Всего».',
             });
         } catch (e) {
             res.status(500).json({ success: false, error: e.message || String(e) });
@@ -2017,13 +2300,36 @@ function factory(db, appSettings) {
         return String(a.username || a.login || '').slice(0, 64);
     }
 
+    router.get('/cash/summary', async (req, res) => {
+        if (!requireFinanceAccess(req, res, false)) return;
+        try {
+            await ensureFinanceTables(db);
+            const win = analyticsDateWindow(req);
+            const monthKeys = monthKeysInclusive(win.start, win.end);
+            const customerCodes = parseCustomerCodes(req.query);
+            const accountId = String(req.query.account_id || '').trim();
+            const orgAliases = await finCred.loadOrgAliases(db, appSettings);
+            const summary = await finCash.buildCashSummary(db, finCred, orgAliases, {
+                dateFrom: win.startYmd,
+                dateTo: win.endYmd,
+                months: monthKeys,
+                customerCodes,
+                accountId,
+                todayYmd: tochka.ymd(new Date()),
+            });
+            res.json({ success: true, ...summary });
+        } catch (e) {
+            res.status(500).json({ success: false, error: e.message || String(e) });
+        }
+    });
+
     router.get('/cash/templates', async (req, res) => {
         if (!requireFinanceAccess(req, res, false)) return;
         try {
             await ensureFinanceTables(db);
             const [rows] = await db.query(
                 `SELECT id, purpose, direction, day_of_month, amount_fix, amount_premium,
-                        scope, customer_code, bank, account_id, include_chart, active,
+                        scope, customer_code, bank, account_id, include_chart, needs_review, active, plan_item_id,
                         DATE_FORMAT(valid_from, '%Y-%m-%d') AS valid_from,
                         DATE_FORMAT(valid_to, '%Y-%m-%d') AS valid_to,
                         created_by, created_at, updated_at
@@ -2056,14 +2362,19 @@ function factory(db, appSettings) {
             }
             const includeChart =
                 body.include_chart === false || body.include_chart === 0 || body.include_chart === '0' ? 0 : 1;
+            const needsReview =
+                body.needs_review === true || body.needs_review === 1 || body.needs_review === '1' ? 1 : 0;
             const active = body.active === false || body.active === 0 || body.active === '0' ? 0 : 1;
             const validFrom = parseYmd(body.valid_from) || null;
             const validTo = parseYmd(body.valid_to) || null;
+            const planItemId = Object.prototype.hasOwnProperty.call(body, 'plan_item_id')
+                ? finPlans.parsePlanItemId(body.plan_item_id)
+                : null;
             const [r] = await db.query(
                 `INSERT INTO dg_finance_cash_templates
                     (purpose, direction, day_of_month, amount_fix, amount_premium, scope, customer_code,
-                     bank, account_id, include_chart, active, valid_from, valid_to, created_by)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                     bank, account_id, include_chart, needs_review, active, valid_from, valid_to, plan_item_id, created_by)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
                     purpose,
                     direction,
@@ -2075,9 +2386,11 @@ function factory(db, appSettings) {
                     String(body.bank || '').slice(0, 32),
                     String(body.account_id || '').slice(0, 64),
                     includeChart,
+                    needsReview,
                     active,
                     validFrom,
                     validTo,
+                    planItemId,
                     actorName(req),
                 ]
             );
@@ -2141,6 +2454,12 @@ function factory(db, appSettings) {
                     body.include_chart === false || body.include_chart === 0 || body.include_chart === '0' ? 0 : 1
                 );
             }
+            if (body.needs_review != null) {
+                sets.push('needs_review = ?');
+                params.push(
+                    body.needs_review === true || body.needs_review === 1 || body.needs_review === '1' ? 1 : 0
+                );
+            }
             if (body.active != null) {
                 sets.push('active = ?');
                 params.push(body.active === false || body.active === 0 || body.active === '0' ? 0 : 1);
@@ -2152,6 +2471,10 @@ function factory(db, appSettings) {
             if (Object.prototype.hasOwnProperty.call(body, 'valid_to')) {
                 sets.push('valid_to = ?');
                 params.push(parseYmd(body.valid_to) || null);
+            }
+            if (Object.prototype.hasOwnProperty.call(body, 'plan_item_id')) {
+                sets.push('plan_item_id = ?');
+                params.push(finPlans.parsePlanItemId(body.plan_item_id));
             }
             if (!sets.length) return res.status(400).json({ success: false, error: 'Нет полей для обновления' });
             params.push(id);
@@ -2200,6 +2523,7 @@ function factory(db, appSettings) {
             let purpose = prev ? prev.purpose : null;
             let includeChart = prev ? prev.include_chart : null;
             let skipped = prev ? Number(prev.skipped) || 0 : 0;
+            let reviewConfirmed = prev ? Number(prev.review_confirmed) || 0 : 0;
             if (Object.prototype.hasOwnProperty.call(body, 'amount_fix')) {
                 amountFix = finCash.parseMoney(body.amount_fix);
             }
@@ -2218,19 +2542,28 @@ function factory(db, appSettings) {
             if (body.skipped != null) {
                 skipped = body.skipped === true || body.skipped === 1 || body.skipped === '1' ? 1 : 0;
             }
+            if (body.review_confirmed != null) {
+                reviewConfirmed =
+                    body.review_confirmed === true ||
+                    body.review_confirmed === 1 ||
+                    body.review_confirmed === '1'
+                        ? 1
+                        : 0;
+            }
             await db.query(
                 `INSERT INTO dg_finance_cash_overrides
-                    (template_id, ym, amount_fix, amount_premium, purpose, include_chart, skipped)
-                 VALUES (?, ?, ?, ?, ?, ?, ?)
+                    (template_id, ym, amount_fix, amount_premium, purpose, include_chart, skipped, review_confirmed)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                  ON DUPLICATE KEY UPDATE
                     amount_fix = VALUES(amount_fix),
                     amount_premium = VALUES(amount_premium),
                     purpose = VALUES(purpose),
                     include_chart = VALUES(include_chart),
-                    skipped = VALUES(skipped)`,
-                [id, ym, amountFix, amountPremium, purpose, includeChart, skipped]
+                    skipped = VALUES(skipped),
+                    review_confirmed = VALUES(review_confirmed)`,
+                [id, ym, amountFix, amountPremium, purpose, includeChart, skipped, reviewConfirmed]
             );
-            res.json({ success: true, template_id: id, ym });
+            res.json({ success: true, template_id: id, ym, review_confirmed: reviewConfirmed });
         } catch (e) {
             res.status(500).json({ success: false, error: e.message || String(e) });
         }
@@ -2245,7 +2578,7 @@ function factory(db, appSettings) {
             const [rows] = await db.query(
                 `SELECT id, DATE_FORMAT(booked_date, '%Y-%m-%d') AS booked_date,
                         direction, amount, purpose, counterparty, scope, customer_code,
-                        bank, account_id, include_chart, created_by, created_at, updated_at
+                        bank, account_id, include_chart, plan_item_id, created_by, created_at, updated_at
                  FROM dg_finance_cash_tx
                  WHERE booked_date >= ? AND booked_date <= ?
                  ORDER BY booked_date DESC, id DESC
@@ -2278,11 +2611,14 @@ function factory(db, appSettings) {
             }
             const includeChart =
                 body.include_chart === false || body.include_chart === 0 || body.include_chart === '0' ? 0 : 1;
+            const planItemId = Object.prototype.hasOwnProperty.call(body, 'plan_item_id')
+                ? finPlans.parsePlanItemId(body.plan_item_id)
+                : null;
             const [r] = await db.query(
                 `INSERT INTO dg_finance_cash_tx
                     (booked_date, direction, amount, purpose, counterparty, scope, customer_code,
-                     bank, account_id, include_chart, created_by)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                     bank, account_id, include_chart, plan_item_id, created_by)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
                     booked,
                     direction,
@@ -2294,6 +2630,7 @@ function factory(db, appSettings) {
                     String(body.bank || '').slice(0, 32),
                     String(body.account_id || '').slice(0, 64),
                     includeChart,
+                    planItemId,
                     actorName(req),
                 ]
             );
@@ -2349,6 +2686,10 @@ function factory(db, appSettings) {
                     body.include_chart === false || body.include_chart === 0 || body.include_chart === '0' ? 0 : 1
                 );
             }
+            if (Object.prototype.hasOwnProperty.call(body, 'plan_item_id')) {
+                sets.push('plan_item_id = ?');
+                params.push(finPlans.parsePlanItemId(body.plan_item_id));
+            }
             if (!sets.length) return res.status(400).json({ success: false, error: 'Нет полей' });
             params.push(id);
             const [r] = await db.query(`UPDATE dg_finance_cash_tx SET ${sets.join(', ')} WHERE id = ?`, params);
@@ -2373,16 +2714,484 @@ function factory(db, appSettings) {
         }
     });
 
+    router.get('/plans/categories', async (req, res) => {
+        if (!requireFinanceAccess(req, res, false)) return;
+        try {
+            await ensureFinanceTables(db);
+            const activeOnly =
+                req.query.active === '1' ||
+                req.query.active === 'true' ||
+                String(req.query.active_only || '') === '1';
+            const rows = await finPlans.listPlanCategories(db, { activeOnly });
+            res.json({ success: true, rows });
+        } catch (e) {
+            res.status(500).json({ success: false, error: e.message || String(e) });
+        }
+    });
+
+    router.post('/plans/categories', async (req, res) => {
+        if (!requireFinanceAccess(req, res, true)) return;
+        try {
+            await ensureFinanceTables(db);
+            const body = req.body && typeof req.body === 'object' ? req.body : {};
+            const title = String(body.title || '').trim().slice(0, 120);
+            if (!title) return res.status(400).json({ success: false, error: 'Укажите название категории' });
+            const [dup] = await db.query(
+                'SELECT id FROM dg_finance_plan_categories WHERE LOWER(title) = LOWER(?) LIMIT 1',
+                [title]
+            );
+            if (dup && dup[0]) {
+                return res.json({ success: true, id: dup[0].id, existing: true });
+            }
+            const sortOrder = parseInt(String(body.sort_order != null ? body.sort_order : '0'), 10) || 0;
+            const active = body.active === false || body.active === 0 || body.active === '0' ? 0 : 1;
+            const [r] = await db.query(
+                `INSERT INTO dg_finance_plan_categories (title, active, sort_order, created_by)
+                 VALUES (?, ?, ?, ?)`,
+                [title, active, sortOrder, actorName(req)]
+            );
+            res.json({ success: true, id: r && r.insertId });
+        } catch (e) {
+            res.status(500).json({ success: false, error: e.message || String(e) });
+        }
+    });
+
+    router.patch('/plans/categories/:id', async (req, res) => {
+        if (!requireFinanceAccess(req, res, true)) return;
+        try {
+            await ensureFinanceTables(db);
+            const id = parseInt(String(req.params.id || ''), 10);
+            if (!Number.isFinite(id) || id < 1) {
+                return res.status(400).json({ success: false, error: 'Некорректный id' });
+            }
+            const body = req.body && typeof req.body === 'object' ? req.body : {};
+            const sets = [];
+            const params = [];
+            if (body.title != null) {
+                const title = String(body.title || '').trim().slice(0, 120);
+                if (!title) return res.status(400).json({ success: false, error: 'Пустое название' });
+                sets.push('title = ?');
+                params.push(title);
+            }
+            if (body.active != null) {
+                sets.push('active = ?');
+                params.push(body.active === false || body.active === 0 || body.active === '0' ? 0 : 1);
+            }
+            if (body.sort_order != null) {
+                sets.push('sort_order = ?');
+                params.push(parseInt(String(body.sort_order), 10) || 0);
+            }
+            if (!sets.length) return res.status(400).json({ success: false, error: 'Нет полей' });
+            params.push(id);
+            const [r] = await db.query(`UPDATE dg_finance_plan_categories SET ${sets.join(', ')} WHERE id = ?`, params);
+            res.json({ success: true, updated: Number(r && r.affectedRows) || 0 });
+        } catch (e) {
+            res.status(500).json({ success: false, error: e.message || String(e) });
+        }
+    });
+
+    router.delete('/plans/categories/:id', async (req, res) => {
+        if (!requireFinanceAccess(req, res, true)) return;
+        try {
+            await ensureFinanceTables(db);
+            const id = parseInt(String(req.params.id || ''), 10);
+            if (!Number.isFinite(id) || id < 1) {
+                return res.status(400).json({ success: false, error: 'Некорректный id' });
+            }
+            await db.query('UPDATE dg_finance_plan_items SET category_id = NULL WHERE category_id = ?', [id]);
+            const [r] = await db.query('DELETE FROM dg_finance_plan_categories WHERE id = ?', [id]);
+            res.json({ success: true, deleted: Number(r && r.affectedRows) || 0 });
+        } catch (e) {
+            res.status(500).json({ success: false, error: e.message || String(e) });
+        }
+    });
+
+    router.get('/plans/items', async (req, res) => {
+        if (!requireFinanceAccess(req, res, false)) return;
+        try {
+            await ensureFinanceTables(db);
+            const activeOnly =
+                req.query.active === '1' ||
+                req.query.active === 'true' ||
+                String(req.query.active_only || '') === '1';
+            const rows = await finPlans.listPlanItems(db, { activeOnly });
+            res.json({ success: true, rows });
+        } catch (e) {
+            res.status(500).json({ success: false, error: e.message || String(e) });
+        }
+    });
+
+    router.post('/plans/items', async (req, res) => {
+        if (!requireFinanceAccess(req, res, true)) return;
+        try {
+            await ensureFinanceTables(db);
+            const body = req.body && typeof req.body === 'object' ? req.body : {};
+            const title = String(body.title || '').trim().slice(0, 255);
+            if (!title) return res.status(400).json({ success: false, error: 'Укажите название статьи' });
+            const paymentForm = finPlans.normalizePaymentForm(
+                body.payment_form != null ? body.payment_form : body.pay_form
+            );
+            const cpsRaw =
+                body.counterparties != null
+                    ? body.counterparties
+                    : body.inns != null
+                      ? body.inns
+                      : body.counterparty_inn != null
+                        ? body.counterparty_inn
+                        : body.inns_text;
+            const counterparties = finPlans.parseCounterparties(cpsRaw);
+            if (finPlans.paymentFormUsesBank(paymentForm) && !counterparties.length) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Для безнала добавьте хотя бы одного контрагента с ИНН (10 или 12 цифр)',
+                });
+            }
+            const direction = String(body.direction || 'out').toLowerCase() === 'in' ? 'in' : 'out';
+            const amountPlan = finCash.parseMoney(body.amount_plan);
+            if (amountPlan == null || amountPlan < 0) {
+                return res.status(400).json({ success: false, error: 'Укажите плановую сумму ≥ 0' });
+            }
+            const sc = finCash.normalizeScope(body.scope, body.customer_code);
+            if (sc.scope === 'org' && !sc.customer_code) {
+                return res.status(400).json({ success: false, error: 'Для scope=org укажите организацию' });
+            }
+            const includeCash = finPlans.paymentFormUsesCash(paymentForm) ? 1 : 0;
+            const active = body.active === false || body.active === 0 || body.active === '0' ? 0 : 1;
+            const categoryId = Object.prototype.hasOwnProperty.call(body, 'category_id')
+                ? finPlans.parseCategoryId(body.category_id)
+                : null;
+            if (categoryId) {
+                const [cat] = await db.query(
+                    'SELECT id FROM dg_finance_plan_categories WHERE id = ? LIMIT 1',
+                    [categoryId]
+                );
+                if (!cat || !cat[0]) {
+                    return res.status(400).json({ success: false, error: 'Категория не найдена' });
+                }
+            }
+            const [r] = await db.query(
+                `INSERT INTO dg_finance_plan_items
+                    (title, counterparty_inn, category_id, direction, amount_plan, scope, customer_code,
+                     include_cash, payment_form, active, created_by)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [
+                    title,
+                    finPlans.innsDisplay(counterparties),
+                    categoryId,
+                    direction,
+                    amountPlan,
+                    sc.scope,
+                    sc.customer_code,
+                    includeCash,
+                    paymentForm,
+                    active,
+                    actorName(req),
+                ]
+            );
+            const id = r && r.insertId;
+            if (id) await finPlans.replaceItemInns(db, id, counterparties);
+            let cashLinks = { templates: [], once: [] };
+            if (id) {
+                const wantsCashLinks =
+                    Object.prototype.hasOwnProperty.call(body, 'cash_template_ids') ||
+                    Object.prototype.hasOwnProperty.call(body, 'cash_once_ids');
+                if (wantsCashLinks || includeCash) {
+                    cashLinks = await finPlans.syncPlanCashLinks(db, id, {
+                        usesCash: !!includeCash,
+                        templateIds: Object.prototype.hasOwnProperty.call(body, 'cash_template_ids')
+                            ? body.cash_template_ids
+                            : includeCash
+                              ? []
+                              : undefined,
+                        onceIds: Object.prototype.hasOwnProperty.call(body, 'cash_once_ids')
+                            ? body.cash_once_ids
+                            : undefined,
+                    });
+                }
+            }
+            res.json({
+                success: true,
+                id,
+                payment_form: paymentForm,
+                counterparties,
+                inns: counterparties.map((c) => c.inn),
+                cash_template_ids: cashLinks.templates,
+                cash_once_ids: cashLinks.once,
+            });
+        } catch (e) {
+            res.status(500).json({ success: false, error: e.message || String(e) });
+        }
+    });
+
+    router.patch('/plans/items/:id', async (req, res) => {
+        if (!requireFinanceAccess(req, res, true)) return;
+        try {
+            await ensureFinanceTables(db);
+            const id = parseInt(String(req.params.id || ''), 10);
+            if (!Number.isFinite(id) || id < 1) {
+                return res.status(400).json({ success: false, error: 'Некорректный id' });
+            }
+            const [exist] = await db.query('SELECT id FROM dg_finance_plan_items WHERE id = ? LIMIT 1', [id]);
+            if (!exist || !exist[0]) return res.status(404).json({ success: false, error: 'Статья не найдена' });
+            const body = req.body && typeof req.body === 'object' ? req.body : {};
+            const sets = [];
+            const params = [];
+            if (body.title != null) {
+                const title = String(body.title || '').trim().slice(0, 255);
+                if (!title) return res.status(400).json({ success: false, error: 'Пустое название' });
+                sets.push('title = ?');
+                params.push(title);
+            }
+            let cpsUpdated = null;
+            let nextPaymentForm = null;
+            if (body.payment_form != null || body.pay_form != null) {
+                nextPaymentForm = finPlans.normalizePaymentForm(
+                    body.payment_form != null ? body.payment_form : body.pay_form
+                );
+                sets.push('payment_form = ?', 'include_cash = ?');
+                params.push(nextPaymentForm, finPlans.paymentFormUsesCash(nextPaymentForm) ? 1 : 0);
+            }
+            if (
+                body.counterparties != null ||
+                body.inns != null ||
+                body.counterparty_inn != null ||
+                body.inns_text != null
+            ) {
+                const cpsRaw =
+                    body.counterparties != null
+                        ? body.counterparties
+                        : body.inns != null
+                          ? body.inns
+                          : body.counterparty_inn != null
+                            ? body.counterparty_inn
+                            : body.inns_text;
+                const counterparties = finPlans.parseCounterparties(cpsRaw);
+                let formForCheck = nextPaymentForm;
+                if (!formForCheck) {
+                    const [curRows] = await db.query(
+                        'SELECT payment_form, include_cash FROM dg_finance_plan_items WHERE id = ? LIMIT 1',
+                        [id]
+                    );
+                    formForCheck = finPlans.normalizePaymentForm(
+                        curRows && curRows[0] && curRows[0].payment_form
+                    );
+                }
+                if (finPlans.paymentFormUsesBank(formForCheck) && !counterparties.length) {
+                    return res.status(400).json({
+                        success: false,
+                        error: 'Для безнала добавьте хотя бы одного контрагента с ИНН',
+                    });
+                }
+                cpsUpdated = await finPlans.replaceItemInns(db, id, counterparties);
+            }
+            if (Object.prototype.hasOwnProperty.call(body, 'category_id')) {
+                const categoryId = finPlans.parseCategoryId(body.category_id);
+                if (categoryId) {
+                    const [cat] = await db.query(
+                        'SELECT id FROM dg_finance_plan_categories WHERE id = ? LIMIT 1',
+                        [categoryId]
+                    );
+                    if (!cat || !cat[0]) {
+                        return res.status(400).json({ success: false, error: 'Категория не найдена' });
+                    }
+                }
+                sets.push('category_id = ?');
+                params.push(categoryId);
+            }
+            if (body.direction != null) {
+                sets.push('direction = ?');
+                params.push(String(body.direction).toLowerCase() === 'in' ? 'in' : 'out');
+            }
+            if (body.amount_plan != null) {
+                const v = finCash.parseMoney(body.amount_plan);
+                if (v == null || v < 0) {
+                    return res.status(400).json({ success: false, error: 'Некорректный план' });
+                }
+                sets.push('amount_plan = ?');
+                params.push(v);
+            }
+            if (body.scope != null || body.customer_code != null) {
+                const sc = finCash.normalizeScope(body.scope, body.customer_code);
+                sets.push('scope = ?', 'customer_code = ?');
+                params.push(sc.scope, sc.customer_code);
+            }
+            if (body.include_cash != null && body.payment_form == null && body.pay_form == null) {
+                const wantCash =
+                    body.include_cash === false || body.include_cash === 0 || body.include_cash === '0'
+                        ? 0
+                        : 1;
+                sets.push('include_cash = ?');
+                params.push(wantCash);
+                const [curRows] = await db.query(
+                    'SELECT payment_form FROM dg_finance_plan_items WHERE id = ? LIMIT 1',
+                    [id]
+                );
+                const cur = finPlans.normalizePaymentForm(curRows && curRows[0] && curRows[0].payment_form);
+                if (wantCash && cur === 'bank') {
+                    sets.push('payment_form = ?');
+                    params.push('both');
+                } else if (!wantCash && cur === 'cash') {
+                    sets.push('payment_form = ?');
+                    params.push('bank');
+                } else if (!wantCash && cur === 'both') {
+                    sets.push('payment_form = ?');
+                    params.push('bank');
+                }
+            }
+            if (body.active != null) {
+                sets.push('active = ?');
+                params.push(body.active === false || body.active === 0 || body.active === '0' ? 0 : 1);
+            }
+            const wantsCashLinks =
+                Object.prototype.hasOwnProperty.call(body, 'cash_template_ids') ||
+                Object.prototype.hasOwnProperty.call(body, 'cash_once_ids') ||
+                body.payment_form != null ||
+                body.pay_form != null ||
+                body.include_cash != null;
+            if (!sets.length && !cpsUpdated && !wantsCashLinks) {
+                return res.status(400).json({ success: false, error: 'Нет полей для обновления' });
+            }
+            if (sets.length) {
+                params.push(id);
+                await db.query(`UPDATE dg_finance_plan_items SET ${sets.join(', ')} WHERE id = ?`, params);
+            }
+            let cashLinks;
+            if (wantsCashLinks) {
+                const [curPay] = await db.query(
+                    'SELECT payment_form, include_cash FROM dg_finance_plan_items WHERE id = ? LIMIT 1',
+                    [id]
+                );
+                const payNow = finPlans.normalizePaymentForm(
+                    curPay && curPay[0] && curPay[0].payment_form
+                );
+                const usesCash = finPlans.paymentFormUsesCash(payNow);
+                cashLinks = await finPlans.syncPlanCashLinks(db, id, {
+                    usesCash,
+                    templateIds: Object.prototype.hasOwnProperty.call(body, 'cash_template_ids')
+                        ? body.cash_template_ids
+                        : usesCash
+                          ? undefined
+                          : [],
+                    onceIds: Object.prototype.hasOwnProperty.call(body, 'cash_once_ids')
+                        ? body.cash_once_ids
+                        : usesCash
+                          ? undefined
+                          : [],
+                });
+            }
+            res.json({
+                success: true,
+                id,
+                counterparties: cpsUpdated || undefined,
+                inns: cpsUpdated ? cpsUpdated.map((c) => c.inn) : undefined,
+                cash_template_ids: cashLinks ? cashLinks.templates : undefined,
+                cash_once_ids: cashLinks ? cashLinks.once : undefined,
+            });
+        } catch (e) {
+            res.status(500).json({ success: false, error: e.message || String(e) });
+        }
+    });
+
+    router.delete('/plans/items/:id', async (req, res) => {
+        if (!requireFinanceAccess(req, res, true)) return;
+        try {
+            await ensureFinanceTables(db);
+            const id = parseInt(String(req.params.id || ''), 10);
+            if (!Number.isFinite(id) || id < 1) {
+                return res.status(400).json({ success: false, error: 'Некорректный id' });
+            }
+            await db.query('DELETE FROM dg_finance_plan_overrides WHERE item_id = ?', [id]);
+            await db.query('DELETE FROM dg_finance_plan_item_inns WHERE item_id = ?', [id]);
+            await db.query('UPDATE dg_finance_cash_tx SET plan_item_id = NULL WHERE plan_item_id = ?', [id]);
+            await db.query('UPDATE dg_finance_cash_templates SET plan_item_id = NULL WHERE plan_item_id = ?', [id]);
+            const [r] = await db.query('DELETE FROM dg_finance_plan_items WHERE id = ?', [id]);
+            res.json({ success: true, deleted: Number(r && r.affectedRows) || 0 });
+        } catch (e) {
+            res.status(500).json({ success: false, error: e.message || String(e) });
+        }
+    });
+
+    router.put('/plans/items/:id/months/:ym', async (req, res) => {
+        if (!requireFinanceAccess(req, res, true)) return;
+        try {
+            await ensureFinanceTables(db);
+            const id = parseInt(String(req.params.id || ''), 10);
+            const ym = String(req.params.ym || '').trim();
+            if (!Number.isFinite(id) || id < 1 || !/^\d{4}-\d{2}$/.test(ym)) {
+                return res.status(400).json({ success: false, error: 'Некорректный id или месяц' });
+            }
+            const [exist] = await db.query('SELECT id FROM dg_finance_plan_items WHERE id = ? LIMIT 1', [id]);
+            if (!exist || !exist[0]) return res.status(404).json({ success: false, error: 'Статья не найдена' });
+            const body = req.body && typeof req.body === 'object' ? req.body : {};
+            const [prevRows] = await db.query(
+                'SELECT * FROM dg_finance_plan_overrides WHERE item_id = ? AND ym = ? LIMIT 1',
+                [id, ym]
+            );
+            const prev = (prevRows && prevRows[0]) || null;
+            let amountPlan = prev ? prev.amount_plan : null;
+            let skipped = prev ? Number(prev.skipped) || 0 : 0;
+            if (Object.prototype.hasOwnProperty.call(body, 'amount_plan')) {
+                if (body.amount_plan === null || body.amount_plan === '') {
+                    amountPlan = null;
+                } else {
+                    amountPlan = finCash.parseMoney(body.amount_plan);
+                    if (amountPlan == null || amountPlan < 0) {
+                        return res.status(400).json({ success: false, error: 'Некорректный план' });
+                    }
+                }
+            }
+            if (body.skipped != null) {
+                skipped = body.skipped === true || body.skipped === 1 || body.skipped === '1' ? 1 : 0;
+            }
+            await db.query(
+                `INSERT INTO dg_finance_plan_overrides (item_id, ym, amount_plan, skipped)
+                 VALUES (?, ?, ?, ?)
+                 ON DUPLICATE KEY UPDATE
+                    amount_plan = VALUES(amount_plan),
+                    skipped = VALUES(skipped)`,
+                [id, ym, amountPlan, skipped]
+            );
+            res.json({ success: true, item_id: id, ym });
+        } catch (e) {
+            res.status(500).json({ success: false, error: e.message || String(e) });
+        }
+    });
+
+    router.get('/plans/matrix', async (req, res) => {
+        if (!requireFinanceAccess(req, res, false)) return;
+        try {
+            await ensureFinanceTables(db);
+            const win = analyticsDateWindow(req);
+            const customerCodes = parseCustomerCodes(req.query);
+            const currency = finCred.normalizeCurrency(req.query.currency || 'RUB');
+            const orgAliases = await finCred.loadOrgAliases(db, appSettings);
+            const matrix = await finPlans.loadPlanMatrix(db, finCred, orgAliases, {
+                dateFrom: win.startYmd,
+                dateTo: win.endYmd,
+                customerCodes,
+                currency,
+            });
+            res.json({ success: true, ...matrix });
+        } catch (e) {
+            res.status(500).json({ success: false, error: e.message || String(e) });
+        }
+    });
+
     router.get('/transactions', async (req, res) => {
         if (!requireFinanceAccess(req, res, false)) return;
         try {
             await ensureFinanceTables(db);
             const search = String(req.query.search || '').trim();
+            const innFilter = normalizeInnDigits(
+                req.query.inn != null ? req.query.inn : req.query.counterparty_inn
+            ).slice(0, 12);
             const direction = String(req.query.direction || '').trim().toLowerCase();
             const accountId = String(req.query.account_id || '').trim();
             const customerCodes = parseCustomerCodes(req.query);
             const dateFrom = String(req.query.date_from || '').trim();
             const dateTo = String(req.query.date_to || '').trim();
+            // months / date_* → одно окно; иначе cash templates разворачивались с 2000-01-01
+            const cashWin = analyticsDateWindow(req);
             const includeInternal = truthyQueryFlag(
                 req.query.include_internal != null ? req.query.include_internal : req.query.include_deposits
             );
@@ -2407,10 +3216,11 @@ function factory(db, appSettings) {
             const sortDir = sortDirRaw === 'asc' ? 'asc' : 'desc';
 
             let cashRows = [];
-            if (source !== 'bank' && !founderOnly && !dividendOnly) {
+            // Наличные без ИНН контрагента — при фильтре по ИНН не подмешиваем.
+            if (source !== 'bank' && !founderOnly && !dividendOnly && !innFilter) {
                 cashRows = await finCash.loadExpandedCashRows(db, finCred, orgAliases, {
-                    dateFrom: /^\d{4}-\d{2}-\d{2}$/.test(dateFrom) ? dateFrom : undefined,
-                    dateTo: /^\d{4}-\d{2}-\d{2}$/.test(dateTo) ? dateTo : undefined,
+                    dateFrom: cashWin.startYmd,
+                    dateTo: cashWin.endYmd,
                     customerCodes,
                     accountId,
                     search,
@@ -2435,6 +3245,7 @@ function factory(db, appSettings) {
                     include_internal: includeInternal,
                     founder_capital: founderOnly,
                     dividend: dividendOnly,
+                    inn: innFilter || null,
                     source,
                     sort_by: sortKey,
                     sort_dir: sortDir,
@@ -2476,6 +3287,11 @@ function factory(db, appSettings) {
                 where.push("(t.exclude_chart = 1 AND IFNULL(t.chart_tag,'') IN ('','founder'))");
             } else if (dividendOnly) {
                 where.push("(t.chart_tag = 'dividend' OR t.purpose LIKE '%Выплата дивидендов%')");
+            }
+            if (innFilter) {
+                const innSql = sqlFilterCounterpartyInn('t', innFilter);
+                where.push(innSql.sql);
+                params.push(...innSql.params);
             }
             if (search) {
                 const like = '%' + search.replace(/[%_]/g, '\\$&') + '%';
@@ -2588,6 +3404,7 @@ function factory(db, appSettings) {
                         include_internal: includeInternal,
                         founder_capital: founderOnly,
                         dividend: dividendOnly,
+                        inn: innFilter || null,
                         source,
                         sort_by: sortKey,
                         sort_dir: sortDir,
@@ -2628,6 +3445,7 @@ function factory(db, appSettings) {
                     include_internal: includeInternal,
                     founder_capital: founderOnly,
                     dividend: dividendOnly,
+                    inn: innFilter || null,
                     source,
                     sort_by: TX_SORT_SQL[sortKey] ? sortKey : 'booked_date',
                     sort_dir: sortDir,
@@ -2672,6 +3490,7 @@ function factory(db, appSettings) {
                 include_internal: includeInternal,
                 founder_capital: founderOnly,
                 dividend: dividendOnly,
+                inn: innFilter || null,
                 source,
                 sort_by: sortKey,
                 sort_dir: sortDir,
@@ -2792,6 +3611,61 @@ function factory(db, appSettings) {
                 });
             });
 
+            let balanceMeta = {
+                balance_now: null,
+                balance_start: null,
+                balance_diff: null,
+                balance_note: null,
+            };
+            if (source !== 'cash') {
+                const bal = await loadAccountBalanceSeries(db, {
+                    monthKeys,
+                    customerCodes,
+                    accountId,
+                    currency,
+                });
+                balanceMeta = {
+                    balance_now: bal.balance_now,
+                    balance_start: bal.balance_start,
+                    balance_diff: bal.balance_diff,
+                    accounts_now: bal.accounts_now,
+                    deposits_now: bal.deposits_now,
+                    balance_note: bal.balance_note,
+                };
+                let prevBal = bal.balance_start;
+                series.forEach(function (row) {
+                    const b =
+                        bal.by_ym && bal.by_ym[row.month] != null
+                            ? Math.round(Number(bal.by_ym[row.month]) * 100) / 100
+                            : null;
+                    const acc =
+                        bal.accounts_by_ym && bal.accounts_by_ym[row.month] != null
+                            ? Math.round(Number(bal.accounts_by_ym[row.month]) * 100) / 100
+                            : null;
+                    const dep =
+                        bal.deposits_by_ym && bal.deposits_by_ym[row.month] != null
+                            ? Math.round(Number(bal.deposits_by_ym[row.month]) * 100) / 100
+                            : null;
+                    row.balance = b;
+                    row.balance_accounts = acc;
+                    row.balance_deposits = dep;
+                    row.diff =
+                        b != null && prevBal != null
+                            ? Math.round((b - prevBal) * 100) / 100
+                            : null;
+                    if (b != null) prevBal = b;
+                });
+            } else {
+                series.forEach(function (row) {
+                    row.balance = null;
+                    row.balance_accounts = null;
+                    row.balance_deposits = null;
+                    row.diff = null;
+                });
+                balanceMeta.balance_note =
+                    'Остаток на счетах недоступен при источнике «только наличные».';
+            }
+
             res.json({
                 success: true,
                 months,
@@ -2810,7 +3684,13 @@ function factory(db, appSettings) {
                     out: Math.round(totOut * 100) / 100,
                     net: Math.round((totIn - totOut) * 100) / 100,
                     count: totCnt,
+                    balance: balanceMeta.balance_now,
+                    balance_start: balanceMeta.balance_start,
+                    balance_diff: balanceMeta.balance_diff,
+                    balance_accounts: balanceMeta.accounts_now,
+                    balance_deposits: balanceMeta.deposits_now,
                 },
+                balance_note: balanceMeta.balance_note,
                 end_ym: endYm,
             });
         } catch (e) {

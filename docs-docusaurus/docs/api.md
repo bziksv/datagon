@@ -2270,6 +2270,15 @@ Preflight матча «Менеджер по продажам» ↔ Planfix `/us
 
 Снимок из БД (+ `org_label`, `credential_id`, `is_fund`, `custom_name`, `can_write`).
 
+Дополнительно **`deposit_estimate`**: оценка остатка «на депозитах» из выписки (не зависит от `include_internal`):
+
+- `method`: `statement_openings_minus_returns`
+- `items[]`: `{ customer_code, org_label, bank, currency, openings, returns_body, amount }` — `amount = max(0, openings − returns_body)` по назначениям «открытия депозита» (исходящие) и «Возврат средств по депозитной сделке» (входящие); проценты не входят
+- `totals[]`: `{ currency, amount }` — сумма по валютам
+- `note` — пояснение для UI
+
+На экране карточка **«На депозитах»** всегда рядом со счетами; в **«Всего доступно»** входят расчётные + эта оценка. График по-прежнему без тела депозита (проценты в доходе).
+
 ### POST `/api/finance/org-meta`
 
 Только `full`. Body: `{ "customer_code", "full_name?", "short_name?", "custom_name?" }`.
@@ -2288,29 +2297,51 @@ Preflight матча «Менеджер по продажам» ↔ Planfix `/us
 
 ### GET `/api/finance/transactions`
 
-Query: `search`, `customer_code` (повторяемый или через запятую; также `customer_codes` / `org`) — несколько организаций, `direction`, **`source=bank|cash|all`** (по умолчанию **`all`**), `account_id`, `date_from`, `date_to`, `page`, `page_size`, `include_internal=1` (или `include_deposits=1`; по умолчанию **выкл.** — без тела депозита UNV, без «Перевод собственных средств» и без «Выплата дивидендов»), `founder_capital=1` / `founder_only=1` — только ручная пометка займ (банк), `dividend=1` / `dividend_only=1` — галка «див.» **или** назначение «Выплата дивидендов» (банк), `sort_by` / `sort` (`booked_date`|`amount`|`counterparty`|…), `sort_dir` (`asc`|`desc`). При `source=all|cash` к банку подмешиваются развёрнутые шаблоны и разовые наличные (`lib/datagonFinanceCash.js`). Сортировка **на сервере** по всей выборке (не только текущая страница); для `amount` — по `amount_abs`.
+Query: `search`, **`inn`** / `counterparty_inn` (только цифры; подстрока в нормализованном ИНН контрагента; при заданном ИНН наличные не подмешиваются), `customer_code` (повторяемый или через запятую; также `customer_codes` / `org`) — несколько организаций, `direction`, **`source=bank|cash|all`** (по умолчанию **`all`**), `account_id`, `date_from`, `date_to` **или** `months` (как analytics; без дат окно по `months`, иначе cash-шаблоны не разворачиваются с 2000-01-01), `page`, `page_size`, `include_internal=1` (или `include_deposits=1`; по умолчанию **выкл.** — без тела депозита UNV, без «Перевод собственных средств» и без «Выплата дивидендов»), `founder_capital=1` / `founder_only=1` — только ручная пометка займ (банк), `dividend=1` / `dividend_only=1` — галка «див.» **или** назначение «Выплата дивидендов» (банк), `sort_by` / `sort` (`booked_date`|`amount`|`counterparty`|…), `sort_dir` (`asc`|`desc`). При `source=all|cash` к банку подмешиваются развёрнутые шаблоны и разовые наличные (`lib/datagonFinanceCash.js`). Сортировка **на сервере** по всей выборке (не только текущая страница); для `amount` — по `amount_abs`.
 
 В строках банка: `customer_code`, `org_label`, **`org`** — **полное** имя организации (alias `full`, иначе `org_label`), **`org_short`** — короткое. **`chart_excluded`** / **`chart_exclude_reason`**, **`chart_tag`**: `founder` | `dividend` | `""`, **`founder_capital`** / **`dividend_payout`**. В строках cash: `source=cash`, `cash_kind=once|recurring`, `bank=cash`, `tx_id` вида `cash:o:{id}` / `cash:t:{templateId}:{ym}`, `include_chart`, `amount_fix` / `amount_premium` (для recurring), `scope`. Умный поиск матчит оба alias.
 
 Ответ дополнительно: `include_internal`, `founder_capital`, `dividend`, `source`, `sort_by`, `sort_dir`.
 
+### GET `/api/finance/cash/summary`
+
+Сводка для дашборда карточки «Наличные». Query как у analytics: `date_from`/`date_to` или `months`, `customer_code` / `customer_codes` / `org`, `account_id`. Ответ: `{ success, fact_source: "once", date_from, date_to, months, currency, series: [{ month, in, out, net, once_*, tmpl_*, count_* }], totals: { in, out, net, once_*, tmpl_*, count }, forecast: { … } }`. Поля `in`/`out`/`net` в `series` и `totals` — **только разовые** (факт графика). `tmpl_*` — справка по развёрнутым шаблонам, не входят в факт. **`forecast`** — следующий календарный месяц: активные шаблоны с overrides, без `skipped`.
+
 ### GET/POST/PATCH/DELETE `/api/finance/cash/templates`
 
-CRUD ежемесячных шаблонов (`dg_finance_cash_templates`). Body POST: `{ purpose, direction?, day_of_month?, amount_fix, amount_premium?, scope?: "all"|"org", customer_code?, include_chart?, active?, valid_from?, valid_to? }`. DELETE также чистит overrides шаблона.
+CRUD ежемесячных шаблонов (`dg_finance_cash_templates`). Body POST: `{ purpose, direction?, day_of_month?, amount_fix, amount_premium?, scope?: "all"|"org", customer_code?, include_chart?, needs_review?, active?, valid_from?, valid_to?, plan_item_id? }`. DELETE также чистит overrides шаблона. `plan_item_id` — ручная привязка к статье плана (nullable). `needs_review` — `review_pending` только для **текущего** `ym` и только если `booked_date` ≤ сегодня (МСК); прошлые/будущие месяцы периода без `review_pending`.
 
 ### PUT `/api/finance/cash/templates/:id/months/:ym`
 
-Помесячный override (`ym=YYYY-MM`): `{ amount_fix?, amount_premium?, clear_premium?, purpose?, include_chart?, skipped? }`. Частичное обновление: отсутствующие поля сохраняют прежний override или шаблон.
+Помесячный override (`ym=YYYY-MM`): `{ amount_fix?, amount_premium?, clear_premium?, purpose?, include_chart?, skipped?, review_confirmed? }`. Частичное обновление: отсутствующие поля сохраняют прежний override или шаблон. `review_confirmed=1` снимает подсветку «требуется проверка» за месяц.
 
 ### GET/POST/PATCH/DELETE `/api/finance/cash/tx`
 
-Разовые наличные (`dg_finance_cash_tx`). Body POST: `{ booked_date, amount, purpose, direction?, scope?, customer_code?, include_chart?, counterparty? }`.
+Разовые наличные (`dg_finance_cash_tx`). Body POST: `{ booked_date, amount, purpose, direction?, scope?, customer_code?, include_chart?, counterparty?, plan_item_id? }`.
+
+### GET/POST/PATCH/DELETE `/api/finance/plans/categories`
+
+Справочник категорий трат (`dg_finance_plan_categories`). Body POST: `{ title, active?, sort_order? }`. При совпадении названия (без учёта регистра) возвращает существующий `id` (`existing: true`). DELETE обнуляет `category_id` у статей.
+
+### GET/POST/PATCH/DELETE `/api/finance/plans/items`
+
+CRUD статей (`dg_finance_plan_items` + `dg_finance_plan_item_inns`). Body POST/PATCH: `{ title, payment_form?: "bank"|"cash"|"both", counterparties?: [{ inn, name? }], amount_plan, category_id?, direction?, scope?, customer_code?, active?, cash_template_ids?: number[], cash_once_ids?: number[] }`. Для `bank`/`both` нужен хотя бы один ИНН; для `cash` — нет. `cash_template_ids` / `cash_once_ids` выставляют `plan_item_id` у шаблонов/разовых (иначе «Ушло (нал)» в матрице = 0). В списке: `payment_form`, `counterparties[]`, `cash_template_ids`, `cash_once_ids`, `cash_links_count`. DELETE чистит inns/overrides и снимает `plan_item_id` у cash.
+
+### PUT `/api/finance/plans/items/:id/months/:ym`
+
+Помесячный override плана (`ym=YYYY-MM`): `{ amount_plan?, skipped? }`.
+
+### GET `/api/finance/plans/matrix`
+
+Матрица план/факт. Query как у analytics: `date_from`/`date_to` или `months`, `customer_code` / `customer_codes` / `org`, `currency`. Ответ: `{ success, date_from, date_to, months, currency, items: [{ id, title, payment_form, inns, …, months: [{ ym, plan, fact_bank, fact_cash, fact, delta }], totals }], by_payment_form: { bank|cash|both: { plan, fact, fact_bank, fact_cash, items } } }`. `fact_bank` только при `payment_form` bank/both; `fact_cash` — при cash/both из наличных с `plan_item_id`. `by_payment_form` — агрегаты для графиков. Планы не мержатся в `/transactions`.
 
 ### GET `/api/finance/analytics/monthly`
 
 Помесячная агрегация из `dg_finance_tx` **+ cash** (разовые и развёрнутые шаблоны с `include_chart`, не `skipped`). Query: `months` (1…36, по умолчанию **12**) **или** `date_from`/`date_to` (календарный год в UI: «Текущий год» / «Прошлый год»), `customer_code` / `customer_codes` / `org` (несколько), `account_id`, **`source=bank|cash|all`**, `currency` (по умолчанию `RUB`), `include_deposits=1` / `include_internal=1` (по умолчанию **выкл.** — без тела депозита UNV, без «Перевод собственных средств» и без «Выплата дивидендов»; проценты и внешние платежи входят), **`exclude_chart_inn=0|1`** (по умолчанию **вкл.** — исходящие на ИНН `362903774541` вне графика). Проводки с `exclude_chart=1` (займ или дивиденды вручную) **всегда** вне графика; cash без `include_chart` — тоже вне.
 
-Ответ: `{ success, months, currency, date_from, date_to, include_deposits, exclude_chart_inn, exclude_chart_inn_value, source, series: [{ month, in, out, net, count_in, count_out }], totals: { in, out, net, count } }`. Пустые месяцы в окне заполняются нулями.
+Ответ: `{ success, months, currency, date_from, date_to, include_deposits, exclude_chart_inn, exclude_chart_inn_value, source, series: [{ month, in, out, net, count_in, count_out, balance, balance_accounts, balance_deposits, diff }], totals: { in, out, net, count, balance, balance_start, balance_diff, balance_accounts, balance_deposits }, balance_note }`. Пустые месяцы в окне заполняются нулями.
+
+**`balance` / `diff` в `series`:** остаток на конец месяца (= расчётные + оценка депозитов, как «Всего доступно») и изменение к предыдущему месяцу. Расчётные: `SUM(available)` минус последующие проводки из **полной** выписки. Депозиты: накопительно открытия − возвраты тела. При `source=cash` — `null`. KPI «Разница» = `totals.balance_diff`.
 
 ### GET `/api/finance/analytics/counterparties`
 
