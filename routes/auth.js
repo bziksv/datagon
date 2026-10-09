@@ -247,10 +247,9 @@ module.exports = (db, appSettings = {}) => {
     });
 
     /**
-     * Виджет «онлайн» в шапке: для не-admin — 0 или 1 по текущему пользователю.
-     * Для admin дополнительно globalDistinctUsersOnline — число разных пользователей с активностью в окне
-     * (та же логика, что колонка «Онлайн (N мин)» в GET /api/auth/users: MAX по действующим сессиям ≥ порога).
-     * Счётчики «сессий в окне» / TTL — по неревокнутым неистёкшим cookie.
+     * Виджет «онлайн» в шапке: число разных пользователей с активностью в окне
+     * (та же логика, что колонка «Онлайн (N мин)» в GET /api/auth/users).
+     * selfOnline — 0/1 для текущего пользователя; счётчики сессий — по его cookie.
      */
     router.get('/sessions-overview', async (req, res) => {
         try {
@@ -299,27 +298,24 @@ module.exports = (db, appSettings = {}) => {
             const row0 = sessionOverviewRows[0] || {};
             const meOnlineRaw = Number(row0.me_online);
             const selfOnline = meOnlineRaw === 1 ? 1 : 0;
-            let globalDistinctUsersOnline = null;
-            if (await isAdminActor(req)) {
-                const [gRows] = await db.query(
-                    `
-                    SELECT COUNT(*) AS cnt
-                    FROM users u
-                    WHERE COALESCE(u.is_archived, 0) = 0
-                      AND EXISTS (
-                        SELECT 1 FROM auth_sessions s
-                        WHERE s.user_id = u.id AND s.revoked = 0 AND s.expires_at > NOW()
-                    )
-                      AND (
-                        SELECT MAX(COALESCE(s.last_seen_at, s.created_at))
-                        FROM auth_sessions s
-                        WHERE s.user_id = u.id AND s.revoked = 0 AND s.expires_at > NOW()
-                    ) >= DATE_SUB(NOW(), INTERVAL ? MINUTE)
-                    `,
-                    [pm]
-                );
-                globalDistinctUsersOnline = Number(gRows?.[0]?.cnt || 0);
-            }
+            const [gRows] = await db.query(
+                `
+                SELECT COUNT(*) AS cnt
+                FROM users u
+                WHERE COALESCE(u.is_archived, 0) = 0
+                  AND EXISTS (
+                    SELECT 1 FROM auth_sessions s
+                    WHERE s.user_id = u.id AND s.revoked = 0 AND s.expires_at > NOW()
+                )
+                  AND (
+                    SELECT MAX(COALESCE(s.last_seen_at, s.created_at))
+                    FROM auth_sessions s
+                    WHERE s.user_id = u.id AND s.revoked = 0 AND s.expires_at > NOW()
+                ) >= DATE_SUB(NOW(), INTERVAL ? MINUTE)
+                `,
+                [pm]
+            );
+            const globalDistinctUsersOnline = Number(gRows?.[0]?.cnt || 0);
             const [oldestRows] = await db.query(
                 `SELECT MIN(s.created_at) AS ca
                  FROM auth_sessions s
@@ -347,14 +343,14 @@ module.exports = (db, appSettings = {}) => {
                 /** Совместимость со старым клиентом; всегда дублирует selfOnline (не число сессий). */
                 distinctUsersOnline: selfOnline,
                 /**
-                 * Только для admin: сколько разных пользователей имеют хотя бы одну действующую сессию
-                 * и MAX(last_seen) по их действующим сессиям в пределах окна (как колонка «Онлайн» в /api/auth/users).
+                 * Сколько разных пользователей онлайн в окне (для любого авторизованного).
+                 * Та же логика, что колонка «Онлайн» в /api/auth/users.
                  */
                 globalDistinctUsersOnline,
                 lastActivityAt: row0.my_last_activity_at || null,
                 oldestSessionStartedAt: oldestSelf?.ca || null,
                 refreshedAt: new Date().toISOString(),
-                onlineViewerScope: 'self',
+                onlineViewerScope: 'global',
             });
         } catch (e) {
             return res.status(500).json({ error: e.message });

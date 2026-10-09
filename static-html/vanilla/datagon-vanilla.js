@@ -1237,13 +1237,10 @@
         if (!Number.isFinite(ttlSess) || ttlSess < 0) ttlSess = 0;
         var pm = Number(j.presenceWindowMinutes || 15);
         var pmLabel = Number.isFinite(pm) ? pm : 15;
-        var isAdminUser = false;
-        try {
-          isAdminUser = window.localStorage.getItem("isAdmin") === "true";
-        } catch (eAd) {}
         var gRaw = j.globalDistinctUsersOnline;
         var gNum = gRaw == null || gRaw === "" ? NaN : Number(gRaw);
-        var showGlobal = isAdminUser && Number.isFinite(gNum) && gNum >= 0;
+        // Общий счётчик для всех ролей (раньше — только admin → сотрудники видели «1»).
+        var showGlobal = Number.isFinite(gNum) && gNum >= 0;
         var displayNum = showGlobal ? Math.floor(gNum) : online01;
         if (out) out.textContent = String(displayNum);
         if (unit) {
