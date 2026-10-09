@@ -869,12 +869,13 @@
               <input type="hidden" id="dg-ws-set-org-id" />
               <div class="dg-ws-set-org-toolbar d-flex flex-wrap align-items-end gap-2 mb-3 pb-3 border-bottom">
                 <div class="flex-grow-1" style="min-width: 220px; max-width: 360px;">
-                  <label class="form-label mb-1" for="dg-ws-set-org-pick">Текущая организация</label>
-                  <select id="dg-ws-set-org-pick" class="form-select form-select-sm"></select>
+                  <label class="form-label mb-1" for="dg-ws-set-org-pick">Карточка организации (редактирование)</label>
+                  <select id="dg-ws-set-org-pick" class="form-select form-select-sm" title="Только поля ниже: название, ИНН, стаж… Не фильтрует сотрудников"></select>
                 </div>
                 <button type="button" class="btn btn-sm btn-outline-primary" id="dg-ws-set-org-add" data-dg-notify-start="Новая организация…">Добавить</button>
                 <button type="button" class="btn btn-sm btn-outline-danger" id="dg-ws-set-org-del" data-dg-notify-start="Удаление организации…">Удалить</button>
               </div>
+              <p class="small text-muted mb-3">Селект выше только выбирает, <strong>какую организацию править</strong>. Список сотрудников — отдельный фильтр в блоке ниже.</p>
               <div class="row g-3">
                 <div class="col-md-6 col-xl-3">
                   <label class="form-label" for="dg-ws-set-org-name">Название</label>
@@ -919,13 +920,14 @@
           <!-- Отделы -->
           <div class="main-card mb-3 card">
             <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
-              <div class="d-flex align-items-center">
+              <div class="d-flex align-items-center flex-wrap gap-2">
                 <i class="header-icon pe-7s-users icon-gradient bg-night-fade me-2"></i>
                 <span>Отделы</span>
+                <span class="small text-muted" id="dg-ws-set-dept-org-label"></span>
               </div>
               <div class="d-flex align-items-center gap-2 flex-wrap">
                 <span class="small text-muted">Тип графика, норма дня, пороги 1 / 0,5, лимит отпусков</span>
-                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-ws-set-dept-import" data-dg-notify-start="Импорт из специальностей…">Из специальностей</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-ws-set-dept-import" data-dg-notify-start="Подтягиваем группы пользователей…" title="Группы из Настроек (специальности) = отделы графика">Подтянуть группы</button>
                 <button type="button" class="btn btn-sm btn-outline-primary" id="dg-ws-set-dept-add" data-dg-notify-start="Новый отдел…">Добавить</button>
               </div>
             </div>
@@ -953,12 +955,16 @@
           <!-- Сотрудники -->
           <div class="main-card mb-4 card">
             <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
-              <div class="d-flex align-items-center">
+              <div class="d-flex align-items-center flex-wrap gap-2">
                 <i class="header-icon pe-7s-id icon-gradient bg-warm-flame me-2"></i>
                 <span>Сотрудники · персональные переопределения</span>
               </div>
-              <div class="d-flex align-items-center gap-2">
-                <span class="small text-muted">Пустое поле = берётся из отдела / организации</span>
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <span class="small text-muted d-none d-md-inline">Пустое поле = из отдела / орг.</span>
+                <div style="min-width: 180px;">
+                  <label class="visually-hidden" for="dg-ws-set-emp-filter-org">Фильтр по организации</label>
+                  <select id="dg-ws-set-emp-filter-org" class="form-select form-select-sm" title="Фильтр списка сотрудников"></select>
+                </div>
                 <button type="button" class="btn btn-sm btn-outline-primary" id="dg-ws-set-emp-add" data-dg-notify-start="Привязка…">Привязать пользователя</button>
               </div>
             </div>
@@ -975,7 +981,8 @@
                       <th>График (личн.)</th>
                       <th>Норма дня</th>
                       <th>Больничный ₽</th>
-                      <th>Overrides</th>
+                      <th>Премия</th>
+                      <th>Переопред.</th>
                       <th></th>
                     </tr>
                   </thead>
@@ -1026,9 +1033,16 @@
                   <label class="form-label" for="dg-ws-set-dept-vaclim">Лимит одновременных отпусков</label>
                   <input type="text" class="form-control" id="dg-ws-set-dept-vaclim" />
                 </div>
-                <div class="mb-0">
-                  <label class="form-label" for="dg-ws-set-dept-prem">Правило премии</label>
-                  <input type="text" class="form-control" id="dg-ws-set-dept-prem" placeholder="заглушка — формулы позже" />
+                <div class="mb-2">
+                  <label class="form-label" for="dg-ws-set-dept-prem-kind">Правило премии</label>
+                  <select class="form-select" id="dg-ws-set-dept-prem-kind">
+                    <option value="stub">Нет</option>
+                    <option value="fixed">Фикс, ₽</option>
+                  </select>
+                </div>
+                <div class="mb-0" id="dg-ws-set-dept-prem-amount-wrap">
+                  <label class="form-label" for="dg-ws-set-dept-prem-amount">Сумма фикса, ₽</label>
+                  <input type="text" class="form-control" id="dg-ws-set-dept-prem-amount" inputmode="decimal" placeholder="0" />
                 </div>
               </div>
               <div class="card-footer d-flex justify-content-end gap-2 bg-white border-top-0">
@@ -1102,7 +1116,7 @@
                     <input type="text" class="form-control" id="dg-ws-set-emp-salary" />
                   </div>
                   <div class="col-md-4">
-                    <label class="form-label" for="dg-ws-set-emp-sched">personal_schedule_type</label>
+                    <label class="form-label" for="dg-ws-set-emp-sched">График (личный)</label>
                     <select class="form-select" id="dg-ws-set-emp-sched">
                       <option value="">— из отдела —</option>
                       <option value="5/2">5/2</option>
@@ -1112,11 +1126,11 @@
                     </select>
                   </div>
                   <div class="col-md-4">
-                    <label class="form-label" for="dg-ws-set-emp-norm">personal_work_hours_per_day</label>
+                    <label class="form-label" for="dg-ws-set-emp-norm">Норма дня, ч (личная)</label>
                     <input type="text" class="form-control" id="dg-ws-set-emp-norm" placeholder="из отдела" />
                   </div>
                   <div class="col-md-4">
-                    <label class="form-label" for="dg-ws-set-emp-sick">personal_sick_leave_rate</label>
+                    <label class="form-label" for="dg-ws-set-emp-sick">Больничный, ₽/день (личный)</label>
                     <input type="text" class="form-control" id="dg-ws-set-emp-sick" placeholder="из организации" />
                   </div>
                   <div class="col-md-4">
@@ -1126,6 +1140,18 @@
                   <div class="col-md-4">
                     <label class="form-label" for="dg-ws-set-emp-t05">Порог = 0,5 (личн.)</label>
                     <input type="text" class="form-control" id="dg-ws-set-emp-t05" placeholder="из отдела" />
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label" for="dg-ws-set-emp-prem-kind">Правило премии (личн.)</label>
+                    <select class="form-select" id="dg-ws-set-emp-prem-kind">
+                      <option value="">— из отдела —</option>
+                      <option value="stub">Нет</option>
+                      <option value="fixed">Фикс, ₽</option>
+                    </select>
+                  </div>
+                  <div class="col-md-4" id="dg-ws-set-emp-prem-amount-wrap">
+                    <label class="form-label" for="dg-ws-set-emp-prem-amount">Сумма фикса, ₽</label>
+                    <input type="text" class="form-control" id="dg-ws-set-emp-prem-amount" inputmode="decimal" placeholder="0" />
                   </div>
                 </div>
               </div>
@@ -1233,16 +1259,18 @@
   </div>
 
   <script src="/datagon-legal.js"></script>
-  <script src="/datagon-vanilla.js"></script>
+  <script src="/datagon-vanilla.js?v=20261009-dates"></script>
   <script>
 (function () {
   "use strict";
 
   var API = "/api/work-schedule";
   var ORG_PICK_KEY = "datagon_ws_settings_org_id_v1";
+  var EMP_FILTER_KEY = "datagon_ws_settings_emp_filter_org_v1";
   var state = {
     orgs: [],
     org: null,
+    empFilterOrgId: 0,
     departments: [],
     departmentsAll: [],
     employees: [],
@@ -1271,26 +1299,55 @@
     });
   }
 
+  /** API / input: YYYY-MM-DD. UI: никогда не отдавать сырой YYYY-MM-DD. */
+  function dateOnlyYmd(v) {
+    if (window.DatagonFmt && window.DatagonFmt.dateOnlyYmd) {
+      var fromFmt = window.DatagonFmt.dateOnlyYmd(v);
+      if (fromFmt) return fromFmt;
+    }
+    if (v == null || v === "") return "";
+    if (typeof v === "string") {
+      var s = v.trim();
+      if (/T/.test(s)) {
+        try {
+          var dIso = new Date(s);
+          if (Number.isFinite(dIso.getTime())) {
+            var uy = dIso.getUTCFullYear();
+            var um = dIso.getUTCMonth() + 1;
+            var ud = dIso.getUTCDate();
+            return (
+              uy +
+              "-" +
+              (um < 10 ? "0" + um : um) +
+              "-" +
+              (ud < 10 ? "0" + ud : ud)
+            );
+          }
+        } catch (e1) {}
+      }
+      var m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (m) return m[1] + "-" + m[2] + "-" + m[3];
+      var rm = s.match(/^(\d{2})[.\-/](\d{2})[.\-/](\d{4})$/);
+      if (rm) return rm[3] + "-" + rm[2] + "-" + rm[1];
+    }
+    return "";
+  }
+
+  /** Вывод пользователю: дд-мм-гггг */
   function fmtDate(v) {
     if (!v) return "—";
-    var s = String(v);
-    if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
-    return s;
+    if (window.DatagonFmt && window.DatagonFmt.formatDate) {
+      var fd = window.DatagonFmt.formatDate(v);
+      if (fd && fd !== "—" && !/^\d{4}-\d{2}-\d{2}$/.test(fd)) return fd;
+    }
+    var ymd = dateOnlyYmd(v);
+    if (!ymd) return "—";
+    var p = ymd.split("-");
+    return p.length === 3 ? p[2] + "-" + p[1] + "-" + p[0] : "—";
   }
 
   function toDateInput(v) {
-    if (!v) return "";
-    var s = String(v);
-    if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
-    try {
-      var d = new Date(v);
-      if (!Number.isFinite(d.getTime())) return "";
-      var m = d.getMonth() + 1;
-      var day = d.getDate();
-      return d.getFullYear() + "-" + (m < 10 ? "0" + m : m) + "-" + (day < 10 ? "0" + day : day);
-    } catch (e) {
-      return "";
-    }
+    return dateOnlyYmd(v);
   }
 
   function deptName(id) {
@@ -1313,15 +1370,75 @@
       e.personal_work_hours_per_day != null ||
       e.personal_sick_leave_rate != null ||
       e.personal_rate_full_hours != null ||
-      e.personal_rate_half_hours != null
+      e.personal_rate_half_hours != null ||
+      e.personal_premium_rule_json != null
     );
   }
 
-  function deptsForOrg(orgId) {
-    var oid = Number(orgId);
-    return (state.departmentsAll || []).filter(function (d) {
-      return Number(d.organization_id) === oid;
+  function parsePremRule(raw) {
+    if (raw == null || raw === "") return { kind: "stub", amount: 0 };
+    try {
+      var p = typeof raw === "string" ? JSON.parse(raw) : raw;
+      if (!p || typeof p !== "object") return { kind: "stub", amount: 0 };
+      return { kind: String(p.kind || "stub"), amount: Number(p.amount) || 0 };
+    } catch (e) {
+      return { kind: "stub", amount: 0 };
+    }
+  }
+
+  function formatPremLabel(rule) {
+    if (!rule || rule.kind === "stub" || rule.kind === "none") return "нет";
+    if (rule.kind === "fixed") {
+      return "фикс " + money(rule.amount);
+    }
+    return String(rule.kind);
+  }
+
+  function syncPremAmountWrap(kindSelId, wrapId) {
+    var kindEl = document.getElementById(kindSelId);
+    var wrap = document.getElementById(wrapId);
+    if (!kindEl || !wrap) return;
+    wrap.style.display = kindEl.value === "fixed" ? "" : "none";
+  }
+
+  function readPremFromForm(kindId, amountId, inheritEmpty) {
+    var kind = (document.getElementById(kindId) || {}).value;
+    if (inheritEmpty && !kind) return { inherit: true };
+    if (kind === "fixed") {
+      var raw = String((document.getElementById(amountId) || {}).value || "").replace(/\s/g, "").replace(",", ".");
+      return { kind: "fixed", amount: Number(raw) || 0 };
+    }
+    return { kind: "stub" };
+  }
+
+  function fillPremForm(kindId, amountId, wrapId, rule, inheritEmpty) {
+    var kindEl = document.getElementById(kindId);
+    var amountEl = document.getElementById(amountId);
+    if (!kindEl) return;
+    if (inheritEmpty && (rule == null || rule === "")) {
+      kindEl.value = "";
+      if (amountEl) amountEl.value = "";
+    } else {
+      var p = parsePremRule(rule);
+      kindEl.value = p.kind === "fixed" ? "fixed" : "stub";
+      if (amountEl) amountEl.value = p.kind === "fixed" ? String(p.amount) : "";
+    }
+    syncPremAmountWrap(kindId, wrapId);
+  }
+
+  function effectiveEmpPrem(e) {
+    if (e.personal_premium_rule_json != null && e.personal_premium_rule_json !== "") {
+      return parsePremRule(e.personal_premium_rule_json);
+    }
+    var d = state.departmentsAll.find(function (x) {
+      return Number(x.id) === Number(e.department_id);
     });
+    return parsePremRule(d && d.premium_rule_json);
+  }
+
+  /** Отделы — общий справочник, стыкуются с любой организацией через карточку сотрудника. */
+  function allDepartments() {
+    return state.departmentsAll || [];
   }
 
   function fillOrgPick() {
@@ -1335,8 +1452,28 @@
     if (state.org) sel.value = String(state.org.id);
   }
 
+  function fillEmpFilterOrg() {
+    var sel = document.getElementById("dg-ws-set-emp-filter-org");
+    if (!sel) return;
+    var cur = Number(state.empFilterOrgId) || 0;
+    sel.innerHTML =
+      '<option value="0">Все организации</option>' +
+      state.orgs
+        .map(function (o) {
+          return '<option value="' + o.id + '">' + (o.name || "#" + o.id) + "</option>";
+        })
+        .join("");
+    sel.value = String(cur);
+    if (sel.value !== String(cur)) {
+      state.empFilterOrgId = 0;
+      sel.value = "0";
+    }
+  }
+
   function fillOrg() {
     var o = state.org;
+    var deptLbl = document.getElementById("dg-ws-set-dept-org-label");
+    if (deptLbl) deptLbl.textContent = "· общие, для любой орг.";
     if (!o) return;
     var idEl = document.getElementById("dg-ws-set-org-id");
     if (idEl) idEl.value = String(o.id);
@@ -1360,18 +1497,13 @@
     if (!tb) return;
     var list = state.departments || [];
     if (!list.length) {
-      tb.innerHTML = '<tr><td colspan="8" class="text-muted p-3">Нет отделов у этой организации — нажмите «Добавить»</td></tr>';
+      tb.innerHTML =
+        '<tr><td colspan="8" class="text-muted p-3">Нет отделов — «Подтянуть группы» или «Добавить»</td></tr>';
       return;
     }
     tb.innerHTML = list
       .map(function (d) {
-        var prem = "заглушка";
-        try {
-          if (d.premium_rule_json) {
-            var p = typeof d.premium_rule_json === "string" ? JSON.parse(d.premium_rule_json) : d.premium_rule_json;
-            if (p && p.kind) prem = p.kind;
-          }
-        } catch (e) {}
+        var prem = formatPremLabel(parsePremRule(d.premium_rule_json));
         return (
           '<tr data-dept-id="' +
           d.id +
@@ -1401,13 +1533,17 @@
   function renderEmps() {
     var tb = document.getElementById("dg-ws-set-emp-tbody");
     if (!tb) return;
-    var oid = state.org ? Number(state.org.id) : 0;
+    var oid = Number(state.empFilterOrgId) || 0;
     var list = (state.employees || []).filter(function (e) {
       return !oid || Number(e.organization_id) === oid;
     });
     if (!list.length) {
       tb.innerHTML =
-        '<tr><td colspan="10" class="text-muted p-3">Нет сотрудников в этой организации — «Привязать пользователя»</td></tr>';
+        '<tr><td colspan="11" class="text-muted p-3">' +
+        (oid
+          ? "Нет сотрудников в выбранной организации фильтра"
+          : "Нет сотрудников — «Привязать пользователя»") +
+        "</td></tr>";
       return;
     }
     tb.innerHTML = list
@@ -1415,6 +1551,10 @@
         var ov = hasOverrides(e)
           ? '<span class="dg-ws-override-badge">есть</span>'
           : '<span class="text-muted">—</span>';
+        var premLbl = formatPremLabel(effectiveEmpPrem(e));
+        if (e.personal_premium_rule_json != null && e.personal_premium_rule_json !== "") {
+          premLbl = '<strong>' + premLbl + "</strong>";
+        }
         return (
           "<tr><td>" +
           (e.full_name || e.username || "") +
@@ -1432,6 +1572,8 @@
           (e.personal_work_hours_per_day != null ? e.personal_work_hours_per_day : "—") +
           "</td><td>" +
           (e.personal_sick_leave_rate != null ? e.personal_sick_leave_rate : "—") +
+          "</td><td>" +
+          premLbl +
           "</td><td>" +
           ov +
           '</td><td class="text-end">' +
@@ -1456,7 +1598,8 @@
     el.setAttribute("aria-hidden", show ? "false" : "true");
   }
 
-  function selectOrg(id, opts) {
+  /** Только карточка организации (поля / сохранить / удалить). Список сотрудников не трогает. */
+  function selectOrg(id) {
     var oid = Number(id);
     var o = state.orgs.find(function (x) {
       return Number(x.id) === oid;
@@ -1466,41 +1609,42 @@
     try {
       localStorage.setItem(ORG_PICK_KEY, String(o.id));
     } catch (e) {}
-    state.departments = deptsForOrg(o.id);
+    state.departments = allDepartments();
     fillOrgPick();
     fillOrg();
     renderDepts();
+  }
+
+  function setEmpFilterOrg(id) {
+    state.empFilterOrgId = Number(id) || 0;
+    try {
+      localStorage.setItem(EMP_FILTER_KEY, String(state.empFilterOrgId));
+    } catch (e) {}
+    fillEmpFilterOrg();
     renderEmps();
-    if (!opts || opts.reload !== false) {
-      /* already have all data */
-    }
   }
 
   function importDeptsFromSpecialties() {
-    if (!state.org) {
-      toast("warning", "Сначала выберите организацию");
-      return;
-    }
     var btn = document.getElementById("dg-ws-set-dept-import");
     var run = function () {
       return api("/departments/import-specialties", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ organization_id: state.org.id }),
+        body: JSON.stringify({}),
       }).then(function (j) {
         var created = Number(j.created) || 0;
         var skipped = Number(j.skipped) || 0;
         if (created) {
           toast(
             "success",
-            "Добавлено отделов: " + created + (skipped ? " (уже было: " + skipped + ")" : "")
+            "Группы → отделы: +" + created + (skipped ? " (уже было: " + skipped + ")" : "")
           );
         } else {
           toast(
             "info",
             skipped
-              ? "Все специальности уже есть как отделы (" + skipped + ")"
-              : "В Настройках нет специальностей для импорта"
+              ? "Все группы уже есть как отделы (" + skipped + ")"
+              : "В Настройках нет групп (специальностей)"
           );
         }
         return loadAll();
@@ -1514,10 +1658,6 @@
   }
 
   function openDept(id) {
-    if (!state.org) {
-      toast("warning", "Сначала выберите или создайте организацию");
-      return;
-    }
     var d = id
       ? state.departmentsAll.find(function (x) {
           return Number(x.id) === Number(id);
@@ -1530,28 +1670,26 @@
     document.getElementById("dg-ws-set-dept-t1").value = d ? String(d.rate_full_hours) : "7";
     document.getElementById("dg-ws-set-dept-t05").value = d ? String(d.rate_half_hours) : "4";
     document.getElementById("dg-ws-set-dept-vaclim").value = d ? String(d.vacation_overlap_limit) : "1";
-    var prem = "stub";
-    if (d) {
-      try {
-        var p = typeof d.premium_rule_json === "string" ? JSON.parse(d.premium_rule_json) : d.premium_rule_json;
-        if (p && p.kind) prem = p.kind;
-      } catch (e) {}
-    }
-    document.getElementById("dg-ws-set-dept-prem").value = prem;
+    fillPremForm(
+      "dg-ws-set-dept-prem-kind",
+      "dg-ws-set-dept-prem-amount",
+      "dg-ws-set-dept-prem-amount-wrap",
+      d ? d.premium_rule_json : { kind: "stub" },
+      false
+    );
     showOverlay("dept", true);
   }
 
   function saveDept() {
     var id = Number(document.getElementById("dg-ws-set-dept-id").value);
     var body = {
-      organization_id: state.org && state.org.id,
       name: document.getElementById("dg-ws-set-dept-name").value,
       schedule_type: document.getElementById("dg-ws-set-dept-sched").value,
       norm_hours: Number(document.getElementById("dg-ws-set-dept-norm").value) || 8,
       rate_full_hours: Number(document.getElementById("dg-ws-set-dept-t1").value) || 7,
       rate_half_hours: Number(document.getElementById("dg-ws-set-dept-t05").value) || 4,
       vacation_overlap_limit: Number(document.getElementById("dg-ws-set-dept-vaclim").value) || 1,
-      premium_rule_json: { kind: document.getElementById("dg-ws-set-dept-prem").value || "stub" },
+      premium_rule_json: readPremFromForm("dg-ws-set-dept-prem-kind", "dg-ws-set-dept-prem-amount", false),
     };
     var btn = document.getElementById("dg-ws-set-dept-save");
     var run = function () {
@@ -1579,14 +1717,16 @@
       });
   }
 
-  function fillDeptSelect(sel, orgId, selectedId) {
+  function fillDeptSelect(sel, _orgId, selectedId) {
     if (!sel) return;
-    var list = deptsForOrg(orgId);
-    sel.innerHTML = list
-      .map(function (d) {
-        return '<option value="' + d.id + '">' + d.name + "</option>";
-      })
-      .join("");
+    var list = allDepartments();
+    sel.innerHTML =
+      '<option value="">— отдел —</option>' +
+      list
+        .map(function (d) {
+          return '<option value="' + d.id + '">' + d.name + "</option>";
+        })
+        .join("");
     if (selectedId) sel.value = String(selectedId);
   }
 
@@ -1650,10 +1790,15 @@
       toast("warning", "Укажите дату приёма — без неё стаж не считается");
       return;
     }
+    var deptId = Number(document.getElementById("dg-ws-set-emp-dept").value);
+    if (!deptId) {
+      toast("warning", "Выберите отдел");
+      return;
+    }
     var body = {
       user_id: Number(document.getElementById("dg-ws-set-emp-user").value),
       organization_id: orgId,
-      department_id: Number(document.getElementById("dg-ws-set-emp-dept").value),
+      department_id: deptId,
       hire_date: hire,
       salary: Number(String(document.getElementById("dg-ws-set-emp-new-salary").value).replace(/\s/g, "")) || 0,
     };
@@ -1701,6 +1846,13 @@
       e.personal_rate_full_hours != null ? String(e.personal_rate_full_hours) : "";
     document.getElementById("dg-ws-set-emp-t05").value =
       e.personal_rate_half_hours != null ? String(e.personal_rate_half_hours) : "";
+    fillPremForm(
+      "dg-ws-set-emp-prem-kind",
+      "dg-ws-set-emp-prem-amount",
+      "dg-ws-set-emp-prem-amount-wrap",
+      e.personal_premium_rule_json,
+      true
+    );
     showOverlay("emp", true);
   }
 
@@ -1729,6 +1881,11 @@
       personal_sick_leave_rate: document.getElementById("dg-ws-set-emp-sick").value.trim(),
       personal_rate_full_hours: document.getElementById("dg-ws-set-emp-t1").value.trim(),
       personal_rate_half_hours: document.getElementById("dg-ws-set-emp-t05").value.trim(),
+      personal_premium_rule_json: readPremFromForm(
+        "dg-ws-set-emp-prem-kind",
+        "dg-ws-set-emp-prem-amount",
+        true
+      ),
     };
     var btn = document.getElementById("dg-ws-set-emp-save");
     var run = function () {
@@ -1854,14 +2011,11 @@
       return;
     }
     var txt = document.getElementById("dg-ws-set-org-del-text");
-    var depts = deptsForOrg(state.org.id).length;
     if (txt) {
       txt.textContent =
-        "Удалить «" +
+        "Удалить организацию «" +
         (state.org.name || "#" + state.org.id) +
-        "»" +
-        (depts ? " и " + depts + " отдел(ов) без сотрудников" : "") +
-        "? Действие необратимо.";
+        "»? Отделы (общий справочник) останутся. Действие необратимо.";
     }
     showOverlay("org-del", true);
   }
@@ -1877,12 +2031,7 @@
           try {
             localStorage.removeItem(ORG_PICK_KEY);
           } catch (e) {}
-          toast(
-            "success",
-            "Удалено: " +
-              (j.name || id) +
-              (j.departments_removed ? " (+" + j.departments_removed + " отд.)" : "")
-          );
+          toast("success", "Удалено: " + (j.name || id));
           return loadAll();
         })
         .catch(function (e) {
@@ -1893,31 +2042,69 @@
     else run();
   }
 
+  function applyLoaded(arr) {
+    state.orgs = arr[0].rows || [];
+    state.departmentsAll = arr[1].rows || [];
+    state.employees = arr[2].rows || [];
+    var saved = null;
+    var savedFilter = 0;
+    try {
+      saved = Number(localStorage.getItem(ORG_PICK_KEY));
+      savedFilter = Number(localStorage.getItem(EMP_FILTER_KEY)) || 0;
+    } catch (e) {}
+    var pick =
+      state.orgs.find(function (o) {
+        return Number(o.id) === saved;
+      }) ||
+      state.orgs[0] ||
+      null;
+    state.org = pick;
+    if (
+      savedFilter &&
+      !state.orgs.some(function (o) {
+        return Number(o.id) === savedFilter;
+      })
+    ) {
+      savedFilter = 0;
+    }
+    state.empFilterOrgId = savedFilter;
+    state.departments = allDepartments();
+    fillOrgPick();
+    fillOrg();
+    fillEmpFilterOrg();
+    renderDepts();
+    renderEmps();
+    if (!state.orgs.length) {
+      toast("info", "Организаций нет — нажмите «Добавить»");
+    }
+  }
+
+  /** При открытии — дотянуть группы (специальности) в общий справочник отделов. */
+  function ensureGroupsAsDepartments() {
+    if (state._didGroupImport) return Promise.resolve();
+    state._didGroupImport = true;
+    return api("/departments/import-specialties", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    })
+      .then(function (j) {
+        if (!(Number(j.created) > 0)) return null;
+        toast("success", "Отделы = группы пользователей: добавлено " + j.created);
+        return Promise.all([api("/organizations"), api("/departments"), api("/employees")]).then(
+          applyLoaded
+        );
+      })
+      .catch(function () {
+        /* тихо: кнопка «Подтянуть группы» остаётся */
+      });
+  }
+
   function loadAll() {
     return Promise.all([api("/organizations"), api("/departments"), api("/employees")])
       .then(function (arr) {
-        state.orgs = arr[0].rows || [];
-        state.departmentsAll = arr[1].rows || [];
-        state.employees = arr[2].rows || [];
-        var saved = null;
-        try {
-          saved = Number(localStorage.getItem(ORG_PICK_KEY));
-        } catch (e) {}
-        var pick =
-          state.orgs.find(function (o) {
-            return Number(o.id) === saved;
-          }) ||
-          state.orgs[0] ||
-          null;
-        state.org = pick;
-        state.departments = pick ? deptsForOrg(pick.id) : [];
-        fillOrgPick();
-        fillOrg();
-        renderDepts();
-        renderEmps();
-        if (!state.orgs.length) {
-          toast("info", "Организаций нет — нажмите «Добавить»");
-        }
+        applyLoaded(arr);
+        return ensureGroupsAsDepartments();
       })
       .catch(function (e) {
         toast("danger", e.message || "Нет доступа к настройкам");
@@ -1937,6 +2124,12 @@
     if (orgPick) {
       orgPick.addEventListener("change", function () {
         selectOrg(orgPick.value);
+      });
+    }
+    var empFilter = document.getElementById("dg-ws-set-emp-filter-org");
+    if (empFilter) {
+      empFilter.addEventListener("change", function () {
+        setEmpFilterOrg(empFilter.value);
       });
     }
     var deptSave = document.getElementById("dg-ws-set-dept-save");
@@ -1965,6 +2158,18 @@
     if (empEditOrg) {
       empEditOrg.addEventListener("change", function () {
         fillDeptSelect(document.getElementById("dg-ws-set-emp-edit-dept"), empEditOrg.value, null);
+      });
+    }
+    var deptPremKind = document.getElementById("dg-ws-set-dept-prem-kind");
+    if (deptPremKind) {
+      deptPremKind.addEventListener("change", function () {
+        syncPremAmountWrap("dg-ws-set-dept-prem-kind", "dg-ws-set-dept-prem-amount-wrap");
+      });
+    }
+    var empPremKind = document.getElementById("dg-ws-set-emp-prem-kind");
+    if (empPremKind) {
+      empPremKind.addEventListener("change", function () {
+        syncPremAmountWrap("dg-ws-set-emp-prem-kind", "dg-ws-set-emp-prem-amount-wrap");
       });
     }
 

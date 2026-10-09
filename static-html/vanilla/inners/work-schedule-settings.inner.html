@@ -32,12 +32,13 @@
               <input type="hidden" id="dg-ws-set-org-id" />
               <div class="dg-ws-set-org-toolbar d-flex flex-wrap align-items-end gap-2 mb-3 pb-3 border-bottom">
                 <div class="flex-grow-1" style="min-width: 220px; max-width: 360px;">
-                  <label class="form-label mb-1" for="dg-ws-set-org-pick">Текущая организация</label>
-                  <select id="dg-ws-set-org-pick" class="form-select form-select-sm"></select>
+                  <label class="form-label mb-1" for="dg-ws-set-org-pick">Карточка организации (редактирование)</label>
+                  <select id="dg-ws-set-org-pick" class="form-select form-select-sm" title="Только поля ниже: название, ИНН, стаж… Не фильтрует сотрудников"></select>
                 </div>
                 <button type="button" class="btn btn-sm btn-outline-primary" id="dg-ws-set-org-add" data-dg-notify-start="Новая организация…">Добавить</button>
                 <button type="button" class="btn btn-sm btn-outline-danger" id="dg-ws-set-org-del" data-dg-notify-start="Удаление организации…">Удалить</button>
               </div>
+              <p class="small text-muted mb-3">Селект выше только выбирает, <strong>какую организацию править</strong>. Список сотрудников — отдельный фильтр в блоке ниже.</p>
               <div class="row g-3">
                 <div class="col-md-6 col-xl-3">
                   <label class="form-label" for="dg-ws-set-org-name">Название</label>
@@ -82,13 +83,14 @@
           <!-- Отделы -->
           <div class="main-card mb-3 card">
             <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
-              <div class="d-flex align-items-center">
+              <div class="d-flex align-items-center flex-wrap gap-2">
                 <i class="header-icon pe-7s-users icon-gradient bg-night-fade me-2"></i>
                 <span>Отделы</span>
+                <span class="small text-muted" id="dg-ws-set-dept-org-label"></span>
               </div>
               <div class="d-flex align-items-center gap-2 flex-wrap">
                 <span class="small text-muted">Тип графика, норма дня, пороги 1 / 0,5, лимит отпусков</span>
-                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-ws-set-dept-import" data-dg-notify-start="Импорт из специальностей…">Из специальностей</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-ws-set-dept-import" data-dg-notify-start="Подтягиваем группы пользователей…" title="Группы из Настроек (специальности) = отделы графика">Подтянуть группы</button>
                 <button type="button" class="btn btn-sm btn-outline-primary" id="dg-ws-set-dept-add" data-dg-notify-start="Новый отдел…">Добавить</button>
               </div>
             </div>
@@ -116,12 +118,16 @@
           <!-- Сотрудники -->
           <div class="main-card mb-4 card">
             <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
-              <div class="d-flex align-items-center">
+              <div class="d-flex align-items-center flex-wrap gap-2">
                 <i class="header-icon pe-7s-id icon-gradient bg-warm-flame me-2"></i>
                 <span>Сотрудники · персональные переопределения</span>
               </div>
-              <div class="d-flex align-items-center gap-2">
-                <span class="small text-muted">Пустое поле = берётся из отдела / организации</span>
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <span class="small text-muted d-none d-md-inline">Пустое поле = из отдела / орг.</span>
+                <div style="min-width: 180px;">
+                  <label class="visually-hidden" for="dg-ws-set-emp-filter-org">Фильтр по организации</label>
+                  <select id="dg-ws-set-emp-filter-org" class="form-select form-select-sm" title="Фильтр списка сотрудников"></select>
+                </div>
                 <button type="button" class="btn btn-sm btn-outline-primary" id="dg-ws-set-emp-add" data-dg-notify-start="Привязка…">Привязать пользователя</button>
               </div>
             </div>
@@ -138,7 +144,8 @@
                       <th>График (личн.)</th>
                       <th>Норма дня</th>
                       <th>Больничный ₽</th>
-                      <th>Overrides</th>
+                      <th>Премия</th>
+                      <th>Переопред.</th>
                       <th></th>
                     </tr>
                   </thead>
@@ -189,9 +196,16 @@
                   <label class="form-label" for="dg-ws-set-dept-vaclim">Лимит одновременных отпусков</label>
                   <input type="text" class="form-control" id="dg-ws-set-dept-vaclim" />
                 </div>
-                <div class="mb-0">
-                  <label class="form-label" for="dg-ws-set-dept-prem">Правило премии</label>
-                  <input type="text" class="form-control" id="dg-ws-set-dept-prem" placeholder="заглушка — формулы позже" />
+                <div class="mb-2">
+                  <label class="form-label" for="dg-ws-set-dept-prem-kind">Правило премии</label>
+                  <select class="form-select" id="dg-ws-set-dept-prem-kind">
+                    <option value="stub">Нет</option>
+                    <option value="fixed">Фикс, ₽</option>
+                  </select>
+                </div>
+                <div class="mb-0" id="dg-ws-set-dept-prem-amount-wrap">
+                  <label class="form-label" for="dg-ws-set-dept-prem-amount">Сумма фикса, ₽</label>
+                  <input type="text" class="form-control" id="dg-ws-set-dept-prem-amount" inputmode="decimal" placeholder="0" />
                 </div>
               </div>
               <div class="card-footer d-flex justify-content-end gap-2 bg-white border-top-0">
@@ -265,7 +279,7 @@
                     <input type="text" class="form-control" id="dg-ws-set-emp-salary" />
                   </div>
                   <div class="col-md-4">
-                    <label class="form-label" for="dg-ws-set-emp-sched">personal_schedule_type</label>
+                    <label class="form-label" for="dg-ws-set-emp-sched">График (личный)</label>
                     <select class="form-select" id="dg-ws-set-emp-sched">
                       <option value="">— из отдела —</option>
                       <option value="5/2">5/2</option>
@@ -275,11 +289,11 @@
                     </select>
                   </div>
                   <div class="col-md-4">
-                    <label class="form-label" for="dg-ws-set-emp-norm">personal_work_hours_per_day</label>
+                    <label class="form-label" for="dg-ws-set-emp-norm">Норма дня, ч (личная)</label>
                     <input type="text" class="form-control" id="dg-ws-set-emp-norm" placeholder="из отдела" />
                   </div>
                   <div class="col-md-4">
-                    <label class="form-label" for="dg-ws-set-emp-sick">personal_sick_leave_rate</label>
+                    <label class="form-label" for="dg-ws-set-emp-sick">Больничный, ₽/день (личный)</label>
                     <input type="text" class="form-control" id="dg-ws-set-emp-sick" placeholder="из организации" />
                   </div>
                   <div class="col-md-4">
@@ -289,6 +303,18 @@
                   <div class="col-md-4">
                     <label class="form-label" for="dg-ws-set-emp-t05">Порог = 0,5 (личн.)</label>
                     <input type="text" class="form-control" id="dg-ws-set-emp-t05" placeholder="из отдела" />
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label" for="dg-ws-set-emp-prem-kind">Правило премии (личн.)</label>
+                    <select class="form-select" id="dg-ws-set-emp-prem-kind">
+                      <option value="">— из отдела —</option>
+                      <option value="stub">Нет</option>
+                      <option value="fixed">Фикс, ₽</option>
+                    </select>
+                  </div>
+                  <div class="col-md-4" id="dg-ws-set-emp-prem-amount-wrap">
+                    <label class="form-label" for="dg-ws-set-emp-prem-amount">Сумма фикса, ₽</label>
+                    <input type="text" class="form-control" id="dg-ws-set-emp-prem-amount" inputmode="decimal" placeholder="0" />
                   </div>
                 </div>
               </div>

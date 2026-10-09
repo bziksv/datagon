@@ -1363,7 +1363,7 @@
   </div>
 
   <script src="/datagon-legal.js"></script>
-  <script src="/datagon-vanilla.js"></script>
+  <script src="/datagon-vanilla.js?v=20261009-dates"></script>
   <script>
 (function () {
   "use strict";
@@ -1397,6 +1397,38 @@
   function money(n) {
     if (window.DatagonFmt && window.DatagonFmt.formatMoney) return window.DatagonFmt.formatMoney(n);
     return String(Math.round(Number(n) || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, " ") + " ₽";
+  }
+
+  /** Вывод пользователю: дд-мм-гггг (не сырой YYYY-MM-DD). */
+  function fmtDate(v) {
+    if (!v) return "—";
+    if (window.DatagonFmt && window.DatagonFmt.formatDate) {
+      var fd = window.DatagonFmt.formatDate(v);
+      if (fd && fd !== "—" && !/^\d{4}-\d{2}-\d{2}$/.test(fd)) return fd;
+    }
+    var s = String(v).trim();
+    if (/T/.test(s)) {
+      try {
+        var dIso = new Date(s);
+        if (Number.isFinite(dIso.getTime())) {
+          var uy = dIso.getUTCFullYear();
+          var um = dIso.getUTCMonth() + 1;
+          var ud = dIso.getUTCDate();
+          return (
+            (ud < 10 ? "0" + ud : ud) +
+            "-" +
+            (um < 10 ? "0" + um : um) +
+            "-" +
+            uy
+          );
+        }
+      } catch (e1) {}
+    }
+    var m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return m[3] + "-" + m[2] + "-" + m[1];
+    var rm = s.match(/^(\d{2})[.\-/](\d{2})[.\-/](\d{4})$/);
+    if (rm) return rm[1] + "-" + rm[2] + "-" + rm[3];
+    return "—";
   }
 
   function toast(type, message) {
@@ -1583,9 +1615,9 @@
       .map(function (v) {
         return (
           "<tr><td>" +
-          v.date_from +
+          fmtDate(v.date_from) +
           " — " +
-          v.date_to +
+          fmtDate(v.date_to) +
           "</td><td>" +
           v.days_count +
           "</td><td>" +
@@ -1780,9 +1812,9 @@
               '"><td>' +
               (v.full_name || "") +
               "</td><td>" +
-              v.date_from +
+              fmtDate(v.date_from) +
               " — " +
-              v.date_to +
+              fmtDate(v.date_to) +
               "</td><td>" +
               v.days_count +
               '</td><td class="text-end text-nowrap">' +

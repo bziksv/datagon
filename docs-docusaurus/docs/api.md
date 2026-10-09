@@ -2234,14 +2234,14 @@ Preflight матча «Менеджер по продажам» ↔ Planfix `/us
 
 Страницы `/work-schedule.html`, `/work-schedule-settings.html`. Роутер `routes/workSchedule.js`, схема `lib/datagonWorkScheduleSchema.js` (`ws_*`), расчёты `lib/datagonWorkScheduleCalc.js`. Матрица: **`work-schedule`** / **`work-schedule-settings`** (API-режим — max из двух). Роли внутри API: сотрудник (`ws_employee`), руководитель отдела (`head_user_id`), бухгалтерия (specialty «Бухгалтерия» / admin). Подробнее: [График работы](./work-schedule).
 
-Несколько юрлиц: `GET/POST/PUT/DELETE /organizations`; seed **ООО «АЛЬМАМЕД»** + **ООО «ВИЛМЕД»**. `DELETE` запрещён при наличии сотрудников (409); пустые отделы удаляются вместе с орг. У сотрудника обязателен `hire_date` для стажа; `GET /employees` отдаёт `organization_name`, `department_name`.
+Несколько юрлиц: `GET/POST/PUT/DELETE /organizations`; seed при пустой таблице **АЛЬМАМЕД** + **ВИЛМЕД**. `DELETE` орг. запрещён при наличии сотрудников (409); отделы — общий справочник (не удаляются с орг.). У сотрудника обязателен `hire_date` для стажа; `GET /employees` отдаёт `organization_name`, `department_name`. Премия: у отдела `premium_rule_json` (`stub` | `{ kind:"fixed", amount }`), у сотрудника опционально `personal_premium_rule_json` (null = из отдела).
 
 | Метод | Путь | Кто |
 |-------|------|-----|
 | GET | `/api/work-schedule/access` | любой авторизованный |
 | GET/POST/PUT | `/organizations`, `/departments`, `/employees`, `/users-available` | accounting |
 | DELETE | `/organizations/:id` | accounting (409, если есть сотрудники) |
-| POST | `/departments/import-specialties` | accounting; body `{ organization_id }` — отделы из `specialties` (без «Полный доступ»), без дублей имён |
+| POST | `/departments/import-specialties` | accounting; отделы из `specialties` в **общий** справочник (без привязки к орг.; без «Полный доступ»), без дублей имён |
 | GET/POST | `/clock/status`, `/clock/start`, `/clock/stop` | сотрудник с карточкой |
 | GET | `/stuck-shifts` | head / accounting |
 | GET | `/me/month`, `/dept/month` | employee / head / accounting |

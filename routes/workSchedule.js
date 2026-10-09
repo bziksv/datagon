@@ -47,6 +47,44 @@ function deviceLabel(req) {
     return 'unknown';
 }
 
+/** DATE → 'YYYY-MM-DD' без сдвига TZ при JSON (mysql DATE → JS Date → ISO −1 день). */
+function dateOnlyYmd(v) {
+    if (v == null || v === '') return null;
+    if (typeof v === 'string') {
+        const m = v.trim().match(/^(\d{4}-\d{2}-\d{2})/);
+        if (m) return m[1];
+    }
+    if (v instanceof Date && Number.isFinite(v.getTime())) {
+        // mysql2 DATE обычно как UTC 00:00; локальные геттеры в +TZ дают −1 день в ISO.
+        const y = v.getUTCFullYear();
+        const m = v.getUTCMonth() + 1;
+        const d = v.getUTCDate();
+        return `${y}-${m < 10 ? `0${m}` : m}-${d < 10 ? `0${d}` : d}`;
+    }
+    const s = String(v).trim();
+    const m = s.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (m) return m[1];
+    return null;
+}
+
+function mapEmployeeRow(row) {
+    if (!row) return row;
+    return {
+        ...row,
+        hire_date: dateOnlyYmd(row.hire_date),
+        fire_date: dateOnlyYmd(row.fire_date),
+    };
+}
+
+function mapVacationRow(row) {
+    if (!row) return row;
+    return {
+        ...row,
+        date_from: dateOnlyYmd(row.date_from),
+        date_to: dateOnlyYmd(row.date_to),
+    };
+}
+
 async function writeAudit(db, req, row) {
     const a = actorOf(req);
     await db.query(
@@ -72,6 +110,7 @@ async function getEmployeeByUserId(db, userId) {
     const [rows] = await db.query(
         `SELECT e.*, d.name AS department_name, d.schedule_type, d.norm_hours, d.rate_full_hours, d.rate_half_hours,
                 d.vacation_overlap_limit, d.head_user_id, d.organization_id AS dept_org_id,
+                d.premium_rule_json AS dept_premium_rule_json,
                 o.name AS organization_name, o.sick_unofficial_rate, o.seniority_base, o.seniority_step,
                 o.seniority_period_months, o.timezone, o.clock_auto_close_hours,
                 u.full_name AS user_full_name, u.username
@@ -89,7 +128,7 @@ async function getEmployeeByUserId(db, userId) {
 async function getEmployeeById(db, id) {
     const [rows] = await db.query(
         `SELECT e.*, d.name AS department_name, d.schedule_type, d.norm_hours, d.rate_full_hours, d.rate_half_hours,
-                d.vacation_overlap_limit, d.head_user_id,
+                d.vacation_overlap_limit, d.head_user_id, d.premium_rule_json AS dept_premium_rule_json,
                 o.sick_unofficial_rate, o.seniority_base, o.seniority_step, o.seniority_period_months, o.timezone,
                 u.full_name AS user_full_name, u.username
          FROM ws_employee e
@@ -100,6 +139,24 @@ async function getEmployeeById(db, id) {
         [id]
     );
     return rows[0] || null;
+}
+
+/**
+ * body.premium_rule_json / personal_premium_rule_json → JSON-строка или null.
+ * allowInherit: пусто / { inherit: true } → null (брать из отдела).
+ */
+function normalizePremiumRuleBody(raw, { allowInherit }) {
+    if (raw == null || raw === '') {
+        return allowInherit ? null : JSON.stringify({ kind: 'stub' });
+    }
+    if (typeof raw === 'object' && (raw.inherit === true || raw.kind === '' || raw.kind == null)) {
+        return allowInherit ? null : JSON.stringify({ kind: 'stub' });
+    }
+    const parsed = calc.parsePremiumRule(raw);
+    if (parsed.kind === 'fixed') {
+        return JSON.stringify({ kind: 'fixed', amount: parsed.amount });
+    }
+    return JSON.stringify({ kind: 'stub' });
 }
 
 function isDeptHead(actor, empOrDept) {
@@ -160,7 +217,8 @@ async function recalcPayroll(db, employeeId, periodYm) {
     const base = normDays > 0 ? Math.round(((salary * worked) / normDays) * 100) / 100 : 0;
     const senParams = calc.resolveSeniorityParams(emp, emp);
     const seniority = calc.seniorityBonus(emp.hire_date, `${periodYm}-28`, senParams);
-    const premium = 0;
+    const premiumRule = calc.resolvePremiumRule(emp, emp);
+    const premium = calc.computePremium(premiumRule);
     const vacationPay = 0;
     const total =
         Math.round(
@@ -327,38 +385,28 @@ function createWorkScheduleRouter(db) {
                 employees,
             });
         }
-        const [[deptCnt]] = await db.query(
-            'SELECT COUNT(*) AS c FROM ws_department WHERE organization_id=?',
-            [id]
-        );
-        const departments = Number(deptCnt && deptCnt.c) || 0;
-        await db.query('DELETE FROM ws_department WHERE organization_id=?', [id]);
+        // Отделы — общий справочник, при удалении юрлица не трогаем.
         await db.query('DELETE FROM ws_organization WHERE id=?', [id]);
         await writeAudit(db, req, {
             entity_type: 'organization',
             entity_id: id,
             action: 'delete',
-            payload: { name: org.name, departments_removed: departments },
+            payload: { name: org.name },
         });
         res.json({
             success: true,
             id,
             name: org.name,
-            departments_removed: departments,
         });
     });
 
     // ----- departments -----
     router.get('/departments', async (req, res) => {
         const a = actorOf(req);
-        const orgId = req.query.organization_id ? Number(req.query.organization_id) : null;
+        // Отделы общие для всех орг.; query organization_id игнорируется (back-compat).
         let sql = `SELECT d.*, u.full_name AS head_name FROM ws_department d
                    LEFT JOIN users u ON u.id = d.head_user_id WHERE 1=1`;
         const params = [];
-        if (orgId) {
-            sql += ' AND d.organization_id=?';
-            params.push(orgId);
-        }
         if (!isAccounting(a)) {
             const emp = await getEmployeeByUserId(db, a.id);
             if (!emp) return res.status(403).json({ success: false, error: 'forbidden' });
@@ -373,21 +421,28 @@ function createWorkScheduleRouter(db) {
     router.post('/departments', async (req, res) => {
         if (!isAccounting(actorOf(req))) return res.status(403).json({ success: false, error: 'forbidden' });
         const b = req.body || {};
+        const name = String(b.name || '').trim() || 'Отдел';
+        const [dup] = await db.query(
+            `SELECT id FROM ws_department WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) LIMIT 1`,
+            [name]
+        );
+        if (dup.length) {
+            return res.status(409).json({ success: false, error: 'отдел с таким именем уже есть' });
+        }
         const [r] = await db.query(
             `INSERT INTO ws_department
              (organization_id, name, head_user_id, schedule_type, norm_hours, rate_full_hours, rate_half_hours,
               vacation_overlap_limit, premium_rule_json)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
-                Number(b.organization_id),
-                String(b.name || '').trim() || 'Отдел',
+                name,
                 b.head_user_id ? Number(b.head_user_id) : null,
                 b.schedule_type || '5/2',
                 Number(b.norm_hours) || 8,
                 Number(b.rate_full_hours) || 7,
                 Number(b.rate_half_hours) || 4,
                 Number(b.vacation_overlap_limit) || 1,
-                JSON.stringify(b.premium_rule_json || { kind: 'stub' }),
+                normalizePremiumRuleBody(b.premium_rule_json, { allowInherit: false }),
             ]
         );
         await writeAudit(db, req, { entity_type: 'department', entity_id: r.insertId, action: 'create' });
@@ -395,25 +450,19 @@ function createWorkScheduleRouter(db) {
     });
 
     /**
-     * Импорт отделов из специальностей Настроек (`specialties`).
-     * Body/query: organization_id. Не дублирует имена, не трогает существующих.
+     * Импорт отделов из специальностей Настроек (`specialties`) в общий справочник.
+     * organization_id в body необязателен (игнорируется).
      */
     router.post('/departments/import-specialties', async (req, res) => {
         if (!isAccounting(actorOf(req))) return res.status(403).json({ success: false, error: 'forbidden' });
-        const orgId = Number(
-            (req.body && req.body.organization_id) || req.query.organization_id || 0
-        );
-        if (!orgId) return res.status(400).json({ success: false, error: 'organization_id required' });
-        const [[org]] = await db.query('SELECT id, name FROM ws_organization WHERE id=?', [orgId]);
-        if (!org) return res.status(404).json({ success: false, error: 'организация не найдена' });
-        const result = await importDepartmentsFromSpecialties(db, orgId);
+        const result = await importDepartmentsFromSpecialties(db);
         await writeAudit(db, req, {
             entity_type: 'department',
-            entity_id: orgId,
+            entity_id: 0,
             action: 'import_specialties',
             payload: result,
         });
-        res.json({ success: true, organization_id: orgId, ...result });
+        res.json({ success: true, ...result });
     });
 
     router.put('/departments/:id', async (req, res) => {
@@ -433,7 +482,7 @@ function createWorkScheduleRouter(db) {
                 Number(b.rate_full_hours) || 7,
                 Number(b.rate_half_hours) || 4,
                 Number(b.vacation_overlap_limit) || 1,
-                JSON.stringify(b.premium_rule_json || { kind: 'stub' }),
+                normalizePremiumRuleBody(b.premium_rule_json, { allowInherit: false }),
                 id,
             ]
         );
@@ -445,7 +494,10 @@ function createWorkScheduleRouter(db) {
     router.get('/employees', async (req, res) => {
         const a = actorOf(req);
         const accounting = isAccounting(a);
-        let sql = `SELECT e.*, u.full_name, u.username, d.name AS department_name,
+        let sql = `SELECT e.*,
+                          DATE_FORMAT(e.hire_date, '%Y-%m-%d') AS hire_date,
+                          DATE_FORMAT(e.fire_date, '%Y-%m-%d') AS fire_date,
+                          u.full_name, u.username, d.name AS department_name,
                           o.name AS organization_name
                    FROM ws_employee e
                    JOIN users u ON u.id = e.user_id
@@ -473,7 +525,7 @@ function createWorkScheduleRouter(db) {
         }
         sql += ' ORDER BY u.full_name';
         const [rows] = await db.query(sql, params);
-        res.json({ success: true, rows });
+        res.json({ success: true, rows: (rows || []).map(mapEmployeeRow) });
     });
 
     router.get('/users-available', async (req, res) => {
@@ -498,15 +550,15 @@ function createWorkScheduleRouter(db) {
                 `INSERT INTO ws_employee
                  (user_id, organization_id, department_id, position, hire_date, fire_date, salary, grade,
                   official_employment, personal_work_hours_per_day, personal_rate_full_hours, personal_rate_half_hours,
-                  personal_sick_leave_rate, personal_schedule_type)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                  personal_sick_leave_rate, personal_schedule_type, personal_premium_rule_json)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
                     userId,
                     Number(b.organization_id),
                     Number(b.department_id),
                     b.position || null,
-                    b.hire_date || null,
-                    b.fire_date || null,
+                    dateOnlyYmd(b.hire_date),
+                    dateOnlyYmd(b.fire_date),
                     Number(b.salary) || 0,
                     b.grade || null,
                     b.official_employment ? 1 : 0,
@@ -523,6 +575,7 @@ function createWorkScheduleRouter(db) {
                         ? Number(b.personal_sick_leave_rate)
                         : null,
                     b.personal_schedule_type || null,
+                    normalizePremiumRuleBody(b.personal_premium_rule_json, { allowInherit: true }),
                 ]
             );
             await writeAudit(db, req, { entity_type: 'employee', entity_id: r.insertId, action: 'create' });
@@ -544,14 +597,15 @@ function createWorkScheduleRouter(db) {
             `UPDATE ws_employee SET
              organization_id=?, department_id=?, position=?, hire_date=?, fire_date=?, salary=?, grade=?,
              official_employment=?, personal_work_hours_per_day=?, personal_rate_full_hours=?,
-             personal_rate_half_hours=?, personal_sick_leave_rate=?, personal_schedule_type=?
+             personal_rate_half_hours=?, personal_sick_leave_rate=?, personal_schedule_type=?,
+             personal_premium_rule_json=?
              WHERE id=?`,
             [
                 Number(b.organization_id),
                 Number(b.department_id),
                 b.position || null,
-                b.hire_date || null,
-                b.fire_date || null,
+                dateOnlyYmd(b.hire_date),
+                dateOnlyYmd(b.fire_date),
                 Number(b.salary) || 0,
                 b.grade || null,
                 b.official_employment ? 1 : 0,
@@ -560,6 +614,7 @@ function createWorkScheduleRouter(db) {
                 nullIfEmpty(b.personal_rate_half_hours),
                 nullIfEmpty(b.personal_sick_leave_rate),
                 b.personal_schedule_type || null,
+                normalizePremiumRuleBody(b.personal_premium_rule_json, { allowInherit: true }),
                 id,
             ]
         );
@@ -824,10 +879,20 @@ function createWorkScheduleRouter(db) {
         }
         const payroll = await recalcPayroll(db, emp.id, ym);
         const [vacs] = await db.query(
-            `SELECT * FROM ws_vacation_request WHERE employee_id=? ORDER BY date_from DESC LIMIT 50`,
+            `SELECT id, employee_id, days_count, type, status, comment,
+                    DATE_FORMAT(date_from, '%Y-%m-%d') AS date_from,
+                    DATE_FORMAT(date_to, '%Y-%m-%d') AS date_to
+             FROM ws_vacation_request WHERE employee_id=? ORDER BY date_from DESC LIMIT 50`,
             [emp.id]
         );
-        res.json({ success: true, month: ym, cells, payroll, vacations: vacs, employee: { id: emp.id, name: emp.user_full_name } });
+        res.json({
+            success: true,
+            month: ym,
+            cells,
+            payroll,
+            vacations: (vacs || []).map(mapVacationRow),
+            employee: { id: emp.id, name: emp.user_full_name },
+        });
     });
 
     router.get('/dept/month', async (req, res) => {
@@ -868,14 +933,24 @@ function createWorkScheduleRouter(db) {
             }
         }
         const [vacs] = await db.query(
-            `SELECT v.*, u.full_name FROM ws_vacation_request v
+            `SELECT v.id, v.employee_id, v.days_count, v.type, v.status, v.comment, u.full_name,
+                    DATE_FORMAT(v.date_from, '%Y-%m-%d') AS date_from,
+                    DATE_FORMAT(v.date_to, '%Y-%m-%d') AS date_to
+             FROM ws_vacation_request v
              JOIN ws_employee e ON e.id=v.employee_id
              JOIN users u ON u.id=e.user_id
              WHERE e.department_id=? AND v.status IN ('pending','approved')
                AND v.date_to >= ? AND v.date_from <= ?`,
             [deptId, from, to]
         );
-        res.json({ success: true, month: ym, department_id: deptId, employees: emps, cells: byEmp, vacations: vacs });
+        res.json({
+            success: true,
+            month: ym,
+            department_id: deptId,
+            employees: emps,
+            cells: byEmp,
+            vacations: (vacs || []).map(mapVacationRow),
+        });
     });
 
     // ----- vacations -----
@@ -930,7 +1005,11 @@ function createWorkScheduleRouter(db) {
         if (!accounting && !(emp && isDeptHead(a, emp))) {
             return res.status(403).json({ success: false, error: 'forbidden' });
         }
-        let sql = `SELECT v.*, u.full_name, e.department_id FROM ws_vacation_request v
+        let sql = `SELECT v.id, v.employee_id, v.days_count, v.type, v.status, v.comment,
+                          u.full_name, e.department_id,
+                          DATE_FORMAT(v.date_from, '%Y-%m-%d') AS date_from,
+                          DATE_FORMAT(v.date_to, '%Y-%m-%d') AS date_to
+                   FROM ws_vacation_request v
                    JOIN ws_employee e ON e.id=v.employee_id
                    JOIN users u ON u.id=e.user_id WHERE v.status='pending'`;
         const params = [];
@@ -940,7 +1019,7 @@ function createWorkScheduleRouter(db) {
         }
         sql += ' ORDER BY v.date_from';
         const [rows] = await db.query(sql, params);
-        res.json({ success: true, rows });
+        res.json({ success: true, rows: (rows || []).map(mapVacationRow) });
     });
 
     router.post('/vacations/:id/approve', async (req, res) => {

@@ -2445,7 +2445,6 @@
   })();
 
   (function installDatagonFmt() {
-    if (window.DatagonFmt && window.DatagonFmt.formatNumber) return;
     function normalizeSpaces(s) {
       return String(s).replace(/\u00a0/g, " ").replace(/\u202f/g, " ");
     }
@@ -2480,12 +2479,62 @@
       var x = Number(s);
       return Number.isFinite(x) ? x : null;
     }
+    /** Календарная дата для UI: дд-мм-гггг (без TZ-сдвига на −1 день). */
+    function dateOnlyYmd(value) {
+      if (value == null || value === "") return "";
+      if (typeof value === "string") {
+        var sm = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (sm) {
+          if (/T/.test(value)) {
+            try {
+              var dIso = new Date(value);
+              if (Number.isFinite(dIso.getTime())) {
+                var uy = dIso.getUTCFullYear();
+                var um = dIso.getUTCMonth() + 1;
+                var ud = dIso.getUTCDate();
+                return (
+                  uy +
+                  "-" +
+                  (um < 10 ? "0" + um : um) +
+                  "-" +
+                  (ud < 10 ? "0" + ud : ud)
+                );
+              }
+            } catch (e1) {}
+          }
+          return sm[1] + "-" + sm[2] + "-" + sm[3];
+        }
+        var rm = value.trim().match(/^(\d{2})[.\-/](\d{2})[.\-/](\d{4})$/);
+        if (rm) return rm[3] + "-" + rm[2] + "-" + rm[1];
+      }
+      try {
+        var d = value instanceof Date ? value : new Date(value);
+        if (!Number.isFinite(d.getTime())) return "";
+        var y = d.getUTCFullYear();
+        var mo = d.getUTCMonth() + 1;
+        var day = d.getUTCDate();
+        return y + "-" + (mo < 10 ? "0" + mo : mo) + "-" + (day < 10 ? "0" + day : day);
+      } catch (e2) {
+        return "";
+      }
+    }
+    function formatDate(value) {
+      var ymd = dateOnlyYmd(value);
+      if (!ymd) return "—";
+      var p = ymd.split("-");
+      if (p.length !== 3) return "—";
+      return p[2] + "-" + p[1] + "-" + p[0];
+    }
+    var prev = window.DatagonFmt || {};
     window.DatagonFmt = {
-      normalizeSpaces: normalizeSpaces,
-      formatNumber: formatNumber,
-      formatInteger: formatInteger,
-      formatMoney: formatMoney,
-      parseNumberInput: parseNumberInput,
+      normalizeSpaces: prev.normalizeSpaces || normalizeSpaces,
+      formatNumber: prev.formatNumber || formatNumber,
+      formatInteger: prev.formatInteger || formatInteger,
+      formatMoney: prev.formatMoney || formatMoney,
+      parseNumberInput: prev.parseNumberInput || parseNumberInput,
+      // даты всегда перезаписываем — старый кэш без formatDate иначе отдаёт YYYY-MM-DD
+      dateOnlyYmd: dateOnlyYmd,
+      formatDate: formatDate,
     };
   })();
 })();
