@@ -1,0 +1,695 @@
+<script>
+(function () {
+  "use strict";
+
+  var API = "/api/work-schedule";
+  var ORG_PICK_KEY = "datagon_ws_settings_org_id_v1";
+  var state = {
+    orgs: [],
+    org: null,
+    departments: [],
+    departmentsAll: [],
+    employees: [],
+    usersAvailable: [],
+  };
+
+  function toast(type, message) {
+    if (window.DatagonNotify && window.DatagonNotify.toast) {
+      window.DatagonNotify.toast({ type: type, message: message });
+    }
+  }
+
+  function money(n) {
+    if (window.DatagonFmt && window.DatagonFmt.formatMoney) return window.DatagonFmt.formatMoney(n);
+    return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, " ") + " ₽";
+  }
+
+  function api(path, opts) {
+    return fetch(API + path, Object.assign({ credentials: "same-origin" }, opts || {})).then(function (r) {
+      return r.json().then(function (j) {
+        if (!r.ok || (j && j.success === false)) {
+          throw new Error((j && j.error) || "HTTP " + r.status);
+        }
+        return j;
+      });
+    });
+  }
+
+  function fmtDate(v) {
+    if (!v) return "—";
+    var s = String(v);
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+    return s;
+  }
+
+  function toDateInput(v) {
+    if (!v) return "";
+    var s = String(v);
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+    try {
+      var d = new Date(v);
+      if (!Number.isFinite(d.getTime())) return "";
+      var m = d.getMonth() + 1;
+      var day = d.getDate();
+      return d.getFullYear() + "-" + (m < 10 ? "0" + m : m) + "-" + (day < 10 ? "0" + day : day);
+    } catch (e) {
+      return "";
+    }
+  }
+
+  function deptName(id) {
+    var d = state.departmentsAll.find(function (x) {
+      return Number(x.id) === Number(id);
+    });
+    return d ? d.name : "—";
+  }
+
+  function orgName(id) {
+    var o = state.orgs.find(function (x) {
+      return Number(x.id) === Number(id);
+    });
+    return o ? o.name : "—";
+  }
+
+  function hasOverrides(e) {
+    return !!(
+      e.personal_schedule_type ||
+      e.personal_work_hours_per_day != null ||
+      e.personal_sick_leave_rate != null ||
+      e.personal_rate_full_hours != null ||
+      e.personal_rate_half_hours != null
+    );
+  }
+
+  function deptsForOrg(orgId) {
+    var oid = Number(orgId);
+    return (state.departmentsAll || []).filter(function (d) {
+      return Number(d.organization_id) === oid;
+    });
+  }
+
+  function fillOrgPick() {
+    var sel = document.getElementById("dg-ws-set-org-pick");
+    if (!sel) return;
+    sel.innerHTML = state.orgs
+      .map(function (o) {
+        return '<option value="' + o.id + '">' + (o.name || "—" + o.id) + "</option>";
+      })
+      .join("");
+    if (state.org) sel.value = String(state.org.id);
+  }
+
+  function fillOrg() {
+    var o = state.org;
+    if (!o) return;
+    var idEl = document.getElementById("dg-ws-set-org-id");
+    if (idEl) idEl.value = String(o.id);
+    var map = {
+      "dg-ws-set-org-name": o.name || "",
+      "dg-ws-set-org-inn": o.inn || "",
+      "dg-ws-set-org-tz": o.timezone || "Europe/Moscow",
+      "dg-ws-set-org-sick": String(o.sick_unofficial_rate != null ? o.sick_unofficial_rate : ""),
+      "dg-ws-set-sen-base": String(o.seniority_base != null ? o.seniority_base : ""),
+      "dg-ws-set-sen-step": String(o.seniority_step != null ? o.seniority_step : ""),
+      "dg-ws-set-sen-period": String(o.seniority_period_months != null ? o.seniority_period_months : ""),
+    };
+    Object.keys(map).forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) el.value = map[id];
+    });
+  }
+
+  function renderDepts() {
+    var tb = document.getElementById("dg-ws-set-dept-tbody");
+    if (!tb) return;
+    var list = state.departments || [];
+    if (!list.length) {
+      tb.innerHTML = '<tr><td colspan="8" class="text-muted p-3">Нет отделов у этой организации — нажмите «Добавить»</td></tr>';
+      return;
+    }
+    tb.innerHTML = list
+      .map(function (d) {
+        var prem = "заглушка";
+        try {
+          if (d.premium_rule_json) {
+            var p = typeof d.premium_rule_json === "string" ? JSON.parse(d.premium_rule_json) : d.premium_rule_json;
+            if (p && p.kind) prem = p.kind;
+          }
+        } catch (e) {}
+        return (
+          '<tr data-dept-id="' +
+          d.id +
+          '"><td><strong>' +
+          (d.name || "") +
+          "</strong></td><td>" +
+          (d.schedule_type || "") +
+          "</td><td>" +
+          d.norm_hours +
+          "</td><td>" +
+          d.rate_full_hours +
+          "</td><td>" +
+          d.rate_half_hours +
+          "</td><td>" +
+          d.vacation_overlap_limit +
+          '</td><td><span class="text-muted">' +
+          prem +
+          '</span></td><td class="text-end">' +
+          '<button type="button" class="btn btn-sm btn-outline-primary" data-dg-ws-set-edit-dept="' +
+          d.id +
+          '">Изменить</button></td></tr>'
+        );
+      })
+      .join("");
+  }
+
+  function renderEmps() {
+    var tb = document.getElementById("dg-ws-set-emp-tbody");
+    if (!tb) return;
+    var oid = state.org ? Number(state.org.id) : 0;
+    var list = (state.employees || []).filter(function (e) {
+      return !oid || Number(e.organization_id) === oid;
+    });
+    if (!list.length) {
+      tb.innerHTML =
+        '<tr><td colspan="10" class="text-muted p-3">Нет сотрудников в этой организации — «Привязать пользователя»</td></tr>';
+      return;
+    }
+    tb.innerHTML = list
+      .map(function (e) {
+        var ov = hasOverrides(e)
+          ? '<span class="dg-ws-override-badge">есть</span>'
+          : '<span class="text-muted">—</span>';
+        return (
+          "<tr><td>" +
+          (e.full_name || e.username || "") +
+          "</td><td>" +
+          (e.organization_name || orgName(e.organization_id)) +
+          "</td><td>" +
+          (e.department_name || deptName(e.department_id)) +
+          "</td><td>" +
+          fmtDate(e.hire_date) +
+          "</td><td>" +
+          money(e.salary) +
+          "</td><td>" +
+          (e.personal_schedule_type || "—") +
+          "</td><td>" +
+          (e.personal_work_hours_per_day != null ? e.personal_work_hours_per_day : "—") +
+          "</td><td>" +
+          (e.personal_sick_leave_rate != null ? e.personal_sick_leave_rate : "—") +
+          "</td><td>" +
+          ov +
+          '</td><td class="text-end">' +
+          '<button type="button" class="btn btn-sm btn-outline-primary" data-dg-ws-set-edit-emp="' +
+          e.id +
+          '">Изменить</button></td></tr>'
+        );
+      })
+      .join("");
+  }
+
+  function showOverlay(kind, show) {
+    var map = {
+      dept: "dg-ws-set-dept-overlay",
+      emp: "dg-ws-set-emp-overlay",
+      "emp-add": "dg-ws-set-emp-add-overlay",
+    };
+    var el = document.getElementById(map[kind] || "");
+    if (!el) return;
+    el.style.display = show ? "flex" : "none";
+    el.setAttribute("aria-hidden", show ? "false" : "true");
+  }
+
+  function selectOrg(id, opts) {
+    var oid = Number(id);
+    var o = state.orgs.find(function (x) {
+      return Number(x.id) === oid;
+    });
+    if (!o) return;
+    state.org = o;
+    try {
+      localStorage.setItem(ORG_PICK_KEY, String(o.id));
+    } catch (e) {}
+    state.departments = deptsForOrg(o.id);
+    fillOrgPick();
+    fillOrg();
+    renderDepts();
+    renderEmps();
+    if (!opts || opts.reload !== false) {
+      /* already have all data */
+    }
+  }
+
+  function openDept(id) {
+    if (!state.org) {
+      toast("warning", "Сначала выберите или создайте организацию");
+      return;
+    }
+    var d = id
+      ? state.departmentsAll.find(function (x) {
+          return Number(x.id) === Number(id);
+        })
+      : null;
+    document.getElementById("dg-ws-set-dept-id").value = d ? String(d.id) : "";
+    document.getElementById("dg-ws-set-dept-name").value = d ? d.name || "" : "";
+    document.getElementById("dg-ws-set-dept-sched").value = d ? d.schedule_type || "5/2" : "5/2";
+    document.getElementById("dg-ws-set-dept-norm").value = d ? String(d.norm_hours) : "8";
+    document.getElementById("dg-ws-set-dept-t1").value = d ? String(d.rate_full_hours) : "7";
+    document.getElementById("dg-ws-set-dept-t05").value = d ? String(d.rate_half_hours) : "4";
+    document.getElementById("dg-ws-set-dept-vaclim").value = d ? String(d.vacation_overlap_limit) : "1";
+    var prem = "stub";
+    if (d) {
+      try {
+        var p = typeof d.premium_rule_json === "string" ? JSON.parse(d.premium_rule_json) : d.premium_rule_json;
+        if (p && p.kind) prem = p.kind;
+      } catch (e) {}
+    }
+    document.getElementById("dg-ws-set-dept-prem").value = prem;
+    showOverlay("dept", true);
+  }
+
+  function saveDept() {
+    var id = Number(document.getElementById("dg-ws-set-dept-id").value);
+    var body = {
+      organization_id: state.org && state.org.id,
+      name: document.getElementById("dg-ws-set-dept-name").value,
+      schedule_type: document.getElementById("dg-ws-set-dept-sched").value,
+      norm_hours: Number(document.getElementById("dg-ws-set-dept-norm").value) || 8,
+      rate_full_hours: Number(document.getElementById("dg-ws-set-dept-t1").value) || 7,
+      rate_half_hours: Number(document.getElementById("dg-ws-set-dept-t05").value) || 4,
+      vacation_overlap_limit: Number(document.getElementById("dg-ws-set-dept-vaclim").value) || 1,
+      premium_rule_json: { kind: document.getElementById("dg-ws-set-dept-prem").value || "stub" },
+    };
+    var btn = document.getElementById("dg-ws-set-dept-save");
+    var run = function () {
+      var req = id
+        ? api("/departments/" + id, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          })
+        : api("/departments", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          });
+      return req.then(function () {
+        showOverlay("dept", false);
+        toast("success", id ? "Отдел сохранён" : "Отдел создан");
+        return loadAll();
+      });
+    };
+    if (window.DatagonNotify && window.DatagonNotify.busyRun) window.DatagonNotify.busyRun(btn, run);
+    else
+      run().catch(function (e) {
+        toast("danger", e.message);
+      });
+  }
+
+  function fillDeptSelect(sel, orgId, selectedId) {
+    if (!sel) return;
+    var list = deptsForOrg(orgId);
+    sel.innerHTML = list
+      .map(function (d) {
+        return '<option value="' + d.id + '">' + d.name + "</option>";
+      })
+      .join("");
+    if (selectedId) sel.value = String(selectedId);
+  }
+
+  function fillOrgSelect(sel, selectedId) {
+    if (!sel) return;
+    sel.innerHTML = state.orgs
+      .map(function (o) {
+        return '<option value="' + o.id + '">' + (o.name || "") + "</option>";
+      })
+      .join("");
+    if (selectedId) sel.value = String(selectedId);
+    else if (state.org) sel.value = String(state.org.id);
+  }
+
+  function openEmpAdd() {
+    if (!state.orgs.length) {
+      toast("warning", "Сначала создайте организацию");
+      return;
+    }
+    var userSel = document.getElementById("dg-ws-set-emp-user");
+    var orgSel = document.getElementById("dg-ws-set-emp-org");
+    var deptSel = document.getElementById("dg-ws-set-emp-dept");
+    var hireEl = document.getElementById("dg-ws-set-emp-hire");
+    api("/users-available")
+      .then(function (j) {
+        state.usersAvailable = j.rows || [];
+        if (!state.usersAvailable.length) {
+          toast("warning", "Нет пользователей Datagon без карточки сотрудника");
+        }
+        userSel.innerHTML = state.usersAvailable
+          .map(function (u) {
+            return (
+              '<option value="' +
+              u.id +
+              '">' +
+              (u.full_name || u.username) +
+              " (" +
+              u.username +
+              ")</option>"
+            );
+          })
+          .join("");
+        fillOrgSelect(orgSel, state.org && state.org.id);
+        fillDeptSelect(deptSel, orgSel.value, null);
+        if (hireEl) hireEl.value = "";
+        showOverlay("emp-add", true);
+      })
+      .catch(function (e) {
+        toast("danger", e.message);
+      });
+  }
+
+  function createEmp() {
+    var orgId = Number(document.getElementById("dg-ws-set-emp-org").value);
+    var hire = (document.getElementById("dg-ws-set-emp-hire") || {}).value || null;
+    if (!orgId) {
+      toast("warning", "Выберите организацию");
+      return;
+    }
+    if (!hire) {
+      toast("warning", "Укажите дату приёма — без неё стаж не считается");
+      return;
+    }
+    var body = {
+      user_id: Number(document.getElementById("dg-ws-set-emp-user").value),
+      organization_id: orgId,
+      department_id: Number(document.getElementById("dg-ws-set-emp-dept").value),
+      hire_date: hire,
+      salary: Number(String(document.getElementById("dg-ws-set-emp-new-salary").value).replace(/\s/g, "")) || 0,
+    };
+    var btn = document.getElementById("dg-ws-set-emp-create");
+    var run = function () {
+      return api("/employees", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }).then(function () {
+        showOverlay("emp-add", false);
+        toast("success", "Сотрудник привязан");
+        selectOrg(orgId);
+        return loadAll();
+      });
+    };
+    if (window.DatagonNotify && window.DatagonNotify.busyRun) window.DatagonNotify.busyRun(btn, run);
+    else
+      run().catch(function (e) {
+        toast("danger", e.message);
+      });
+  }
+
+  function openEmp(id) {
+    var e = state.employees.find(function (x) {
+      return Number(x.id) === Number(id);
+    });
+    if (!e) return;
+    document.getElementById("dg-ws-set-emp-id").value = String(e.id);
+    document.getElementById("dg-ws-set-emp-meta").textContent =
+      (e.full_name || e.username) +
+      " · " +
+      (e.organization_name || orgName(e.organization_id)) +
+      " · приоритет: сотрудник → отдел → организация";
+    fillOrgSelect(document.getElementById("dg-ws-set-emp-edit-org"), e.organization_id);
+    fillDeptSelect(document.getElementById("dg-ws-set-emp-edit-dept"), e.organization_id, e.department_id);
+    document.getElementById("dg-ws-set-emp-edit-hire").value = toDateInput(e.hire_date);
+    document.getElementById("dg-ws-set-emp-salary").value = String(e.salary || 0);
+    document.getElementById("dg-ws-set-emp-sched").value = e.personal_schedule_type || "";
+    document.getElementById("dg-ws-set-emp-norm").value =
+      e.personal_work_hours_per_day != null ? String(e.personal_work_hours_per_day) : "";
+    document.getElementById("dg-ws-set-emp-sick").value =
+      e.personal_sick_leave_rate != null ? String(e.personal_sick_leave_rate) : "";
+    document.getElementById("dg-ws-set-emp-t1").value =
+      e.personal_rate_full_hours != null ? String(e.personal_rate_full_hours) : "";
+    document.getElementById("dg-ws-set-emp-t05").value =
+      e.personal_rate_half_hours != null ? String(e.personal_rate_half_hours) : "";
+    showOverlay("emp", true);
+  }
+
+  function saveEmp() {
+    var id = Number(document.getElementById("dg-ws-set-emp-id").value);
+    var e = state.employees.find(function (x) {
+      return Number(x.id) === Number(id);
+    });
+    if (!e) return;
+    var hire = document.getElementById("dg-ws-set-emp-edit-hire").value || null;
+    if (!hire) {
+      toast("warning", "Укажите дату приёма — без неё стаж не считается");
+      return;
+    }
+    var body = {
+      organization_id: Number(document.getElementById("dg-ws-set-emp-edit-org").value) || e.organization_id,
+      department_id: Number(document.getElementById("dg-ws-set-emp-edit-dept").value) || e.department_id,
+      position: e.position,
+      hire_date: hire,
+      fire_date: e.fire_date,
+      salary: Number(String(document.getElementById("dg-ws-set-emp-salary").value).replace(/\s/g, "")) || 0,
+      grade: e.grade,
+      official_employment: e.official_employment,
+      personal_schedule_type: document.getElementById("dg-ws-set-emp-sched").value || null,
+      personal_work_hours_per_day: document.getElementById("dg-ws-set-emp-norm").value.trim(),
+      personal_sick_leave_rate: document.getElementById("dg-ws-set-emp-sick").value.trim(),
+      personal_rate_full_hours: document.getElementById("dg-ws-set-emp-t1").value.trim(),
+      personal_rate_half_hours: document.getElementById("dg-ws-set-emp-t05").value.trim(),
+    };
+    var btn = document.getElementById("dg-ws-set-emp-save");
+    var run = function () {
+      return api("/employees/" + id, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }).then(function () {
+        showOverlay("emp", false);
+        toast("success", "Сотрудник сохранён");
+        return loadAll();
+      });
+    };
+    if (window.DatagonNotify && window.DatagonNotify.busyRun) window.DatagonNotify.busyRun(btn, run);
+    else
+      run().catch(function (e2) {
+        toast("danger", e2.message);
+      });
+  }
+
+  function setOrgMsg(cls, text) {
+    var msg = document.getElementById("dg-ws-set-org-msg");
+    if (!msg) return;
+    msg.className = "alert " + cls + " mt-3 mb-0";
+    msg.classList.remove("d-none");
+    msg.textContent = text;
+  }
+
+  function saveOrg() {
+    if (!state.org) return;
+    var btn = document.getElementById("dg-ws-set-org-save");
+    var payload = {
+      name: document.getElementById("dg-ws-set-org-name").value,
+      inn: document.getElementById("dg-ws-set-org-inn").value,
+      timezone: document.getElementById("dg-ws-set-org-tz").value,
+      sick_unofficial_rate: Number(document.getElementById("dg-ws-set-org-sick").value) || 0,
+      seniority_base: Number(document.getElementById("dg-ws-set-sen-base").value) || 0,
+      seniority_step: Number(document.getElementById("dg-ws-set-sen-step").value) || 0,
+      seniority_period_months: Number(document.getElementById("dg-ws-set-sen-period").value) || 6,
+    };
+    setOrgMsg("alert-warning", "Сохраняем…");
+    var run = function () {
+      return api("/organizations/" + state.org.id, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+        .then(function () {
+          return api("/organizations");
+        })
+        .then(function (j) {
+          state.orgs = j.rows || [];
+          var row = state.orgs.find(function (r) {
+            return Number(r.id) === Number(state.org.id);
+          });
+          if (!row) throw new Error("не найдена организация после сохранения");
+          state.org = row;
+          fillOrgPick();
+          fillOrg();
+          var ok =
+            String(row.name) === String(payload.name) &&
+            Number(row.sick_unofficial_rate) === Number(payload.sick_unofficial_rate);
+          if (ok) {
+            setOrgMsg(
+              "alert-success",
+              "Сохранено: " + row.name + ", больничный " + row.sick_unofficial_rate + " ₽/день, TZ " + row.timezone
+            );
+            toast("success", "Организация сохранена");
+          } else {
+            setOrgMsg(
+              "alert-warning",
+              "Отправлено «" + payload.name + "», в БД «" + row.name + "» — проверьте whitelist"
+            );
+          }
+        })
+        .catch(function (e) {
+          setOrgMsg("alert-danger", e.message || "Ошибка сохранения");
+          toast("danger", e.message);
+        });
+    };
+    if (window.DatagonNotify && window.DatagonNotify.busyRun) window.DatagonNotify.busyRun(btn, run);
+    else run();
+  }
+
+  function addOrg() {
+    var name = window.prompt("Название организации", "ООО «»");
+    if (name == null) return;
+    name = String(name).trim();
+    if (!name) {
+      toast("warning", "Пустое название");
+      return;
+    }
+    var btn = document.getElementById("dg-ws-set-org-add");
+    var run = function () {
+      return api("/organizations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: name,
+          timezone: "Europe/Moscow",
+          sick_unofficial_rate: 2500,
+          seniority_base: 1000,
+          seniority_step: 500,
+          seniority_period_months: 6,
+        }),
+      }).then(function (j) {
+        toast("success", "Организация создана");
+        return loadAll().then(function () {
+          if (j.id) selectOrg(j.id);
+        });
+      });
+    };
+    if (window.DatagonNotify && window.DatagonNotify.busyRun) window.DatagonNotify.busyRun(btn, run);
+    else
+      run().catch(function (e) {
+        toast("danger", e.message);
+      });
+  }
+
+  function loadAll() {
+    return Promise.all([api("/organizations"), api("/departments"), api("/employees")])
+      .then(function (arr) {
+        state.orgs = arr[0].rows || [];
+        state.departmentsAll = arr[1].rows || [];
+        state.employees = arr[2].rows || [];
+        var saved = null;
+        try {
+          saved = Number(localStorage.getItem(ORG_PICK_KEY));
+        } catch (e) {}
+        var pick =
+          state.orgs.find(function (o) {
+            return Number(o.id) === saved;
+          }) ||
+          state.orgs[0] ||
+          null;
+        state.org = pick;
+        state.departments = pick ? deptsForOrg(pick.id) : [];
+        fillOrgPick();
+        fillOrg();
+        renderDepts();
+        renderEmps();
+        if (!state.orgs.length) {
+          toast("info", "Организаций нет — нажмите «Добавить»");
+        }
+      })
+      .catch(function (e) {
+        toast("danger", e.message || "Нет доступа к настройкам");
+      });
+  }
+
+  function bind() {
+    var orgSave = document.getElementById("dg-ws-set-org-save");
+    if (orgSave) orgSave.addEventListener("click", saveOrg);
+    var orgAdd = document.getElementById("dg-ws-set-org-add");
+    if (orgAdd) orgAdd.addEventListener("click", addOrg);
+    var orgPick = document.getElementById("dg-ws-set-org-pick");
+    if (orgPick) {
+      orgPick.addEventListener("change", function () {
+        selectOrg(orgPick.value);
+      });
+    }
+    var deptSave = document.getElementById("dg-ws-set-dept-save");
+    if (deptSave) deptSave.addEventListener("click", saveDept);
+    var empSave = document.getElementById("dg-ws-set-emp-save");
+    if (empSave) empSave.addEventListener("click", saveEmp);
+    var deptAdd = document.getElementById("dg-ws-set-dept-add");
+    if (deptAdd)
+      deptAdd.addEventListener("click", function () {
+        openDept(null);
+      });
+    var empAdd = document.getElementById("dg-ws-set-emp-add");
+    if (empAdd) empAdd.addEventListener("click", openEmpAdd);
+    var empCreate = document.getElementById("dg-ws-set-emp-create");
+    if (empCreate) empCreate.addEventListener("click", createEmp);
+
+    var empOrg = document.getElementById("dg-ws-set-emp-org");
+    if (empOrg) {
+      empOrg.addEventListener("change", function () {
+        fillDeptSelect(document.getElementById("dg-ws-set-emp-dept"), empOrg.value, null);
+      });
+    }
+    var empEditOrg = document.getElementById("dg-ws-set-emp-edit-org");
+    if (empEditOrg) {
+      empEditOrg.addEventListener("change", function () {
+        fillDeptSelect(document.getElementById("dg-ws-set-emp-edit-dept"), empEditOrg.value, null);
+      });
+    }
+
+    var deptTb = document.getElementById("dg-ws-set-dept-tbody");
+    if (deptTb) {
+      deptTb.addEventListener("click", function (ev) {
+        var btn = ev.target.closest("[data-dg-ws-set-edit-dept]");
+        if (!btn) return;
+        openDept(Number(btn.getAttribute("data-dg-ws-set-edit-dept")));
+      });
+    }
+    var empTb = document.getElementById("dg-ws-set-emp-tbody");
+    if (empTb) {
+      empTb.addEventListener("click", function (ev) {
+        var btn = ev.target.closest("[data-dg-ws-set-edit-emp]");
+        if (!btn) return;
+        openEmp(Number(btn.getAttribute("data-dg-ws-set-edit-emp")));
+      });
+    }
+
+    var ft = document.getElementById("dg-ws-set-org-toggle");
+    var fb = document.getElementById("dg-ws-set-org-body");
+    if (ft && fb) {
+      var collapsed = false;
+      ft.addEventListener("click", function () {
+        collapsed = !collapsed;
+        fb.classList.toggle("d-none", collapsed);
+        ft.textContent = collapsed ? "Развернуть" : "Свернуть";
+      });
+    }
+
+    document.querySelectorAll("[data-dg-ws-set-close]").forEach(function (el) {
+      el.addEventListener("click", function () {
+        showOverlay(el.getAttribute("data-dg-ws-set-close"), false);
+      });
+    });
+    document.addEventListener("keydown", function (ev) {
+      if (ev.key !== "Escape") return;
+      showOverlay("dept", false);
+      showOverlay("emp", false);
+      showOverlay("emp-add", false);
+    });
+  }
+
+  function init() {
+    bind();
+    loadAll();
+  }
+
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
+  else init();
+})();
+</script>

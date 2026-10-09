@@ -961,15 +961,21 @@ function createMsOrdersRouter(db, appSettingsRef = {}) {
             }
 
             if (search) {
-                wheres.push(
-                    '(o.doc_name LIKE ? OR o.agent_name LIKE ? OR EXISTS (SELECT 1 FROM ms_customer_order_position p ' +
-                    'LEFT JOIN ms_export e ON e.code = p.ms_export_code ' +
-                    'WHERE p.order_uuid = o.uuid AND (' +
-                    'p.ms_export_code LIKE ? OR p.code_at_moment LIKE ? ' +
-                    'OR p.name_at_moment LIKE ? OR e.name LIKE ?)))',
-                );
+                /** Без JOIN ms_export — иначе умный поиск на большом окне зависает. */
                 const needle = '%' + search + '%';
-                params.push(needle, needle, needle, needle, needle, needle);
+                const looksLikeDocNo = /^[\d][\d\s\-_.\/]*$/.test(search) && /\d{3,}/.test(search);
+                if (looksLikeDocNo) {
+                    wheres.push('(o.doc_name LIKE ? OR o.agent_name LIKE ?)');
+                    params.push(needle, needle);
+                } else {
+                    wheres.push(
+                        '(o.doc_name LIKE ? OR o.agent_name LIKE ? OR EXISTS (SELECT 1 FROM ms_customer_order_position p ' +
+                        'WHERE p.order_uuid = o.uuid AND (' +
+                        'p.ms_export_code LIKE ? OR p.code_at_moment LIKE ? ' +
+                        'OR p.name_at_moment LIKE ?)))',
+                    );
+                    params.push(needle, needle, needle, needle, needle);
+                }
             }
             if (docName) {
                 wheres.push('o.doc_name LIKE ?');

@@ -198,6 +198,22 @@ function assemble() {
             PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/ops-sheet.scripts.html')),
         },
         {
+            out: 'work-schedule.html',
+            PAGE_TITLE: 'График работы — Датагон',
+            BODY_ATTRS: 'class="datagon-vanilla-body" data-dg-active-nav="work-schedule"',
+            EXTRA_HEAD: read(path.join(vanillaDir, 'inners/work-schedule.head.html')),
+            MAIN_INNER: read(path.join(vanillaDir, 'inners/work-schedule.inner.html')),
+            PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/work-schedule.scripts.html')),
+        },
+        {
+            out: 'work-schedule-settings.html',
+            PAGE_TITLE: 'График · настройки — Датагон',
+            BODY_ATTRS: 'class="datagon-vanilla-body" data-dg-active-nav="work-schedule-settings"',
+            EXTRA_HEAD: read(path.join(vanillaDir, 'inners/work-schedule-settings.head.html')),
+            MAIN_INNER: read(path.join(vanillaDir, 'inners/work-schedule-settings.inner.html')),
+            PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/work-schedule-settings.scripts.html')),
+        },
+        {
             out: 'ref/index.html',
             PAGE_TITLE: 'Справка (статика) — Датагон',
             BODY_ATTRS: 'class="datagon-vanilla-body"',

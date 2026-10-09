@@ -524,6 +524,19 @@
       </div>
       <div class="app-header__content">
         <div class="app-header-left">
+          <div class="dg-ws-clock-wrap me-2 flex-shrink-0">
+            <button
+              type="button"
+              id="dg-ws-clock-btn"
+              class="btn btn-sm btn-success dg-ws-clock-btn"
+              data-dg-notify-start="Отмечаем начало смены…"
+              title="Учёт рабочего времени (прототип)"
+            >
+              <i class="pe-7s-play me-1" aria-hidden="true"></i>
+              <span class="dg-ws-clock-label">Начать работать</span>
+              <span class="dg-ws-clock-timer d-none ms-1" aria-live="polite"></span>
+            </button>
+          </div>
           <div class="search-wrapper">
             <div class="input-holder">
               <input type="text" class="search-input" placeholder="Type to search" autocomplete="off" />
@@ -795,6 +808,8 @@
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="finance" href="/finance.html" title="Балансы и движение по счетам Точки (только чтение)"><i class="metismenu-icon pe-7s-wallet"></i>Финансы</a></li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="manager-sales" href="/manager-sales.html" title="Годовые таблицы менеджеров: оплаты, маржа, премия"><i class="metismenu-icon pe-7s-id"></i>Таблицы менеджеров</a></li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="ops-sheet" href="/ops-sheet.html" title="Операционный лист: оборот, прибыль, премии и оклады по месяцам"><i class="metismenu-icon pe-7s-notebook"></i>Операционный лист</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="work-schedule" href="/work-schedule.html" title="График работы и учёт рабочего времени"><i class="metismenu-icon pe-7s-clock"></i>График работы</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="work-schedule-settings" href="/work-schedule-settings.html" title="Организация, отделы, сотрудники графика"><i class="metismenu-icon pe-7s-config"></i>График · настройки</a></li>
                       <li class="metismenu-item dg-sidebar-nav-divider" aria-hidden="true">
                         <div class="nav-item nav-item-divider"></div>
                       </li>
@@ -1072,8 +1087,8 @@
         <div class="col-md-4" data-dg-mss-filter-field="mss_search">
           <label class="form-label" for="dg-mss-search">Умный поиск</label>
           <input type="search" id="dg-mss-search" class="form-control"
-                 placeholder="Код или наименование товара…" autocomplete="off"
-                 data-dg-tooltip="Ищет по коду и наименованию товара в позициях отгрузки (резолв ms_export + срез на момент продажи). Enter — применить, Esc — очистить." />
+                 placeholder="Номер отгрузки, контрагент, код или товар…" autocomplete="off"
+                 data-dg-tooltip="Ищет по номеру отгрузки, контрагенту и по коду/наименованию товара в позициях. Enter — применить, Esc — очистить." />
         </div>
         <div class="col-md-2" data-dg-mss-filter-field="mss_days">
           <label class="form-label" for="dg-mss-days">За период</label>
@@ -1206,7 +1221,7 @@
         <div class="input-group input-group-sm">
           <span class="input-group-text bg-white text-muted px-2" aria-hidden="true">🔎</span>
           <input type="search" id="dg-mss-table-search-mirror" class="form-control"
-                 placeholder="Умный поиск: код или наименование товара (Enter — применить)"
+                 placeholder="Умный поиск: номер, контрагент, товар (Enter — применить)"
                  autocomplete="off"
                  data-dg-tooltip="Зеркало умного поиска. Enter — применить, Esc — очистить." />
         </div>
@@ -1523,9 +1538,20 @@
     if ($('dg-mss-table-search-mirror')) $('dg-mss-table-search-mirror').value = s.search;
   }
 
+  function readSearchFromDom() {
+    var top = $('dg-mss-search');
+    var mirror = $('dg-mss-table-search-mirror');
+    var a = top ? String(top.value || '').trim() : '';
+    var b = mirror ? String(mirror.value || '').trim() : '';
+    var v = a || b || '';
+    if (top) top.value = v;
+    if (mirror) mirror.value = v;
+    return v;
+  }
+
   function readFromForm() {
     return {
-      search: ($('dg-mss-search') && $('dg-mss-search').value || '').trim(),
+      search: readSearchFromDom(),
       docName: ($('dg-mss-doc') && $('dg-mss-doc').value || '').trim(),
       days: parseInt($('dg-mss-days') ? $('dg-mss-days').value : DEFAULTS.days, 10) || DEFAULTS.days,
       storeUuid: $('dg-mss-store') ? $('dg-mss-store').value : '',
@@ -1546,6 +1572,7 @@
     state.pending = readFromForm();
     if (!opts || opts.resetPage !== false) state.pending.page = 1;
     state.applied = Object.assign({}, state.pending);
+    applyToForm(state.applied);
     saveToStorage({
       search: state.applied.search, docName: state.applied.docName, days: state.applied.days,
       storeUuid: state.applied.storeUuid, agentUuid: state.applied.agentUuid,
@@ -1686,18 +1713,29 @@
   }
 
   function fetchList() {
-    if (state.loading) return;
+    if (state._listAbort) {
+      try { state._listAbort.abort(); } catch (_) {}
+    }
+    var gen = (state._listFetchGen = (state._listFetchGen || 0) + 1);
+    var ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    state._listAbort = ctrl;
     state.loading = true;
     setMssListBusy(true);
+    var timeoutId = window.setTimeout(function () {
+      if (gen !== state._listFetchGen) return;
+      try { if (ctrl) ctrl.abort(); } catch (_) {}
+    }, 30000);
     fetch('/api/ms-sales/list?' + buildQuery(), {
       credentials: 'same-origin',
-      headers: { Accept: 'application/json' }
+      headers: { Accept: 'application/json' },
+      signal: ctrl ? ctrl.signal : undefined
     })
       .then(function (r) {
         if (!r.ok) throw new Error('HTTP ' + r.status);
         return r.json();
       })
       .then(function (data) {
+        if (gen !== state._listFetchGen) return;
         if (!data || !data.success) throw new Error((data && data.error) || 'Ошибка загрузки');
         state.total = Number(data.total || 0);
         state.rows = Array.isArray(data.rows) ? data.rows : [];
@@ -1707,6 +1745,15 @@
         renderSortIndicators();
       })
       .catch(function (err) {
+        if (gen !== state._listFetchGen) return;
+        if (err && err.name === 'AbortError') {
+          var emptyAbort = $('dg-mss-empty-msg');
+          if (emptyAbort && !(state.rows && state.rows.length)) {
+            emptyAbort.textContent = 'Таймаут или отмена загрузки. Нажмите «Применить» ещё раз.';
+            emptyAbort.classList.remove('d-none');
+          }
+          return;
+        }
         state.rows = [];
         state.total = 0;
         renderTable();
@@ -1717,7 +1764,10 @@
         }
       })
       .finally(function () {
+        window.clearTimeout(timeoutId);
+        if (gen !== state._listFetchGen) return;
         state.loading = false;
+        state._listAbort = null;
         setMssListBusy(false);
         renderStatus();
       });

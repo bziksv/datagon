@@ -1,0 +1,1914 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, shrink-to-fit=no" />
+  <script>
+    (function () {
+      try {
+        if (localStorage.getItem("datagon_theme_font_source_sans_3_v1") === "1") {
+          document.documentElement.classList.add("dg-font-source-sans-3");
+          var l = document.createElement("link");
+          l.id = "dg-font-source-sans-3-link";
+          l.rel = "stylesheet";
+          l.href =
+            "https://fonts.googleapis.com/css2?family=Source+Sans+3:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap";
+          document.head.appendChild(l);
+        }
+      } catch (e) {}
+    })();
+  </script>
+  <title>График · настройки — Датагон</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="stylesheet" href="/static/css/main.989b22a9.css" />
+  <style>
+  .dg-ws-set-proto-badge { font-size: 0.72rem; vertical-align: middle; }
+  .dg-ws-set-kv { font-size: 0.85rem; }
+  .dg-ws-set-kv dt { color: #6c757d; font-weight: 500; }
+  .dg-ws-set-kv dd { margin-bottom: 0.5rem; }
+  .dg-ws-override-badge {
+    font-size: 0.7rem;
+    background: #fff3cd;
+    color: #856404;
+    border-radius: 0.25rem;
+    padding: 0.1rem 0.35rem;
+  }
+
+  /* Form rows: label must not stick to input above / no header overlap */
+  body.datagon-vanilla-body[data-dg-active-nav="work-schedule-settings"] #dg-ws-set-org-body .row.g-3 {
+    --bs-gutter-y: 1rem;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="work-schedule-settings"] #dg-ws-set-org-body .form-label {
+    display: block;
+    margin-bottom: 0.35rem;
+    margin-top: 0;
+    line-height: 1.3;
+    white-space: normal;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="work-schedule-settings"] .dg-ws-set-org-toolbar .form-label {
+    margin-bottom: 0.25rem;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="work-schedule-settings"] .card > .card-header {
+    position: relative;
+    z-index: 1;
+    overflow: visible;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="work-schedule-settings"] .card-body.p-0 .table th,
+  body.datagon-vanilla-body[data-dg-active-nav="work-schedule-settings"] .card-body.p-0 .table td {
+    padding: 0.65rem 1rem;
+    vertical-align: middle;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="work-schedule-settings"] .card-body.p-0 .table thead th {
+    border-top: 0;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="work-schedule-settings"] .dg-ws-set-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1090;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="work-schedule-settings"] .dg-ws-set-overlay .dg-ws-set-overlay-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.45);
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="work-schedule-settings"] .dg-ws-set-overlay .dg-ws-set-overlay-panel {
+    position: relative;
+    z-index: 1;
+    width: min(520px, 100%);
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="work-schedule-settings"] .dg-ws-set-overlay .dg-ws-set-overlay-panel.wide {
+    width: min(720px, 100%);
+  }
+</style>
+
+  <style>
+    /* Один список сайдбара: «ArchitectUI меню» у нижнего края области навигации, без второго блока/ul */
+    .dg-sidebar-nav-scroll {
+      display: flex;
+      flex-direction: column;
+    }
+    .dg-sidebar-nav-measure {
+      flex: 1 1 auto;
+      min-height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+    .dg-sidebar-nav-measure .datagon-nav-shell,
+    .dg-sidebar-nav-measure .vertical-nav-menu {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    /* Только корневой список меню: иначе вложенный ul.metismenu-container (под «Маркетплейсы» и т.п.)
+       получает min-height:100% + flex и растягивается на всю колонку — вертикальная линия темы залезает на соседние пункты. */
+    .dg-sidebar-nav-measure .vertical-nav-menu > .metismenu-container {
+      display: flex;
+      flex-direction: column;
+      flex: 1 1 auto;
+      min-height: 100%;
+      margin-bottom: 0;
+    }
+    /*
+      Подменю «Маркетплейсы»: ArchitectUI скрывает .metismenu-icon у подпунктов и даёт малый padding.
+      Не трогаем узкую полоску без hover — большой padding раздувает li и смещает «left:50%» у всех иконок колонки.
+      При развороте по hover из closed-sidebar класс closed-sidebar не снимается — нужен отдельный селектор с .app-sidebar:hover.
+    */
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible,
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon {
+      display: block !important;
+    }
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link,
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link {
+      padding-left: 3.4375rem !important;
+      position: relative;
+      /* Длинные подписи подпунктов («Проблемы с товарами», «Яндекс Маркет»)
+         не должны обрезаться ellipsis: разрешаем перенос на 2 строки и
+         выравниваем иконку по верхней строке. */
+      white-space: normal !important;
+      line-height: 1.25;
+      align-items: flex-start;
+      padding-top: 0.45rem !important;
+      padding-bottom: 0.45rem !important;
+      padding-right: 0.5rem !important;
+      min-height: 2rem;
+      height: auto !important;
+    }
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible,
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon {
+      top: 0.55rem !important;
+    }
+    /* Пункты сайдбара с доступом как у журнала активности (admin / право на пользователей) */
+    .dg-sidebar-nav-restricted .metismenu-link {
+      display: inline-flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.15rem 0.35rem;
+    }
+    .dg-sidebar-nav-restricted .dg-nav-restricted-icon {
+      font-size: 0.7rem;
+      opacity: 0.72;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+    /* Разделитель после блока «админ» (Дашборд…Настройки) перед рабочими экранами.
+       В теме ArchitectUI линия задана только для .nav-item.nav-item-divider (оба класса). */
+    .dg-sidebar-nav-divider {
+      list-style: none;
+      pointer-events: none;
+      margin: 0;
+      padding: 0;
+      height: auto !important;
+      min-height: 0;
+    }
+    .dg-sidebar-nav-divider .nav-item-divider,
+    .dg-sidebar-nav-divider.nav-item-divider {
+      display: block;
+      background: #dee2e6;
+      height: 1px;
+      margin: 0.55rem 1rem;
+      overflow: hidden;
+      border: 0;
+      padding: 0;
+    }
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:not(:hover)
+      .dg-sidebar-nav-divider
+      .nav-item-divider {
+      margin-left: 0.55rem;
+      margin-right: 0.55rem;
+    }
+    .datagon-vanilla-shell .app-footer .app-footer__inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .datagon-vanilla-shell .app-footer-right {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 6px 12px;
+      padding: 4px 8px 4px 12px;
+      max-width: min(100%, 540px);
+      margin-left: auto;
+    }
+    .datagon-vanilla-shell .dg-footer-legal-link {
+      font-size: 11px;
+      line-height: 1.25;
+      color: #6c757d;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    .datagon-vanilla-shell .dg-footer-legal-link:hover {
+      color: #2f5de0;
+      text-decoration: underline;
+    }
+    @media (max-width: 991.98px) {
+      /* На мобильном layout не должен наследовать desktop-сдвиг fixed/closed sidebar. */
+      .datagon-vanilla-shell .app-main__outer {
+        margin-left: 0 !important;
+      }
+      .datagon-vanilla-shell .app-footer {
+        left: 0 !important;
+        width: 100% !important;
+      }
+      .datagon-vanilla-shell .app-footer .app-footer__inner {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-left: 0 !important;
+      }
+      /* На телефонах слой мобильного меню должен перекрывать фиксированный футер. */
+      .datagon-vanilla-shell .sidebar-mobile-overlay {
+        z-index: 1090;
+      }
+      .datagon-vanilla-shell .app-sidebar {
+        z-index: 1100;
+      }
+      .datagon-vanilla-shell .app-footer {
+        z-index: 1080;
+      }
+      .datagon-vanilla-shell.sidebar-mobile-open .app-footer {
+        pointer-events: none;
+        opacity: 0.25;
+      }
+    }
+    /* Source Sans 3 — opt-in из «Параметры макета» (все экраны, в т.ч. Windows). */
+    html.dg-font-source-sans-3 .datagon-vanilla-shell {
+      --bs-body-font-family: "Source Sans 3", -apple-system, BlinkMacSystemFont, "Segoe UI",
+        Roboto, "Helvetica Neue", Arial, sans-serif;
+      --bs-font-sans-serif: var(--bs-body-font-family);
+      font-family: var(--bs-body-font-family);
+    }
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .btn,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .form-control,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .form-select,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .table,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .card,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .page-title-heading,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .vertical-nav-menu a,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .app-header,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .app-sidebar,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .app-main,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .app-footer {
+      font-family: inherit;
+    }
+  </style>
+</head>
+<body class="datagon-vanilla-body" data-dg-active-nav="work-schedule-settings">
+  <div class="app-container app-theme-white datagon-shell datagon-vanilla-shell fixed-header fixed-sidebar fixed-footer">
+    <div class="app-header header-shadow">
+      <div class="app-header__logo">
+        <button type="button" class="logo-src datagon-brand" onclick="location.href='/dashboard.html'" title="Открыть дашборд" style="border:0;background:transparent;padding:0;cursor:pointer">Датагон</button>
+        <div class="header__pane ms-auto">
+          <div>
+            <button type="button" class="hamburger hamburger--slider dg-toggle-sidebar" aria-label="Свернуть боковую панель" title="Свернуть боковую панель">
+              <span class="hamburger-box"><span class="hamburger-inner"></span></span>
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="app-header__mobile-menu">
+        <div>
+          <button type="button" class="hamburger hamburger--slider dg-toggle-mobile-sidebar" aria-label="Открыть меню">
+            <span class="hamburger-box"><span class="hamburger-inner"></span></span>
+          </button>
+        </div>
+      </div>
+      <div class="app-header__menu">
+        <span>
+          <button type="button" class="btn btn-primary btn-sm btn-icon btn-icon-only dg-toggle-header-small" aria-label="Доп. меню шапки">
+            <div class="btn-icon-wrapper">
+              <i class="pe-7s-more" style="font-size:1.1rem;line-height:1"></i>
+            </div>
+          </button>
+        </span>
+      </div>
+      <div class="app-header__content">
+        <div class="app-header-left">
+          <div class="dg-ws-clock-wrap me-2 flex-shrink-0">
+            <button
+              type="button"
+              id="dg-ws-clock-btn"
+              class="btn btn-sm btn-success dg-ws-clock-btn"
+              data-dg-notify-start="Отмечаем начало смены…"
+              title="Учёт рабочего времени (прототип)"
+            >
+              <i class="pe-7s-play me-1" aria-hidden="true"></i>
+              <span class="dg-ws-clock-label">Начать работать</span>
+              <span class="dg-ws-clock-timer d-none ms-1" aria-live="polite"></span>
+            </button>
+          </div>
+          <div class="search-wrapper">
+            <div class="input-holder">
+              <input type="text" class="search-input" placeholder="Type to search" autocomplete="off" />
+              <button type="button" class="search-icon dg-vanilla-search-docs" aria-label="Открыть документацию" title="Документация">
+                <span></span>
+              </button>
+            </div>
+            <button type="button" class="btn-close dg-vanilla-search-close" aria-label="Закрыть поиск"></button>
+          </div>
+        </div>
+        <div class="app-header-right">
+          <div class="ui-theme-settings ui-theme-settings--header">
+            <button type="button" class="btn btn-link btn-open-options btn-open-options--header" id="TooltipDemoVanilla" aria-label="Параметры темы" title="Параметры темы (полная версия в React-панели)">
+              <i class="pe-7s-config" style="font-size:1.35rem;color:#3f6ad8;line-height:1"></i>
+            </button>
+            <div class="theme-settings__inner">
+              <div class="theme-settings__options-wrapper">
+                <h3 class="themeoptions-heading">Параметры макета</h3>
+                <div class="list-group">
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Фиксированная шапка</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-fixed-header" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Тень шапки</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-header-shadow" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Фиксированный сайдбар</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-fixed-sidebar" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Тень сайдбара</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-sidebar-shadow" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Фиксированный футер</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-fixed-footer" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Шрифт Source Sans 3</h5>
+                    <label class="switch mb-0" title="Удобнее на Windows; сохраняется для всех страниц панели"><input type="checkbox" id="dg-theme-font-source-sans-3"><span class="slider round"></span></label>
+                  </div>
+                </div>
+
+                <h3 class="themeoptions-heading">Параметры заголовка страницы</h3>
+                <div class="list-group">
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Иконка заголовка</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-title-icon" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Подзаголовок страницы</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-title-subheading" checked><span class="slider round"></span></label>
+                  </div>
+                </div>
+
+                <h3 class="themeoptions-heading">Цветовые схемы</h3>
+                <div class="list-group">
+                  <div class="list-group-item">
+                    <h5 class="mb-2">Цветовая схема макета</h5>
+                    <div class="theme-settings-swatches">
+                      <div class="swatch-holder-lg active dg-theme-color-scheme" data-color-scheme="white" style="background:#fff;border:1px solid #dee2e6"></div>
+                      <div class="swatch-holder-lg dg-theme-color-scheme" data-color-scheme="gray" style="background:#868e96"></div>
+                    </div>
+                  </div>
+                </div>
+
+                <h3 class="themeoptions-heading">Параметры сайдбара</h3>
+                <div class="list-group">
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Фоновое изображение сайдбара</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-sidebar-bg-image"><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item">
+                    <h5 class="mb-2">Цвета сайдбара</h5>
+                    <div class="theme-settings-swatches">
+                      <div class="swatch-holder bg-primary dg-theme-sidebar-color" data-color-class="bg-primary"></div><div class="swatch-holder bg-danger dg-theme-sidebar-color" data-color-class="bg-danger"></div><div class="swatch-holder bg-warning dg-theme-sidebar-color" data-color-class="bg-warning"></div><div class="swatch-holder bg-success dg-theme-sidebar-color" data-color-class="bg-success"></div>
+                      <div class="swatch-holder bg-info dg-theme-sidebar-color" data-color-class="bg-info"></div><div class="swatch-holder bg-secondary dg-theme-sidebar-color" data-color-class="bg-secondary"></div><div class="swatch-holder bg-dark dg-theme-sidebar-color" data-color-class="bg-dark"></div><div class="swatch-holder dg-theme-sidebar-color" data-color-class="bg-plum-plate" style="background:#667eea"></div>
+                      <div class="swatch-holder dg-theme-sidebar-color" data-color-class="bg-arielle-smile" style="background:#16d9e3"></div><div class="swatch-holder dg-theme-sidebar-color" data-color-class="bg-ripe-malin" style="background:#f093fb"></div><div class="swatch-holder dg-theme-sidebar-color" data-color-class="bg-night-fade" style="background:#a18cd1"></div><div class="swatch-holder dg-theme-sidebar-color" data-color-class="bg-malibu-beach" style="background:#4facfe"></div>
+                    </div>
+                  </div>
+                </div>
+
+                <h3 class="themeoptions-heading">Параметры шапки</h3>
+                <div class="list-group">
+                  <div class="list-group-item">
+                    <h5 class="mb-2">Цвета шапки</h5>
+                    <div class="theme-settings-swatches">
+                      <div class="swatch-holder bg-primary dg-theme-header-color" data-color-class="bg-primary"></div><div class="swatch-holder bg-danger dg-theme-header-color" data-color-class="bg-danger"></div><div class="swatch-holder bg-warning dg-theme-header-color" data-color-class="bg-warning"></div><div class="swatch-holder bg-success dg-theme-header-color" data-color-class="bg-success"></div>
+                      <div class="swatch-holder bg-info dg-theme-header-color" data-color-class="bg-info"></div><div class="swatch-holder bg-secondary dg-theme-header-color" data-color-class="bg-secondary"></div><div class="swatch-holder bg-dark dg-theme-header-color" data-color-class="bg-dark"></div><div class="swatch-holder dg-theme-header-color" data-color-class="bg-plum-plate" style="background:#667eea"></div>
+                    </div>
+                  </div>
+                </div>
+                <div class="p-2">
+                  <a href="/settings.html" class="btn btn-sm btn-outline-primary w-100">Настройки</a>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="header-dots">
+            <div class="dropdown">
+              <button type="button" class="btn btn-link p-0 me-2 dg-vanilla-dropdown-toggle" style="line-height:0" aria-expanded="false" aria-haspopup="true">
+                <div class="icon-wrapper icon-wrapper-alt rounded-circle">
+                  <div class="icon-wrapper-bg bg-success"></div>
+                  <i class="pe-7s-graph2" style="font-size:23px;color:#3ac47d"></i>
+                </div>
+              </button>
+              <div class="dropdown-menu dropdown-menu-xl rm-pointers p-0" style="min-width: 320px">
+                <div class="dropdown-menu-header">
+                  <div class="dropdown-menu-header-inner bg-premium-dark">
+                    <div class="menu-header-image" style="background-image:url('/assets/utils/images/dropdown-header/abstract4.jpg')"></div>
+                    <div class="menu-header-content text-white">
+                      <h5 class="menu-header-title">Вы в сети</h5>
+                      <h6 class="menu-header-subtitle">Онлайн за окно из настроек</h6>
+                    </div>
+                  </div>
+                </div>
+                <div class="widget-chart">
+                  <div class="widget-chart-content">
+                    <div class="icon-wrapper rounded-circle">
+                      <div class="icon-wrapper-bg opacity-9 bg-focus"></div>
+                      <i class="lnr-users text-white"></i>
+                    </div>
+                    <div class="widget-numbers d-flex flex-column align-items-center text-center" id="dg-vanilla-online-users-wrap">
+                      <span id="dg-vanilla-online-users">—</span>
+                      <span class="opacity-9 fw-normal" style="font-size: 0.72rem; line-height: 1.25; margin-top: 0.15rem" id="dg-vanilla-online-users-unit"></span>
+                    </div>
+                    <div class="widget-subheading pt-2 small text-muted" id="dg-vanilla-online-users-role"></div>
+                    <div class="text-center small px-2 pt-1 pb-1">
+                      <a href="/settings.html#dg-settings-online-presence" class="text-decoration-none">Окно минут</a>
+                    </div>
+                    <div class="widget-description text-muted small px-2 mt-1 mb-0" id="dg-vanilla-online-users-sessions" style="line-height: 1.35"></div>
+                    <div class="widget-description text-muted mt-2 mb-0">
+                      <span class="pe-1 small" id="dg-vanilla-online-users-note"></span>
+                    </div>
+                  </div>
+                  <div class="widget-chart-wrapper">
+                    <div style="height:40px;opacity:.35;background:linear-gradient(90deg,#f7b924 0%,#f7b92455 100%);border-radius:2px;"></div>
+                  </div>
+                </div>
+                <div class="nav-item-divider mt-0"></div>
+                <div class="nav-item-btn text-center pb-3 mb-2">
+                  <button type="button" class="btn btn-sm btn-shine btn-wide btn-pill btn-warning" id="dg-vanilla-online-users-refresh">
+                    <i class="pe-7s-refresh me-2"></i>Обновить
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="header-btn-lg pe-0">
+            <div class="widget-content p-0">
+              <div class="widget-content-wrapper">
+                <div class="widget-content-left d-flex align-items-center gap-1 pe-2">
+                  <span
+                    class="rounded-circle d-inline-flex align-items-center justify-content-center flex-shrink-0 bg-light text-secondary border"
+                    style="width: 42px; height: 42px; border-color: #e2e8f0"
+                    role="img"
+                    aria-label="Профиль"
+                  >
+                    <i class="pe-7s-user" style="font-size: 1.2rem; line-height: 1; opacity: 0.85" aria-hidden="true"></i>
+                  </span>
+                  <button type="button" class="btn btn-link p-0 dg-vanilla-logout d-inline-flex align-items-center justify-content-center text-danger" title="Выйти" aria-label="Выйти из профиля" style="min-width:34px;min-height:34px;line-height:1;border-radius:50%">
+                    <i class="lnr-exit" style="font-size:1.2rem"></i>
+                  </button>
+                </div>
+                <div class="widget-content-left ms-2 header-user-info">
+                  <div class="widget-heading" id="dg-vanilla-user-display-inline">Пользователь</div>
+                  <div class="widget-subheading" id="dg-vanilla-user-role-inline">Пользователь</div>
+                </div>
+                <div class="widget-content-right header-user-info ms-3">
+                  <button type="button" class="btn btn-shadow p-1 btn-sm btn-info" id="Tooltip-1" title="Click for notifications">
+                    <i class="pe-7s-date text-white" style="font-size:20px;line-height:1"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="app-main">
+      <div class="sidebar-mobile-overlay"></div>
+      <div class="app-sidebar sidebar-shadow">
+        <div class="d-flex flex-column h-100 min-h-0">
+          <div class="app-header__logo">
+            <button type="button" class="logo-src datagon-brand" onclick="location.href='/dashboard.html'" title="Открыть дашборд" style="border:0;background:transparent;padding:0;cursor:pointer">Датагон</button>
+            <div class="header__pane ms-auto">
+              <div>
+                <button type="button" class="hamburger hamburger--slider dg-toggle-sidebar" aria-label="Свернуть боковую панель" title="Свернуть боковую панель">
+                  <span class="hamburger-box"><span class="hamburger-inner"></span></span>
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="app-header__mobile-menu">
+            <div>
+              <button type="button" class="hamburger hamburger--slider dg-toggle-mobile-sidebar" aria-label="Открыть меню">
+                <span class="hamburger-box"><span class="hamburger-inner"></span></span>
+              </button>
+            </div>
+          </div>
+          <div class="app-header__menu">
+            <span>
+              <button type="button" class="btn btn-primary btn-sm btn-icon btn-icon-only dg-toggle-header-small" aria-label="Доп. меню шапки">
+                <div class="btn-icon-wrapper">
+                  <i class="pe-7s-more" style="font-size:1.1rem;line-height:1"></i>
+                </div>
+              </button>
+            </span>
+          </div>
+          <div class="custom-scrollbar dg-sidebar-nav-wrap d-flex flex-column min-h-0" style="flex:1 1 0%;min-height:0;max-height:calc(100vh - 80px);overflow-x:hidden">
+            <div class="app-sidebar__inner dg-sidebar-nav-scroll flex-grow-1 min-h-0" style="overflow-y:auto;overflow-x:hidden">
+              <div class="dg-sidebar-nav-measure">
+                <div class="datagon-nav-shell">
+                  <div class="vertical-nav-menu" style="pointer-events:auto;z-index:999;position:relative">
+                    <ul class="metismenu-container">
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="dashboard" href="/dashboard.html"><i class="metismenu-icon pe-7s-rocket"></i>Дашборд</a></li>
+                      <li class="metismenu-item dg-sidebar-nav-restricted" data-dg-nav-restricted="activity">
+                        <a
+                          class="metismenu-link"
+                          data-nav="db-admin"
+                          href="/db-admin.html"
+                          title="Управление БД: размеры таблиц, связи, превью, OPTIMIZE (доступ ограничен: администратор или право управления пользователями)"
+                        >
+                          <i class="metismenu-icon pe-7s-server"></i>Управление БД
+                          <i
+                            class="pe-7s-lock dg-nav-restricted-icon"
+                            aria-hidden="true"
+                            title="Пункт меню с ограниченным доступом"
+                          ></i>
+                        </a>
+                      </li>
+                      <li class="metismenu-item dg-sidebar-architect-item dg-sidebar-nav-restricted" data-dg-nav-restricted="activity">
+                        <a
+                          class="metismenu-link"
+                          data-nav="architectui-demo"
+                          href="/ref/react-demo-index.html"
+                          title="Каталог разделов React-шаблона ArchitectUI (только админ / управление пользователями)"
+                        >
+                          <i class="metismenu-icon pe-7s-plugin"></i>ArchitectUI
+                          <i
+                            class="pe-7s-lock dg-nav-restricted-icon"
+                            aria-hidden="true"
+                            title="Пункт меню с ограниченным доступом"
+                          ></i>
+                        </a>
+                      </li>
+                      <li class="metismenu-item dg-sidebar-nav-restricted" data-dg-nav-restricted="activity">
+                        <a
+                          class="metismenu-link"
+                          data-nav="processes"
+                          href="/processes.html"
+                          title="Активность/Логи: журнал команды и фоновые процессы (доступ ограничен: администратор или право управления пользователями)"
+                        >
+                          <i class="metismenu-icon pe-7s-timer"></i>Активность/Логи
+                          <i
+                            class="pe-7s-lock dg-nav-restricted-icon"
+                            aria-hidden="true"
+                            title="Пункт меню с ограниченным доступом"
+                          ></i>
+                        </a>
+                      </li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="settings" href="/settings.html"><i class="metismenu-icon pe-7s-config"></i>Настройки</a></li>
+                      <li class="metismenu-item dg-sidebar-nav-divider" aria-hidden="true">
+                        <div class="nav-item nav-item-divider"></div>
+                      </li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="finance" href="/finance.html" title="Балансы и движение по счетам Точки (только чтение)"><i class="metismenu-icon pe-7s-wallet"></i>Финансы</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="manager-sales" href="/manager-sales.html" title="Годовые таблицы менеджеров: оплаты, маржа, премия"><i class="metismenu-icon pe-7s-id"></i>Таблицы менеджеров</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="ops-sheet" href="/ops-sheet.html" title="Операционный лист: оборот, прибыль, премии и оклады по месяцам"><i class="metismenu-icon pe-7s-notebook"></i>Операционный лист</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="work-schedule" href="/work-schedule.html" title="График работы и учёт рабочего времени"><i class="metismenu-icon pe-7s-clock"></i>График работы</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="work-schedule-settings" href="/work-schedule-settings.html" title="Организация, отделы, сотрудники графика"><i class="metismenu-icon pe-7s-config"></i>График · настройки</a></li>
+                      <li class="metismenu-item dg-sidebar-nav-divider" aria-hidden="true">
+                        <div class="nav-item nav-item-divider"></div>
+                      </li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="my-sites" href="/my-sites.html"><i class="metismenu-icon pe-7s-global"></i>Мои сайты</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="network-prices" href="/network-prices.html"><i class="metismenu-icon pe-7s-shuffle"></i>Цены сети</a></li>
+                      <li class="metismenu-item dg-sidebar-nav-divider" aria-hidden="true">
+                        <div class="nav-item nav-item-divider"></div>
+                      </li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="my-products" href="/my-products.html"><i class="metismenu-icon pe-7s-box2"></i>Мои товары (сайты)</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="moysklad" href="/moysklad.html"><i class="metismenu-icon pe-7s-shopbag"></i>Мой Склад (товары)</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="ms-orders" href="/ms-orders.html" title="Заказы покупателей entity/customerorder из МойСклад (30 дней)"><i class="metismenu-icon pe-7s-note2"></i>Заказы в МС</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="ms-sales" href="/ms-sales.html" title="Продажи МС: отгрузки entity/demand, позиции с привязкой к товарам ms_export"><i class="metismenu-icon pe-7s-cash"></i>Продажи МС</a></li>
+                      <li class="metismenu-item dg-sidebar-nav-divider" aria-hidden="true">
+                        <div class="nav-item nav-item-divider"></div>
+                      </li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="medmarket" href="/medmarket.html" title="Стыковка кода МС с кодом товара для Медмаркета"><i class="metismenu-icon pe-7s-id"></i>Медмаркет</a></li>
+                      <li class="metismenu-item dg-sidebar-nav-divider" aria-hidden="true">
+                        <div class="nav-item nav-item-divider"></div>
+                      </li>
+                      <li class="metismenu-item">
+                        <a
+                          href="#"
+                          class="metismenu-link dg-vanilla-submenu-toggle"
+                          aria-expanded="false"
+                          title="Парсинг сайтов конкурентов: проекты, очередь, результаты, сопоставление"
+                        >
+                          <i class="metismenu-icon pe-7s-browser"></i>Парсинг
+                          <i class="metismenu-state-icon pe-7s-angle-down" aria-hidden="true"></i>
+                        </a>
+                        <ul class="metismenu-container dg-vanilla-parse-submenu">
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="projects"
+                              href="/projects.html"
+                              title="Проекты и сайты конкурентов"
+                            >
+                              <i class="metismenu-icon pe-7s-portfolio"></i>Конкуренты
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="queue"
+                              href="/queue.html"
+                              title="Очередь задач парсинга"
+                            >
+                              <i class="metismenu-icon pe-7s-network"></i>Очередь
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="results"
+                              href="/results.html"
+                              title="Результаты парсинга"
+                            >
+                              <i class="metismenu-icon pe-7s-note2"></i>Результаты
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="matches"
+                              href="/matches.html"
+                              title="Сопоставление товаров"
+                            >
+                              <i class="metismenu-icon pe-7s-link"></i>Сопоставление
+                            </a>
+                          </li>
+                        </ul>
+                      </li>
+                      <li class="metismenu-item">
+                        <a
+                          href="#"
+                          class="metismenu-link dg-vanilla-submenu-toggle"
+                          aria-expanded="false"
+                          title="Интеграции маркетплейсов: ключи и диагностика выгрузок"
+                        >
+                          <i class="metismenu-icon pe-7s-graph3"></i>Маркетплейсы
+                          <i class="metismenu-state-icon pe-7s-angle-down" aria-hidden="true"></i>
+                        </a>
+                        <ul class="metismenu-container dg-vanilla-mp-submenu">
+                          <!-- Подпункт «Настройки» (data-nav="exports-marketplaces", /exports-marketplaces.html)
+                               скрыт из меню по запросу: ключи API маркетплейсов задаются в /settings.html;
+                               страница остаётся доступной по прямому URL и через ссылки из гайдов
+                               (например, на /exports-marketplaces-issues.html). -->
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-ozon"
+                              href="/exports-marketplaces-ozon.html"
+                              title="Таблица и выгрузка Ozon"
+                            >
+                              <i class="metismenu-icon pe-7s-graph2"></i>Ozon
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-wildberries"
+                              href="/exports-marketplaces-wildberries.html"
+                              title="Таблица и выгрузка Wildberries"
+                            >
+                              <i class="metismenu-icon pe-7s-graph2"></i>Wildberries
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-yandex"
+                              href="/exports-marketplaces-yandex.html"
+                              title="Таблица и выгрузка Яндекс Маркет"
+                            >
+                              <i class="metismenu-icon pe-7s-graph2"></i>Яндекс Маркет
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-huckster"
+                              href="/exports-huckster.html"
+                              title="Интеграция Huckster / e-teleport — матрица UID по магазинам"
+                            >
+                              <i class="metismenu-icon pe-7s-cart"></i>Huckster
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-dimensions"
+                              href="/exports-dimensions.html"
+                              title="Реестр замеров габаритов товаров МойСклад"
+                            >
+                              <i class="metismenu-icon pe-7s-scissors"></i>Габариты
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-issues"
+                              href="/exports-marketplaces-issues.html"
+                              title="Товары МойСклад с проблемами публикации на маркетплейсах"
+                            >
+                              <i class="metismenu-icon pe-7s-attention"></i>Проблемы с товарами
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-new-products"
+                              href="/exports-new-products.html"
+                              title="Очередь новых товаров: Альмамед и Маркеты"
+                            >
+                              <i class="metismenu-icon pe-7s-plus"></i>Новые товары
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-photoshoot"
+                              href="/exports-photoshoot.html"
+                              title="Съёмка товаров из очереди «Размещение на маркеты»"
+                            >
+                              <i class="metismenu-icon pe-7s-camera"></i>Отснять товары
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-competitors"
+                              href="/exports-marketplaces-competitors.html"
+                              title="Поиск наших товаров на Ozon, Wildberries и Яндекс Маркет"
+                            >
+                              <i class="metismenu-icon pe-7s-search"></i>Конкуренты
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-reglament"
+                              href="/exports-marketplaces-reglament.html"
+                              title="Регламент МП: от поиска товара до поступления на склад"
+                            >
+                              <i class="metismenu-icon pe-7s-news-paper"></i>Инструкция
+                            </a>
+                          </li>
+                        </ul>
+                      </li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="purchase" href="/purchase.html" title="Закупки товары: планирование, неснижаемые остатки, кратность"><i class="metismenu-icon pe-7s-cart"></i>Закупки товары</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="suppliers" href="/suppliers.html" title="Поставщики: сводка по закупкам и настройки"><i class="metismenu-icon pe-7s-id"></i>Поставщики</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="supplier-analysis" href="/supplier-analysis.html" title="Продажи, оборот и тренды по поставщикам"><i class="metismenu-icon pe-7s-graph2"></i>Анализ поставщиков</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="product-analysis" href="/product-analysis.html" title="Продажи по SKU: топы, мёртвые, жизненный цикл и неснижаемый"><i class="metismenu-icon pe-7s-graph1"></i>Анализ товаров</a></li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="app-sidebar-bg opacity-06"></div>
+        </div>
+      </div>
+
+      <div class="app-main__outer">
+        <div class="app-main__inner">
+          <div class="app-page-title">
+            <div class="page-title-wrapper">
+              <div class="page-title-heading">
+                <div class="page-title-icon">
+                  <i class="pe-7s-config icon-gradient bg-tempting-azure"></i>
+                </div>
+                <div>
+                  График · настройки
+                  <div class="page-title-subheading">
+                    Организация → отделы → сотрудники (персональные переопределения).
+                    <a href="/work-schedule.html">← к графику</a>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="alert alert-info py-2 mb-3" role="status">
+            CRUD через <code>/api/work-schedule</code>. Доступ: специальность «Бухгалтерия» или admin.
+          </div>
+
+          <!-- Организация -->
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex justify-content-between align-items-center gap-2">
+              <div class="d-flex align-items-center">
+                <i class="header-icon pe-7s-culture icon-gradient bg-happy-green me-2"></i>
+                <span>Организации</span>
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-ws-set-org-toggle">Свернуть</button>
+            </div>
+            <div class="card-body" id="dg-ws-set-org-body">
+              <input type="hidden" id="dg-ws-set-org-id" />
+              <div class="dg-ws-set-org-toolbar d-flex flex-wrap align-items-end gap-2 mb-3 pb-3 border-bottom">
+                <div class="flex-grow-1" style="min-width: 220px; max-width: 360px;">
+                  <label class="form-label mb-1" for="dg-ws-set-org-pick">Текущая организация</label>
+                  <select id="dg-ws-set-org-pick" class="form-select form-select-sm"></select>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-primary" id="dg-ws-set-org-add" data-dg-notify-start="Новая организация…">Добавить</button>
+              </div>
+              <div class="row g-3">
+                <div class="col-md-6 col-xl-3">
+                  <label class="form-label" for="dg-ws-set-org-name">Название</label>
+                  <input type="text" class="form-control form-control-sm" id="dg-ws-set-org-name" />
+                </div>
+                <div class="col-md-6 col-xl-2">
+                  <label class="form-label" for="dg-ws-set-org-inn">ИНН</label>
+                  <input type="text" class="form-control form-control-sm" id="dg-ws-set-org-inn" />
+                </div>
+                <div class="col-md-6 col-xl-3">
+                  <label class="form-label" for="dg-ws-set-org-tz">Часовой пояс</label>
+                  <input type="text" class="form-control form-control-sm" id="dg-ws-set-org-tz" />
+                </div>
+                <div class="col-md-6 col-xl-4">
+                  <label class="form-label" for="dg-ws-set-org-sick">Больничный неофиц., ₽/день</label>
+                  <input type="text" class="form-control form-control-sm" id="dg-ws-set-org-sick" inputmode="decimal" />
+                </div>
+                <div class="col-md-6 col-xl-3">
+                  <label class="form-label" for="dg-ws-set-sen-base">Стаж: база, ₽</label>
+                  <input type="text" class="form-control form-control-sm" id="dg-ws-set-sen-base" />
+                </div>
+                <div class="col-md-6 col-xl-3">
+                  <label class="form-label" for="dg-ws-set-sen-step">Стаж: шаг, ₽</label>
+                  <input type="text" class="form-control form-control-sm" id="dg-ws-set-sen-step" />
+                </div>
+                <div class="col-md-6 col-xl-3">
+                  <label class="form-label" for="dg-ws-set-sen-period">Переиндексация стажа, мес</label>
+                  <input type="text" class="form-control form-control-sm" id="dg-ws-set-sen-period" />
+                </div>
+                <div class="col-md-6 col-xl-3">
+                  <label class="form-label">Округление часов</label>
+                  <input type="text" class="form-control form-control-sm" value="5 мин" disabled />
+                </div>
+              </div>
+              <div class="mt-3">
+                <button type="button" class="btn btn-sm btn-primary" id="dg-ws-set-org-save" data-dg-notify-start="Сохраняем организацию…">Сохранить</button>
+              </div>
+              <div id="dg-ws-set-org-msg" class="alert mt-3 mb-0 d-none" role="status"></div>
+            </div>
+          </div>
+
+          <!-- Отделы -->
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+              <div class="d-flex align-items-center">
+                <i class="header-icon pe-7s-users icon-gradient bg-night-fade me-2"></i>
+                <span>Отделы</span>
+              </div>
+              <div class="d-flex align-items-center gap-2">
+                <span class="small text-muted">Тип графика, норма дня, пороги 1 / 0,5, лимит отпусков</span>
+                <button type="button" class="btn btn-sm btn-outline-primary" id="dg-ws-set-dept-add" data-dg-notify-start="Новый отдел…">Добавить</button>
+              </div>
+            </div>
+            <div class="card-body p-0">
+              <div class="table-responsive">
+                <table class="table table-sm mb-0 align-middle">
+                  <thead>
+                    <tr>
+                      <th>Отдел</th>
+                      <th>График</th>
+                      <th>Норма, ч</th>
+                      <th>≥ ч → 1</th>
+                      <th>≥ ч → 0,5</th>
+                      <th>Лимит отпусков</th>
+                      <th>Премия</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="dg-ws-set-dept-tbody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- Сотрудники -->
+          <div class="main-card mb-4 card">
+            <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+              <div class="d-flex align-items-center">
+                <i class="header-icon pe-7s-id icon-gradient bg-warm-flame me-2"></i>
+                <span>Сотрудники · персональные переопределения</span>
+              </div>
+              <div class="d-flex align-items-center gap-2">
+                <span class="small text-muted">Пустое поле = берётся из отдела / организации</span>
+                <button type="button" class="btn btn-sm btn-outline-primary" id="dg-ws-set-emp-add" data-dg-notify-start="Привязка…">Привязать пользователя</button>
+              </div>
+            </div>
+            <div class="card-body p-0">
+              <div class="table-responsive">
+                <table class="table table-sm mb-0 align-middle">
+                  <thead>
+                    <tr>
+                      <th>ФИО</th>
+                      <th>Организация</th>
+                      <th>Отдел</th>
+                      <th>Дата приёма</th>
+                      <th>Оклад</th>
+                      <th>График (личн.)</th>
+                      <th>Норма дня</th>
+                      <th>Больничный ₽</th>
+                      <th>Overrides</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="dg-ws-set-emp-tbody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+          <div class="pb-4" aria-hidden="true"></div>
+
+          <div id="dg-ws-set-dept-overlay" class="dg-ws-set-overlay" style="display: none" aria-hidden="true" role="dialog" aria-modal="true">
+            <div class="dg-ws-set-overlay-backdrop" data-dg-ws-set-close="dept"></div>
+            <div class="dg-ws-set-overlay-panel card shadow-lg border-0">
+              <div class="card-header d-flex justify-content-between align-items-center">
+                <div class="fw-semibold">Карточка отдела</div>
+                <button type="button" class="btn-close" data-dg-ws-set-close="dept" aria-label="Закрыть" data-dg-no-activity="1"></button>
+              </div>
+              <div class="card-body">
+                <input type="hidden" id="dg-ws-set-dept-id" />
+                <div class="mb-2">
+                  <label class="form-label" for="dg-ws-set-dept-name">Название</label>
+                  <input type="text" class="form-control" id="dg-ws-set-dept-name" />
+                </div>
+                <div class="mb-2">
+                  <label class="form-label" for="dg-ws-set-dept-sched">Тип графика</label>
+                  <select class="form-select" id="dg-ws-set-dept-sched">
+                    <option value="5/2">5/2</option>
+                    <option value="2/2">2/2</option>
+                    <option value="сменный">сменный</option>
+                    <option value="гибкий">гибкий</option>
+                  </select>
+                </div>
+                <div class="row g-2">
+                  <div class="col-4">
+                    <label class="form-label" for="dg-ws-set-dept-norm">Норма дня, ч</label>
+                    <input type="text" class="form-control" id="dg-ws-set-dept-norm" />
+                  </div>
+                  <div class="col-4">
+                    <label class="form-label" for="dg-ws-set-dept-t1">Порог = 1</label>
+                    <input type="text" class="form-control" id="dg-ws-set-dept-t1" />
+                  </div>
+                  <div class="col-4">
+                    <label class="form-label" for="dg-ws-set-dept-t05">Порог = 0,5</label>
+                    <input type="text" class="form-control" id="dg-ws-set-dept-t05" />
+                  </div>
+                </div>
+                <div class="mb-2 mt-2">
+                  <label class="form-label" for="dg-ws-set-dept-vaclim">Лимит одновременных отпусков</label>
+                  <input type="text" class="form-control" id="dg-ws-set-dept-vaclim" />
+                </div>
+                <div class="mb-0">
+                  <label class="form-label" for="dg-ws-set-dept-prem">Правило премии</label>
+                  <input type="text" class="form-control" id="dg-ws-set-dept-prem" placeholder="заглушка — формулы позже" />
+                </div>
+              </div>
+              <div class="card-footer d-flex justify-content-end gap-2 bg-white border-top-0">
+                <button type="button" class="btn btn-outline-secondary" data-dg-ws-set-close="dept" data-dg-no-activity="1">Отмена</button>
+                <button type="button" class="btn btn-primary" id="dg-ws-set-dept-save" data-dg-notify-start="Сохраняем отдел…">Сохранить</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-ws-set-emp-add-overlay" class="dg-ws-set-overlay" style="display: none" aria-hidden="true" role="dialog" aria-modal="true">
+            <div class="dg-ws-set-overlay-backdrop" data-dg-ws-set-close="emp-add"></div>
+            <div class="dg-ws-set-overlay-panel card shadow-lg border-0">
+              <div class="card-header d-flex justify-content-between align-items-center">
+                <div class="fw-semibold">Привязать пользователя Datagon</div>
+                <button type="button" class="btn-close" data-dg-ws-set-close="emp-add" aria-label="Закрыть" data-dg-no-activity="1"></button>
+              </div>
+              <div class="card-body">
+                <div class="mb-2">
+                  <label class="form-label" for="dg-ws-set-emp-user">Пользователь без карточки</label>
+                  <select class="form-select" id="dg-ws-set-emp-user"></select>
+                </div>
+                <div class="mb-2">
+                  <label class="form-label" for="dg-ws-set-emp-org">Организация</label>
+                  <select class="form-select" id="dg-ws-set-emp-org"></select>
+                </div>
+                <div class="mb-2">
+                  <label class="form-label" for="dg-ws-set-emp-dept">Отдел</label>
+                  <select class="form-select" id="dg-ws-set-emp-dept"></select>
+                </div>
+                <div class="mb-2">
+                  <label class="form-label" for="dg-ws-set-emp-hire">Дата приёма (для стажа)</label>
+                  <input type="date" class="form-control" id="dg-ws-set-emp-hire" />
+                </div>
+                <div class="mb-0">
+                  <label class="form-label" for="dg-ws-set-emp-new-salary">Оклад</label>
+                  <input type="text" class="form-control" id="dg-ws-set-emp-new-salary" value="0" />
+                </div>
+              </div>
+              <div class="card-footer d-flex justify-content-end gap-2 bg-white border-top-0">
+                <button type="button" class="btn btn-outline-secondary" data-dg-ws-set-close="emp-add" data-dg-no-activity="1">Отмена</button>
+                <button type="button" class="btn btn-primary" id="dg-ws-set-emp-create" data-dg-notify-start="Создаём…">Создать</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-ws-set-emp-overlay" class="dg-ws-set-overlay" style="display: none" aria-hidden="true" role="dialog" aria-modal="true">
+            <div class="dg-ws-set-overlay-backdrop" data-dg-ws-set-close="emp"></div>
+            <div class="dg-ws-set-overlay-panel card shadow-lg border-0 wide">
+              <div class="card-header d-flex justify-content-between align-items-center">
+                <div class="fw-semibold">Сотрудник · переопределения</div>
+                <button type="button" class="btn-close" data-dg-ws-set-close="emp" aria-label="Закрыть" data-dg-no-activity="1"></button>
+              </div>
+              <div class="card-body">
+                <input type="hidden" id="dg-ws-set-emp-id" />
+                <p class="small text-muted" id="dg-ws-set-emp-meta"></p>
+                <div class="row g-2">
+                  <div class="col-md-4">
+                    <label class="form-label" for="dg-ws-set-emp-edit-org">Организация</label>
+                    <select class="form-select" id="dg-ws-set-emp-edit-org"></select>
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label" for="dg-ws-set-emp-edit-dept">Отдел</label>
+                    <select class="form-select" id="dg-ws-set-emp-edit-dept"></select>
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label" for="dg-ws-set-emp-edit-hire">Дата приёма</label>
+                    <input type="date" class="form-control" id="dg-ws-set-emp-edit-hire" />
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label" for="dg-ws-set-emp-salary">Оклад</label>
+                    <input type="text" class="form-control" id="dg-ws-set-emp-salary" />
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label" for="dg-ws-set-emp-sched">personal_schedule_type</label>
+                    <select class="form-select" id="dg-ws-set-emp-sched">
+                      <option value="">— из отдела —</option>
+                      <option value="5/2">5/2</option>
+                      <option value="2/2">2/2</option>
+                      <option value="сменный">сменный</option>
+                      <option value="гибкий">гибкий</option>
+                    </select>
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label" for="dg-ws-set-emp-norm">personal_work_hours_per_day</label>
+                    <input type="text" class="form-control" id="dg-ws-set-emp-norm" placeholder="из отдела" />
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label" for="dg-ws-set-emp-sick">personal_sick_leave_rate</label>
+                    <input type="text" class="form-control" id="dg-ws-set-emp-sick" placeholder="из организации" />
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label" for="dg-ws-set-emp-t1">Порог = 1 (личн.)</label>
+                    <input type="text" class="form-control" id="dg-ws-set-emp-t1" placeholder="из отдела" />
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label" for="dg-ws-set-emp-t05">Порог = 0,5 (личн.)</label>
+                    <input type="text" class="form-control" id="dg-ws-set-emp-t05" placeholder="из отдела" />
+                  </div>
+                </div>
+              </div>
+              <div class="card-footer d-flex justify-content-end gap-2 bg-white border-top-0">
+                <button type="button" class="btn btn-outline-secondary" data-dg-ws-set-close="emp" data-dg-no-activity="1">Отмена</button>
+                <button type="button" class="btn btn-primary" id="dg-ws-set-emp-save" data-dg-notify-start="Сохраняем сотрудника…">Сохранить</button>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="app-footer">
+          <div class="app-footer__inner">
+            <div class="app-footer-left">
+              <div class="footer-dots">
+                <a href="#" class="dot-btn-wrapper dg-vanilla-footer-toggle" id="PopoverFooter-1" aria-expanded="false" aria-haspopup="true">
+                  <i class="dot-btn-icon lnr-bullhorn icon-gradient bg-mean-fruit"></i>
+                  <div class="badge badge-dot badge-abs badge-dot-sm bg-danger">Notifications</div>
+                </a>
+                <div class="dots-separator"></div>
+                <a href="#" class="dot-btn-wrapper dg-vanilla-footer-toggle" id="PopoverFooter-3" aria-expanded="false" aria-haspopup="true">
+                  <i class="dot-btn-icon lnr-pie-chart icon-gradient bg-love-kiss"></i>
+                  <div class="badge badge-dot badge-abs badge-dot-sm bg-warning">Notifications</div>
+                </a>
+                <div class="dropdown-menu popover-custom popover-custom-xl rm-pointers p-0 dg-vanilla-footer-popover" data-footer-popover="PopoverFooter-1" style="min-width:420px">
+                  <div class="dropdown-menu-header mb-0">
+                    <div class="dropdown-menu-header-inner bg-strong-bliss">
+                      <div class="menu-header-image opacity-1" style="background-image:url('./assets/utils/images/dropdown-header/city2.jpg')"></div>
+                      <div class="menu-header-content text-white">
+                        <h5 class="menu-header-title">Notifications</h5>
+                        <h6 class="menu-header-subtitle">You have <b class="text-warning">21</b> unread messages</h6>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="card-tabs-animated card-tabs-animated-inner">
+                    <ul class="nav nav-justified">
+                      <li class="nav-item"><a href="#" class="nav-link active">Messages</a></li>
+                      <li class="nav-item"><a href="#" class="nav-link">Events</a></li>
+                      <li class="nav-item"><a href="#" class="nav-link">Errors</a></li>
+                    </ul>
+                    <div class="p-3">
+                      <div class="text-muted small">Chat, timeline and system tabs in React version.</div>
+                    </div>
+                  </div>
+                  <div class="nav-item-btn text-center pt-3 pb-3">
+                    <button type="button" class="btn btn-shadow btn-wide btn-pill btn-dark">
+                      <span class="badge badge-dot badge-dot-lg bg-warning badge-pulse me-2"></span>
+                      View All Messages
+                    </button>
+                  </div>
+                </div>
+                <div class="dropdown-menu popover-custom popover-custom-lg rm-pointers p-0 dg-vanilla-footer-popover" data-footer-popover="PopoverFooter-3" style="min-width:380px">
+                  <div class="dropdown-menu-header">
+                    <div class="dropdown-menu-header-inner bg-malibu-beach">
+                      <div class="menu-header-image opacity-2" style="background-image:url('./assets/utils/images/dropdown-header/city2.jpg')"></div>
+                      <div class="menu-header-content text-white">
+                        <div class="avatar-icon-wrapper btn-hover-shine mb-3 avatar-icon-xl">
+                          <div class="avatar-icon rounded">
+                            <img src="./assets/utils/images/avatars/2.jpg" alt="Avatar 6" />
+                          </div>
+                        </div>
+                        <h5 class="menu-header-title">Fancy Statistics</h5>
+                        <h6 class="menu-header-subtitle">Just an example of a slider with some chart widgets inside.</h6>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="p-2">
+                    <div class="card no-shadow widget-chart widget-chart2 text-start p-2 m-1">
+                      <div class="widget-title opacity-6 text-muted text-uppercase">New accounts since 2018</div>
+                      <div class="widget-numbers text-success">78<small class="opacity-5 ps-1">%</small></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="app-footer-right">
+              <a class="dg-footer-legal-link" href="/legal/privacy.html" target="_blank" rel="noopener">Политика обработки персональных данных</a>
+              <a class="dg-footer-legal-link" href="/legal/cookies.html" target="_blank" rel="noopener">Политика использования cookie-файлов</a>
+              <a class="dg-footer-legal-link" href="/legal/recommendation.html" target="_blank" rel="noopener">Правила применения рекомендательных технологий</a>
+              <a class="dg-footer-legal-link" href="/legal/consent.html" target="_blank" rel="noopener">Согласие на обработку ПДн</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/datagon-legal.js"></script>
+  <script src="/datagon-vanilla.js"></script>
+  <script>
+(function () {
+  "use strict";
+
+  var API = "/api/work-schedule";
+  var ORG_PICK_KEY = "datagon_ws_settings_org_id_v1";
+  var state = {
+    orgs: [],
+    org: null,
+    departments: [],
+    departmentsAll: [],
+    employees: [],
+    usersAvailable: [],
+  };
+
+  function toast(type, message) {
+    if (window.DatagonNotify && window.DatagonNotify.toast) {
+      window.DatagonNotify.toast({ type: type, message: message });
+    }
+  }
+
+  function money(n) {
+    if (window.DatagonFmt && window.DatagonFmt.formatMoney) return window.DatagonFmt.formatMoney(n);
+    return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, " ") + " ₽";
+  }
+
+  function api(path, opts) {
+    return fetch(API + path, Object.assign({ credentials: "same-origin" }, opts || {})).then(function (r) {
+      return r.json().then(function (j) {
+        if (!r.ok || (j && j.success === false)) {
+          throw new Error((j && j.error) || "HTTP " + r.status);
+        }
+        return j;
+      });
+    });
+  }
+
+  function fmtDate(v) {
+    if (!v) return "—";
+    var s = String(v);
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+    return s;
+  }
+
+  function toDateInput(v) {
+    if (!v) return "";
+    var s = String(v);
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+    try {
+      var d = new Date(v);
+      if (!Number.isFinite(d.getTime())) return "";
+      var m = d.getMonth() + 1;
+      var day = d.getDate();
+      return d.getFullYear() + "-" + (m < 10 ? "0" + m : m) + "-" + (day < 10 ? "0" + day : day);
+    } catch (e) {
+      return "";
+    }
+  }
+
+  function deptName(id) {
+    var d = state.departmentsAll.find(function (x) {
+      return Number(x.id) === Number(id);
+    });
+    return d ? d.name : "—";
+  }
+
+  function orgName(id) {
+    var o = state.orgs.find(function (x) {
+      return Number(x.id) === Number(id);
+    });
+    return o ? o.name : "—";
+  }
+
+  function hasOverrides(e) {
+    return !!(
+      e.personal_schedule_type ||
+      e.personal_work_hours_per_day != null ||
+      e.personal_sick_leave_rate != null ||
+      e.personal_rate_full_hours != null ||
+      e.personal_rate_half_hours != null
+    );
+  }
+
+  function deptsForOrg(orgId) {
+    var oid = Number(orgId);
+    return (state.departmentsAll || []).filter(function (d) {
+      return Number(d.organization_id) === oid;
+    });
+  }
+
+  function fillOrgPick() {
+    var sel = document.getElementById("dg-ws-set-org-pick");
+    if (!sel) return;
+    sel.innerHTML = state.orgs
+      .map(function (o) {
+        return '<option value="' + o.id + '">' + (o.name || "—" + o.id) + "</option>";
+      })
+      .join("");
+    if (state.org) sel.value = String(state.org.id);
+  }
+
+  function fillOrg() {
+    var o = state.org;
+    if (!o) return;
+    var idEl = document.getElementById("dg-ws-set-org-id");
+    if (idEl) idEl.value = String(o.id);
+    var map = {
+      "dg-ws-set-org-name": o.name || "",
+      "dg-ws-set-org-inn": o.inn || "",
+      "dg-ws-set-org-tz": o.timezone || "Europe/Moscow",
+      "dg-ws-set-org-sick": String(o.sick_unofficial_rate != null ? o.sick_unofficial_rate : ""),
+      "dg-ws-set-sen-base": String(o.seniority_base != null ? o.seniority_base : ""),
+      "dg-ws-set-sen-step": String(o.seniority_step != null ? o.seniority_step : ""),
+      "dg-ws-set-sen-period": String(o.seniority_period_months != null ? o.seniority_period_months : ""),
+    };
+    Object.keys(map).forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) el.value = map[id];
+    });
+  }
+
+  function renderDepts() {
+    var tb = document.getElementById("dg-ws-set-dept-tbody");
+    if (!tb) return;
+    var list = state.departments || [];
+    if (!list.length) {
+      tb.innerHTML = '<tr><td colspan="8" class="text-muted p-3">Нет отделов у этой организации — нажмите «Добавить»</td></tr>';
+      return;
+    }
+    tb.innerHTML = list
+      .map(function (d) {
+        var prem = "заглушка";
+        try {
+          if (d.premium_rule_json) {
+            var p = typeof d.premium_rule_json === "string" ? JSON.parse(d.premium_rule_json) : d.premium_rule_json;
+            if (p && p.kind) prem = p.kind;
+          }
+        } catch (e) {}
+        return (
+          '<tr data-dept-id="' +
+          d.id +
+          '"><td><strong>' +
+          (d.name || "") +
+          "</strong></td><td>" +
+          (d.schedule_type || "") +
+          "</td><td>" +
+          d.norm_hours +
+          "</td><td>" +
+          d.rate_full_hours +
+          "</td><td>" +
+          d.rate_half_hours +
+          "</td><td>" +
+          d.vacation_overlap_limit +
+          '</td><td><span class="text-muted">' +
+          prem +
+          '</span></td><td class="text-end">' +
+          '<button type="button" class="btn btn-sm btn-outline-primary" data-dg-ws-set-edit-dept="' +
+          d.id +
+          '">Изменить</button></td></tr>'
+        );
+      })
+      .join("");
+  }
+
+  function renderEmps() {
+    var tb = document.getElementById("dg-ws-set-emp-tbody");
+    if (!tb) return;
+    var oid = state.org ? Number(state.org.id) : 0;
+    var list = (state.employees || []).filter(function (e) {
+      return !oid || Number(e.organization_id) === oid;
+    });
+    if (!list.length) {
+      tb.innerHTML =
+        '<tr><td colspan="10" class="text-muted p-3">Нет сотрудников в этой организации — «Привязать пользователя»</td></tr>';
+      return;
+    }
+    tb.innerHTML = list
+      .map(function (e) {
+        var ov = hasOverrides(e)
+          ? '<span class="dg-ws-override-badge">есть</span>'
+          : '<span class="text-muted">—</span>';
+        return (
+          "<tr><td>" +
+          (e.full_name || e.username || "") +
+          "</td><td>" +
+          (e.organization_name || orgName(e.organization_id)) +
+          "</td><td>" +
+          (e.department_name || deptName(e.department_id)) +
+          "</td><td>" +
+          fmtDate(e.hire_date) +
+          "</td><td>" +
+          money(e.salary) +
+          "</td><td>" +
+          (e.personal_schedule_type || "—") +
+          "</td><td>" +
+          (e.personal_work_hours_per_day != null ? e.personal_work_hours_per_day : "—") +
+          "</td><td>" +
+          (e.personal_sick_leave_rate != null ? e.personal_sick_leave_rate : "—") +
+          "</td><td>" +
+          ov +
+          '</td><td class="text-end">' +
+          '<button type="button" class="btn btn-sm btn-outline-primary" data-dg-ws-set-edit-emp="' +
+          e.id +
+          '">Изменить</button></td></tr>'
+        );
+      })
+      .join("");
+  }
+
+  function showOverlay(kind, show) {
+    var map = {
+      dept: "dg-ws-set-dept-overlay",
+      emp: "dg-ws-set-emp-overlay",
+      "emp-add": "dg-ws-set-emp-add-overlay",
+    };
+    var el = document.getElementById(map[kind] || "");
+    if (!el) return;
+    el.style.display = show ? "flex" : "none";
+    el.setAttribute("aria-hidden", show ? "false" : "true");
+  }
+
+  function selectOrg(id, opts) {
+    var oid = Number(id);
+    var o = state.orgs.find(function (x) {
+      return Number(x.id) === oid;
+    });
+    if (!o) return;
+    state.org = o;
+    try {
+      localStorage.setItem(ORG_PICK_KEY, String(o.id));
+    } catch (e) {}
+    state.departments = deptsForOrg(o.id);
+    fillOrgPick();
+    fillOrg();
+    renderDepts();
+    renderEmps();
+    if (!opts || opts.reload !== false) {
+      /* already have all data */
+    }
+  }
+
+  function openDept(id) {
+    if (!state.org) {
+      toast("warning", "Сначала выберите или создайте организацию");
+      return;
+    }
+    var d = id
+      ? state.departmentsAll.find(function (x) {
+          return Number(x.id) === Number(id);
+        })
+      : null;
+    document.getElementById("dg-ws-set-dept-id").value = d ? String(d.id) : "";
+    document.getElementById("dg-ws-set-dept-name").value = d ? d.name || "" : "";
+    document.getElementById("dg-ws-set-dept-sched").value = d ? d.schedule_type || "5/2" : "5/2";
+    document.getElementById("dg-ws-set-dept-norm").value = d ? String(d.norm_hours) : "8";
+    document.getElementById("dg-ws-set-dept-t1").value = d ? String(d.rate_full_hours) : "7";
+    document.getElementById("dg-ws-set-dept-t05").value = d ? String(d.rate_half_hours) : "4";
+    document.getElementById("dg-ws-set-dept-vaclim").value = d ? String(d.vacation_overlap_limit) : "1";
+    var prem = "stub";
+    if (d) {
+      try {
+        var p = typeof d.premium_rule_json === "string" ? JSON.parse(d.premium_rule_json) : d.premium_rule_json;
+        if (p && p.kind) prem = p.kind;
+      } catch (e) {}
+    }
+    document.getElementById("dg-ws-set-dept-prem").value = prem;
+    showOverlay("dept", true);
+  }
+
+  function saveDept() {
+    var id = Number(document.getElementById("dg-ws-set-dept-id").value);
+    var body = {
+      organization_id: state.org && state.org.id,
+      name: document.getElementById("dg-ws-set-dept-name").value,
+      schedule_type: document.getElementById("dg-ws-set-dept-sched").value,
+      norm_hours: Number(document.getElementById("dg-ws-set-dept-norm").value) || 8,
+      rate_full_hours: Number(document.getElementById("dg-ws-set-dept-t1").value) || 7,
+      rate_half_hours: Number(document.getElementById("dg-ws-set-dept-t05").value) || 4,
+      vacation_overlap_limit: Number(document.getElementById("dg-ws-set-dept-vaclim").value) || 1,
+      premium_rule_json: { kind: document.getElementById("dg-ws-set-dept-prem").value || "stub" },
+    };
+    var btn = document.getElementById("dg-ws-set-dept-save");
+    var run = function () {
+      var req = id
+        ? api("/departments/" + id, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          })
+        : api("/departments", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          });
+      return req.then(function () {
+        showOverlay("dept", false);
+        toast("success", id ? "Отдел сохранён" : "Отдел создан");
+        return loadAll();
+      });
+    };
+    if (window.DatagonNotify && window.DatagonNotify.busyRun) window.DatagonNotify.busyRun(btn, run);
+    else
+      run().catch(function (e) {
+        toast("danger", e.message);
+      });
+  }
+
+  function fillDeptSelect(sel, orgId, selectedId) {
+    if (!sel) return;
+    var list = deptsForOrg(orgId);
+    sel.innerHTML = list
+      .map(function (d) {
+        return '<option value="' + d.id + '">' + d.name + "</option>";
+      })
+      .join("");
+    if (selectedId) sel.value = String(selectedId);
+  }
+
+  function fillOrgSelect(sel, selectedId) {
+    if (!sel) return;
+    sel.innerHTML = state.orgs
+      .map(function (o) {
+        return '<option value="' + o.id + '">' + (o.name || "") + "</option>";
+      })
+      .join("");
+    if (selectedId) sel.value = String(selectedId);
+    else if (state.org) sel.value = String(state.org.id);
+  }
+
+  function openEmpAdd() {
+    if (!state.orgs.length) {
+      toast("warning", "Сначала создайте организацию");
+      return;
+    }
+    var userSel = document.getElementById("dg-ws-set-emp-user");
+    var orgSel = document.getElementById("dg-ws-set-emp-org");
+    var deptSel = document.getElementById("dg-ws-set-emp-dept");
+    var hireEl = document.getElementById("dg-ws-set-emp-hire");
+    api("/users-available")
+      .then(function (j) {
+        state.usersAvailable = j.rows || [];
+        if (!state.usersAvailable.length) {
+          toast("warning", "Нет пользователей Datagon без карточки сотрудника");
+        }
+        userSel.innerHTML = state.usersAvailable
+          .map(function (u) {
+            return (
+              '<option value="' +
+              u.id +
+              '">' +
+              (u.full_name || u.username) +
+              " (" +
+              u.username +
+              ")</option>"
+            );
+          })
+          .join("");
+        fillOrgSelect(orgSel, state.org && state.org.id);
+        fillDeptSelect(deptSel, orgSel.value, null);
+        if (hireEl) hireEl.value = "";
+        showOverlay("emp-add", true);
+      })
+      .catch(function (e) {
+        toast("danger", e.message);
+      });
+  }
+
+  function createEmp() {
+    var orgId = Number(document.getElementById("dg-ws-set-emp-org").value);
+    var hire = (document.getElementById("dg-ws-set-emp-hire") || {}).value || null;
+    if (!orgId) {
+      toast("warning", "Выберите организацию");
+      return;
+    }
+    if (!hire) {
+      toast("warning", "Укажите дату приёма — без неё стаж не считается");
+      return;
+    }
+    var body = {
+      user_id: Number(document.getElementById("dg-ws-set-emp-user").value),
+      organization_id: orgId,
+      department_id: Number(document.getElementById("dg-ws-set-emp-dept").value),
+      hire_date: hire,
+      salary: Number(String(document.getElementById("dg-ws-set-emp-new-salary").value).replace(/\s/g, "")) || 0,
+    };
+    var btn = document.getElementById("dg-ws-set-emp-create");
+    var run = function () {
+      return api("/employees", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }).then(function () {
+        showOverlay("emp-add", false);
+        toast("success", "Сотрудник привязан");
+        selectOrg(orgId);
+        return loadAll();
+      });
+    };
+    if (window.DatagonNotify && window.DatagonNotify.busyRun) window.DatagonNotify.busyRun(btn, run);
+    else
+      run().catch(function (e) {
+        toast("danger", e.message);
+      });
+  }
+
+  function openEmp(id) {
+    var e = state.employees.find(function (x) {
+      return Number(x.id) === Number(id);
+    });
+    if (!e) return;
+    document.getElementById("dg-ws-set-emp-id").value = String(e.id);
+    document.getElementById("dg-ws-set-emp-meta").textContent =
+      (e.full_name || e.username) +
+      " · " +
+      (e.organization_name || orgName(e.organization_id)) +
+      " · приоритет: сотрудник → отдел → организация";
+    fillOrgSelect(document.getElementById("dg-ws-set-emp-edit-org"), e.organization_id);
+    fillDeptSelect(document.getElementById("dg-ws-set-emp-edit-dept"), e.organization_id, e.department_id);
+    document.getElementById("dg-ws-set-emp-edit-hire").value = toDateInput(e.hire_date);
+    document.getElementById("dg-ws-set-emp-salary").value = String(e.salary || 0);
+    document.getElementById("dg-ws-set-emp-sched").value = e.personal_schedule_type || "";
+    document.getElementById("dg-ws-set-emp-norm").value =
+      e.personal_work_hours_per_day != null ? String(e.personal_work_hours_per_day) : "";
+    document.getElementById("dg-ws-set-emp-sick").value =
+      e.personal_sick_leave_rate != null ? String(e.personal_sick_leave_rate) : "";
+    document.getElementById("dg-ws-set-emp-t1").value =
+      e.personal_rate_full_hours != null ? String(e.personal_rate_full_hours) : "";
+    document.getElementById("dg-ws-set-emp-t05").value =
+      e.personal_rate_half_hours != null ? String(e.personal_rate_half_hours) : "";
+    showOverlay("emp", true);
+  }
+
+  function saveEmp() {
+    var id = Number(document.getElementById("dg-ws-set-emp-id").value);
+    var e = state.employees.find(function (x) {
+      return Number(x.id) === Number(id);
+    });
+    if (!e) return;
+    var hire = document.getElementById("dg-ws-set-emp-edit-hire").value || null;
+    if (!hire) {
+      toast("warning", "Укажите дату приёма — без неё стаж не считается");
+      return;
+    }
+    var body = {
+      organization_id: Number(document.getElementById("dg-ws-set-emp-edit-org").value) || e.organization_id,
+      department_id: Number(document.getElementById("dg-ws-set-emp-edit-dept").value) || e.department_id,
+      position: e.position,
+      hire_date: hire,
+      fire_date: e.fire_date,
+      salary: Number(String(document.getElementById("dg-ws-set-emp-salary").value).replace(/\s/g, "")) || 0,
+      grade: e.grade,
+      official_employment: e.official_employment,
+      personal_schedule_type: document.getElementById("dg-ws-set-emp-sched").value || null,
+      personal_work_hours_per_day: document.getElementById("dg-ws-set-emp-norm").value.trim(),
+      personal_sick_leave_rate: document.getElementById("dg-ws-set-emp-sick").value.trim(),
+      personal_rate_full_hours: document.getElementById("dg-ws-set-emp-t1").value.trim(),
+      personal_rate_half_hours: document.getElementById("dg-ws-set-emp-t05").value.trim(),
+    };
+    var btn = document.getElementById("dg-ws-set-emp-save");
+    var run = function () {
+      return api("/employees/" + id, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }).then(function () {
+        showOverlay("emp", false);
+        toast("success", "Сотрудник сохранён");
+        return loadAll();
+      });
+    };
+    if (window.DatagonNotify && window.DatagonNotify.busyRun) window.DatagonNotify.busyRun(btn, run);
+    else
+      run().catch(function (e2) {
+        toast("danger", e2.message);
+      });
+  }
+
+  function setOrgMsg(cls, text) {
+    var msg = document.getElementById("dg-ws-set-org-msg");
+    if (!msg) return;
+    msg.className = "alert " + cls + " mt-3 mb-0";
+    msg.classList.remove("d-none");
+    msg.textContent = text;
+  }
+
+  function saveOrg() {
+    if (!state.org) return;
+    var btn = document.getElementById("dg-ws-set-org-save");
+    var payload = {
+      name: document.getElementById("dg-ws-set-org-name").value,
+      inn: document.getElementById("dg-ws-set-org-inn").value,
+      timezone: document.getElementById("dg-ws-set-org-tz").value,
+      sick_unofficial_rate: Number(document.getElementById("dg-ws-set-org-sick").value) || 0,
+      seniority_base: Number(document.getElementById("dg-ws-set-sen-base").value) || 0,
+      seniority_step: Number(document.getElementById("dg-ws-set-sen-step").value) || 0,
+      seniority_period_months: Number(document.getElementById("dg-ws-set-sen-period").value) || 6,
+    };
+    setOrgMsg("alert-warning", "Сохраняем…");
+    var run = function () {
+      return api("/organizations/" + state.org.id, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+        .then(function () {
+          return api("/organizations");
+        })
+        .then(function (j) {
+          state.orgs = j.rows || [];
+          var row = state.orgs.find(function (r) {
+            return Number(r.id) === Number(state.org.id);
+          });
+          if (!row) throw new Error("не найдена организация после сохранения");
+          state.org = row;
+          fillOrgPick();
+          fillOrg();
+          var ok =
+            String(row.name) === String(payload.name) &&
+            Number(row.sick_unofficial_rate) === Number(payload.sick_unofficial_rate);
+          if (ok) {
+            setOrgMsg(
+              "alert-success",
+              "Сохранено: " + row.name + ", больничный " + row.sick_unofficial_rate + " ₽/день, TZ " + row.timezone
+            );
+            toast("success", "Организация сохранена");
+          } else {
+            setOrgMsg(
+              "alert-warning",
+              "Отправлено «" + payload.name + "», в БД «" + row.name + "» — проверьте whitelist"
+            );
+          }
+        })
+        .catch(function (e) {
+          setOrgMsg("alert-danger", e.message || "Ошибка сохранения");
+          toast("danger", e.message);
+        });
+    };
+    if (window.DatagonNotify && window.DatagonNotify.busyRun) window.DatagonNotify.busyRun(btn, run);
+    else run();
+  }
+
+  function addOrg() {
+    var name = window.prompt("Название организации", "ООО «»");
+    if (name == null) return;
+    name = String(name).trim();
+    if (!name) {
+      toast("warning", "Пустое название");
+      return;
+    }
+    var btn = document.getElementById("dg-ws-set-org-add");
+    var run = function () {
+      return api("/organizations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: name,
+          timezone: "Europe/Moscow",
+          sick_unofficial_rate: 2500,
+          seniority_base: 1000,
+          seniority_step: 500,
+          seniority_period_months: 6,
+        }),
+      }).then(function (j) {
+        toast("success", "Организация создана");
+        return loadAll().then(function () {
+          if (j.id) selectOrg(j.id);
+        });
+      });
+    };
+    if (window.DatagonNotify && window.DatagonNotify.busyRun) window.DatagonNotify.busyRun(btn, run);
+    else
+      run().catch(function (e) {
+        toast("danger", e.message);
+      });
+  }
+
+  function loadAll() {
+    return Promise.all([api("/organizations"), api("/departments"), api("/employees")])
+      .then(function (arr) {
+        state.orgs = arr[0].rows || [];
+        state.departmentsAll = arr[1].rows || [];
+        state.employees = arr[2].rows || [];
+        var saved = null;
+        try {
+          saved = Number(localStorage.getItem(ORG_PICK_KEY));
+        } catch (e) {}
+        var pick =
+          state.orgs.find(function (o) {
+            return Number(o.id) === saved;
+          }) ||
+          state.orgs[0] ||
+          null;
+        state.org = pick;
+        state.departments = pick ? deptsForOrg(pick.id) : [];
+        fillOrgPick();
+        fillOrg();
+        renderDepts();
+        renderEmps();
+        if (!state.orgs.length) {
+          toast("info", "Организаций нет — нажмите «Добавить»");
+        }
+      })
+      .catch(function (e) {
+        toast("danger", e.message || "Нет доступа к настройкам");
+      });
+  }
+
+  function bind() {
+    var orgSave = document.getElementById("dg-ws-set-org-save");
+    if (orgSave) orgSave.addEventListener("click", saveOrg);
+    var orgAdd = document.getElementById("dg-ws-set-org-add");
+    if (orgAdd) orgAdd.addEventListener("click", addOrg);
+    var orgPick = document.getElementById("dg-ws-set-org-pick");
+    if (orgPick) {
+      orgPick.addEventListener("change", function () {
+        selectOrg(orgPick.value);
+      });
+    }
+    var deptSave = document.getElementById("dg-ws-set-dept-save");
+    if (deptSave) deptSave.addEventListener("click", saveDept);
+    var empSave = document.getElementById("dg-ws-set-emp-save");
+    if (empSave) empSave.addEventListener("click", saveEmp);
+    var deptAdd = document.getElementById("dg-ws-set-dept-add");
+    if (deptAdd)
+      deptAdd.addEventListener("click", function () {
+        openDept(null);
+      });
+    var empAdd = document.getElementById("dg-ws-set-emp-add");
+    if (empAdd) empAdd.addEventListener("click", openEmpAdd);
+    var empCreate = document.getElementById("dg-ws-set-emp-create");
+    if (empCreate) empCreate.addEventListener("click", createEmp);
+
+    var empOrg = document.getElementById("dg-ws-set-emp-org");
+    if (empOrg) {
+      empOrg.addEventListener("change", function () {
+        fillDeptSelect(document.getElementById("dg-ws-set-emp-dept"), empOrg.value, null);
+      });
+    }
+    var empEditOrg = document.getElementById("dg-ws-set-emp-edit-org");
+    if (empEditOrg) {
+      empEditOrg.addEventListener("change", function () {
+        fillDeptSelect(document.getElementById("dg-ws-set-emp-edit-dept"), empEditOrg.value, null);
+      });
+    }
+
+    var deptTb = document.getElementById("dg-ws-set-dept-tbody");
+    if (deptTb) {
+      deptTb.addEventListener("click", function (ev) {
+        var btn = ev.target.closest("[data-dg-ws-set-edit-dept]");
+        if (!btn) return;
+        openDept(Number(btn.getAttribute("data-dg-ws-set-edit-dept")));
+      });
+    }
+    var empTb = document.getElementById("dg-ws-set-emp-tbody");
+    if (empTb) {
+      empTb.addEventListener("click", function (ev) {
+        var btn = ev.target.closest("[data-dg-ws-set-edit-emp]");
+        if (!btn) return;
+        openEmp(Number(btn.getAttribute("data-dg-ws-set-edit-emp")));
+      });
+    }
+
+    var ft = document.getElementById("dg-ws-set-org-toggle");
+    var fb = document.getElementById("dg-ws-set-org-body");
+    if (ft && fb) {
+      var collapsed = false;
+      ft.addEventListener("click", function () {
+        collapsed = !collapsed;
+        fb.classList.toggle("d-none", collapsed);
+        ft.textContent = collapsed ? "Развернуть" : "Свернуть";
+      });
+    }
+
+    document.querySelectorAll("[data-dg-ws-set-close]").forEach(function (el) {
+      el.addEventListener("click", function () {
+        showOverlay(el.getAttribute("data-dg-ws-set-close"), false);
+      });
+    });
+    document.addEventListener("keydown", function (ev) {
+      if (ev.key !== "Escape") return;
+      showOverlay("dept", false);
+      showOverlay("emp", false);
+      showOverlay("emp-add", false);
+    });
+  }
+
+  function init() {
+    bind();
+    loadAll();
+  }
+
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
+  else init();
+})();
+</script>
+
+</body>
+</html>

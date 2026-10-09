@@ -2227,6 +2227,223 @@
    * Форматирование чисел для UI (ru-RU, разделитель тысяч — пробел: 1 000).
    * API: DatagonFmt.formatNumber / formatInteger / formatMoney / parseNumberInput
    */
+  /**
+   * Учёт смены: кнопка #dg-ws-clock-btn → /api/work-schedule/clock/*
+   * API: window.DatagonWorkClock.{ start, stop, isOpen, getState, subscribe, refreshStatus }
+   */
+  (function installDatagonWorkClock() {
+    var state = { open: false, startedAt: null, employeeId: null };
+    var timerId = null;
+    var listeners = [];
+    var busy = false;
+    var API = "/api/work-schedule";
+
+    function readState() {
+      return { open: !!state.open, startedAt: state.startedAt, employeeId: state.employeeId };
+    }
+
+    function emit() {
+      var st = readState();
+      listeners.forEach(function (fn) {
+        try {
+          fn(st);
+        } catch (err) {}
+      });
+      paint();
+    }
+
+    function formatElapsed(ms) {
+      var sec = Math.max(0, Math.floor(ms / 1000));
+      var h = Math.floor(sec / 3600);
+      var m = Math.floor((sec % 3600) / 60);
+      var s = sec % 60;
+      function pad(n) {
+        return n < 10 ? "0" + n : String(n);
+      }
+      return pad(h) + ":" + pad(m) + ":" + pad(s);
+    }
+
+    function paint() {
+      var btn = document.getElementById("dg-ws-clock-btn");
+      if (!btn) return;
+      var label = btn.querySelector(".dg-ws-clock-label");
+      var timer = btn.querySelector(".dg-ws-clock-timer");
+      var icon = btn.querySelector("i");
+      var st = readState();
+      if (st.open && st.startedAt) {
+        btn.classList.remove("btn-success");
+        btn.classList.add("btn-danger");
+        btn.setAttribute("data-dg-notify-start", "Завершаем смену…");
+        if (label) label.textContent = "Закончить";
+        if (icon) icon.className = "pe-7s-less me-1";
+        if (timer) {
+          timer.classList.remove("d-none");
+          timer.textContent = formatElapsed(Date.now() - st.startedAt);
+        }
+        if (!timerId) {
+          timerId = setInterval(function () {
+            var t = document.querySelector("#dg-ws-clock-btn .dg-ws-clock-timer");
+            var cur = readState();
+            if (!cur.open || !cur.startedAt) return;
+            if (t) t.textContent = formatElapsed(Date.now() - cur.startedAt);
+            document.querySelectorAll(".dg-ws-page-clock-timer").forEach(function (el) {
+              el.textContent = formatElapsed(Date.now() - cur.startedAt);
+            });
+          }, 1000);
+        }
+      } else {
+        btn.classList.remove("btn-danger");
+        btn.classList.add("btn-success");
+        btn.setAttribute("data-dg-notify-start", "Отмечаем начало смены…");
+        if (label) label.textContent = "Начать работать";
+        if (icon) icon.className = "pe-7s-play me-1";
+        if (timer) {
+          timer.classList.add("d-none");
+          timer.textContent = "";
+        }
+        if (timerId) {
+          clearInterval(timerId);
+          timerId = null;
+        }
+      }
+      document.querySelectorAll("[data-dg-ws-clock-mirror]").forEach(function (el) {
+        el.dispatchEvent(new CustomEvent("dg-ws-clock-sync", { detail: st }));
+      });
+    }
+
+    function apiFetch(path, opts) {
+      return fetch(API + path, Object.assign({ credentials: "same-origin" }, opts || {})).then(function (r) {
+        return r.json().then(function (j) {
+          if (!r.ok || (j && j.success === false)) {
+            var err = new Error((j && j.error) || "HTTP " + r.status);
+            err.status = r.status;
+            err.body = j;
+            throw err;
+          }
+          return j;
+        });
+      });
+    }
+
+    function applyStatus(j) {
+      if (j && j.open && j.check_in) {
+        var ts = new Date(String(j.check_in).replace(" ", "T")).getTime();
+        state = {
+          open: true,
+          startedAt: Number.isFinite(ts) ? ts : Date.now(),
+          employeeId: j.employee_id || null,
+        };
+      } else {
+        state = { open: false, startedAt: null, employeeId: (j && j.employee_id) || null };
+      }
+      emit();
+    }
+
+    function refreshStatus() {
+      return apiFetch("/clock/status")
+        .then(applyStatus)
+        .catch(function () {
+          /* нет карточки / нет доступа — кнопка остаётся в idle */
+        });
+    }
+
+    function start() {
+      if (busy) return Promise.resolve(readState());
+      busy = true;
+      return apiFetch("/clock/start", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" })
+        .then(function (j) {
+          var ts = j.check_in ? new Date(String(j.check_in).replace(" ", "T")).getTime() : Date.now();
+          state = { open: true, startedAt: Number.isFinite(ts) ? ts : Date.now(), employeeId: state.employeeId };
+          emit();
+          if (window.DatagonNotify && window.DatagonNotify.toast) {
+            window.DatagonNotify.toast({ type: "success", message: "Смена начата" });
+          }
+          return readState();
+        })
+        .catch(function (e) {
+          if (window.DatagonNotify && window.DatagonNotify.toast) {
+            window.DatagonNotify.toast({ type: "danger", message: e.message || "Не удалось начать смену" });
+          }
+          throw e;
+        })
+        .finally(function () {
+          busy = false;
+        });
+    }
+
+    function stop() {
+      if (busy) return Promise.resolve(readState());
+      busy = true;
+      var prev = readState();
+      return apiFetch("/clock/stop", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" })
+        .then(function (j) {
+          state = { open: false, startedAt: null, employeeId: state.employeeId };
+          emit();
+          var msg = "Смена завершена";
+          if (j.hours_worked != null) msg += " · " + j.hours_worked + " ч · ставка " + j.rate;
+          else if (prev.startedAt) msg += " · " + formatElapsed(Date.now() - prev.startedAt);
+          if (window.DatagonNotify && window.DatagonNotify.toast) {
+            window.DatagonNotify.toast({ type: "success", message: msg });
+          }
+          return readState();
+        })
+        .catch(function (e) {
+          if (window.DatagonNotify && window.DatagonNotify.toast) {
+            window.DatagonNotify.toast({ type: "danger", message: e.message || "Не удалось завершить смену" });
+          }
+          throw e;
+        })
+        .finally(function () {
+          busy = false;
+        });
+    }
+
+    function toggle() {
+      return readState().open ? stop() : start();
+    }
+
+    window.DatagonWorkClock = {
+      start: start,
+      stop: stop,
+      toggle: toggle,
+      isOpen: function () {
+        return !!readState().open;
+      },
+      getState: readState,
+      subscribe: function (fn) {
+        if (typeof fn === "function") listeners.push(fn);
+        return function () {
+          listeners = listeners.filter(function (x) {
+            return x !== fn;
+          });
+        };
+      },
+      refresh: paint,
+      refreshStatus: refreshStatus,
+    };
+
+    document.addEventListener(
+      "click",
+      function (ev) {
+        var btn = ev.target && ev.target.closest && ev.target.closest("#dg-ws-clock-btn, [data-dg-ws-clock-toggle]");
+        if (!btn) return;
+        ev.preventDefault();
+        toggle();
+      },
+      false
+    );
+
+    function boot() {
+      paint();
+      refreshStatus();
+    }
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", boot);
+    } else {
+      boot();
+    }
+  })();
+
   (function installDatagonFmt() {
     if (window.DatagonFmt && window.DatagonFmt.formatNumber) return;
     function normalizeSpaces(s) {

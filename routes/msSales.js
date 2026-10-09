@@ -1346,26 +1346,26 @@ function createMsSalesRouter(db, appSettings = {}) {
             const params = [days];
             if (search) {
                 /**
-                 * Умный поиск по товарам в позициях отгрузки: код (резолвленный
-                 * `ms_export_code` или срез `code_at_moment` на момент продажи),
-                 * наименование (срез `name_at_moment` или актуальное `ms_export.name`).
-                 *
-                 * EXISTS вместо JOIN — чтобы COUNT(*) и список оставались по
-                 * документам без дублирования и не ломали пагинацию.
-                 * Производительность: индексы `idx_demand` и `idx_ms_export_code`
-                 * на `ms_demand_position` уже есть; LIKE по name_at_moment —
-                 * full-scan позиций конкретного документа (≤ нескольких десятков
-                 * строк), поэтому в рамках текущих объёмов приемлемо.
+                 * Умный поиск: номер / контрагент (дешёво по ms_demand) + товары в
+                 * позициях. Без LEFT JOIN ms_export — иначе OR+EXISTS на окне
+                 * 30+ дней зависает (UI «Применить» остаётся disabled, список старый).
+                 * Если строка похожа на номер документа — только шапка, без EXISTS.
                  */
-                wheres.push(
-                    'EXISTS (SELECT 1 FROM ms_demand_position p ' +
-                    'LEFT JOIN ms_export e ON e.code = p.ms_export_code ' +
-                    'WHERE p.demand_uuid = d.uuid AND (' +
-                    'p.ms_export_code LIKE ? OR p.code_at_moment LIKE ? ' +
-                    'OR p.name_at_moment LIKE ? OR e.name LIKE ?))'
-                );
                 const needle = '%' + search + '%';
-                params.push(needle, needle, needle, needle);
+                const looksLikeDocNo = /^[\d][\d\s\-_.\/]*$/.test(search) && /\d{3,}/.test(search);
+                if (looksLikeDocNo) {
+                    wheres.push('(d.doc_name LIKE ? OR d.agent_name LIKE ?)');
+                    params.push(needle, needle);
+                } else {
+                    wheres.push(
+                        '(d.doc_name LIKE ? OR d.agent_name LIKE ? OR EXISTS (' +
+                        'SELECT 1 FROM ms_demand_position p ' +
+                        'WHERE p.demand_uuid = d.uuid AND (' +
+                        'p.ms_export_code LIKE ? OR p.code_at_moment LIKE ? ' +
+                        'OR p.name_at_moment LIKE ?)))'
+                    );
+                    params.push(needle, needle, needle, needle, needle);
+                }
             }
             if (docName) {
                 /**

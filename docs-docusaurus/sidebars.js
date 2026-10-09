@@ -19,6 +19,7 @@ module.exports = {
     "finance",
     "manager-sales",
     "ops-sheet",
+    "work-schedule",
     "script-versioning",
     "api",
     "deploy",

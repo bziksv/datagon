@@ -3269,7 +3269,11 @@ initDB().then(async () => {
         }
     });
 
-    const { apiRelativePathToPageKey, isHttpReadMethod } = require('./lib/datagonPageRegistry');
+    const {
+        apiRelativePathToPageKey,
+        isHttpReadMethod,
+        getApiPageModeForActor,
+    } = require('./lib/datagonPageRegistry');
     app.use('/api', (req, res, next) => {
         if (!req.datagonActor) return next();
         if (req.datagonActor.username === 'admin') return next();
@@ -3283,7 +3287,7 @@ initDB().then(async () => {
         }
         const pageKey = apiRelativePathToPageKey(pathOnly);
         if (pageKey == null) return next();
-        const mode = req.datagonActor.page_modes[pageKey] || 'full';
+        const mode = getApiPageModeForActor(req.datagonActor, pageKey);
         if (mode === 'hidden') {
             res.status(403);
             return res.json({ error: 'Нет доступа к разделу', code: 'PAGE_HIDDEN' });
@@ -3303,6 +3307,7 @@ initDB().then(async () => {
     app.use('/api/finance', financeRouterFactory(db, appSettings));
     app.use('/api/manager-sales', require('./routes/managerSales')(db));
     app.use('/api/ops-sheet', opsSheetRouterFactory(db, appSettings));
+    app.use('/api/work-schedule', require('./routes/workSchedule')(db));
     app.use('/api/specialties', require('./routes/specialties')(db));
     app.post('/api/settings/auto-sync-run', async (req, res) => {
         try {
@@ -4003,6 +4008,17 @@ initDB().then(async () => {
         cleanupPurchaseOverridesLogByRetentionDays(appSettings.dg_purchase_overrides_log_retention_days).catch(() => {});
         cleanupAutoSyncRunsByRetentionDays(appSettings.auto_sync_runs_retention_days).catch(() => {});
     }, 12 * 60 * 60 * 1000);
+
+    // График работы: авто-закрытие зависших смен (раз в 15 мин)
+    const workScheduleMod = require('./routes/workSchedule');
+    workScheduleMod.ensureWorkScheduleSchema(db).catch((e) =>
+        console.warn('[work-schedule] schema:', e && e.message ? e.message : e)
+    );
+    setInterval(() => {
+        workScheduleMod.processStuckShifts(db).catch((e) =>
+            console.warn('[work-schedule] stuck:', e && e.message ? e.message : e)
+        );
+    }, 15 * 60 * 1000);
     const bootAutoSync = () => {
         console.log(`[AUTO SYNC] boot worker #${AUTO_SYNC_WORKER_ID}${AUTO_SYNC_HTTP_DISABLED ? ' (HTTP off)' : ''}`);
         startAutoSyncScheduler();

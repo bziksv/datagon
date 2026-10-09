@@ -1,0 +1,292 @@
+          <div class="app-page-title">
+            <div class="page-title-wrapper">
+              <div class="page-title-heading">
+                <div class="page-title-icon">
+                  <i class="pe-7s-clock icon-gradient bg-happy-itmeo"></i>
+                </div>
+                <div>
+                  График работы
+                  <div class="page-title-subheading">
+                    Учёт смен, отпусков и начислений ·
+                    <a href="/work-schedule-settings.html">настройки орг/отделов</a>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="d-flex flex-wrap align-items-end justify-content-between gap-2 dg-ws-tabs-wrap">
+            <ul class="nav dg-ws-tabs" role="tablist">
+              <li class="nav-item">
+                <button type="button" class="nav-link" data-dg-ws-tab="me" id="dg-ws-tab-me" role="tab">Мой день</button>
+              </li>
+              <li class="nav-item">
+                <button type="button" class="nav-link" data-dg-ws-tab="dept" id="dg-ws-tab-dept" role="tab">Отдел</button>
+              </li>
+              <li class="nav-item">
+                <button type="button" class="nav-link active" data-dg-ws-tab="sheet" id="dg-ws-tab-sheet" role="tab">Табель</button>
+              </li>
+            </ul>
+            <div class="dg-ws-tabs-meta mb-2" id="dg-ws-tab-hint">Табель бухгалтерии: сотрудники × дни</div>
+          </div>
+
+          <!-- ===== Мой день ===== -->
+          <div id="dg-ws-view-me" class="d-none" role="tabpanel">
+            <div class="main-card mb-3 card">
+              <div class="card-body py-3">
+                <div class="dg-ws-today-bar" data-dg-ws-clock-mirror="1">
+                  <div>
+                    <div class="text-muted small text-uppercase">Сегодня</div>
+                    <div class="fw-semibold" id="dg-ws-today-status">Смена не начата</div>
+                    <div class="small text-muted">Таймер: <span class="dg-ws-page-clock-timer">—</span></div>
+                  </div>
+                  <button type="button" class="btn btn-sm btn-success" data-dg-ws-clock-toggle="1" data-dg-notify-start="Отмечаем смену…">
+                    Начать / Закончить
+                  </button>
+                  <div class="vr d-none d-md-block"></div>
+                  <div class="flex-grow-1">
+                    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+                      <span class="text-muted small text-uppercase mb-0">Заработано · <span id="dg-ws-earn-period">—</span></span>
+                      <div class="d-flex flex-wrap align-items-center gap-2">
+                        <div class="btn-group btn-group-sm" role="group" aria-label="Месяц начислений">
+                          <button type="button" class="btn btn-outline-secondary" id="dg-ws-month-prev" data-dg-notify-start="Предыдущий месяц…" title="Предыдущий месяц">‹</button>
+                          <button type="button" class="btn btn-outline-secondary" id="dg-ws-month-next" data-dg-notify-start="Следующий месяц…" title="Следующий месяц">›</button>
+                        </div>
+                        <input type="month" class="form-control form-control-sm" id="dg-ws-month-pick" style="width: 9.5rem;" title="Выбрать месяц" />
+                        <div class="btn-group btn-group-sm">
+                          <button type="button" class="btn btn-outline-secondary active" data-dg-ws-earn-period="month">Месяц</button>
+                          <button type="button" class="btn btn-outline-secondary" data-dg-ws-earn-period="quarter">Квартал</button>
+                          <button type="button" class="btn btn-outline-secondary" data-dg-ws-earn-period="year">Год</button>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="dg-ws-earn-inline" id="dg-ws-earn-grid"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="main-card mb-3 card">
+              <div class="card-header py-2 d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                  <span>Мой календарь</span>
+                  <strong class="dg-ws-month-title" id="dg-ws-cal-month-title">—</strong>
+                </div>
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                  <div class="btn-group btn-group-sm" role="group" aria-label="Смена месяца">
+                    <button type="button" class="btn btn-outline-secondary" id="dg-ws-cal-month-prev" title="Предыдущий месяц" data-dg-no-activity="1">‹</button>
+                    <button type="button" class="btn btn-outline-secondary" id="dg-ws-cal-month-next" title="Следующий месяц" data-dg-no-activity="1">›</button>
+                  </div>
+                  <div class="btn-group btn-group-sm" role="group">
+                    <button type="button" class="btn btn-outline-primary active" data-dg-ws-cal-mode="mine">Часы</button>
+                    <button type="button" class="btn btn-outline-primary" data-dg-ws-cal-mode="free">Свободные даты отдела</button>
+                  </div>
+                </div>
+              </div>
+              <div class="card-body py-3">
+                <p class="small text-muted mb-2" id="dg-ws-cal-hint"></p>
+                <div class="dg-ws-legend mb-2" id="dg-ws-cal-legend"></div>
+                <div id="dg-ws-cal-host"></div>
+              </div>
+            </div>
+
+            <div class="main-card mb-0 card">
+              <div class="card-header py-2">Мои заявки на отпуск</div>
+              <div class="card-body">
+                <div class="row g-2 align-items-end mb-3">
+                  <div class="col-sm-3">
+                    <label class="form-label mb-1" for="dg-ws-vac-from">С</label>
+                    <input type="date" class="form-control form-control-sm" id="dg-ws-vac-from" />
+                  </div>
+                  <div class="col-sm-3">
+                    <label class="form-label mb-1" for="dg-ws-vac-to">По</label>
+                    <input type="date" class="form-control form-control-sm" id="dg-ws-vac-to" />
+                  </div>
+                  <div class="col-sm-3">
+                    <button type="button" class="btn btn-sm btn-primary" id="dg-ws-vac-submit" data-dg-notify-start="Отправляем заявку…">Отправить заявку</button>
+                  </div>
+                </div>
+                <div class="table-responsive">
+                  <table class="table table-sm mb-0">
+                    <thead>
+                      <tr><th>Период</th><th>Дней</th><th>Статус</th></tr>
+                    </thead>
+                    <tbody id="dg-ws-my-vacations"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ===== Отдел ===== -->
+          <div id="dg-ws-view-dept" class="d-none" role="tabpanel">
+            <div class="main-card mb-3 card">
+              <div class="card-header py-2 d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                  <span id="dg-ws-dept-title">Отдел · график</span>
+                  <strong class="dg-ws-month-title" id="dg-ws-dept-month-title">—</strong>
+                  <div class="btn-group btn-group-sm" role="group" aria-label="Смена месяца">
+                    <button type="button" class="btn btn-outline-secondary" id="dg-ws-dept-month-prev" title="Предыдущий месяц" data-dg-no-activity="1">‹</button>
+                    <button type="button" class="btn btn-outline-secondary" id="dg-ws-dept-month-next" title="Следующий месяц" data-dg-no-activity="1">›</button>
+                  </div>
+                </div>
+                <span class="small text-muted">О = отпуск · Б = больничный · 1 / ½ = ставка</span>
+              </div>
+              <div class="card-body py-3">
+                <div class="dg-ws-legend mb-2" id="dg-ws-dept-legend"></div>
+                <div class="dg-ws-sheet-wrap" id="dg-ws-dept-sheet-host"></div>
+              </div>
+            </div>
+
+            <div class="row g-3 mb-3">
+              <div class="col-lg-5">
+                <div class="main-card card mb-0">
+                  <div class="card-header py-2">Сегодня по отделу</div>
+                  <div class="card-body p-0">
+                    <div class="table-responsive">
+                      <table class="table table-sm mb-0">
+                        <thead>
+                          <tr><th>ФИО</th><th>Статус</th><th>Часы</th></tr>
+                        </thead>
+                        <tbody id="dg-ws-head-team"></tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="col-lg-7">
+                <div class="main-card card mb-0">
+                  <div class="card-header py-2">Зависшие смены</div>
+                  <div class="card-body p-0">
+                    <ul class="list-group list-group-flush" id="dg-ws-stuck-shifts"></ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="main-card mb-0 card">
+              <div class="card-header py-2">Согласование отпусков</div>
+              <div class="card-body p-0">
+                <div class="table-responsive">
+                  <table class="table table-sm mb-0">
+                    <thead>
+                      <tr><th>Сотрудник</th><th>Период</th><th>Дней</th><th></th></tr>
+                    </thead>
+                    <tbody id="dg-ws-approve-vacations"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ===== Табель ===== -->
+          <div id="dg-ws-view-sheet" role="tabpanel">
+            <div class="main-card mb-3 card">
+              <div class="card-header py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <span>Фильтры</span>
+                <div class="d-flex flex-wrap gap-2">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-ws-btn-export" data-dg-notify-start="Экспорт…">Экспорт CSV</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-ws-btn-dryrun" data-dg-notify-start="Тестовый расчёт…">Пересчёт без применения</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-ws-btn-audit" data-dg-notify-start="Журнал…">Журнал</button>
+                </div>
+              </div>
+              <div class="card-body py-3" id="dg-ws-acc-filters-body">
+                <div class="row g-2 align-items-end">
+                  <div class="col-md-3">
+                    <label class="form-label mb-1" for="dg-ws-f-org">Организация</label>
+                    <select class="form-select form-select-sm" id="dg-ws-f-org"></select>
+                  </div>
+                  <div class="col-md-3">
+                    <label class="form-label mb-1" for="dg-ws-f-dept">Отдел</label>
+                    <select class="form-select form-select-sm" id="dg-ws-f-dept"></select>
+                  </div>
+                  <div class="col-md-2">
+                    <label class="form-label mb-1" for="dg-ws-f-month">Месяц</label>
+                    <input type="month" class="form-control form-control-sm" id="dg-ws-f-month" />
+                  </div>
+                  <div class="col-md-4">
+                    <button type="button" class="btn btn-sm btn-primary" id="dg-ws-f-apply" data-dg-notify-start="Применяем…">Применить</button>
+                    <button type="button" class="btn btn-sm btn-link" id="dg-ws-f-reset">Сбросить</button>
+                  </div>
+                </div>
+                <div class="dg-ws-kpi-strip mt-3 pt-3 border-top">
+                  <div class="kpi">
+                    <span class="lbl">Человеко-дни</span>
+                    <span class="val" id="dg-ws-kpi-mandays">—</span>
+                  </div>
+                  <div class="kpi">
+                    <span class="lbl">ФОТ (оценка)</span>
+                    <span class="val" id="dg-ws-kpi-fot">—</span>
+                  </div>
+                  <div class="kpi">
+                    <span class="lbl">Сотрудников</span>
+                    <span class="val" id="dg-ws-kpi-emps">—</span>
+                  </div>
+                </div>
+                <div id="dg-ws-acc-action-log" class="alert alert-light border mt-3 mb-0 small d-none py-2" role="status"></div>
+              </div>
+            </div>
+
+            <div class="main-card mb-0 card">
+              <div class="card-header py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <span>Сотрудники × даты</span>
+                <span class="small text-muted">Клик по ячейке — правка</span>
+              </div>
+              <div class="card-body py-3">
+                <div class="dg-ws-legend mb-2" id="dg-ws-sheet-legend"></div>
+                <div class="dg-ws-sheet-wrap" id="dg-ws-sheet-host"></div>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-ws-cell-overlay" class="dg-ws-overlay" style="display: none" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="dg-ws-cell-title">
+            <div class="dg-ws-overlay-backdrop" id="dg-ws-cell-backdrop"></div>
+            <div class="dg-ws-overlay-panel card shadow-lg border-0">
+              <div class="card-header d-flex justify-content-between align-items-center py-2">
+                <div class="fw-semibold" id="dg-ws-cell-title">Правка дня</div>
+                <button type="button" class="btn-close" id="dg-ws-cell-close" aria-label="Закрыть" data-dg-no-activity="1"></button>
+              </div>
+              <div class="card-body">
+                <p class="small text-muted mb-2" id="dg-ws-cell-meta"></p>
+                <div class="mb-2">
+                  <label class="form-label" for="dg-ws-cell-rate">Ставка дня</label>
+                  <select class="form-select" id="dg-ws-cell-rate">
+                    <option value="1">1 — полный</option>
+                    <option value="0.5">0,5 — половина</option>
+                    <option value="0">0 — не работал</option>
+                  </select>
+                </div>
+                <div class="mb-2">
+                  <label class="form-label" for="dg-ws-cell-hours">Часы</label>
+                  <input type="text" class="form-control" id="dg-ws-cell-hours" inputmode="decimal" />
+                </div>
+                <div class="mb-0">
+                  <label class="form-label" for="dg-ws-cell-type">Тип</label>
+                  <select class="form-select" id="dg-ws-cell-type">
+                    <option value="work">Работа</option>
+                    <option value="vacation">Отпуск</option>
+                    <option value="sick">Больничный</option>
+                    <option value="dayoff">Отгул</option>
+                  </select>
+                </div>
+              </div>
+              <div class="card-footer d-flex justify-content-end gap-2 bg-white border-top-0">
+                <button type="button" class="btn btn-outline-secondary" id="dg-ws-cell-cancel" data-dg-no-activity="1">Отмена</button>
+                <button type="button" class="btn btn-primary" id="dg-ws-cell-save" data-dg-notify-start="Сохраняем…">Сохранить</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-ws-payroll-overlay" class="dg-ws-overlay" style="display: none" aria-hidden="true" role="dialog" aria-modal="true">
+            <div class="dg-ws-overlay-backdrop" data-dg-ws-payroll-close="1"></div>
+            <div class="dg-ws-overlay-panel card shadow-lg border-0">
+              <div class="card-header py-2 fw-semibold">Применить начисления</div>
+              <div class="card-body">
+                <p class="mb-0" id="dg-ws-payroll-confirm-text">Записать рассчитанные начисления в БД?</p>
+              </div>
+              <div class="card-footer d-flex justify-content-end gap-2 bg-white border-top-0">
+                <button type="button" class="btn btn-outline-secondary" data-dg-ws-payroll-close="1" data-dg-no-activity="1">Отмена</button>
+                <button type="button" class="btn btn-danger" id="dg-ws-payroll-apply-ok" data-dg-notify-start="Применяем…">Применить</button>
+              </div>
+            </div>
+          </div>

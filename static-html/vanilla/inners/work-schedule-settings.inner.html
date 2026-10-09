@@ -1,0 +1,298 @@
+          <div class="app-page-title">
+            <div class="page-title-wrapper">
+              <div class="page-title-heading">
+                <div class="page-title-icon">
+                  <i class="pe-7s-config icon-gradient bg-tempting-azure"></i>
+                </div>
+                <div>
+                  График · настройки
+                  <div class="page-title-subheading">
+                    Организация → отделы → сотрудники (персональные переопределения).
+                    <a href="/work-schedule.html">← к графику</a>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="alert alert-info py-2 mb-3" role="status">
+            CRUD через <code>/api/work-schedule</code>. Доступ: специальность «Бухгалтерия» или admin.
+          </div>
+
+          <!-- Организация -->
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex justify-content-between align-items-center gap-2">
+              <div class="d-flex align-items-center">
+                <i class="header-icon pe-7s-culture icon-gradient bg-happy-green me-2"></i>
+                <span>Организации</span>
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-ws-set-org-toggle">Свернуть</button>
+            </div>
+            <div class="card-body" id="dg-ws-set-org-body">
+              <input type="hidden" id="dg-ws-set-org-id" />
+              <div class="dg-ws-set-org-toolbar d-flex flex-wrap align-items-end gap-2 mb-3 pb-3 border-bottom">
+                <div class="flex-grow-1" style="min-width: 220px; max-width: 360px;">
+                  <label class="form-label mb-1" for="dg-ws-set-org-pick">Текущая организация</label>
+                  <select id="dg-ws-set-org-pick" class="form-select form-select-sm"></select>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-primary" id="dg-ws-set-org-add" data-dg-notify-start="Новая организация…">Добавить</button>
+              </div>
+              <div class="row g-3">
+                <div class="col-md-6 col-xl-3">
+                  <label class="form-label" for="dg-ws-set-org-name">Название</label>
+                  <input type="text" class="form-control form-control-sm" id="dg-ws-set-org-name" />
+                </div>
+                <div class="col-md-6 col-xl-2">
+                  <label class="form-label" for="dg-ws-set-org-inn">ИНН</label>
+                  <input type="text" class="form-control form-control-sm" id="dg-ws-set-org-inn" />
+                </div>
+                <div class="col-md-6 col-xl-3">
+                  <label class="form-label" for="dg-ws-set-org-tz">Часовой пояс</label>
+                  <input type="text" class="form-control form-control-sm" id="dg-ws-set-org-tz" />
+                </div>
+                <div class="col-md-6 col-xl-4">
+                  <label class="form-label" for="dg-ws-set-org-sick">Больничный неофиц., ₽/день</label>
+                  <input type="text" class="form-control form-control-sm" id="dg-ws-set-org-sick" inputmode="decimal" />
+                </div>
+                <div class="col-md-6 col-xl-3">
+                  <label class="form-label" for="dg-ws-set-sen-base">Стаж: база, ₽</label>
+                  <input type="text" class="form-control form-control-sm" id="dg-ws-set-sen-base" />
+                </div>
+                <div class="col-md-6 col-xl-3">
+                  <label class="form-label" for="dg-ws-set-sen-step">Стаж: шаг, ₽</label>
+                  <input type="text" class="form-control form-control-sm" id="dg-ws-set-sen-step" />
+                </div>
+                <div class="col-md-6 col-xl-3">
+                  <label class="form-label" for="dg-ws-set-sen-period">Переиндексация стажа, мес</label>
+                  <input type="text" class="form-control form-control-sm" id="dg-ws-set-sen-period" />
+                </div>
+                <div class="col-md-6 col-xl-3">
+                  <label class="form-label">Округление часов</label>
+                  <input type="text" class="form-control form-control-sm" value="5 мин" disabled />
+                </div>
+              </div>
+              <div class="mt-3">
+                <button type="button" class="btn btn-sm btn-primary" id="dg-ws-set-org-save" data-dg-notify-start="Сохраняем организацию…">Сохранить</button>
+              </div>
+              <div id="dg-ws-set-org-msg" class="alert mt-3 mb-0 d-none" role="status"></div>
+            </div>
+          </div>
+
+          <!-- Отделы -->
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+              <div class="d-flex align-items-center">
+                <i class="header-icon pe-7s-users icon-gradient bg-night-fade me-2"></i>
+                <span>Отделы</span>
+              </div>
+              <div class="d-flex align-items-center gap-2">
+                <span class="small text-muted">Тип графика, норма дня, пороги 1 / 0,5, лимит отпусков</span>
+                <button type="button" class="btn btn-sm btn-outline-primary" id="dg-ws-set-dept-add" data-dg-notify-start="Новый отдел…">Добавить</button>
+              </div>
+            </div>
+            <div class="card-body p-0">
+              <div class="table-responsive">
+                <table class="table table-sm mb-0 align-middle">
+                  <thead>
+                    <tr>
+                      <th>Отдел</th>
+                      <th>График</th>
+                      <th>Норма, ч</th>
+                      <th>≥ ч → 1</th>
+                      <th>≥ ч → 0,5</th>
+                      <th>Лимит отпусков</th>
+                      <th>Премия</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="dg-ws-set-dept-tbody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- Сотрудники -->
+          <div class="main-card mb-4 card">
+            <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+              <div class="d-flex align-items-center">
+                <i class="header-icon pe-7s-id icon-gradient bg-warm-flame me-2"></i>
+                <span>Сотрудники · персональные переопределения</span>
+              </div>
+              <div class="d-flex align-items-center gap-2">
+                <span class="small text-muted">Пустое поле = берётся из отдела / организации</span>
+                <button type="button" class="btn btn-sm btn-outline-primary" id="dg-ws-set-emp-add" data-dg-notify-start="Привязка…">Привязать пользователя</button>
+              </div>
+            </div>
+            <div class="card-body p-0">
+              <div class="table-responsive">
+                <table class="table table-sm mb-0 align-middle">
+                  <thead>
+                    <tr>
+                      <th>ФИО</th>
+                      <th>Организация</th>
+                      <th>Отдел</th>
+                      <th>Дата приёма</th>
+                      <th>Оклад</th>
+                      <th>График (личн.)</th>
+                      <th>Норма дня</th>
+                      <th>Больничный ₽</th>
+                      <th>Overrides</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="dg-ws-set-emp-tbody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+          <div class="pb-4" aria-hidden="true"></div>
+
+          <div id="dg-ws-set-dept-overlay" class="dg-ws-set-overlay" style="display: none" aria-hidden="true" role="dialog" aria-modal="true">
+            <div class="dg-ws-set-overlay-backdrop" data-dg-ws-set-close="dept"></div>
+            <div class="dg-ws-set-overlay-panel card shadow-lg border-0">
+              <div class="card-header d-flex justify-content-between align-items-center">
+                <div class="fw-semibold">Карточка отдела</div>
+                <button type="button" class="btn-close" data-dg-ws-set-close="dept" aria-label="Закрыть" data-dg-no-activity="1"></button>
+              </div>
+              <div class="card-body">
+                <input type="hidden" id="dg-ws-set-dept-id" />
+                <div class="mb-2">
+                  <label class="form-label" for="dg-ws-set-dept-name">Название</label>
+                  <input type="text" class="form-control" id="dg-ws-set-dept-name" />
+                </div>
+                <div class="mb-2">
+                  <label class="form-label" for="dg-ws-set-dept-sched">Тип графика</label>
+                  <select class="form-select" id="dg-ws-set-dept-sched">
+                    <option value="5/2">5/2</option>
+                    <option value="2/2">2/2</option>
+                    <option value="сменный">сменный</option>
+                    <option value="гибкий">гибкий</option>
+                  </select>
+                </div>
+                <div class="row g-2">
+                  <div class="col-4">
+                    <label class="form-label" for="dg-ws-set-dept-norm">Норма дня, ч</label>
+                    <input type="text" class="form-control" id="dg-ws-set-dept-norm" />
+                  </div>
+                  <div class="col-4">
+                    <label class="form-label" for="dg-ws-set-dept-t1">Порог = 1</label>
+                    <input type="text" class="form-control" id="dg-ws-set-dept-t1" />
+                  </div>
+                  <div class="col-4">
+                    <label class="form-label" for="dg-ws-set-dept-t05">Порог = 0,5</label>
+                    <input type="text" class="form-control" id="dg-ws-set-dept-t05" />
+                  </div>
+                </div>
+                <div class="mb-2 mt-2">
+                  <label class="form-label" for="dg-ws-set-dept-vaclim">Лимит одновременных отпусков</label>
+                  <input type="text" class="form-control" id="dg-ws-set-dept-vaclim" />
+                </div>
+                <div class="mb-0">
+                  <label class="form-label" for="dg-ws-set-dept-prem">Правило премии</label>
+                  <input type="text" class="form-control" id="dg-ws-set-dept-prem" placeholder="заглушка — формулы позже" />
+                </div>
+              </div>
+              <div class="card-footer d-flex justify-content-end gap-2 bg-white border-top-0">
+                <button type="button" class="btn btn-outline-secondary" data-dg-ws-set-close="dept" data-dg-no-activity="1">Отмена</button>
+                <button type="button" class="btn btn-primary" id="dg-ws-set-dept-save" data-dg-notify-start="Сохраняем отдел…">Сохранить</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-ws-set-emp-add-overlay" class="dg-ws-set-overlay" style="display: none" aria-hidden="true" role="dialog" aria-modal="true">
+            <div class="dg-ws-set-overlay-backdrop" data-dg-ws-set-close="emp-add"></div>
+            <div class="dg-ws-set-overlay-panel card shadow-lg border-0">
+              <div class="card-header d-flex justify-content-between align-items-center">
+                <div class="fw-semibold">Привязать пользователя Datagon</div>
+                <button type="button" class="btn-close" data-dg-ws-set-close="emp-add" aria-label="Закрыть" data-dg-no-activity="1"></button>
+              </div>
+              <div class="card-body">
+                <div class="mb-2">
+                  <label class="form-label" for="dg-ws-set-emp-user">Пользователь без карточки</label>
+                  <select class="form-select" id="dg-ws-set-emp-user"></select>
+                </div>
+                <div class="mb-2">
+                  <label class="form-label" for="dg-ws-set-emp-org">Организация</label>
+                  <select class="form-select" id="dg-ws-set-emp-org"></select>
+                </div>
+                <div class="mb-2">
+                  <label class="form-label" for="dg-ws-set-emp-dept">Отдел</label>
+                  <select class="form-select" id="dg-ws-set-emp-dept"></select>
+                </div>
+                <div class="mb-2">
+                  <label class="form-label" for="dg-ws-set-emp-hire">Дата приёма (для стажа)</label>
+                  <input type="date" class="form-control" id="dg-ws-set-emp-hire" />
+                </div>
+                <div class="mb-0">
+                  <label class="form-label" for="dg-ws-set-emp-new-salary">Оклад</label>
+                  <input type="text" class="form-control" id="dg-ws-set-emp-new-salary" value="0" />
+                </div>
+              </div>
+              <div class="card-footer d-flex justify-content-end gap-2 bg-white border-top-0">
+                <button type="button" class="btn btn-outline-secondary" data-dg-ws-set-close="emp-add" data-dg-no-activity="1">Отмена</button>
+                <button type="button" class="btn btn-primary" id="dg-ws-set-emp-create" data-dg-notify-start="Создаём…">Создать</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-ws-set-emp-overlay" class="dg-ws-set-overlay" style="display: none" aria-hidden="true" role="dialog" aria-modal="true">
+            <div class="dg-ws-set-overlay-backdrop" data-dg-ws-set-close="emp"></div>
+            <div class="dg-ws-set-overlay-panel card shadow-lg border-0 wide">
+              <div class="card-header d-flex justify-content-between align-items-center">
+                <div class="fw-semibold">Сотрудник · переопределения</div>
+                <button type="button" class="btn-close" data-dg-ws-set-close="emp" aria-label="Закрыть" data-dg-no-activity="1"></button>
+              </div>
+              <div class="card-body">
+                <input type="hidden" id="dg-ws-set-emp-id" />
+                <p class="small text-muted" id="dg-ws-set-emp-meta"></p>
+                <div class="row g-2">
+                  <div class="col-md-4">
+                    <label class="form-label" for="dg-ws-set-emp-edit-org">Организация</label>
+                    <select class="form-select" id="dg-ws-set-emp-edit-org"></select>
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label" for="dg-ws-set-emp-edit-dept">Отдел</label>
+                    <select class="form-select" id="dg-ws-set-emp-edit-dept"></select>
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label" for="dg-ws-set-emp-edit-hire">Дата приёма</label>
+                    <input type="date" class="form-control" id="dg-ws-set-emp-edit-hire" />
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label" for="dg-ws-set-emp-salary">Оклад</label>
+                    <input type="text" class="form-control" id="dg-ws-set-emp-salary" />
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label" for="dg-ws-set-emp-sched">personal_schedule_type</label>
+                    <select class="form-select" id="dg-ws-set-emp-sched">
+                      <option value="">— из отдела —</option>
+                      <option value="5/2">5/2</option>
+                      <option value="2/2">2/2</option>
+                      <option value="сменный">сменный</option>
+                      <option value="гибкий">гибкий</option>
+                    </select>
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label" for="dg-ws-set-emp-norm">personal_work_hours_per_day</label>
+                    <input type="text" class="form-control" id="dg-ws-set-emp-norm" placeholder="из отдела" />
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label" for="dg-ws-set-emp-sick">personal_sick_leave_rate</label>
+                    <input type="text" class="form-control" id="dg-ws-set-emp-sick" placeholder="из организации" />
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label" for="dg-ws-set-emp-t1">Порог = 1 (личн.)</label>
+                    <input type="text" class="form-control" id="dg-ws-set-emp-t1" placeholder="из отдела" />
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label" for="dg-ws-set-emp-t05">Порог = 0,5 (личн.)</label>
+                    <input type="text" class="form-control" id="dg-ws-set-emp-t05" placeholder="из отдела" />
+                  </div>
+                </div>
+              </div>
+              <div class="card-footer d-flex justify-content-end gap-2 bg-white border-top-0">
+                <button type="button" class="btn btn-outline-secondary" data-dg-ws-set-close="emp" data-dg-no-activity="1">Отмена</button>
+                <button type="button" class="btn btn-primary" id="dg-ws-set-emp-save" data-dg-notify-start="Сохраняем сотрудника…">Сохранить</button>
+              </div>
+            </div>
+          </div>

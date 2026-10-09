@@ -92,6 +92,7 @@ description: Справочник REST-эндпоинтов p.datagon.ru (осн
 - `/api/finance` -> `routes/finance.js` (Финансы: Точка JWT + Райф Open API + Т‑Банк T‑API, счета, балансы, проводки; **наличные** CRUD; банковские выписки — только чтение)
 - `/api/manager-sales` -> `routes/managerSales.js` (Таблицы менеджеров: годовой журнал оплат `dg_manager_sales_rows`)
 - `/api/ops-sheet` -> `routes/opsSheet.js` (Операционный лист: свод + Planfix-заявки `dg_ops_planfix_tasks`)
+- `/api/work-schedule` -> `routes/workSchedule.js` (График работы: `ws_*`, clock, табель, отпуска, payroll, audit, экспорт 1С; см. [work-schedule.md](./work-schedule))
 - `GET /api/processes/overview`, `POST /api/sync-all-start`, `POST /api/sync-site-start`, `GET /api/sync-status` -> `server.js`
 
 ## Auth
@@ -1853,7 +1854,7 @@ Body (JSON): `email`, `password` (обязательны), опциональн�
 Список отгрузок с пагинацией. Query:
 
 - `days` — глубина периода в днях, default 30 (max 5 лет).
-- `search` — **умный поиск по товарам в позициях отгрузки**: подстрока по `ms_demand_position.ms_export_code`, `code_at_moment`, `name_at_moment` и `ms_export.name` (для резолвленных позиций). Реализован через `EXISTS`, чтобы не дублировать строки в выдаче.
+- `search` — **умный поиск**: подстрока по `ms_demand.doc_name` (номер отгрузки), `agent_name`, а также по товарам в позициях (`ms_export_code`, `code_at_moment`, `name_at_moment`, `ms_export.name`). Реализован через `OR` + `EXISTS`, чтобы не дублировать строки в выдаче.
 - `doc_name` — фильтр по номеру документа (`ms_demand.doc_name`). По умолчанию подстрока (`LIKE '%X%'`); если в значении есть `%` или `_` — используется как готовый LIKE-паттерн.
 - `store_uuid` — фильтр по складу.
 - `agent_uuids` — фильтр по одному или нескольким контрагентам (CSV UUID; legacy: `agent_uuid`).
@@ -2228,6 +2229,31 @@ Preflight матча «Менеджер по продажам» ↔ Planfix `/us
 ### PUT `/api/ops-sheet/planfix-status-map`
 
 Только `full`. Body: `{ year, month, items: [{ status_value, bucket, count_in_apps, is_separator? }] }`. Порядок `items` = порядок строк таблицы (`sort_order` в `dg_ops_planfix_status_catalog`). Разделители (`__sep:N` / `is_separator`) сохраняются в каталоге, в карту корзин не пишутся. `month` для счётчиков панели после сохранения. Корзины: `in_work`, `paid`, `paid_shipped`, `rejected`, `info_spam`, `supplier`, `no_goods`, `aggregator`, `gbuz`. Ответ: сохранённая панель + `mismatches` (проверка из БД).
+
+## Work schedule (график работы)
+
+Страницы `/work-schedule.html`, `/work-schedule-settings.html`. Роутер `routes/workSchedule.js`, схема `lib/datagonWorkScheduleSchema.js` (`ws_*`), расчёты `lib/datagonWorkScheduleCalc.js`. Матрица: **`work-schedule`** / **`work-schedule-settings`** (API-режим — max из двух). Роли внутри API: сотрудник (`ws_employee`), руководитель отдела (`head_user_id`), бухгалтерия (specialty «Бухгалтерия» / admin). Подробнее: [График работы](./work-schedule).
+
+Несколько юрлиц: `GET/POST/PUT /organizations`; seed **ООО «АЛЬМАМЕД»** + **ООО «ВИЛМЕД»**. У сотрудника обязателен `hire_date` для стажа; `GET /employees` отдаёт `organization_name`, `department_name`.
+
+| Метод | Путь | Кто |
+|-------|------|-----|
+| GET | `/api/work-schedule/access` | любой авторизованный |
+| GET/POST/PUT | `/organizations`, `/departments`, `/employees`, `/users-available` | accounting |
+| GET/POST | `/clock/status`, `/clock/start`, `/clock/stop` | сотрудник с карточкой |
+| GET | `/stuck-shifts` | head / accounting |
+| GET | `/me/month`, `/dept/month` | employee / head / accounting |
+| GET / PATCH | `/sheet`, `/sheet/cell` | accounting |
+| POST | `/vacations`, `/vacations/:id/approve` | employee / head+accounting |
+| POST | `/sick`, `/absences`, `/vacation-compensation` | accounting |
+| GET/POST | `/payroll`, `/payroll/dry-run`, `/payroll/apply` | accounting (свой payroll — employee) |
+| GET/POST | `/calendar`, `/calendar/import` | read all / import accounting |
+| GET | `/audit` | accounting |
+| GET | `/export/1c?format=csv\|xml&month=YYYY-MM` | accounting |
+| POST | `/import/timesheet-csv` | accounting (`dry_run`, `csv`) |
+| GET/PUT | `/1c-map`, `/1c-map/:employeeId` | accounting |
+
+Фон: раз в 15 мин `processStuckShifts` авто-закрывает открытые смены старше `clock_auto_close_hours` → `status=needs_confirm`.
 
 ## Финансы
 

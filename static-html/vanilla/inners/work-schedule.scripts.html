@@ -1,0 +1,975 @@
+<script>
+(function () {
+  "use strict";
+
+  var TAB_KEY = "datagon_ws_tab_v1";
+  var API = "/api/work-schedule";
+
+  var TAB_HINTS = {
+    me: "Личный табель, заработок и заявки на отпуск",
+    dept: "График отдела, зависшие смены и согласование отпусков",
+    sheet: "Табель бухгалтерии: сотрудники × дни",
+  };
+
+  var state = {
+    access: null,
+    tab: "me",
+    calMode: "mine",
+    earnPeriod: "month",
+    filters: { orgId: 0, deptId: 0, month: "" },
+    pending: { orgId: 0, deptId: 0, month: "" },
+    orgs: [],
+    departments: [],
+    meMonth: null,
+    deptMonth: null,
+    sheet: null,
+    pendingVacations: [],
+    stuck: [],
+    editCell: null,
+  };
+
+  function money(n) {
+    if (window.DatagonFmt && window.DatagonFmt.formatMoney) return window.DatagonFmt.formatMoney(n);
+    return String(Math.round(Number(n) || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, " ") + " ₽";
+  }
+
+  function toast(type, message) {
+    if (window.DatagonNotify && window.DatagonNotify.toast) {
+      window.DatagonNotify.toast({ type: type, message: message });
+    }
+  }
+
+  function api(path, opts) {
+    return fetch(API + path, Object.assign({ credentials: "same-origin" }, opts || {})).then(function (r) {
+      return r.json().then(function (j) {
+        if (!r.ok || (j && j.success === false)) {
+          throw new Error((j && j.error) || "HTTP " + r.status);
+        }
+        return j;
+      });
+    });
+  }
+
+  function daysInMonth(y, m) {
+    return new Date(y, m, 0).getDate();
+  }
+
+  function parseMonthValue(v) {
+    var p = String(v || "").split("-");
+    return {
+      y: Number(p[0]) || new Date().getFullYear(),
+      m: Number(p[1]) || new Date().getMonth() + 1,
+    };
+  }
+
+  function defaultMonthStr() {
+    var d = new Date();
+    var m = d.getMonth() + 1;
+    return d.getFullYear() + "-" + (m < 10 ? "0" + m : m);
+  }
+
+  var MONTH_RU = [
+    "январь",
+    "февраль",
+    "март",
+    "апрель",
+    "май",
+    "июнь",
+    "июль",
+    "август",
+    "сентябрь",
+    "октябрь",
+    "ноябрь",
+    "декабрь",
+  ];
+
+  function formatMonthRu(ym) {
+    var pm = parseMonthValue(ym);
+    var name = MONTH_RU[pm.m - 1] || "";
+    return name + " " + pm.y;
+  }
+
+  function monthStrFromParts(y, m) {
+    return y + "-" + (m < 10 ? "0" + m : m);
+  }
+
+  function shiftMonthStr(ym, delta) {
+    var pm = parseMonthValue(ym);
+    var d = new Date(pm.y, pm.m - 1 + delta, 1);
+    return monthStrFromParts(d.getFullYear(), d.getMonth() + 1);
+  }
+
+  function syncMonthUi() {
+    var ym = state.filters.month || defaultMonthStr();
+    var label = formatMonthRu(ym);
+    ["dg-ws-cal-month-title", "dg-ws-dept-month-title", "dg-ws-earn-period"].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) el.textContent = label;
+    });
+    var pick = document.getElementById("dg-ws-month-pick");
+    if (pick && pick.value !== ym) pick.value = ym;
+    var sheetMonth = document.getElementById("dg-ws-f-month");
+    if (sheetMonth && sheetMonth.value !== ym) sheetMonth.value = ym;
+    state.pending.month = ym;
+  }
+
+  function setMonth(ym, opts) {
+    var next = String(ym || "").trim() || defaultMonthStr();
+    if (!/^\d{4}-\d{2}$/.test(next)) next = defaultMonthStr();
+    state.filters.month = next;
+    state.pending.month = next;
+    syncMonthUi();
+    if (opts && opts.reload === false) return;
+    if (state.tab === "me") loadMe();
+    else if (state.tab === "dept") loadDept();
+    else if (state.tab === "sheet") loadSheet();
+  }
+
+  function shiftMonth(delta) {
+    setMonth(shiftMonthStr(state.filters.month || defaultMonthStr(), delta));
+  }
+
+  function vacStatusBadge(st) {
+    if (st === "approved") return '<span class="badge bg-success">согласовано</span>';
+    if (st === "rejected") return '<span class="badge bg-danger">отклонено</span>';
+    return '<span class="badge bg-warning text-dark">заявка</span>';
+  }
+
+  function setTab(tab) {
+    if (!TAB_HINTS[tab]) tab = "me";
+    var acc = state.access || {};
+    if (tab === "sheet" && !acc.is_accounting) tab = acc.is_employee ? "me" : "dept";
+    state.tab = tab;
+    try {
+      sessionStorage.setItem(TAB_KEY, tab);
+    } catch (e) {}
+    ["me", "dept", "sheet"].forEach(function (t) {
+      var btn = document.getElementById("dg-ws-tab-" + t);
+      if (btn) {
+        btn.classList.toggle("active", t === tab);
+        btn.setAttribute("aria-selected", t === tab ? "true" : "false");
+        if (t === "sheet" && !acc.is_accounting) btn.classList.add("d-none");
+        else if (t === "sheet") btn.classList.remove("d-none");
+      }
+      var view = document.getElementById("dg-ws-view-" + t);
+      if (view) view.classList.toggle("d-none", t !== tab);
+    });
+    var hint = document.getElementById("dg-ws-tab-hint");
+    if (hint) hint.textContent = TAB_HINTS[tab];
+    if (tab === "me") loadMe();
+    if (tab === "dept") loadDept();
+    if (tab === "sheet") loadSheet();
+  }
+
+  function renderLegend(el, withBusy) {
+    if (!el) return;
+    el.innerHTML =
+      '<span><i class="swatch" style="background:#28a745"></i> полный</span>' +
+      '<span><i class="swatch" style="background:#ffc107"></i> 0,5</span>' +
+      '<span><i class="swatch" style="background:#e3f2fd"></i> отпуск</span>' +
+      '<span><i class="swatch" style="background:#fce4ec"></i> больничный</span>' +
+      (withBusy
+        ? '<span><i class="swatch" style="background:#ffebee"></i> занято в отделе</span>'
+        : "");
+  }
+
+  function renderEarnings() {
+    var p = state.meMonth && state.meMonth.payroll;
+    syncMonthUi();
+    var grid = document.getElementById("dg-ws-earn-grid");
+    if (!grid) return;
+    if (!p) {
+      grid.innerHTML = '<div class="text-muted small">Нет карточки сотрудника или данных</div>';
+      return;
+    }
+    var rows = [
+      ["Оклад", p.base_salary],
+      ["Премия", p.premium],
+      ["Стаж", p.seniority_bonus],
+      ["Отпускные", p.vacation_pay],
+      ["Больничные", p.sick_pay],
+      ["Итого", p.total, true],
+    ];
+    grid.innerHTML = rows
+      .map(function (r) {
+        return (
+          '<div class="dg-ws-earn-chip' +
+          (r[2] ? " total" : "") +
+          '"><span class="lbl">' +
+          r[0] +
+          '</span><span class="val">' +
+          money(r[1]) +
+          "</span></div>"
+        );
+      })
+      .join("");
+  }
+
+  function renderMyVacations() {
+    var tb = document.getElementById("dg-ws-my-vacations");
+    if (!tb) return;
+    var list = (state.meMonth && state.meMonth.vacations) || [];
+    if (!list.length) {
+      tb.innerHTML = '<tr><td colspan="3" class="text-muted">Заявок нет</td></tr>';
+      return;
+    }
+    tb.innerHTML = list
+      .map(function (v) {
+        return (
+          "<tr><td>" +
+          v.date_from +
+          " — " +
+          v.date_to +
+          "</td><td>" +
+          v.days_count +
+          "</td><td>" +
+          vacStatusBadge(v.status) +
+          "</td></tr>"
+        );
+      })
+      .join("");
+  }
+
+  function busyDaysFromVacations(vacations, monthStr) {
+    var pm = parseMonthValue(monthStr);
+    var dim = daysInMonth(pm.y, pm.m);
+    var set = {};
+    (vacations || []).forEach(function (v) {
+      if (v.status !== "approved" && v.status !== "pending") return;
+      var cur = new Date(v.date_from);
+      var end = new Date(v.date_to);
+      while (cur <= end) {
+        if (cur.getFullYear() === pm.y && cur.getMonth() + 1 === pm.m) {
+          set[cur.getDate()] = true;
+        }
+        cur.setDate(cur.getDate() + 1);
+      }
+    });
+    var out = [];
+    for (var d = 1; d <= dim; d++) if (set[d]) out.push(d);
+    return out;
+  }
+
+  function renderCalendar() {
+    var host = document.getElementById("dg-ws-cal-host");
+    if (!host) return;
+    syncMonthUi();
+    renderLegend(document.getElementById("dg-ws-cal-legend"), state.calMode === "free");
+    var monthStr = state.filters.month || defaultMonthStr();
+    var hint = document.getElementById("dg-ws-cal-hint");
+    if (hint) {
+      hint.textContent =
+        formatMonthRu(monthStr) +
+        ". " +
+        (state.calMode === "free"
+          ? "Красная подсветка — в отделе уже кто-то в отпуске (пересечения ограничены)."
+          : "Стрелки ‹ › или поле месяца сверху — сменить месяц. Отпуск — даты в блоке ниже (любой месяц).");
+    }
+    var pm = parseMonthValue(monthStr);
+    var dim = daysInMonth(pm.y, pm.m);
+    var firstWd = new Date(pm.y, pm.m - 1, 1).getDay();
+    var startPad = (firstWd + 6) % 7;
+    var cells = (state.meMonth && state.meMonth.cells) || {};
+    var busy = busyDaysFromVacations(
+      (state.deptMonth && state.deptMonth.vacations) || [],
+      monthStr
+    );
+    var html = '<div class="dg-ws-cal-grid">';
+    ["пн", "вт", "ср", "чт", "пт", "сб", "вс"].forEach(function (h) {
+      html += '<div class="dg-ws-cal-head">' + h + "</div>";
+    });
+    for (var i = 0; i < startPad; i++) html += '<div class="dg-ws-cal-cell muted"></div>';
+    var today = new Date();
+    for (var d = 1; d <= dim; d++) {
+      var cell = cells[d] || { rate: 0, type: "work", hours: 0 };
+      var wd = new Date(pm.y, pm.m - 1, d).getDay();
+      var weekend = wd === 0 || wd === 6;
+      var cls = ["dg-ws-cal-cell"];
+      if (weekend) cls.push("muted");
+      if (cell.type === "vacation") cls.push("type-vacation");
+      else if (cell.type === "sick") cls.push("type-sick");
+      else if (Number(cell.rate) === 1) cls.push("rate-1");
+      else if (Number(cell.rate) === 0.5) cls.push("rate-05");
+      else cls.push("rate-0");
+      if (state.calMode === "free" && busy.indexOf(d) >= 0) cls.push("type-busy");
+      if (pm.y === today.getFullYear() && pm.m === today.getMonth() + 1 && d === today.getDate()) cls.push("today");
+      var body = "";
+      if (state.calMode === "mine") {
+        body =
+          '<div class="day-num">' +
+          d +
+          "</div>" +
+          (cell.type === "vacation"
+            ? "отпуск"
+            : cell.type === "sick"
+              ? "больн."
+              : cell.hours
+                ? cell.rate + " · " + cell.hours + " ч"
+                : "—");
+      } else {
+        body = '<div class="day-num">' + d + "</div>" + (busy.indexOf(d) >= 0 ? "занято" : "свободно");
+      }
+      html += '<div class="' + cls.join(" ") + '">' + body + "</div>";
+    }
+    html += "</div>";
+    host.innerHTML = html;
+  }
+
+  function cellLabel(c) {
+    if (!c) return { cls: "c-0", label: "" };
+    if (c.type === "vacation") return { cls: "c-v", label: "О" };
+    if (c.type === "sick") return { cls: "c-s", label: "Б" };
+    if (Number(c.rate) === 1) return { cls: "c-1", label: "1" };
+    if (Number(c.rate) === 0.5) return { cls: "c-05", label: "½" };
+    return { cls: "c-0", label: "0" };
+  }
+
+  function renderDeptMatrix() {
+    var host = document.getElementById("dg-ws-dept-sheet-host");
+    if (!host) return;
+    renderLegend(document.getElementById("dg-ws-dept-legend"), false);
+    var monthStr = state.filters.month || defaultMonthStr();
+    var pm = parseMonthValue(monthStr);
+    var dim = daysInMonth(pm.y, pm.m);
+    var dm = state.deptMonth || { employees: [], cells: {} };
+    var html = '<table class="dg-ws-sheet"><thead><tr><th class="emp">Сотрудник</th>';
+    for (var d = 1; d <= dim; d++) html += "<th>" + d + "</th>";
+    html += "</tr></thead><tbody>";
+    (dm.employees || []).forEach(function (e) {
+      html += '<tr><td class="emp">' + (e.full_name || "") + "</td>";
+      for (var day = 1; day <= dim; day++) {
+        var c = (dm.cells[e.id] && dm.cells[e.id][day]) || null;
+        var L = cellLabel(c);
+        html += '<td class="' + L.cls + '">' + L.label + "</td>";
+      }
+      html += "</tr>";
+    });
+    html += "</tbody></table>";
+    host.innerHTML = html || '<div class="text-muted p-3">Нет сотрудников отдела</div>';
+  }
+
+  function syncClockMirror() {
+    var st = window.DatagonWorkClock ? window.DatagonWorkClock.getState() : { open: false };
+    var status = document.getElementById("dg-ws-today-status");
+    if (status) status.textContent = st.open ? "Смена открыта" : "Смена не начата";
+    document.querySelectorAll(".dg-ws-page-clock-timer").forEach(function (el) {
+      if (!st.open) el.textContent = "—";
+    });
+  }
+
+  function renderMe() {
+    renderEarnings();
+    renderMyVacations();
+    renderCalendar();
+    syncClockMirror();
+  }
+
+  function renderDept() {
+    renderDeptMatrix();
+    var team = document.getElementById("dg-ws-head-team");
+    if (team) {
+      var dm = state.deptMonth || { employees: [], cells: {} };
+      var day = new Date().getDate();
+      team.innerHTML = (dm.employees || [])
+        .map(function (e) {
+          var c = (dm.cells[e.id] && dm.cells[e.id][day]) || { rate: 0, hours: 0 };
+          return (
+            "<tr><td>" +
+            (e.full_name || "") +
+            "</td><td>" +
+            (c.type === "vacation" ? "отпуск" : c.rate != null ? c.rate : "—") +
+            "</td><td>" +
+            (c.hours != null ? c.hours : "—") +
+            "</td></tr>"
+          );
+        })
+        .join("") || '<tr><td colspan="3" class="text-muted">Нет данных</td></tr>';
+    }
+    var stuck = document.getElementById("dg-ws-stuck-shifts");
+    if (stuck) {
+      stuck.innerHTML =
+        (state.stuck || [])
+          .map(function (s) {
+            return (
+              '<li class="list-group-item d-flex justify-content-between align-items-center py-2">' +
+              "<span>" +
+              (s.full_name || "") +
+              " · с " +
+              String(s.check_in || "").slice(11, 16) +
+              '</span><span class="badge bg-danger">' +
+              (s.hours_open != null ? s.hours_open : "?") +
+              " ч</span></li>"
+            );
+          })
+          .join("") || '<li class="list-group-item text-muted">Нет зависших смен</li>';
+    }
+    var appr = document.getElementById("dg-ws-approve-vacations");
+    if (appr) {
+      appr.innerHTML =
+        (state.pendingVacations || [])
+          .map(function (v) {
+            return (
+              '<tr data-vac-id="' +
+              v.id +
+              '"><td>' +
+              (v.full_name || "") +
+              "</td><td>" +
+              v.date_from +
+              " — " +
+              v.date_to +
+              "</td><td>" +
+              v.days_count +
+              '</td><td class="text-end text-nowrap">' +
+              '<button type="button" class="btn btn-sm btn-success me-1" data-dg-ws-approve="ok" data-dg-notify-start="Согласовываем…">Да</button>' +
+              '<button type="button" class="btn btn-sm btn-outline-danger" data-dg-ws-approve="no" data-dg-notify-start="Отклоняем…">Нет</button>' +
+              "</td></tr>"
+            );
+          })
+          .join("") || '<tr><td colspan="4" class="text-muted">Очередь пуста</td></tr>';
+    }
+  }
+
+  function renderSheet() {
+    renderLegend(document.getElementById("dg-ws-sheet-legend"), false);
+    var sh = state.sheet;
+    var month = state.filters.month || defaultMonthStr();
+    var pm = parseMonthValue(month);
+    var dim = daysInMonth(pm.y, pm.m);
+    var elMd = document.getElementById("dg-ws-kpi-mandays");
+    var elFot = document.getElementById("dg-ws-kpi-fot");
+    var elEm = document.getElementById("dg-ws-kpi-emps");
+    if (sh && sh.kpi) {
+      if (elMd) elMd.textContent = String(sh.kpi.mandays);
+      if (elFot) elFot.textContent = money(sh.kpi.fot);
+      if (elEm) elEm.textContent = String(sh.kpi.count);
+    }
+    var host = document.getElementById("dg-ws-sheet-host");
+    if (!host) return;
+    if (!sh) {
+      host.innerHTML = '<div class="text-muted p-3">Загрузка…</div>';
+      return;
+    }
+    var html = '<table class="dg-ws-sheet"><thead><tr><th class="emp">Сотрудник</th>';
+    for (var d = 1; d <= dim; d++) html += "<th>" + d + "</th>";
+    html += "<th>Σ</th></tr></thead><tbody>";
+    (sh.employees || []).forEach(function (e) {
+      html += '<tr><td class="emp">' + (e.full_name || "") + "</td>";
+      var sum = 0;
+      for (var day = 1; day <= dim; day++) {
+        var c = (sh.cells[e.id] && sh.cells[e.id][day]) || null;
+        var L = cellLabel(c);
+        if (c) {
+          if (c.type === "vacation" || c.type === "sick") sum += 1;
+          else sum += Number(c.rate) || 0;
+        }
+        html +=
+          '<td class="cell-click ' +
+          L.cls +
+          '" data-emp="' +
+          e.id +
+          '" data-day="' +
+          day +
+          '">' +
+          L.label +
+          "</td>";
+      }
+      html += "<td>" + Math.round(sum * 10) / 10 + "</td></tr>";
+    });
+    html += "</tbody></table>";
+    host.innerHTML = html;
+  }
+
+  function showActionLog(html) {
+    var box = document.getElementById("dg-ws-acc-action-log");
+    if (!box) return;
+    box.classList.remove("d-none");
+    box.innerHTML = html;
+  }
+
+  function fillFilterSelects() {
+    var org = document.getElementById("dg-ws-f-org");
+    var dept = document.getElementById("dg-ws-f-dept");
+    var month = document.getElementById("dg-ws-f-month");
+    if (org) {
+      org.innerHTML =
+        '<option value="0">Все</option>' +
+        state.orgs
+          .map(function (o) {
+            return '<option value="' + o.id + '">' + o.name + "</option>";
+          })
+          .join("");
+      org.value = String(state.pending.orgId || 0);
+    }
+    if (dept) {
+      dept.innerHTML =
+        '<option value="0">Все отделы</option>' +
+        state.departments
+          .map(function (d) {
+            return '<option value="' + d.id + '">' + d.name + " (" + d.schedule_type + ")</option>";
+          })
+          .join("");
+      dept.value = String(state.pending.deptId || 0);
+    }
+    if (month) month.value = state.pending.month || defaultMonthStr();
+  }
+
+  function commitFilters() {
+    state.pending.orgId = Number((document.getElementById("dg-ws-f-org") || {}).value) || 0;
+    state.pending.deptId = Number((document.getElementById("dg-ws-f-dept") || {}).value) || 0;
+    state.pending.month = (document.getElementById("dg-ws-f-month") || {}).value || defaultMonthStr();
+    state.filters = {
+      orgId: state.pending.orgId,
+      deptId: state.pending.deptId,
+      month: state.pending.month,
+    };
+    syncMonthUi();
+    loadSheet();
+    showActionLog(
+      "Фильтры: org=" +
+        state.filters.orgId +
+        " · dept=" +
+        state.filters.deptId +
+        " · " +
+        formatMonthRu(state.filters.month)
+    );
+  }
+
+  function showCellOverlay(show) {
+    var el = document.getElementById("dg-ws-cell-overlay");
+    if (!el) return;
+    el.style.display = show ? "flex" : "none";
+    el.setAttribute("aria-hidden", show ? "false" : "true");
+  }
+
+  function openCellModal(empId, day) {
+    var month = state.filters.month || defaultMonthStr();
+    var c =
+      state.sheet && state.sheet.cells && state.sheet.cells[empId] && state.sheet.cells[empId][day]
+        ? state.sheet.cells[empId][day]
+        : { rate: 0, type: "work", hours: 0 };
+    var emp = (state.sheet.employees || []).find(function (e) {
+      return Number(e.id) === Number(empId);
+    });
+    state.editCell = { empId: empId, day: day, month: month };
+    var meta = document.getElementById("dg-ws-cell-meta");
+    if (meta) meta.textContent = (emp ? emp.full_name : "") + " · день " + day + " · " + month;
+    var rate = document.getElementById("dg-ws-cell-rate");
+    var hours = document.getElementById("dg-ws-cell-hours");
+    var type = document.getElementById("dg-ws-cell-type");
+    if (rate) rate.value = String(c.rate != null ? c.rate : 0);
+    if (hours) hours.value = String(c.hours != null ? c.hours : 0);
+    if (type) type.value = c.type || "work";
+    showCellOverlay(true);
+  }
+
+  function saveCellModal() {
+    if (!state.editCell) return;
+    var day = state.editCell.day;
+    var workDate =
+      state.editCell.month + "-" + (day < 10 ? "0" + day : String(day));
+    var body = {
+      employee_id: state.editCell.empId,
+      work_date: workDate,
+      rate: Number((document.getElementById("dg-ws-cell-rate") || {}).value) || 0,
+      hours: Number(String((document.getElementById("dg-ws-cell-hours") || {}).value).replace(",", ".")) || 0,
+      type: (document.getElementById("dg-ws-cell-type") || {}).value || "work",
+    };
+    var btn = document.getElementById("dg-ws-cell-save");
+    var run = function () {
+      return api("/sheet/cell", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }).then(function () {
+        toast("success", "Ячейка сохранена");
+        showActionLog("Правка: emp=" + body.employee_id + ", " + workDate + ", rate=" + body.rate);
+        showCellOverlay(false);
+        return loadSheet();
+      });
+    };
+    if (window.DatagonNotify && window.DatagonNotify.busyRun) window.DatagonNotify.busyRun(btn, run);
+    else
+      run().catch(function (e) {
+        toast("danger", e.message);
+      });
+  }
+
+  function loadMe() {
+    var month = state.filters.month || defaultMonthStr();
+    return api("/me/month?month=" + encodeURIComponent(month))
+      .then(function (j) {
+        state.meMonth = j;
+        renderMe();
+      })
+      .catch(function (e) {
+        state.meMonth = null;
+        renderMe();
+        if (e.message !== "no employee card") toast("warning", e.message);
+      });
+  }
+
+  function loadDept() {
+    var month = state.filters.month || defaultMonthStr();
+    var q = "/dept/month?month=" + encodeURIComponent(month);
+    if (state.filters.deptId) q += "&department_id=" + state.filters.deptId;
+    return Promise.all([
+      api(q).catch(function () {
+        return { employees: [], cells: {}, vacations: [] };
+      }),
+      api("/stuck-shifts").catch(function () {
+        return { rows: [] };
+      }),
+      api("/vacations/pending").catch(function () {
+        return { rows: [] };
+      }),
+    ]).then(function (arr) {
+      state.deptMonth = arr[0];
+      state.stuck = arr[1].rows || [];
+      state.pendingVacations = arr[2].rows || [];
+      var title = document.getElementById("dg-ws-dept-title");
+      if (title && state.access && state.access.employee) {
+        title.textContent = "Отдел «" + (state.access.employee.department_name || "") + "» · график";
+      }
+      syncMonthUi();
+      renderDept();
+    });
+  }
+
+  function loadSheet() {
+    if (!(state.access && state.access.is_accounting)) {
+      state.sheet = null;
+      renderSheet();
+      return Promise.resolve();
+    }
+    var month = state.filters.month || defaultMonthStr();
+    var q = "/sheet?month=" + encodeURIComponent(month);
+    if (state.filters.orgId) q += "&organization_id=" + state.filters.orgId;
+    if (state.filters.deptId) q += "&department_id=" + state.filters.deptId;
+    return api(q)
+      .then(function (j) {
+        state.sheet = j;
+        renderSheet();
+      })
+      .catch(function (e) {
+        toast("danger", e.message);
+      });
+  }
+
+  function submitVacation() {
+    var fromEl = document.getElementById("dg-ws-vac-from");
+    var toEl = document.getElementById("dg-ws-vac-to");
+    if (!fromEl || !toEl) return;
+    var body = { date_from: fromEl.value, date_to: toEl.value, type: "annual" };
+    var btn = document.getElementById("dg-ws-vac-submit");
+    var run = function () {
+      return api("/vacations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }).then(function () {
+        toast("success", "Заявка отправлена");
+        fromEl.value = "";
+        toEl.value = "";
+        return loadMe();
+      });
+    };
+    if (window.DatagonNotify && window.DatagonNotify.busyRun) window.DatagonNotify.busyRun(btn, run);
+    else
+      run().catch(function (e) {
+        toast("danger", e.message);
+      });
+  }
+
+  function bind() {
+    document.querySelectorAll("[data-dg-ws-tab]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        setTab(btn.getAttribute("data-dg-ws-tab"));
+      });
+    });
+    document.querySelectorAll("[data-dg-ws-cal-mode]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        state.calMode = btn.getAttribute("data-dg-ws-cal-mode");
+        document.querySelectorAll("[data-dg-ws-cal-mode]").forEach(function (b) {
+          b.classList.toggle("active", b === btn);
+        });
+        if (state.calMode === "free" && !state.deptMonth) {
+          loadDept().then(renderCalendar);
+        } else renderCalendar();
+      });
+    });
+    document.querySelectorAll("[data-dg-ws-earn-period]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        state.earnPeriod = btn.getAttribute("data-dg-ws-earn-period");
+        document.querySelectorAll("[data-dg-ws-earn-period]").forEach(function (b) {
+          b.classList.toggle("active", b === btn);
+        });
+        renderEarnings();
+      });
+    });
+    function bindMonthNav(prevId, nextId) {
+      var prev = document.getElementById(prevId);
+      var next = document.getElementById(nextId);
+      if (prev)
+        prev.addEventListener("click", function () {
+          shiftMonth(-1);
+        });
+      if (next)
+        next.addEventListener("click", function () {
+          shiftMonth(1);
+        });
+    }
+    bindMonthNav("dg-ws-month-prev", "dg-ws-month-next");
+    bindMonthNav("dg-ws-cal-month-prev", "dg-ws-cal-month-next");
+    bindMonthNav("dg-ws-dept-month-prev", "dg-ws-dept-month-next");
+    var monthPick = document.getElementById("dg-ws-month-pick");
+    if (monthPick) {
+      monthPick.addEventListener("change", function () {
+        if (monthPick.value) setMonth(monthPick.value);
+      });
+    }
+    var apply = document.getElementById("dg-ws-f-apply");
+    if (apply) apply.addEventListener("click", commitFilters);
+    var reset = document.getElementById("dg-ws-f-reset");
+    if (reset) {
+      reset.addEventListener("click", function () {
+        state.pending = { orgId: 0, deptId: 0, month: defaultMonthStr() };
+        fillFilterSelects();
+        commitFilters();
+      });
+    }
+    var sheetHost = document.getElementById("dg-ws-sheet-host");
+    if (sheetHost) {
+      sheetHost.addEventListener("click", function (ev) {
+        var td = ev.target.closest("td.cell-click");
+        if (!td) return;
+        openCellModal(Number(td.getAttribute("data-emp")), Number(td.getAttribute("data-day")));
+      });
+    }
+    var saveBtn = document.getElementById("dg-ws-cell-save");
+    if (saveBtn) saveBtn.addEventListener("click", saveCellModal);
+    ["dg-ws-cell-cancel", "dg-ws-cell-close", "dg-ws-cell-backdrop"].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el)
+        el.addEventListener("click", function () {
+          showCellOverlay(false);
+        });
+    });
+    document.addEventListener("keydown", function (ev) {
+      if (ev.key !== "Escape") return;
+      var ov = document.getElementById("dg-ws-cell-overlay");
+      if (ov && ov.style.display === "flex") showCellOverlay(false);
+    });
+
+    var vacBtn = document.getElementById("dg-ws-vac-submit");
+    if (vacBtn) vacBtn.addEventListener("click", submitVacation);
+
+    var approveHost = document.getElementById("dg-ws-approve-vacations");
+    if (approveHost) {
+      approveHost.addEventListener("click", function (ev) {
+        var btn = ev.target.closest("[data-dg-ws-approve]");
+        if (!btn) return;
+        var tr = btn.closest("tr");
+        var id = tr && tr.getAttribute("data-vac-id");
+        if (!id) return;
+        var ok = btn.getAttribute("data-dg-ws-approve") === "ok";
+        var run = function () {
+          return api("/vacations/" + id + "/approve", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(ok ? {} : { reject: true, reason: "отклонено" }),
+          }).then(function () {
+            toast(ok ? "success" : "warning", ok ? "Отпуск согласован" : "Отпуск отклонён");
+            return loadDept();
+          });
+        };
+        if (window.DatagonNotify && window.DatagonNotify.busyRun) window.DatagonNotify.busyRun(btn, run);
+        else
+          run().catch(function (e) {
+            toast("danger", e.message);
+          });
+      });
+    }
+
+    var exportBtn = document.getElementById("dg-ws-btn-export");
+    if (exportBtn) {
+      exportBtn.addEventListener("click", function () {
+        var month = state.filters.month || defaultMonthStr();
+        window.location.href = API + "/export/1c?format=csv&month=" + encodeURIComponent(month);
+        showActionLog("Экспорт 1С CSV за " + month);
+      });
+    }
+    var dry = document.getElementById("dg-ws-btn-dryrun");
+    if (dry) {
+      dry.addEventListener("click", function () {
+        var month = state.filters.month || defaultMonthStr();
+        var run = function () {
+          return api("/payroll/dry-run", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ month: month }),
+          }).then(function (j) {
+            var n = (j.rows || []).length;
+            var sum = (j.rows || []).reduce(function (a, r) {
+              return a + (Number(r.total) || 0);
+            }, 0);
+            showActionLog(
+              "<strong>Dry-run " +
+                month +
+                "</strong><br>Сотрудников: " +
+                n +
+                "; сумма: " +
+                money(sum) +
+                '<br><button type="button" class="btn btn-sm btn-primary mt-2" id="dg-ws-btn-apply-payroll" data-dg-notify-start="Подтверждение…">Применить начисления</button>'
+            );
+            toast("success", "Предпросмотр готов");
+            var ap = document.getElementById("dg-ws-btn-apply-payroll");
+            if (ap) {
+              ap.addEventListener("click", function () {
+                var ov = document.getElementById("dg-ws-payroll-overlay");
+                var tx = document.getElementById("dg-ws-payroll-confirm-text");
+                if (tx) tx.textContent = "Записать начисления за " + month + " в БД (" + n + " сотр., " + money(sum) + ")?";
+                if (ov) {
+                  ov.style.display = "flex";
+                  ov.setAttribute("aria-hidden", "false");
+                }
+                state._payrollMonth = month;
+              });
+            }
+          });
+        };
+        if (window.DatagonNotify && window.DatagonNotify.busyRun) window.DatagonNotify.busyRun(dry, run);
+        else
+          run().catch(function (e) {
+            toast("danger", e.message);
+          });
+      });
+    }
+    var audit = document.getElementById("dg-ws-btn-audit");
+    if (audit) {
+      audit.addEventListener("click", function () {
+        var run = function () {
+          return api("/audit?limit=50").then(function (j) {
+            var rows = j.rows || [];
+            var html =
+              "<strong>Журнал (последние " +
+              rows.length +
+              ")</strong><ul class=\"mb-0 mt-2\">" +
+              rows
+                .slice(0, 20)
+                .map(function (a) {
+                  return (
+                    "<li>" +
+                    String(a.created_at || "").slice(0, 19) +
+                    " · " +
+                    (a.username || a.user_id || "") +
+                    " · " +
+                    a.entity_type +
+                    "/" +
+                    a.entity_id +
+                    " · " +
+                    a.action +
+                    "</li>"
+                  );
+                })
+                .join("") +
+              "</ul>";
+            showActionLog(html);
+          });
+        };
+        if (window.DatagonNotify && window.DatagonNotify.busyRun) window.DatagonNotify.busyRun(audit, run);
+        else
+          run().catch(function (e) {
+            toast("danger", e.message);
+          });
+      });
+    }
+
+    document.querySelectorAll("[data-dg-ws-payroll-close]").forEach(function (el) {
+      el.addEventListener("click", function () {
+        var ov = document.getElementById("dg-ws-payroll-overlay");
+        if (ov) {
+          ov.style.display = "none";
+          ov.setAttribute("aria-hidden", "true");
+        }
+      });
+    });
+    var payOk = document.getElementById("dg-ws-payroll-apply-ok");
+    if (payOk) {
+      payOk.addEventListener("click", function () {
+        var month = state._payrollMonth || state.filters.month || defaultMonthStr();
+        var ov = document.getElementById("dg-ws-payroll-overlay");
+        var run = function () {
+          return api("/payroll/apply", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ month: month }),
+          }).then(function (r) {
+            if (ov) {
+              ov.style.display = "none";
+              ov.setAttribute("aria-hidden", "true");
+            }
+            toast("success", "Начисления применены: " + (r.rows || []).length);
+            showActionLog("Apply " + month + ": " + (r.rows || []).length + " записей");
+          });
+        };
+        if (window.DatagonNotify && window.DatagonNotify.busyRun) window.DatagonNotify.busyRun(payOk, run);
+        else
+          run().catch(function (e) {
+            toast("danger", e.message);
+          });
+      });
+    }
+
+    if (window.DatagonWorkClock && window.DatagonWorkClock.subscribe) {
+      window.DatagonWorkClock.subscribe(syncClockMirror);
+      window.DatagonWorkClock.refresh();
+    }
+  }
+
+  function init() {
+    state.filters.month = defaultMonthStr();
+    state.pending.month = state.filters.month;
+    syncMonthUi();
+    bind();
+    api("/access")
+      .then(function (acc) {
+        state.access = acc;
+        var loads = [];
+        if (acc.is_accounting) {
+          loads.push(
+            api("/organizations").then(function (j) {
+              state.orgs = j.rows || [];
+            })
+          );
+          loads.push(
+            api("/departments").then(function (j) {
+              state.departments = j.rows || [];
+            })
+          );
+        } else if (acc.employee) {
+          state.departments = [
+            { id: acc.employee.department_id, name: acc.employee.department_name, schedule_type: "" },
+          ];
+        }
+        return Promise.all(loads);
+      })
+      .then(function () {
+        fillFilterSelects();
+        var tab = "me";
+        try {
+          var saved = sessionStorage.getItem(TAB_KEY);
+          if (TAB_HINTS[saved]) tab = saved;
+        } catch (e) {}
+        if (state.access && state.access.is_accounting && !state.access.is_employee) tab = "sheet";
+        setTab(tab);
+      })
+      .catch(function (e) {
+        toast("danger", e.message || "Ошибка доступа");
+        setTab("me");
+      });
+  }
+
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
+  else init();
+})();
+</script>

@@ -185,9 +185,20 @@
     if ($('dg-mss-table-search-mirror')) $('dg-mss-table-search-mirror').value = s.search;
   }
 
+  function readSearchFromDom() {
+    var top = $('dg-mss-search');
+    var mirror = $('dg-mss-table-search-mirror');
+    var a = top ? String(top.value || '').trim() : '';
+    var b = mirror ? String(mirror.value || '').trim() : '';
+    var v = a || b || '';
+    if (top) top.value = v;
+    if (mirror) mirror.value = v;
+    return v;
+  }
+
   function readFromForm() {
     return {
-      search: ($('dg-mss-search') && $('dg-mss-search').value || '').trim(),
+      search: readSearchFromDom(),
       docName: ($('dg-mss-doc') && $('dg-mss-doc').value || '').trim(),
       days: parseInt($('dg-mss-days') ? $('dg-mss-days').value : DEFAULTS.days, 10) || DEFAULTS.days,
       storeUuid: $('dg-mss-store') ? $('dg-mss-store').value : '',
@@ -208,6 +219,7 @@
     state.pending = readFromForm();
     if (!opts || opts.resetPage !== false) state.pending.page = 1;
     state.applied = Object.assign({}, state.pending);
+    applyToForm(state.applied);
     saveToStorage({
       search: state.applied.search, docName: state.applied.docName, days: state.applied.days,
       storeUuid: state.applied.storeUuid, agentUuid: state.applied.agentUuid,
@@ -348,18 +360,29 @@
   }
 
   function fetchList() {
-    if (state.loading) return;
+    if (state._listAbort) {
+      try { state._listAbort.abort(); } catch (_) {}
+    }
+    var gen = (state._listFetchGen = (state._listFetchGen || 0) + 1);
+    var ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    state._listAbort = ctrl;
     state.loading = true;
     setMssListBusy(true);
+    var timeoutId = window.setTimeout(function () {
+      if (gen !== state._listFetchGen) return;
+      try { if (ctrl) ctrl.abort(); } catch (_) {}
+    }, 30000);
     fetch('/api/ms-sales/list?' + buildQuery(), {
       credentials: 'same-origin',
-      headers: { Accept: 'application/json' }
+      headers: { Accept: 'application/json' },
+      signal: ctrl ? ctrl.signal : undefined
     })
       .then(function (r) {
         if (!r.ok) throw new Error('HTTP ' + r.status);
         return r.json();
       })
       .then(function (data) {
+        if (gen !== state._listFetchGen) return;
         if (!data || !data.success) throw new Error((data && data.error) || 'Ошибка загрузки');
         state.total = Number(data.total || 0);
         state.rows = Array.isArray(data.rows) ? data.rows : [];
@@ -369,6 +392,15 @@
         renderSortIndicators();
       })
       .catch(function (err) {
+        if (gen !== state._listFetchGen) return;
+        if (err && err.name === 'AbortError') {
+          var emptyAbort = $('dg-mss-empty-msg');
+          if (emptyAbort && !(state.rows && state.rows.length)) {
+            emptyAbort.textContent = 'Таймаут или отмена загрузки. Нажмите «Применить» ещё раз.';
+            emptyAbort.classList.remove('d-none');
+          }
+          return;
+        }
         state.rows = [];
         state.total = 0;
         renderTable();
@@ -379,7 +411,10 @@
         }
       })
       .finally(function () {
+        window.clearTimeout(timeoutId);
+        if (gen !== state._listFetchGen) return;
         state.loading = false;
+        state._listAbort = null;
         setMssListBusy(false);
         renderStatus();
       });

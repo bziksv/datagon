@@ -528,7 +528,13 @@
     var searchVal = readSearchFromDom();
     var snap = normalizeSnap(readFromForm());
     snap.search = searchVal;
-    if (searchVal && /^\d+$/.test(searchVal) && !String(snap.docName || '').trim()) {
+    // Дублируем в doc_name только «чистый» номер (цифры / типичный код заказа),
+    // чтобы AND с search не отсекал поиск по товару/контрагенту.
+    if (
+      searchVal &&
+      !String(snap.docName || '').trim() &&
+      /^[A-Za-zА-Яа-я]{0,4}[-_]?\d[\d._-]*$/.test(searchVal)
+    ) {
       snap.docName = searchVal;
     }
     if (!opts || opts.resetPage !== false) snap.page = 1;
