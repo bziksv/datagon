@@ -4,12 +4,24 @@ title: Мои товары
 description: Детально — фильтры, поиск, сортировка, связь с МС, разрыв с конкурентом, действия по строке
 ---
 
-Экран **`/my-products.html`** — основная таблица каталога **`my_products`**: что пришло с [Моих сайтов](/docs/mysites/), активность, связь с **МойСклад** (`ms_export`), сравнение с ценами **конкурентов** (если настроены парсинг и сопоставление).
+Экран **`/my-products.html`** — основная таблица каталога **`my_products`**: что пришло с [Моих сайтов](/docs/mysites/), активность, связь с **МойСклад** (`ms_export`), сравнение с ценами **конкурентов** (если настроены парсинг и сопоставление). Карта: [Карта панели](/docs/panel-map/). API: `/api/my-products` → `routes/myproducts.js`.
+
+## Доступ
+
+Ключ матрицы — **`my-products`** (в меню: «Мои товары (сайты)»).
+
+| Режим | Что доступно |
+|-------|----------------|
+| **`hidden`** | HTML и `/api/my-products` недоступны |
+| **`view`** | Список / stats / fx-rates — GET |
+| **`full`** | refresh-one, sync цены с конкурента (одна / bulk), стоп bulk |
+
+Фильтры и поиск — только по **«Применить»** / Enter (черновик vs применённое). Wide-таблица: горизонтальный скролл **в карточке**, плавающий `thead` (как эталон my-products; не схема shop Ozon/WB/Я.М.).
 
 **Webasyst / модификации:** при синке каждая строка `shop_product_skus` становится **отдельной** записью `my_products`. Поле `source_id` = **id SKU** (модификации), чтобы UNIQUE `(site_id, source_id)` не схлопывал несколько артикулов одной карточки. Поле **`cms_product_id`** = id карточки `shop_product` — его показывают в колонке **«ID / КОД»** и в ссылке «редактировать в Webasyst» (иначе открывалась бы чужая карточка с тем же числом, что и id SKU). После первого синка со старой схемой остаются неактивные «призраки» с прежним `source_id` (= id карточки) — их снимает `cleanupInactiveSkuDuplicates`.
 
 <blockquote class="dg-doc-tip">
-<strong>Снимок интерфейса.</strong> PNG обновляют: <code>npm run docs:capture-screenshots</code> (с <code>DOCS_USER</code> и <code>DOCS_PASSWORD</code> — с живой панели; без входа — с макета <code>/doc-screenshots/myproducts-sample.html</code>) и <code>npm run docs:docusaurus:build</code>. Таблица в кадре — <strong>viewport</strong> (верх экрана). <a href="./capture-screenshots.md">Подробнее о съёмке</a>.
+<strong>Снимок интерфейса.</strong> PNG: <code>npm run docs:capture-screenshots</code> + <code>npm run docs:docusaurus:build</code>. Кадр <strong>viewport</strong>; без входа — макет <code>/doc-screenshots/myproducts-sample.html</code>. <a href="/docs/capture-screenshots/">Съёмка</a>.
 </blockquote>
 
 <figure class="dg-doc-shot">
@@ -52,7 +64,13 @@ description: Детально — фильтры, поиск, сортировк
 
 ### Обновить одну строку из источника
 
-Используйте действие **обновить одну позицию** (название в UI может отличаться) — на сервере это соответствует `POST /api/my-products/refresh-one` (см. [API](/docs/api/#my-products)).
+Действие **обновить одну позицию** → `POST /api/my-products/refresh-one` (см. [API](/docs/api/#my-products)).
+
+### Синх. цены с конкурента (Dealmed / Медкомплекс)
+
+- **Одна строка** → `POST /sync-price-from-competitor` (min цена ДМ/МК в RUB минус случайный %; запись в CMS + аудит `comp_sync_*`).
+- **По фильтрам** → «Синх. цены по фильтрам» / «Стоп» → bulk API + `#mp-action-log` (план → опрос статуса → итог со счётчиками). Учитываются **серверные** фильтры списка (`match_audit`, сайт, Δ…), не клиентские `tf_*`.
+- Автосинк `task: 'price_comp_sync'` — карточка на [Настройках](/docs/settings/) (`auto_sync_price_comp_*`, default **10:00**), журнал на [Активность / Логи](/docs/processes/). Полный синк каталога из CMS — `auto_sync_myproducts_*` / [Мои сайты](/docs/mysites/).
 
 ## Производительность
 

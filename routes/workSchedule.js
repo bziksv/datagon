@@ -6,6 +6,10 @@ const {
     importDepartmentsFromSpecialties,
 } = require('../lib/datagonWorkScheduleSchema');
 const calc = require('../lib/datagonWorkScheduleCalc');
+const {
+    fetchManagerBonusesForMonth,
+    isSalesDepartmentName,
+} = require('../lib/managerSalesMonthBonus');
 
 let schemaReady = false;
 
@@ -153,8 +157,8 @@ function normalizePremiumRuleBody(raw, { allowInherit }) {
         return allowInherit ? null : JSON.stringify({ kind: 'stub' });
     }
     const parsed = calc.parsePremiumRule(raw);
-    if (parsed.kind === 'fixed') {
-        return JSON.stringify({ kind: 'fixed', amount: parsed.amount });
+    if (parsed.kind === 'fixed' || parsed.kind === 'fixed_full') {
+        return JSON.stringify({ kind: parsed.kind, amount: parsed.amount });
     }
     return JSON.stringify({ kind: 'stub' });
 }
@@ -214,11 +218,28 @@ async function recalcPayroll(db, employeeId, periodYm) {
     }
 
     const salary = Number(emp.salary) || 0;
-    const base = normDays > 0 ? Math.round(((salary * worked) / normDays) * 100) / 100 : 0;
+    const base = calc.prorateByWorkedDays(salary, worked, normDays);
     const senParams = calc.resolveSeniorityParams(emp, emp);
-    const seniority = calc.seniorityBonus(emp.hire_date, `${periodYm}-28`, senParams);
+    const seniorityFull = calc.seniorityBonus(emp.hire_date, `${periodYm}-28`, senParams);
+    const seniority = calc.prorateByWorkedDays(seniorityFull, worked, normDays);
     const premiumRule = calc.resolvePremiumRule(emp, emp);
-    const premium = calc.computePremium(premiumRule);
+    const premiumFromRule = calc.computePremium(premiumRule, { workedDays: worked, normDays });
+    const [prevPay] = await db.query(
+        `SELECT premium_manual, premium_source FROM ws_payroll_entry WHERE employee_id=? AND period_ym=? LIMIT 1`,
+        [employeeId, periodYm]
+    );
+    const premiumManual =
+        prevPay[0] && prevPay[0].premium_manual != null && prevPay[0].premium_manual !== ''
+            ? Number(prevPay[0].premium_manual)
+            : null;
+    const premiumSource =
+        prevPay[0] && prevPay[0].premium_source != null && String(prevPay[0].premium_source).trim()
+            ? String(prevPay[0].premium_source).trim()
+            : null;
+    const premium =
+        premiumManual != null && Number.isFinite(premiumManual)
+            ? Math.round(premiumManual * 100) / 100
+            : premiumFromRule;
     const vacationPay = 0;
     const total =
         Math.round(
@@ -258,8 +279,16 @@ async function recalcPayroll(db, employeeId, periodYm) {
     return {
         employee_id: employeeId,
         period_ym: periodYm,
+        /** Полный месячный оклад (ставка в карточке), не пропорциональный. */
+        salary_rate: salary,
+        /** Накапало по отработанным ставкам: salary × worked/norm. */
         base_salary: base,
         premium,
+        premium_from_rule: premiumFromRule,
+        premium_manual: premiumManual,
+        premium_source: premiumSource,
+        /** Полная доплата за стаж за месяц (до пропорции). */
+        seniority_full: seniorityFull,
         seniority_bonus: seniority,
         vacation_pay: vacationPay,
         sick_pay: sickPay,
@@ -269,6 +298,166 @@ async function recalcPayroll(db, employeeId, periodYm) {
         total,
         worked_days: worked,
         norm_days: normDays,
+    };
+}
+
+/**
+ * Подтянуть премии из журнала менеджеров в premium_manual для отделов «…продаж…».
+ * mode:
+ *   - 'auto' — только если premium_source != 'manual' и (нет manual или source=sales);
+ *   - 'force' — перезаписать всех (кнопка «Обновить»), в т.ч. ручные.
+ * dryRun — без записи.
+ */
+async function syncSalesPremiums(db, req, opts) {
+    const periodYm = String(opts.periodYm || '');
+    const dryRun = !!opts.dryRun;
+    const mode = opts.mode === 'force' ? 'force' : 'auto';
+    const orgId = opts.orgId ? Number(opts.orgId) : null;
+    const deptId = opts.deptId ? Number(opts.deptId) : null;
+    const t0 = Date.now();
+    const year = Number(periodYm.slice(0, 4));
+    const month = Number(periodYm.slice(5, 7));
+
+    let esql = `SELECT e.id, e.user_id, u.full_name, d.id AS department_id, d.name AS department_name
+                FROM ws_employee e
+                JOIN users u ON u.id=e.user_id
+                JOIN ws_department d ON d.id=e.department_id
+                WHERE 1=1`;
+    const params = [];
+    if (orgId) {
+        esql += ' AND e.organization_id=?';
+        params.push(orgId);
+    }
+    if (deptId) {
+        esql += ' AND e.department_id=?';
+        params.push(deptId);
+    }
+    const [empsAll] = await db.query(esql, params);
+    const salesEmps = (empsAll || []).filter((e) => isSalesDepartmentName(e.department_name));
+    if (!salesEmps.length) {
+        return {
+            success: true,
+            dry_run: dryRun,
+            mode,
+            period_ym: periodYm,
+            total: 0,
+            updated: 0,
+            skipped: 0,
+            no_sales: 0,
+            rows: [],
+            duration_sec: Math.round((Date.now() - t0) / 1000),
+            message: 'Нет сотрудников в отделах с «продаж» в названии',
+        };
+    }
+
+    const bonuses = await fetchManagerBonusesForMonth(db, year, month);
+    const ids = salesEmps.map((e) => e.id);
+    const [prevRows] = await db.query(
+        `SELECT employee_id, premium_manual, premium_source FROM ws_payroll_entry
+         WHERE period_ym=? AND employee_id IN (?)`,
+        [periodYm, ids]
+    );
+    const prevMap = {};
+    for (const p of prevRows || []) {
+        prevMap[p.employee_id] = {
+            premium_manual: p.premium_manual,
+            premium_source: p.premium_source != null ? String(p.premium_source).trim() : null,
+        };
+    }
+
+    const rows = [];
+    let updated = 0;
+    let skipped = 0;
+    let noSales = 0;
+    for (const e of salesEmps) {
+        const bInfo = bonuses.get(Number(e.user_id));
+        const next = bInfo ? Number(bInfo.bonus) || 0 : 0;
+        if (!bInfo) noSales += 1;
+        const prevRow = prevMap[e.id] || {};
+        const prev =
+            prevRow.premium_manual != null && prevRow.premium_manual !== ''
+                ? Number(prevRow.premium_manual)
+                : null;
+        const src = prevRow.premium_source || null;
+        const same = prev != null && Math.abs(prev - next) < 0.005 && src === 'sales';
+        const isManual = src === 'manual';
+        // auto: не трогаем ручные и legacy (есть сумма без source=sales)
+        const blockedAuto = mode === 'auto' && (isManual || (prev != null && src !== 'sales'));
+        const changed = !same && !blockedAuto;
+        rows.push({
+            employee_id: e.id,
+            user_id: e.user_id,
+            full_name: e.full_name,
+            department_name: e.department_name,
+            bonus: next,
+            pct_mp: bInfo ? bInfo.pct_mp : null,
+            amount_ex: bInfo ? bInfo.amount_ex : 0,
+            previous_manual: prev,
+            previous_source: src,
+            changed,
+            skipped_manual: !!blockedAuto,
+        });
+        if (!changed) {
+            skipped += 1;
+            continue;
+        }
+        if (dryRun) {
+            updated += 1;
+            continue;
+        }
+        // eslint-disable-next-line no-await-in-loop
+        await db.query(
+            `INSERT INTO ws_payroll_entry
+             (employee_id, period_ym, base_salary, premium, premium_manual, premium_source, seniority_bonus,
+              vacation_pay, sick_pay, dayoff_pay, business_trip_pay, vacation_compensation, total,
+              worked_days, norm_days, calculated_at)
+             VALUES (?, ?, 0, ?, ?, 'sales', 0, 0, 0, 0, 0, 0, ?, 0, 0, ?)
+             ON DUPLICATE KEY UPDATE
+               premium_manual=VALUES(premium_manual),
+               premium_source='sales'`,
+            [e.id, periodYm, next, next, next, calc.moscowNowSql()]
+        );
+        if (req) {
+            // eslint-disable-next-line no-await-in-loop
+            await writeAudit(db, req, {
+                entity_type: 'payroll',
+                entity_id: `${e.id}:${periodYm}`,
+                action: mode === 'auto' ? 'premium_from_sales_auto' : 'premium_from_sales',
+                field_name: 'premium_manual',
+                old_value: prev != null ? String(prev) : null,
+                new_value: String(next),
+            });
+        }
+        // eslint-disable-next-line no-await-in-loop
+        await recalcPayroll(db, e.id, periodYm);
+        updated += 1;
+    }
+
+    if (!dryRun && req && mode === 'force' && updated > 0) {
+        await writeAudit(db, req, {
+            entity_type: 'payroll',
+            entity_id: periodYm,
+            action: 'premium_from_sales_batch',
+            new_value: JSON.stringify({ updated, skipped, no_sales: noSales, total: salesEmps.length }),
+        });
+    }
+
+    return {
+        success: true,
+        dry_run: dryRun,
+        mode,
+        period_ym: periodYm,
+        total: salesEmps.length,
+        updated,
+        skipped,
+        no_sales: noSales,
+        rows: rows.sort((a, b) => String(a.full_name).localeCompare(String(b.full_name), 'ru')),
+        duration_sec: Math.round((Date.now() - t0) / 1000),
+        message: dryRun
+            ? `Пробный прогон: к записи ${updated}, без изменений ${skipped}`
+            : mode === 'auto'
+              ? `Автозагрузка премий из продаж: обновлено ${updated}`
+              : `Записано премий: ${updated}, без изменений ${skipped}`,
     };
 }
 
@@ -578,7 +767,15 @@ function createWorkScheduleRouter(db) {
                     normalizePremiumRuleBody(b.personal_premium_rule_json, { allowInherit: true }),
                 ]
             );
-            await writeAudit(db, req, { entity_type: 'employee', entity_id: r.insertId, action: 'create' });
+            const newSalary = Number(b.salary) || 0;
+            await writeAudit(db, req, {
+                entity_type: 'employee',
+                entity_id: r.insertId,
+                action: 'create',
+                field_name: 'salary',
+                old_value: null,
+                new_value: String(newSalary),
+            });
             res.json({ success: true, id: r.insertId });
         } catch (e) {
             if (e && e.code === 'ER_DUP_ENTRY') {
@@ -593,6 +790,10 @@ function createWorkScheduleRouter(db) {
         const id = Number(req.params.id);
         const b = req.body || {};
         const nullIfEmpty = (v) => (v === '' || v == null ? null : Number(v));
+        const [prevRows] = await db.query(`SELECT salary FROM ws_employee WHERE id=? LIMIT 1`, [id]);
+        if (!prevRows.length) return res.status(404).json({ success: false, error: 'not found' });
+        const oldSalary = Number(prevRows[0].salary) || 0;
+        const newSalary = Number(b.salary) || 0;
         await db.query(
             `UPDATE ws_employee SET
              organization_id=?, department_id=?, position=?, hire_date=?, fire_date=?, salary=?, grade=?,
@@ -606,7 +807,7 @@ function createWorkScheduleRouter(db) {
                 b.position || null,
                 dateOnlyYmd(b.hire_date),
                 dateOnlyYmd(b.fire_date),
-                Number(b.salary) || 0,
+                newSalary,
                 b.grade || null,
                 b.official_employment ? 1 : 0,
                 nullIfEmpty(b.personal_work_hours_per_day),
@@ -619,7 +820,56 @@ function createWorkScheduleRouter(db) {
             ]
         );
         await writeAudit(db, req, { entity_type: 'employee', entity_id: id, action: 'update' });
+        if (oldSalary !== newSalary) {
+            await writeAudit(db, req, {
+                entity_type: 'employee',
+                entity_id: id,
+                action: 'salary_change',
+                field_name: 'salary',
+                old_value: String(oldSalary),
+                new_value: String(newSalary),
+            });
+        }
         res.json({ success: true });
+    });
+
+    /** История изменений оклада: бухгалтерия — любой сотрудник; сотрудник — только свой. */
+    router.get('/employees/:id/salary-history', async (req, res) => {
+        const a = actorOf(req);
+        const id = Number(req.params.id);
+        if (!id) return res.status(400).json({ success: false, error: 'id required' });
+        const accounting = isAccounting(a);
+        if (!accounting) {
+            const self = a.id ? await getEmployeeByUserId(db, a.id) : null;
+            if (!self || Number(self.id) !== id) {
+                return res.status(403).json({ success: false, error: 'forbidden' });
+            }
+        }
+        const [empRows] = await db.query(
+            `SELECT e.id, e.salary, u.full_name, u.username
+             FROM ws_employee e JOIN users u ON u.id=e.user_id WHERE e.id=? LIMIT 1`,
+            [id]
+        );
+        if (!empRows.length) return res.status(404).json({ success: false, error: 'not found' });
+        const [rows] = await db.query(
+            `SELECT a.id, a.action, a.field_name, a.old_value, a.new_value, a.user_id, a.user_role,
+                    a.ip, a.created_at, u.full_name, u.username
+             FROM ws_audit_log a
+             LEFT JOIN users u ON u.id=a.user_id
+             WHERE a.entity_type='employee' AND a.entity_id=? AND a.field_name='salary'
+             ORDER BY a.id DESC
+             LIMIT 200`,
+            [String(id)]
+        );
+        res.json({
+            success: true,
+            employee: {
+                id: empRows[0].id,
+                full_name: empRows[0].full_name || empRows[0].username,
+                salary: Number(empRows[0].salary) || 0,
+            },
+            rows: rows || [],
+        });
     });
 
     // ----- clock -----
@@ -629,18 +879,25 @@ function createWorkScheduleRouter(db) {
         if (!emp) return res.json({ success: true, open: false, employee: null });
         const today = calc.moscowYmd();
         const [rows] = await db.query(
-            `SELECT * FROM ws_work_log WHERE employee_id=? AND work_date=? AND check_in IS NOT NULL AND check_out IS NULL
-             LIMIT 1`,
+            `SELECT * FROM ws_work_log WHERE employee_id=? AND work_date=? LIMIT 1`,
             [emp.id, today]
         );
-        const open = rows[0] || null;
+        const row = rows[0] || null;
+        const open = !!(row && row.check_in && !row.check_out);
+        const segments = calc.parseSegments(row && row.segments_json);
+        const sealedH = calc.hoursFromSegments(segments);
         res.json({
             success: true,
-            open: !!open,
+            open,
             employee_id: emp.id,
             work_date: today,
-            check_in: open ? open.check_in : null,
-            status: open ? open.status : null,
+            check_in: open ? row.check_in : null,
+            check_out: row ? row.check_out : null,
+            status: row ? row.status : null,
+            hours_worked: row ? Number(row.hours_worked) || sealedH : 0,
+            hours_sealed: sealedH,
+            segments_count: segments.length,
+            segments,
             server_now: calc.moscowNowSql(),
         });
     });
@@ -648,68 +905,171 @@ function createWorkScheduleRouter(db) {
     router.post('/clock/start', async (req, res) => {
         const a = actorOf(req);
         const emp = await getEmployeeByUserId(db, a.id);
-        if (!emp) return res.status(403).json({ success: false, error: 'no employee card' });
+        if (!emp) return res.status(403).json({ success: false, error: 'нет карточки сотрудника' });
         const today = calc.moscowYmd();
         const [open] = await db.query(
-            `SELECT id FROM ws_work_log WHERE employee_id=? AND check_in IS NOT NULL AND check_out IS NULL LIMIT 1`,
+            `SELECT id, work_date FROM ws_work_log WHERE employee_id=? AND check_in IS NOT NULL AND check_out IS NULL LIMIT 1`,
             [emp.id]
         );
-        if (open.length) return res.status(409).json({ success: false, error: 'shift already open' });
+        if (open.length) {
+            return res.status(409).json({
+                success: false,
+                error: 'смена уже открыта',
+                work_date: calc.toYmd(open[0].work_date),
+            });
+        }
         const [existing] = await db.query(
-            `SELECT id, check_out FROM ws_work_log WHERE employee_id=? AND work_date=? LIMIT 1`,
+            `SELECT *,
+                    DATE_FORMAT(check_in, '%Y-%m-%d %H:%i:%s') AS check_in_sql,
+                    DATE_FORMAT(check_out, '%Y-%m-%d %H:%i:%s') AS check_out_sql
+             FROM ws_work_log WHERE employee_id=? AND work_date=? LIMIT 1`,
             [emp.id, today]
         );
-        if (existing.length && existing[0].check_out) {
-            return res.status(409).json({ success: false, error: 'day already closed' });
-        }
         const now = calc.moscowNowSql();
+        let hoursSoFar = 0;
+        let segments = [];
+        let resumed = false;
+
         if (existing.length) {
+            const row = existing[0];
+            // Перед новым сегментом — зафиксировать прошлый закрытый кусок (строки DATE_FORMAT = стена МСК).
+            let sealed = calc.parseSegments(row.segments_json);
+            if (row.check_in_sql && row.check_out_sql) {
+                const packed = calc.appendClosedSegment(
+                    sealed,
+                    row.check_in_sql,
+                    row.check_out_sql,
+                    row.source || 'clock',
+                    {
+                        ip_in: row.check_in_ip,
+                        ip_out: row.check_out_ip,
+                        device_in: row.check_in_device,
+                        device_out: row.check_out_device,
+                    }
+                );
+                sealed = packed.segments;
+                hoursSoFar = packed.hours;
+                resumed = true;
+            } else {
+                hoursSoFar = Math.max(
+                    Number(row.hours_worked) || 0,
+                    calc.hoursFromSegments(sealed)
+                );
+            }
+            segments = sealed;
+            const thr = calc.resolveEmployeeThresholds(emp, emp);
+            const rate = calc.rateFromHours(calc.roundHoursTo5Min(hoursSoFar), thr);
             await db.query(
-                `UPDATE ws_work_log SET check_in=?, check_in_ip=?, check_in_device=?, user_agent=?, status='ok', source='clock'
+                `UPDATE ws_work_log SET
+                   check_in=?, check_out=NULL, check_out_ip=NULL, check_out_device=NULL,
+                   check_in_ip=?, check_in_device=?, user_agent=?,
+                   hours_worked=?, rate=?, segments_json=?, status='ok', source='clock'
                  WHERE id=?`,
-                [now, clientIp(req), deviceLabel(req), userAgent(req), existing[0].id]
+                [
+                    now,
+                    clientIp(req),
+                    deviceLabel(req),
+                    userAgent(req),
+                    hoursSoFar,
+                    rate,
+                    JSON.stringify(segments),
+                    row.id,
+                ]
             );
         } else {
             await db.query(
                 `INSERT INTO ws_work_log
-                 (employee_id, work_date, type, rate, check_in, check_in_ip, check_in_device, user_agent, source, status)
-                 VALUES (?, ?, 'work', 0, ?, ?, ?, ?, 'clock', 'ok')`,
-                [emp.id, today, now, clientIp(req), deviceLabel(req), userAgent(req)]
+                 (employee_id, work_date, type, rate, check_in, check_in_ip, check_in_device, user_agent,
+                  hours_worked, segments_json, source, status)
+                 VALUES (?, ?, 'work', 0, ?, ?, ?, ?, 0, ?, 'clock', 'ok')`,
+                [emp.id, today, now, clientIp(req), deviceLabel(req), userAgent(req), JSON.stringify([])]
             );
         }
-        await writeAudit(db, req, { entity_type: 'work_log', entity_id: `${emp.id}:${today}`, action: 'clock_start' });
-        res.json({ success: true, check_in: now, work_date: today });
+        await writeAudit(db, req, {
+            entity_type: 'work_log',
+            entity_id: `${emp.id}:${today}`,
+            action: resumed ? 'clock_restart' : 'clock_start',
+            new_value: JSON.stringify({ check_in: now, hours_worked_so_far: hoursSoFar, segments }),
+        });
+        res.json({
+            success: true,
+            check_in: now,
+            work_date: today,
+            resumed,
+            hours_worked_so_far: hoursSoFar,
+            segments_count: segments.length,
+        });
     });
 
     router.post('/clock/stop', async (req, res) => {
         const a = actorOf(req);
         const emp = await getEmployeeByUserId(db, a.id);
-        if (!emp) return res.status(403).json({ success: false, error: 'no employee card' });
+        if (!emp) return res.status(403).json({ success: false, error: 'нет карточки сотрудника' });
         const [rows] = await db.query(
-            `SELECT * FROM ws_work_log WHERE employee_id=? AND check_in IS NOT NULL AND check_out IS NULL
+            `SELECT *, DATE_FORMAT(check_in, '%Y-%m-%d %H:%i:%s') AS check_in_sql
+             FROM ws_work_log
+             WHERE employee_id=? AND check_in IS NOT NULL AND check_out IS NULL
              ORDER BY id DESC LIMIT 1`,
             [emp.id]
         );
-        if (!rows.length) return res.status(409).json({ success: false, error: 'no open shift' });
+        if (!rows.length) return res.status(409).json({ success: false, error: 'нет открытой смены' });
         const log = rows[0];
         const now = calc.moscowNowSql();
-        const hours = calc.hoursBetween(log.check_in, now);
-        const thr = calc.resolveEmployeeThresholds(emp, emp);
-        const rate = calc.rateFromHours(hours, thr);
-        await db.query(
-            `UPDATE ws_work_log SET check_out=?, check_out_ip=?, check_out_device=?, hours_worked=?, rate=?, status='ok'
-             WHERE id=?`,
-            [now, clientIp(req), deviceLabel(req), hours, rate, log.id]
+        // Оба конца — наивные строки МСК (не Date mysql2), иначе +3 ч к длительности.
+        const outIp = clientIp(req);
+        const outDev = deviceLabel(req);
+        const packed = calc.appendClosedSegment(
+            log.segments_json,
+            log.check_in_sql || log.check_in,
+            now,
+            'clock',
+            {
+                ip_in: log.check_in_ip,
+                ip_out: outIp,
+                device_in: log.check_in_device,
+                device_out: outDev,
+            }
         );
-        const period = calc.periodYmFromDate(log.work_date);
-        const payroll = await recalcPayroll(db, emp.id, period);
+        const hours = packed.hours;
+        const thr = calc.resolveEmployeeThresholds(emp, emp);
+        const rate = calc.rateFromHours(calc.roundHoursTo5Min(hours), thr);
+        // Сначала жёстко пишем часы/сегменты — payroll не должен откатывать фиксацию.
+        await db.query(
+            `UPDATE ws_work_log SET
+               check_out=?, check_out_ip=?, check_out_device=?,
+               hours_worked=?, rate=?, segments_json=?, status='ok'
+             WHERE id=? AND check_out IS NULL`,
+            [now, outIp, outDev, hours, rate, JSON.stringify(packed.segments), log.id]
+        );
         await writeAudit(db, req, {
             entity_type: 'work_log',
             entity_id: String(log.id),
             action: 'clock_stop',
-            new_value: JSON.stringify({ hours, rate }),
+            new_value: JSON.stringify({
+                hours,
+                rate,
+                check_in: calc.moscowSqlFromDate(log.check_in),
+                check_out: now,
+                segments: packed.segments,
+            }),
         });
-        res.json({ success: true, hours_worked: hours, rate, payroll });
+        let payroll = null;
+        let payroll_error = null;
+        try {
+            const period = calc.periodYmFromDate(log.work_date);
+            payroll = await recalcPayroll(db, emp.id, period);
+        } catch (e) {
+            payroll_error = e.message || String(e);
+        }
+        res.json({
+            success: true,
+            hours_worked: hours,
+            rate,
+            segments_count: packed.segments.length,
+            segments: packed.segments,
+            payroll,
+            payroll_error,
+        });
     });
 
     router.get('/stuck-shifts', async (req, res) => {
@@ -725,18 +1085,29 @@ function createWorkScheduleRouter(db) {
                    JOIN users u ON u.id = e.user_id
                    WHERE w.check_in IS NOT NULL AND w.check_out IS NULL`;
         const params = [];
-        if (!accounting && emp) {
+        const qDept = req.query.department_id ? Number(req.query.department_id) : null;
+        let deptId = null;
+        if (qDept) {
+            if (!accounting && emp && Number(emp.department_id) !== qDept && !isDeptHead(a, emp)) {
+                return res.status(403).json({ success: false, error: 'forbidden' });
+            }
+            deptId = qDept;
+        } else if (!accounting && emp) {
+            deptId = emp.department_id;
+        }
+        if (deptId) {
             sql += ' AND e.department_id=?';
-            params.push(emp.department_id);
+            params.push(deptId);
         }
         sql += ' ORDER BY w.check_in';
         const [rows] = await db.query(sql, params);
-        const now = Date.now();
+        const nowSql = calc.moscowNowSql();
         res.json({
             success: true,
+            department_id: deptId,
             rows: rows.map((r) => ({
                 ...r,
-                hours_open: calc.roundHoursTo5Min((now - new Date(r.check_in).getTime()) / 3600000),
+                hours_open: calc.roundHoursTo5Min(calc.hoursBetween(r.check_in, nowSql)),
             })),
         });
     });
@@ -752,9 +1123,14 @@ function createWorkScheduleRouter(db) {
         const from = `${ym}-01`;
         const to = `${ym}-${String(dim).padStart(2, '0')}`;
 
-        let esql = `SELECT e.id, e.salary, e.department_id, u.full_name, d.name AS department_name
+        let esql = `SELECT e.id, e.salary, e.department_id, e.hire_date, e.personal_premium_rule_json,
+                           u.full_name, d.name AS department_name, d.schedule_type,
+                           d.premium_rule_json AS dept_premium_rule_json,
+                           o.seniority_base, o.seniority_step, o.seniority_period_months
                     FROM ws_employee e JOIN users u ON u.id=e.user_id
-                    JOIN ws_department d ON d.id=e.department_id WHERE 1=1`;
+                    JOIN ws_department d ON d.id=e.department_id
+                    JOIN ws_organization o ON o.id=e.organization_id
+                    WHERE 1=1`;
         const params = [];
         if (orgId) {
             esql += ' AND e.organization_id=?';
@@ -766,11 +1142,27 @@ function createWorkScheduleRouter(db) {
         }
         esql += ' ORDER BY u.full_name';
         const [emps] = await db.query(esql, params);
+        const hasSalesDept = (emps || []).some((e) => isSalesDepartmentName(e.department_name));
+        let salesPremiumSync = null;
+        if (hasSalesDept) {
+            try {
+                salesPremiumSync = await syncSalesPremiums(db, req, {
+                    periodYm: ym,
+                    orgId,
+                    deptId,
+                    dryRun: false,
+                    mode: 'auto',
+                });
+            } catch (syncErr) {
+                console.warn('[work-schedule] auto sales premiums:', syncErr && syncErr.message);
+            }
+        }
         const ids = emps.map((e) => e.id);
         let logs = [];
         if (ids.length) {
             const [L] = await db.query(
-                `SELECT employee_id, work_date, type, rate, hours_worked, status
+                `SELECT employee_id, DATE_FORMAT(work_date, '%Y-%m-%d') AS work_ymd, type, rate, hours_worked, status,
+                        check_in, check_out
                  FROM ws_work_log WHERE employee_id IN (?) AND work_date BETWEEN ? AND ?`,
                 [ids, from, to]
             );
@@ -780,16 +1172,29 @@ function createWorkScheduleRouter(db) {
         for (const L of logs) {
             const key = L.employee_id;
             if (!byEmp[key]) byEmp[key] = {};
-            const day = Number(String(calc.toYmd(L.work_date) || '').slice(8, 10));
+            const day = Number(String(L.work_ymd || calc.toYmd(L.work_date) || '').slice(8, 10));
+            if (!day) continue;
             byEmp[key][day] = {
                 type: L.type,
                 rate: Number(L.rate),
                 hours: L.hours_worked != null ? Number(L.hours_worked) : null,
                 status: L.status,
+                open: !!(L.check_in && !L.check_out),
             };
         }
+        const payrollByEmp = {};
+        if (ids.length) {
+            const [pr] = await db.query(
+                `SELECT employee_id, base_salary, premium, premium_manual, premium_source, seniority_bonus, total, worked_days, norm_days
+                 FROM ws_payroll_entry WHERE period_ym=? AND employee_id IN (?)`,
+                [ym, ids]
+            );
+            for (const p of pr) payrollByEmp[p.employee_id] = p;
+        }
+        const normCache = {};
         let mandays = 0;
         let fot = 0;
+        const employeesOut = [];
         for (const e of emps) {
             let days = 0;
             const map = byEmp[e.id] || {};
@@ -800,15 +1205,177 @@ function createWorkScheduleRouter(db) {
                 else if (c.type === 'vacation' || c.type === 'sick') days += 1;
             }
             mandays += days;
-            const norm = 21;
-            fot += (Number(e.salary) || 0) * (days / norm);
+            const thr = calc.resolveEmployeeThresholds(e, e);
+            const st = thr.scheduleType || e.schedule_type || '5/2';
+            if (normCache[st] == null) {
+                // eslint-disable-next-line no-await-in-loop
+                normCache[st] = await calc.monthNormDays(db, ym, st);
+            }
+            const normDays = Number(normCache[st]) || 21;
+            const salaryRate = Number(e.salary) || 0;
+            const premiumRule = calc.resolvePremiumRule(e, e);
+            const premiumFull =
+                premiumRule.kind === 'fixed' || premiumRule.kind === 'fixed_full'
+                    ? Number(premiumRule.amount) || 0
+                    : 0;
+            const stored = payrollByEmp[e.id];
+            const premiumFromRule = calc.computePremium(premiumRule, { workedDays: days, normDays });
+            const premiumManual =
+                stored && stored.premium_manual != null && stored.premium_manual !== ''
+                    ? Number(stored.premium_manual)
+                    : null;
+            const premiumSource =
+                stored && stored.premium_source != null && String(stored.premium_source).trim()
+                    ? String(stored.premium_source).trim()
+                    : null;
+            const baseAccrued = stored
+                ? Number(stored.base_salary) || 0
+                : calc.prorateByWorkedDays(salaryRate, days, normDays);
+            const premiumAccrued =
+                premiumManual != null && Number.isFinite(premiumManual)
+                    ? premiumManual
+                    : stored
+                      ? Number(stored.premium) || 0
+                      : premiumFromRule;
+            const seniorityAccrued = stored ? Number(stored.seniority_bonus) || 0 : 0;
+            fot += baseAccrued + premiumAccrued + seniorityAccrued;
+            employeesOut.push({
+                id: e.id,
+                full_name: e.full_name,
+                department_id: e.department_id,
+                department_name: e.department_name,
+                salary: salaryRate,
+                salary_accrued: baseAccrued,
+                premium_kind: premiumRule.kind || 'stub',
+                premium_full: premiumFull,
+                premium_from_rule: premiumFromRule,
+                premium_manual: premiumManual,
+                premium_source: premiumSource,
+                premium_accrued: premiumAccrued,
+                seniority_accrued: seniorityAccrued,
+                worked_days: stored ? Number(stored.worked_days) : days,
+                norm_days: stored ? Number(stored.norm_days) : normDays,
+            });
         }
         res.json({
             success: true,
             month: ym,
-            employees: emps,
+            employees: employeesOut,
             cells: byEmp,
-            kpi: { mandays: Math.round(mandays * 10) / 10, fot: Math.round(fot), count: emps.length },
+            kpi: {
+                mandays: Math.round(mandays * 10) / 10,
+                fot: Math.round(fot),
+                count: employeesOut.length,
+            },
+            sales_premium_sync: salesPremiumSync
+                ? {
+                      updated: salesPremiumSync.updated,
+                      skipped: salesPremiumSync.skipped,
+                      no_sales: salesPremiumSync.no_sales,
+                      total: salesPremiumSync.total,
+                  }
+                : null,
+        });
+    });
+
+    /**
+     * Принудительно обновить премии из /manager-sales.html (totals.bonus) → premium_manual.
+     * Автозагрузка уже идёт в GET /sheet; эта кнопка — пересчёт после новых продаж / поверх ручных.
+     * body/query: period_ym, dry_run?, organization_id?, department_id?, force? (default true)
+     */
+    router.post('/sheet/premium-from-sales', async (req, res) => {
+        const a = actorOf(req);
+        if (!isAccounting(a)) return res.status(403).json({ success: false, error: 'forbidden' });
+        const b = req.body || {};
+        const periodYm = String(b.period_ym || req.query.period_ym || calc.moscowYmd().slice(0, 7));
+        if (!/^\d{4}-\d{2}$/.test(periodYm)) {
+            return res.status(400).json({ success: false, error: 'period_ym=YYYY-MM' });
+        }
+        const dryRun = !!(b.dry_run === true || b.dry_run === 1 || b.dry_run === '1' || req.query.dry_run);
+        const orgRaw = b.organization_id != null ? b.organization_id : req.query.organization_id;
+        const deptRaw = b.department_id != null ? b.department_id : req.query.department_id;
+        const orgId = orgRaw ? Number(orgRaw) : null;
+        const deptId = deptRaw ? Number(deptRaw) : null;
+        const forceOff = b.force === false || b.force === 0 || b.force === '0';
+        const result = await syncSalesPremiums(db, req, {
+            periodYm,
+            orgId,
+            deptId,
+            dryRun,
+            mode: forceOff ? 'auto' : 'force',
+        });
+        res.json(result);
+    });
+
+    /**
+     * Ручная премия за месяц (перекрывает правило из настроек).
+     * body: { employee_id, period_ym?, premium_manual: number|null }
+     * null / пусто — снять ручной ввод и вернуть расчёт по правилу.
+     */
+    router.patch('/sheet/premium', async (req, res) => {
+        const a = actorOf(req);
+        if (!isAccounting(a)) return res.status(403).json({ success: false, error: 'forbidden' });
+        const b = req.body || {};
+        const employeeId = Number(b.employee_id);
+        const periodYm = String(b.period_ym || calc.moscowYmd().slice(0, 7));
+        if (!employeeId || !/^\d{4}-\d{2}$/.test(periodYm)) {
+            return res.status(400).json({ success: false, error: 'bad params' });
+        }
+        const emp = await getEmployeeById(db, employeeId);
+        if (!emp) return res.status(404).json({ success: false, error: 'employee not found' });
+        const raw = b.premium_manual;
+        const clear =
+            raw === null ||
+            raw === undefined ||
+            raw === '' ||
+            (typeof raw === 'string' && !String(raw).trim());
+        let premiumManual = null;
+        if (!clear) {
+            const n = Number(String(raw).replace(/\s/g, '').replace(',', '.'));
+            if (!Number.isFinite(n) || n < 0) {
+                return res.status(400).json({ success: false, error: 'premium_manual must be ≥ 0' });
+            }
+            premiumManual = Math.round(n * 100) / 100;
+        }
+        const [prev] = await db.query(
+            `SELECT premium_manual, premium_source FROM ws_payroll_entry WHERE employee_id=? AND period_ym=? LIMIT 1`,
+            [employeeId, periodYm]
+        );
+        const oldVal = prev[0] && prev[0].premium_manual != null ? String(prev[0].premium_manual) : null;
+        const premiumSource = clear ? null : 'manual';
+        await db.query(
+            `INSERT INTO ws_payroll_entry
+             (employee_id, period_ym, base_salary, premium, premium_manual, premium_source, seniority_bonus,
+              vacation_pay, sick_pay, dayoff_pay, business_trip_pay, vacation_compensation, total,
+              worked_days, norm_days, calculated_at)
+             VALUES (?, ?, 0, ?, ?, ?, 0, 0, 0, 0, 0, 0, ?, 0, 0, ?)
+             ON DUPLICATE KEY UPDATE
+               premium_manual=VALUES(premium_manual),
+               premium_source=VALUES(premium_source)`,
+            [
+                employeeId,
+                periodYm,
+                premiumManual != null ? premiumManual : 0,
+                premiumManual,
+                premiumSource,
+                premiumManual != null ? premiumManual : 0,
+                calc.moscowNowSql(),
+            ]
+        );
+        await writeAudit(db, req, {
+            entity_type: 'payroll',
+            entity_id: `${employeeId}:${periodYm}`,
+            action: clear ? 'premium_manual_clear' : 'premium_manual_set',
+            field_name: 'premium_manual',
+            old_value: oldVal,
+            new_value: premiumManual != null ? String(premiumManual) : null,
+        });
+        const payroll = await recalcPayroll(db, employeeId, periodYm);
+        res.json({
+            success: true,
+            payroll,
+            premium_manual: premiumManual,
+            premium_source: premiumSource,
         });
     });
 
@@ -868,30 +1435,122 @@ function createWorkScheduleRouter(db) {
         const from = `${ym}-01`;
         const to = `${ym}-${String(dim).padStart(2, '0')}`;
         const [logs] = await db.query(
-            `SELECT work_date, type, rate, hours_worked, status FROM ws_work_log
+            `SELECT DATE_FORMAT(work_date, '%Y-%m-%d') AS work_ymd, type, rate, hours_worked, status,
+                    check_in, check_out, segments_json
+             FROM ws_work_log
              WHERE employee_id=? AND work_date BETWEEN ? AND ?`,
             [emp.id, from, to]
         );
         const cells = {};
         for (const L of logs) {
-            const day = Number(String(calc.toYmd(L.work_date) || '').slice(8, 10));
-            cells[day] = { type: L.type, rate: Number(L.rate), hours: L.hours_worked, status: L.status };
+            const ymd = L.work_ymd || calc.toYmd(L.work_date);
+            const day = Number(String(ymd || '').slice(8, 10));
+            if (!day) continue;
+            const segs = calc.parseSegments(L.segments_json);
+            let hours = Number(L.hours_worked) || 0;
+            if (segs.length) hours = Math.max(hours, calc.hoursFromSegments(segs));
+            // Открытый сегмент ещё не в JSON — прибавим текущий кусок до now.
+            if (L.check_in && !L.check_out) {
+                hours += calc.hoursBetween(L.check_in, calc.moscowNowSql());
+            }
+            cells[day] = {
+                type: L.type,
+                rate: Number(L.rate) || 0,
+                hours: Math.round(hours * 10000) / 10000,
+                status: L.status,
+                logged: true,
+                closed: !!L.check_out,
+                open: !!(L.check_in && !L.check_out),
+                segments_count: segs.length + (L.check_in && !L.check_out ? 1 : 0),
+            };
         }
         const payroll = await recalcPayroll(db, emp.id, ym);
+        // comment на отпуске может отсутствовать на старых БД — берём reject_reason.
         const [vacs] = await db.query(
-            `SELECT id, employee_id, days_count, type, status, comment,
+            `SELECT id, employee_id, days_count, type, status, reject_reason AS comment,
                     DATE_FORMAT(date_from, '%Y-%m-%d') AS date_from,
                     DATE_FORMAT(date_to, '%Y-%m-%d') AS date_to
              FROM ws_vacation_request WHERE employee_id=? ORDER BY date_from DESC LIMIT 50`,
             [emp.id]
         );
+        let hoursMonth = 0;
+        Object.keys(cells).forEach((k) => {
+            hoursMonth += Number(cells[k].hours) || 0;
+        });
+        hoursMonth = Math.round(hoursMonth * 10000) / 10000;
         res.json({
             success: true,
             month: ym,
             cells,
             payroll,
+            hours_month: hoursMonth,
             vacations: (vacs || []).map(mapVacationRow),
             employee: { id: emp.id, name: emp.user_full_name },
+        });
+    });
+
+    /** Детали дня для модалки календаря: сегменты старт/стоп + IP. */
+    router.get('/me/day', async (req, res) => {
+        const a = actorOf(req);
+        const emp = await getEmployeeByUserId(db, a.id);
+        if (!emp) return res.status(403).json({ success: false, error: 'нет карточки сотрудника' });
+        const day = String(req.query.date || calc.moscowYmd()).slice(0, 10);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+            return res.status(400).json({ success: false, error: 'date=YYYY-MM-DD' });
+        }
+        const [rows] = await db.query(
+            `SELECT *,
+                    DATE_FORMAT(check_in, '%Y-%m-%d %H:%i:%s') AS check_in_sql,
+                    DATE_FORMAT(check_out, '%Y-%m-%d %H:%i:%s') AS check_out_sql,
+                    DATE_FORMAT(work_date, '%Y-%m-%d') AS work_ymd
+             FROM ws_work_log WHERE employee_id=? AND work_date=? LIMIT 1`,
+            [emp.id, day]
+        );
+        const row = rows[0] || null;
+        let segments = row ? calc.sanitizeSegments(row.segments_json) : [];
+        if (row && row.check_in_sql && row.check_out_sql) {
+            const packed = calc.appendClosedSegment(segments, row.check_in_sql, row.check_out_sql, row.source || 'clock', {
+                ip_in: row.check_in_ip,
+                ip_out: row.check_out_ip,
+                device_in: row.check_in_device,
+                device_out: row.check_out_device,
+            });
+            segments = packed.segments;
+        }
+        let open = null;
+        if (row && row.check_in_sql && !row.check_out_sql) {
+            const now = calc.moscowNowSql();
+            open = {
+                in: row.check_in_sql,
+                out: null,
+                ms: calc.msBetween(row.check_in_sql, now),
+                hours: calc.hoursBetween(row.check_in_sql, now),
+                source: 'clock',
+                ip_in: row.check_in_ip || '',
+                ip_out: '',
+                device_in: row.check_in_device || '',
+                device_out: '',
+                open: true,
+            };
+        }
+        const sealedH = calc.hoursFromSegments(segments);
+        const hours = Math.round((sealedH + (open ? open.hours : 0)) * 10000) / 10000;
+        res.json({
+            success: true,
+            date: day,
+            employee: { id: emp.id, name: emp.user_full_name },
+            found: !!row,
+            type: row ? row.type : null,
+            rate: row ? Number(row.rate) || 0 : 0,
+            status: row ? row.status : null,
+            hours_worked: hours,
+            segments_count: segments.length + (open ? 1 : 0),
+            segments,
+            open,
+            check_in: row ? row.check_in_sql : null,
+            check_out: row ? row.check_out_sql : null,
+            check_in_ip: row ? row.check_in_ip : null,
+            check_out_ip: row ? row.check_out_ip : null,
         });
     });
 
@@ -920,20 +1579,43 @@ function createWorkScheduleRouter(db) {
         );
         const ids = emps.map((e) => e.id);
         let byEmp = {};
+        const todayYmd = calc.moscowYmd();
+        const todayDay = Number(todayYmd.slice(8, 10));
+        const todayInMonth = todayYmd.slice(0, 7) === ym;
+        const nowSql = calc.moscowNowSql();
         if (ids.length) {
             const [logs] = await db.query(
-                `SELECT employee_id, work_date, type, rate, hours_worked FROM ws_work_log
+                `SELECT employee_id, DATE_FORMAT(work_date, '%Y-%m-%d') AS work_ymd, type, rate, hours_worked,
+                        check_in, check_out, segments_json,
+                        DATE_FORMAT(check_in, '%Y-%m-%d %H:%i:%s') AS check_in_sql,
+                        DATE_FORMAT(check_out, '%Y-%m-%d %H:%i:%s') AS check_out_sql
+                 FROM ws_work_log
                  WHERE employee_id IN (?) AND work_date BETWEEN ? AND ?`,
                 [ids, from, to]
             );
             for (const L of logs) {
                 if (!byEmp[L.employee_id]) byEmp[L.employee_id] = {};
-                const day = Number(String(calc.toYmd(L.work_date) || '').slice(8, 10));
-                byEmp[L.employee_id][day] = { type: L.type, rate: Number(L.rate), hours: L.hours_worked };
+                const day = Number(String(L.work_ymd || calc.toYmd(L.work_date) || '').slice(8, 10));
+                if (!day) continue;
+                const segs = calc.parseSegments(L.segments_json);
+                let hours = Number(L.hours_worked) || 0;
+                if (segs.length) hours = Math.max(hours, calc.hoursFromSegments(segs));
+                const open = !!(L.check_in && !L.check_out);
+                if (open) hours += calc.hoursBetween(L.check_in, nowSql);
+                byEmp[L.employee_id][day] = {
+                    type: L.type,
+                    rate: Number(L.rate),
+                    hours: Math.round(hours * 10000) / 10000,
+                    open,
+                    closed: !!L.check_out,
+                    check_in: L.check_in_sql || null,
+                    check_out: L.check_out_sql || null,
+                };
             }
         }
         const [vacs] = await db.query(
-            `SELECT v.id, v.employee_id, v.days_count, v.type, v.status, v.comment, u.full_name,
+            `SELECT v.id, v.employee_id, v.days_count, v.type, v.status,
+                    COALESCE(v.reject_reason, '') AS comment, u.full_name,
                     DATE_FORMAT(v.date_from, '%Y-%m-%d') AS date_from,
                     DATE_FORMAT(v.date_to, '%Y-%m-%d') AS date_to
              FROM ws_vacation_request v
@@ -943,13 +1625,59 @@ function createWorkScheduleRouter(db) {
                AND v.date_to >= ? AND v.date_from <= ?`,
             [deptId, from, to]
         );
+        const vacMapped = (vacs || []).map(mapVacationRow);
+        const onVacationToday = new Set();
+        const onSickToday = new Set();
+        if (todayInMonth) {
+            for (const v of vacMapped) {
+                if (v.status !== 'approved') continue;
+                if (v.date_from <= todayYmd && v.date_to >= todayYmd) {
+                    if (v.type === 'sick') onSickToday.add(Number(v.employee_id));
+                    else onVacationToday.add(Number(v.employee_id));
+                }
+            }
+        }
+        const STATUS_ORDER = { working: 0, finished: 1, vacation: 2, sick: 3, not_started: 4 };
+        const today = todayInMonth
+            ? emps
+                  .map((e) => {
+                      const c = (byEmp[e.id] && byEmp[e.id][todayDay]) || null;
+                      let work_status = 'not_started';
+                      if (onSickToday.has(Number(e.id)) || (c && c.type === 'sick')) work_status = 'sick';
+                      else if (onVacationToday.has(Number(e.id)) || (c && c.type === 'vacation')) {
+                          work_status = 'vacation';
+                      } else if (c && c.open) work_status = 'working';
+                      else if (c && (c.closed || Number(c.hours) > 0 || Number(c.rate) > 0)) {
+                          work_status = 'finished';
+                      }
+                      return {
+                          employee_id: e.id,
+                          full_name: e.full_name,
+                          work_status,
+                          open: !!(c && c.open),
+                          check_in: c && c.check_in ? String(c.check_in).slice(11, 16) : null,
+                          check_out: c && c.check_out ? String(c.check_out).slice(11, 16) : null,
+                          hours: c ? c.hours : 0,
+                          rate: c ? c.rate : 0,
+                          type: c ? c.type : null,
+                      };
+                  })
+                  .sort((a, b) => {
+                      const oa = STATUS_ORDER[a.work_status] ?? 9;
+                      const ob = STATUS_ORDER[b.work_status] ?? 9;
+                      if (oa !== ob) return oa - ob;
+                      return String(a.full_name || '').localeCompare(String(b.full_name || ''), 'ru');
+                  })
+            : [];
         res.json({
             success: true,
             month: ym,
             department_id: deptId,
+            today_date: todayYmd,
             employees: emps,
             cells: byEmp,
-            vacations: (vacs || []).map(mapVacationRow),
+            today,
+            vacations: vacMapped,
         });
     });
 
@@ -1005,7 +1733,8 @@ function createWorkScheduleRouter(db) {
         if (!accounting && !(emp && isDeptHead(a, emp))) {
             return res.status(403).json({ success: false, error: 'forbidden' });
         }
-        let sql = `SELECT v.id, v.employee_id, v.days_count, v.type, v.status, v.comment,
+        let sql = `SELECT v.id, v.employee_id, v.days_count, v.type, v.status,
+                          COALESCE(v.reject_reason, '') AS comment,
                           u.full_name, e.department_id,
                           DATE_FORMAT(v.date_from, '%Y-%m-%d') AS date_from,
                           DATE_FORMAT(v.date_to, '%Y-%m-%d') AS date_to
@@ -1400,38 +2129,82 @@ function escXml(s) {
         .replace(/"/g, '&quot;');
 }
 
-/** Auto-close stuck shifts (called from server tick). */
+/**
+ * Авто-закрытие открытых смен (тик server.js раз в 15 мин):
+ * 1) сменился календарный день Москвы относительно work_date → close в 23:59:59 того дня;
+ * 2) иначе открыта ≥ clock_auto_close_hours → close «сейчас».
+ * Оба случая: status=needs_confirm, сегмент source day-rollover|auto-close.
+ */
 async function processStuckShifts(db) {
     await ensureSchema(db);
     const [rows] = await db.query(
         `SELECT w.*, e.id AS emp_id, d.norm_hours, d.rate_full_hours, d.rate_half_hours,
                 o.clock_auto_close_hours, e.personal_work_hours_per_day,
-                e.personal_rate_full_hours, e.personal_rate_half_hours
+                e.personal_rate_full_hours, e.personal_rate_half_hours,
+                DATE_FORMAT(w.work_date, '%Y-%m-%d') AS work_ymd,
+                DATE_FORMAT(w.check_in, '%Y-%m-%d %H:%i:%s') AS check_in_sql
          FROM ws_work_log w
          JOIN ws_employee e ON e.id=w.employee_id
          JOIN ws_department d ON d.id=e.department_id
          JOIN ws_organization o ON o.id=e.organization_id
          WHERE w.check_in IS NOT NULL AND w.check_out IS NULL`
     );
-    const now = Date.now();
+    const today = calc.moscowYmd();
+    const nowMs = Date.now();
     let closed = 0;
+    let dayRollover = 0;
+    let hoursLimit = 0;
     for (const r of rows) {
-        const openH = (now - new Date(r.check_in).getTime()) / 3600000;
+        const workYmd = r.work_ymd || calc.toYmd(r.work_date);
+        const checkInSql = r.check_in_sql || r.check_in;
+        const openMs = nowMs - calc.toEpochMs(checkInSql);
+        const openH = openMs / 3600000;
         const limit = Number(r.clock_auto_close_hours) || 14;
-        if (openH < limit) continue;
+        const pastDay = !!(workYmd && /^\d{4}-\d{2}-\d{2}$/.test(workYmd) && workYmd < today);
+        const pastHours = Number.isFinite(openH) && openH >= limit;
+        if (!pastDay && !pastHours) continue;
+
+        // При смене суток закрываем концом рабочего дня (МСК), не «сейчас» — часы не уезжают на новый день.
+        const reason = pastDay ? 'day-rollover' : 'auto-close';
+        const outSql = pastDay ? `${workYmd} 23:59:59` : calc.moscowNowSql();
+        const packed = calc.appendClosedSegment(r.segments_json, checkInSql, outSql, reason, {
+            device_out: 'auto',
+        });
+        // Если сегмент не добавился (check_in после 23:59:59 и т.п.) — всё равно зафиксируем стоп «сейчас».
+        let hours = packed.hours;
+        let segmentsJson = JSON.stringify(packed.segments);
+        let finalOut = outSql;
+        if (!packed.added && pastDay) {
+            const fallback = calc.appendClosedSegment(
+                r.segments_json,
+                checkInSql,
+                calc.moscowNowSql(),
+                reason,
+                { device_out: 'auto' }
+            );
+            hours = fallback.hours;
+            segmentsJson = JSON.stringify(fallback.segments);
+            finalOut = calc.moscowNowSql();
+        }
         const thr = calc.resolveEmployeeThresholds(r, r);
-        const hours = calc.roundHoursTo5Min(openH);
-        const rate = calc.rateFromHours(hours, thr);
+        const rate = calc.rateFromHours(calc.roundHoursTo5Min(hours), thr);
+        const tag = pastDay ? ' day-rollover' : ' auto-close';
         await db.query(
-            `UPDATE ws_work_log SET check_out=?, hours_worked=?, rate=?, status='needs_confirm',
-             check_out_device='auto', comment=CONCAT(IFNULL(comment,''),' auto-close')
-             WHERE id=?`,
-            [calc.moscowNowSql(), hours, rate, r.id]
+            `UPDATE ws_work_log SET check_out=?, hours_worked=?, rate=?, segments_json=?, status='needs_confirm',
+             check_out_device='auto', comment=CONCAT(IFNULL(comment,''), ?)
+             WHERE id=? AND check_out IS NULL`,
+            [finalOut, hours, rate, segmentsJson, tag, r.id]
         );
-        await recalcPayroll(db, r.employee_id, calc.periodYmFromDate(r.work_date));
+        try {
+            await recalcPayroll(db, r.employee_id, calc.periodYmFromDate(workYmd || r.work_date));
+        } catch (e) {
+            /* часы уже зафиксированы */
+        }
         closed += 1;
+        if (pastDay) dayRollover += 1;
+        else hoursLimit += 1;
     }
-    return { closed };
+    return { closed, day_rollover: dayRollover, hours_limit: hoursLimit };
 }
 
 module.exports = createWorkScheduleRouter;

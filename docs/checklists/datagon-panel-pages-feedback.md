@@ -47,6 +47,21 @@ npm run check:panel-notify-static
 - [x] **exports-marketplaces-issues** — `/exports-marketplaces-issues.html` — C: [ ]
 - [x] **exports-huckster** — `/exports-huckster.html` — C: [ ]
 - [x] **ms-sales** — `/ms-sales.html` — C: [ ]
+- [x] **ms-orders** — `/ms-orders.html` — C: [ ]
+- [x] **medmarket** — `/medmarket.html` — C: [ ]
+- [x] **network-prices** — `/network-prices.html` — C: [ ]
+- [x] **ops-sheet** — `/ops-sheet.html` — C: [ ]
+- [x] **work-schedule** — `/work-schedule.html` — C: [ ]
+- [x] **work-schedule-settings** — `/work-schedule-settings.html` — C: [ ]
+- [x] **suppliers** — `/suppliers.html` — C: [ ]
+- [x] **supplier-analysis** — `/supplier-analysis.html` — C: [ ]
+- [x] **product-analysis** — `/product-analysis.html` — C: [ ]
+- [x] **exports-new-products** — `/exports-new-products.html` — C: [ ]
+- [x] **exports-photoshoot** — `/exports-photoshoot.html` — C: [ ]
+- [x] **exports-marketplaces-competitors** — `/exports-marketplaces-competitors.html` — C: [ ]
+- [x] **exports-marketplaces-reglament** — `/exports-marketplaces-reglament.html` — C: [ ]
+
+Полный реестр меню ↔ док: `docs/checklists/datagon-sidebar-nav.md`.
 
 ### Вне PAGE_DEFS
 

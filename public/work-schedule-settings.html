@@ -61,6 +61,31 @@
   body.datagon-vanilla-body[data-dg-active-nav="work-schedule-settings"] .card-body.p-0 .table thead th {
     border-top: 0;
   }
+  body.datagon-vanilla-body[data-dg-active-nav="work-schedule-settings"] #dg-ws-set-emp-apply.dg-flt-dirty::after {
+    content: " •";
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="work-schedule-settings"] .dg-ws-set-sortable {
+    cursor: pointer;
+    white-space: nowrap;
+    user-select: text;
+    -webkit-user-select: text;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="work-schedule-settings"] #dg-ws-set-emp-table th[data-dg-ws-set-emp-sort="seniority"],
+  body.datagon-vanilla-body[data-dg-active-nav="work-schedule-settings"] #dg-ws-set-emp-table td:nth-child(5) {
+    min-width: 7.5rem;
+    white-space: nowrap;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="work-schedule-settings"] #dg-ws-set-emp-table th[data-dg-ws-set-emp-sort="salary"],
+  body.datagon-vanilla-body[data-dg-active-nav="work-schedule-settings"] #dg-ws-set-emp-table td:nth-child(7) {
+    min-width: 6.5rem;
+    white-space: nowrap;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="work-schedule-settings"] .dg-ws-set-sortable[data-dg-sort-active="1"]::after {
+    content: attr(data-dg-sort-mark);
+    margin-left: 0.25rem;
+    color: #6c757d;
+    font-weight: 600;
+  }
   body.datagon-vanilla-body[data-dg-active-nav="work-schedule-settings"] .dg-ws-set-overlay {
     position: fixed;
     inset: 0;
@@ -968,22 +993,43 @@
                 <button type="button" class="btn btn-sm btn-outline-primary" id="dg-ws-set-emp-add" data-dg-notify-start="Привязка…">Привязать пользователя</button>
               </div>
             </div>
+            <div class="card-body border-bottom py-2 px-3" id="dg-ws-set-emp-filters">
+              <div class="d-flex flex-wrap align-items-end gap-2">
+                <div class="flex-grow-1" style="min-width: 220px; max-width: 420px">
+                  <label class="form-label mb-1 small text-muted" for="dg-ws-set-emp-search">Умный поиск</label>
+                  <div class="input-group input-group-sm">
+                    <span class="input-group-text"><i class="pe-7s-search"></i></span>
+                    <input
+                      type="search"
+                      class="form-control"
+                      id="dg-ws-set-emp-search"
+                      placeholder="ФИО, орг, отдел, оклад, стаж…"
+                      autocomplete="off"
+                    />
+                  </div>
+                </div>
+                <button type="button" class="btn btn-sm btn-primary" id="dg-ws-set-emp-apply" data-dg-notify-start="Применяем поиск…">Применить</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-ws-set-emp-reset" data-dg-notify-start="Сбрасываем поиск…">Сбросить</button>
+              </div>
+            </div>
             <div class="card-body p-0">
               <div class="table-responsive">
-                <table class="table table-sm mb-0 align-middle">
+                <table class="table table-sm mb-0 align-middle" id="dg-ws-set-emp-table">
                   <thead>
-                    <tr>
-                      <th>ФИО</th>
-                      <th>Организация</th>
-                      <th>Отдел</th>
-                      <th>Дата приёма</th>
-                      <th>Оклад</th>
-                      <th>График (личн.)</th>
-                      <th>Норма дня</th>
-                      <th>Больничный ₽</th>
-                      <th>Премия</th>
-                      <th>Переопред.</th>
-                      <th></th>
+                    <tr id="dg-ws-set-emp-thead">
+                      <th class="dg-ws-set-sortable" data-dg-ws-set-emp-sort="name" scope="col">ФИО</th>
+                      <th class="dg-ws-set-sortable" data-dg-ws-set-emp-sort="org" scope="col">Организация</th>
+                      <th class="dg-ws-set-sortable" data-dg-ws-set-emp-sort="dept" scope="col">Отдел</th>
+                      <th class="dg-ws-set-sortable" data-dg-ws-set-emp-sort="hire" scope="col">Дата приёма</th>
+                      <th class="dg-ws-set-sortable" data-dg-ws-set-emp-sort="seniority" scope="col">Стаж</th>
+                      <th class="dg-ws-set-sortable" data-dg-ws-set-emp-sort="seniority_bonus" scope="col">За стаж</th>
+                      <th class="dg-ws-set-sortable" data-dg-ws-set-emp-sort="salary" scope="col">Оклад</th>
+                      <th class="dg-ws-set-sortable" data-dg-ws-set-emp-sort="schedule" scope="col">График (личн.)</th>
+                      <th class="dg-ws-set-sortable" data-dg-ws-set-emp-sort="norm" scope="col">Норма дня</th>
+                      <th class="dg-ws-set-sortable" data-dg-ws-set-emp-sort="sick" scope="col">Больничный ₽</th>
+                      <th class="dg-ws-set-sortable" data-dg-ws-set-emp-sort="premium" scope="col">Премия</th>
+                      <th class="dg-ws-set-sortable" data-dg-ws-set-emp-sort="overrides" scope="col">Переопред.</th>
+                      <th scope="col"></th>
                     </tr>
                   </thead>
                   <tbody id="dg-ws-set-emp-tbody"></tbody>
@@ -1037,12 +1083,14 @@
                   <label class="form-label" for="dg-ws-set-dept-prem-kind">Правило премии</label>
                   <select class="form-select" id="dg-ws-set-dept-prem-kind">
                     <option value="stub">Нет</option>
-                    <option value="fixed">Фикс, ₽</option>
+                    <option value="fixed">Фикс по дням, ₽</option>
+                    <option value="fixed_full">Фикс целиком, ₽</option>
                   </select>
                 </div>
                 <div class="mb-0" id="dg-ws-set-dept-prem-amount-wrap">
-                  <label class="form-label" for="dg-ws-set-dept-prem-amount">Сумма фикса, ₽</label>
+                  <label class="form-label" for="dg-ws-set-dept-prem-amount">Сумма, ₽</label>
                   <input type="text" class="form-control" id="dg-ws-set-dept-prem-amount" inputmode="decimal" placeholder="0" />
+                  <div class="form-text">По дням — пропорционально ставкам месяца; целиком — вся сумма (продажи).</div>
                 </div>
               </div>
               <div class="card-footer d-flex justify-content-end gap-2 bg-white border-top-0">
@@ -1113,7 +1161,10 @@
                   </div>
                   <div class="col-md-4">
                     <label class="form-label" for="dg-ws-set-emp-salary">Оклад</label>
-                    <input type="text" class="form-control" id="dg-ws-set-emp-salary" />
+                    <div class="input-group">
+                      <input type="text" class="form-control" id="dg-ws-set-emp-salary" />
+                      <button type="button" class="btn btn-outline-secondary" id="dg-ws-set-emp-salary-hist" title="История изменений оклада" data-dg-notify-start="Загружаем историю оклада…">История</button>
+                    </div>
                   </div>
                   <div class="col-md-4">
                     <label class="form-label" for="dg-ws-set-emp-sched">График (личный)</label>
@@ -1146,11 +1197,12 @@
                     <select class="form-select" id="dg-ws-set-emp-prem-kind">
                       <option value="">— из отдела —</option>
                       <option value="stub">Нет</option>
-                      <option value="fixed">Фикс, ₽</option>
+                      <option value="fixed">Фикс по дням, ₽</option>
+                      <option value="fixed_full">Фикс целиком, ₽</option>
                     </select>
                   </div>
                   <div class="col-md-4" id="dg-ws-set-emp-prem-amount-wrap">
-                    <label class="form-label" for="dg-ws-set-emp-prem-amount">Сумма фикса, ₽</label>
+                    <label class="form-label" for="dg-ws-set-emp-prem-amount">Сумма, ₽</label>
                     <input type="text" class="form-control" id="dg-ws-set-emp-prem-amount" inputmode="decimal" placeholder="0" />
                   </div>
                 </div>
@@ -1176,6 +1228,35 @@
               <div class="card-footer d-flex justify-content-end gap-2 bg-white border-top-0">
                 <button type="button" class="btn btn-outline-secondary" data-dg-ws-set-close="org-del" data-dg-no-activity="1">Отмена</button>
                 <button type="button" class="btn btn-danger" id="dg-ws-set-org-del-ok" data-dg-notify-start="Удаляем организацию…">Удалить</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-ws-set-salary-hist-overlay" class="dg-ws-set-overlay" style="display: none" aria-hidden="true" role="dialog" aria-modal="true">
+            <div class="dg-ws-set-overlay-backdrop" data-dg-ws-set-close="salary-hist"></div>
+            <div class="dg-ws-set-overlay-panel card shadow-lg border-0 wide">
+              <div class="card-header d-flex justify-content-between align-items-center">
+                <div class="fw-semibold" id="dg-ws-set-salary-hist-title">История оклада</div>
+                <button type="button" class="btn-close" data-dg-ws-set-close="salary-hist" aria-label="Закрыть" data-dg-no-activity="1"></button>
+              </div>
+              <div class="card-body">
+                <p class="small text-muted mb-2" id="dg-ws-set-salary-hist-meta"></p>
+                <div class="table-responsive">
+                  <table class="table table-sm table-bordered mb-0">
+                    <thead>
+                      <tr>
+                        <th>Когда</th>
+                        <th>Кто</th>
+                        <th>Было</th>
+                        <th>Стало</th>
+                      </tr>
+                    </thead>
+                    <tbody id="dg-ws-set-salary-hist-tbody"></tbody>
+                  </table>
+                </div>
+              </div>
+              <div class="card-footer d-flex justify-content-end bg-white border-top-0">
+                <button type="button" class="btn btn-outline-secondary" data-dg-ws-set-close="salary-hist" data-dg-no-activity="1">Закрыть</button>
               </div>
             </div>
           </div>
@@ -1275,7 +1356,20 @@
     departmentsAll: [],
     employees: [],
     usersAvailable: [],
+    empSort: { key: "name", dir: "asc" },
+    empSearch: "",
+    pendingEmpSearch: "",
   };
+
+  var EMP_SEARCH_KEYS = [
+    "full_name",
+    "username",
+    "organization_name",
+    "department_name",
+    "position",
+    "grade",
+    "personal_schedule_type",
+  ];
 
   function toast(type, message) {
     if (window.DatagonNotify && window.DatagonNotify.toast) {
@@ -1346,6 +1440,85 @@
     return p.length === 3 ? p[2] + "-" + p[1] + "-" + p[0] : "—";
   }
 
+  /** Полные месяцы стажа от hire_date до сегодня (МСК) — как seniorityMonths на бэке. */
+  function seniorityMonthsFromHire(hireDate) {
+    var ymd = dateOnlyYmd(hireDate);
+    if (!ymd) return null;
+    var parts = ymd.split("-");
+    var hy = Number(parts[0]);
+    var hm = Number(parts[1]);
+    var hd = Number(parts[2]);
+    if (!hy || !hm || !hd) return null;
+    var nowYmd =
+      typeof Intl !== "undefined"
+        ? new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Moscow" })
+        : "";
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(nowYmd)) {
+      var n = new Date();
+      nowYmd =
+        n.getFullYear() +
+        "-" +
+        String(n.getMonth() + 1).padStart(2, "0") +
+        "-" +
+        String(n.getDate()).padStart(2, "0");
+    }
+    var np = nowYmd.split("-");
+    var ay = Number(np[0]);
+    var am = Number(np[1]);
+    var ad = Number(np[2]);
+    if (ay < hy || (ay === hy && am < hm) || (ay === hy && am === hm && ad < hd)) return 0;
+    var months = (ay - hy) * 12 + (am - hm);
+    if (ad < hd) months -= 1;
+    return Math.max(0, months);
+  }
+
+  /** «4 г. 9 мес.» / «0 мес.» / «—» */
+  function fmtSeniority(hireDate) {
+    var m = seniorityMonthsFromHire(hireDate);
+    if (m == null) return "—";
+    var years = Math.floor(m / 12);
+    var months = m % 12;
+    if (years <= 0 && months <= 0) return "0 мес.";
+    if (years <= 0) return months + " мес.";
+    if (months <= 0) return years + " г.";
+    return years + " г. " + months + " мес.";
+  }
+
+  /** Доплата за стаж по параметрам организации (как seniorityBonus на бэке). */
+  function seniorityBonusAmount(emp) {
+    if (!emp || !emp.hire_date) return null;
+    var m = seniorityMonthsFromHire(emp.hire_date);
+    if (m == null) return null;
+    if (m < 12) return 0;
+    var org =
+      state.orgs.find(function (o) {
+        return Number(o.id) === Number(emp.organization_id);
+      }) || {};
+    var base =
+      emp.personal_seniority_base != null
+        ? Number(emp.personal_seniority_base)
+        : Number(org.seniority_base);
+    var step =
+      emp.personal_seniority_step != null
+        ? Number(emp.personal_seniority_step)
+        : Number(org.seniority_step);
+    var period =
+      emp.personal_seniority_period_months != null
+        ? Number(emp.personal_seniority_period_months)
+        : Number(org.seniority_period_months);
+    if (!Number.isFinite(base)) base = 1000;
+    if (!Number.isFinite(step)) step = 500;
+    if (!Number.isFinite(period) || period < 1) period = 6;
+    var steps = Math.floor((m - 12) / period);
+    return base + step * steps;
+  }
+
+  function fmtSeniorityBonus(emp) {
+    var n = seniorityBonusAmount(emp);
+    if (n == null) return "—";
+    return money(n);
+  }
+
   function toDateInput(v) {
     return dateOnlyYmd(v);
   }
@@ -1388,25 +1561,28 @@
 
   function formatPremLabel(rule) {
     if (!rule || rule.kind === "stub" || rule.kind === "none") return "нет";
-    if (rule.kind === "fixed") {
-      return "фикс " + money(rule.amount);
-    }
+    if (rule.kind === "fixed") return "по дням " + money(rule.amount);
+    if (rule.kind === "fixed_full") return "целиком " + money(rule.amount);
     return String(rule.kind);
+  }
+
+  function isFixedPremKind(kind) {
+    return kind === "fixed" || kind === "fixed_full";
   }
 
   function syncPremAmountWrap(kindSelId, wrapId) {
     var kindEl = document.getElementById(kindSelId);
     var wrap = document.getElementById(wrapId);
     if (!kindEl || !wrap) return;
-    wrap.style.display = kindEl.value === "fixed" ? "" : "none";
+    wrap.style.display = isFixedPremKind(kindEl.value) ? "" : "none";
   }
 
   function readPremFromForm(kindId, amountId, inheritEmpty) {
     var kind = (document.getElementById(kindId) || {}).value;
     if (inheritEmpty && !kind) return { inherit: true };
-    if (kind === "fixed") {
+    if (isFixedPremKind(kind)) {
       var raw = String((document.getElementById(amountId) || {}).value || "").replace(/\s/g, "").replace(",", ".");
-      return { kind: "fixed", amount: Number(raw) || 0 };
+      return { kind: kind, amount: Number(raw) || 0 };
     }
     return { kind: "stub" };
   }
@@ -1420,8 +1596,8 @@
       if (amountEl) amountEl.value = "";
     } else {
       var p = parsePremRule(rule);
-      kindEl.value = p.kind === "fixed" ? "fixed" : "stub";
-      if (amountEl) amountEl.value = p.kind === "fixed" ? String(p.amount) : "";
+      kindEl.value = isFixedPremKind(p.kind) ? p.kind : "stub";
+      if (amountEl) amountEl.value = isFixedPremKind(p.kind) ? String(p.amount) : "";
     }
     syncPremAmountWrap(kindId, wrapId);
   }
@@ -1530,20 +1706,166 @@
       .join("");
   }
 
+  function empSortValue(e, key) {
+    switch (key) {
+      case "name":
+        return String(e.full_name || e.username || "").toLowerCase();
+      case "org":
+        return String(e.organization_name || orgName(e.organization_id) || "").toLowerCase();
+      case "dept":
+        return String(e.department_name || deptName(e.department_id) || "").toLowerCase();
+      case "hire":
+        return dateOnlyYmd(e.hire_date) || "";
+      case "seniority": {
+        var sm = seniorityMonthsFromHire(e.hire_date);
+        return sm == null ? -1 : sm;
+      }
+      case "seniority_bonus": {
+        var sb = seniorityBonusAmount(e);
+        return sb == null ? -1 : sb;
+      }
+      case "salary":
+        return Number(e.salary) || 0;
+      case "schedule":
+        return String(e.personal_schedule_type || "").toLowerCase();
+      case "norm":
+        return e.personal_work_hours_per_day != null ? Number(e.personal_work_hours_per_day) : -1;
+      case "sick":
+        return e.personal_sick_leave_rate != null ? Number(e.personal_sick_leave_rate) : -1;
+      case "premium":
+        return formatPremLabel(effectiveEmpPrem(e)).toLowerCase();
+      case "overrides":
+        return hasOverrides(e) ? 1 : 0;
+      default:
+        return "";
+    }
+  }
+
+  function sortEmpList(list) {
+    var key = (state.empSort && state.empSort.key) || "name";
+    var dir = (state.empSort && state.empSort.dir) === "desc" ? -1 : 1;
+    return list.slice().sort(function (a, b) {
+      var va = empSortValue(a, key);
+      var vb = empSortValue(b, key);
+      var cmp = 0;
+      if (typeof va === "number" && typeof vb === "number") {
+        cmp = va - vb;
+      } else {
+        cmp = String(va).localeCompare(String(vb), "ru", { sensitivity: "base", numeric: true });
+      }
+      if (cmp !== 0) return cmp * dir;
+      return String(a.full_name || a.username || "").localeCompare(
+        String(b.full_name || b.username || ""),
+        "ru",
+        { sensitivity: "base" }
+      );
+    });
+  }
+
+  function paintEmpSortHeaders() {
+    var row = document.getElementById("dg-ws-set-emp-thead");
+    if (!row) return;
+    var key = (state.empSort && state.empSort.key) || "";
+    var dir = (state.empSort && state.empSort.dir) === "desc" ? "desc" : "asc";
+    row.querySelectorAll("[data-dg-ws-set-emp-sort]").forEach(function (th) {
+      var k = th.getAttribute("data-dg-ws-set-emp-sort");
+      if (k === key) {
+        th.setAttribute("data-dg-sort-active", "1");
+        th.setAttribute("data-dg-sort-mark", dir === "desc" ? "▼" : "▲");
+        th.setAttribute("aria-sort", dir === "desc" ? "descending" : "ascending");
+      } else {
+        th.removeAttribute("data-dg-sort-active");
+        th.removeAttribute("data-dg-sort-mark");
+        th.removeAttribute("aria-sort");
+      }
+    });
+  }
+
+  function setEmpSort(key) {
+    if (!key) return;
+    if (state.empSort && state.empSort.key === key) {
+      state.empSort.dir = state.empSort.dir === "asc" ? "desc" : "asc";
+    } else {
+      state.empSort = { key: key, dir: "asc" };
+    }
+    renderEmps();
+  }
+
+  function empSearchHaystack(e) {
+    var parts = [];
+    EMP_SEARCH_KEYS.forEach(function (k) {
+      if (e[k] != null && e[k] !== "") parts.push(String(e[k]));
+    });
+    parts.push(orgName(e.organization_id));
+    parts.push(deptName(e.department_id));
+    parts.push(fmtDate(e.hire_date));
+    parts.push(fmtSeniority(e.hire_date));
+    parts.push(fmtSeniorityBonus(e));
+    parts.push(money(e.salary));
+    parts.push(String(e.salary != null ? e.salary : ""));
+    if (e.personal_work_hours_per_day != null) parts.push(String(e.personal_work_hours_per_day));
+    if (e.personal_sick_leave_rate != null) parts.push(String(e.personal_sick_leave_rate));
+    parts.push(formatPremLabel(effectiveEmpPrem(e)));
+    if (hasOverrides(e)) parts.push("есть переопределения override");
+    return parts.join(" ").toLowerCase().replace(/\s+/g, " ");
+  }
+
+  function empMatchesSearch(e, q) {
+    var s = String(q || "")
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, " ");
+    if (!s) return true;
+    var hay = empSearchHaystack(e);
+    return s.split(" ").every(function (tok) {
+      return tok && hay.indexOf(tok) !== -1;
+    });
+  }
+
+  function syncEmpSearchDirty() {
+    var btn = document.getElementById("dg-ws-set-emp-apply");
+    if (!btn) return;
+    var dirty = String(state.pendingEmpSearch || "") !== String(state.empSearch || "");
+    btn.classList.toggle("dg-flt-dirty", dirty);
+    btn.textContent = dirty ? "Применить •" : "Применить";
+  }
+
+  function commitEmpSearch() {
+    var inp = document.getElementById("dg-ws-set-emp-search");
+    if (inp) state.pendingEmpSearch = inp.value || "";
+    state.empSearch = state.pendingEmpSearch;
+    syncEmpSearchDirty();
+    renderEmps();
+  }
+
+  function resetEmpSearch() {
+    state.pendingEmpSearch = "";
+    state.empSearch = "";
+    var inp = document.getElementById("dg-ws-set-emp-search");
+    if (inp) inp.value = "";
+    syncEmpSearchDirty();
+    renderEmps();
+  }
+
   function renderEmps() {
     var tb = document.getElementById("dg-ws-set-emp-tbody");
     if (!tb) return;
+    paintEmpSortHeaders();
+    syncEmpSearchDirty();
     var oid = Number(state.empFilterOrgId) || 0;
-    var list = (state.employees || []).filter(function (e) {
-      return !oid || Number(e.organization_id) === oid;
-    });
+    var q = state.empSearch || "";
+    var list = sortEmpList(
+      (state.employees || []).filter(function (e) {
+        if (oid && Number(e.organization_id) !== oid) return false;
+        return empMatchesSearch(e, q);
+      })
+    );
     if (!list.length) {
-      tb.innerHTML =
-        '<tr><td colspan="11" class="text-muted p-3">' +
-        (oid
-          ? "Нет сотрудников в выбранной организации фильтра"
-          : "Нет сотрудников — «Привязать пользователя»") +
-        "</td></tr>";
+      var emptyHint = oid
+        ? "Нет сотрудников в выбранной организации фильтра"
+        : "Нет сотрудников — «Привязать пользователя»";
+      if (q) emptyHint = "Ничего не найдено по запросу «" + q + "»";
+      tb.innerHTML = '<tr><td colspan="13" class="text-muted p-3">' + emptyHint + "</td></tr>";
       return;
     }
     tb.innerHTML = list
@@ -1565,8 +1887,14 @@
           "</td><td>" +
           fmtDate(e.hire_date) +
           "</td><td>" +
-          money(e.salary) +
+          fmtSeniority(e.hire_date) +
           "</td><td>" +
+          fmtSeniorityBonus(e) +
+          '</td><td><button type="button" class="btn btn-link btn-sm p-0 text-decoration-underline dg-ws-salary-link" data-dg-ws-set-salary-hist="' +
+          e.id +
+          '" data-dg-notify-start="Загружаем историю оклада…" title="История изменений оклада">' +
+          money(e.salary) +
+          "</button></td><td>" +
           (e.personal_schedule_type || "—") +
           "</td><td>" +
           (e.personal_work_hours_per_day != null ? e.personal_work_hours_per_day : "—") +
@@ -1591,11 +1919,96 @@
       emp: "dg-ws-set-emp-overlay",
       "emp-add": "dg-ws-set-emp-add-overlay",
       "org-del": "dg-ws-set-org-del-overlay",
+      "salary-hist": "dg-ws-set-salary-hist-overlay",
     };
     var el = document.getElementById(map[kind] || "");
     if (!el) return;
     el.style.display = show ? "flex" : "none";
     el.setAttribute("aria-hidden", show ? "false" : "true");
+  }
+
+  function fmtAuditWhen(v) {
+    if (!v) return "—";
+    if (window.DatagonFmt && window.DatagonFmt.formatDateTime) {
+      var ft = window.DatagonFmt.formatDateTime(v);
+      if (ft && ft !== "—") return ft;
+    }
+    try {
+      var d = new Date(v);
+      if (!Number.isFinite(d.getTime())) return String(v);
+      var dd = d.getDate();
+      var mm = d.getMonth() + 1;
+      var yyyy = d.getFullYear();
+      var hh = d.getHours();
+      var mi = d.getMinutes();
+      return (
+        (dd < 10 ? "0" : "") +
+        dd +
+        "-" +
+        (mm < 10 ? "0" : "") +
+        mm +
+        "-" +
+        yyyy +
+        " " +
+        (hh < 10 ? "0" : "") +
+        hh +
+        ":" +
+        (mi < 10 ? "0" : "") +
+        mi
+      );
+    } catch (e) {
+      return String(v);
+    }
+  }
+
+  function openSalaryHistory(empId) {
+    var id = Number(empId);
+    if (!id) return;
+    var title = document.getElementById("dg-ws-set-salary-hist-title");
+    var meta = document.getElementById("dg-ws-set-salary-hist-meta");
+    var tb = document.getElementById("dg-ws-set-salary-hist-tbody");
+    if (title) title.textContent = "История оклада";
+    if (meta) meta.textContent = "Загрузка…";
+    if (tb) tb.innerHTML = '<tr><td colspan="4" class="text-muted">Загрузка…</td></tr>';
+    showOverlay("salary-hist", true);
+    api("/employees/" + id + "/salary-history")
+      .then(function (j) {
+        var emp = j.employee || {};
+        if (title) title.textContent = "История оклада · " + (emp.full_name || "#" + id);
+        if (meta) {
+          meta.textContent = "Текущий оклад: " + money(emp.salary) + " · кто менял и когда";
+        }
+        var rows = j.rows || [];
+        if (!tb) return;
+        if (!rows.length) {
+          tb.innerHTML =
+            '<tr><td colspan="4" class="text-muted">Пока нет записей — изменения оклада появятся здесь после сохранения</td></tr>';
+          return;
+        }
+        tb.innerHTML = rows
+          .map(function (r) {
+            var who = r.full_name || r.username || (r.user_id ? "#" + r.user_id : "—");
+            var was = r.old_value != null && r.old_value !== "" ? money(Number(r.old_value) || 0) : "—";
+            var became = r.new_value != null && r.new_value !== "" ? money(Number(r.new_value) || 0) : "—";
+            return (
+              "<tr><td>" +
+              fmtAuditWhen(r.created_at) +
+              "</td><td>" +
+              who +
+              "</td><td>" +
+              was +
+              "</td><td>" +
+              became +
+              "</td></tr>"
+            );
+          })
+          .join("");
+      })
+      .catch(function (e) {
+        if (meta) meta.textContent = e.message || "Ошибка загрузки";
+        if (tb) tb.innerHTML = '<tr><td colspan="4" class="text-danger">' + (e.message || "Ошибка") + "</td></tr>";
+        toast("danger", e.message || "Не удалось загрузить историю оклада");
+      });
   }
 
   /** Только карточка организации (поля / сохранить / удалить). Список сотрудников не трогает. */
@@ -2181,12 +2594,57 @@
         openDept(Number(btn.getAttribute("data-dg-ws-set-edit-dept")));
       });
     }
+    var empSearch = document.getElementById("dg-ws-set-emp-search");
+    if (empSearch) {
+      empSearch.addEventListener("input", function () {
+        state.pendingEmpSearch = empSearch.value || "";
+        syncEmpSearchDirty();
+      });
+      empSearch.addEventListener("keydown", function (ev) {
+        if (ev.key === "Enter") {
+          ev.preventDefault();
+          commitEmpSearch();
+        } else if (ev.key === "Escape") {
+          ev.preventDefault();
+          resetEmpSearch();
+        }
+      });
+      empSearch.addEventListener("search", function () {
+        if (!empSearch.value) resetEmpSearch();
+      });
+    }
+    var empApply = document.getElementById("dg-ws-set-emp-apply");
+    if (empApply) empApply.addEventListener("click", commitEmpSearch);
+    var empReset = document.getElementById("dg-ws-set-emp-reset");
+    if (empReset) empReset.addEventListener("click", resetEmpSearch);
+
+    var empThead = document.getElementById("dg-ws-set-emp-thead");
+    if (empThead) {
+      empThead.addEventListener("click", function (ev) {
+        if (window.getSelection && String(window.getSelection()).trim()) return;
+        var th = ev.target.closest("[data-dg-ws-set-emp-sort]");
+        if (!th || !empThead.contains(th)) return;
+        setEmpSort(th.getAttribute("data-dg-ws-set-emp-sort"));
+      });
+    }
     var empTb = document.getElementById("dg-ws-set-emp-tbody");
     if (empTb) {
       empTb.addEventListener("click", function (ev) {
+        var hist = ev.target.closest("[data-dg-ws-set-salary-hist]");
+        if (hist) {
+          openSalaryHistory(Number(hist.getAttribute("data-dg-ws-set-salary-hist")));
+          return;
+        }
         var btn = ev.target.closest("[data-dg-ws-set-edit-emp]");
         if (!btn) return;
         openEmp(Number(btn.getAttribute("data-dg-ws-set-edit-emp")));
+      });
+    }
+    var salaryHistBtn = document.getElementById("dg-ws-set-emp-salary-hist");
+    if (salaryHistBtn) {
+      salaryHistBtn.addEventListener("click", function () {
+        var id = Number(document.getElementById("dg-ws-set-emp-id").value);
+        if (id) openSalaryHistory(id);
       });
     }
 
@@ -2212,6 +2670,7 @@
       showOverlay("emp", false);
       showOverlay("emp-add", false);
       showOverlay("org-del", false);
+      showOverlay("salary-hist", false);
     });
   }
 

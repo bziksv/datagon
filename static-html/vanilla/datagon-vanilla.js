@@ -2353,7 +2353,10 @@
           state = { open: true, startedAt: Number.isFinite(ts) ? ts : Date.now(), employeeId: state.employeeId };
           emit();
           if (window.DatagonNotify && window.DatagonNotify.toast) {
-            window.DatagonNotify.toast({ type: "success", message: "Смена начата" });
+            window.DatagonNotify.toast({
+              type: "success",
+              message: j.resumed ? "Смена продолжена (день уже был закрыт)" : "Смена начата",
+            });
           }
           return readState();
         })
@@ -2376,19 +2379,41 @@
         .then(function (j) {
           state = { open: false, startedAt: null, employeeId: state.employeeId };
           emit();
-          var msg = "Смена завершена";
-          if (j.hours_worked != null) msg += " · " + j.hours_worked + " ч · ставка " + j.rate;
+          var msg = "Смена зафиксирована";
+          if (j.hours_worked != null) {
+            var hw = Number(j.hours_worked);
+            var hm = Number.isFinite(hw) && hw > 0 ? Math.round(hw * 60) : 0;
+            var hLabel =
+              hm < 1
+                ? "<1 мин"
+                : (Math.floor(hm / 60) < 10 ? "0" : "") +
+                  Math.floor(hm / 60) +
+                  ":" +
+                  (hm % 60 < 10 ? "0" : "") +
+                  (hm % 60);
+            msg += " · " + hLabel + " · ставка " + j.rate;
+          }
           else if (prev.startedAt) msg += " · " + formatElapsed(Date.now() - prev.startedAt);
+          if (j.segments_count != null) msg += " · сегментов: " + j.segments_count;
+          if (j.payroll_error) msg += " (начисление позже: " + j.payroll_error + ")";
           if (window.DatagonNotify && window.DatagonNotify.toast) {
-            window.DatagonNotify.toast({ type: "success", message: msg });
+            window.DatagonNotify.toast({ type: j.payroll_error ? "warning" : "success", message: msg });
           }
           return readState();
         })
         .catch(function (e) {
-          if (window.DatagonNotify && window.DatagonNotify.toast) {
-            window.DatagonNotify.toast({ type: "danger", message: e.message || "Не удалось завершить смену" });
-          }
-          throw e;
+          // Часы могли уже записаться на сервере — синхронизируем статус.
+          return refreshStatus().then(function () {
+            var st = readState();
+            var hint = e.message || "Не удалось завершить смену";
+            if (!st.open) {
+              hint += " · на сервере смена уже закрыта, обновите табель";
+            }
+            if (window.DatagonNotify && window.DatagonNotify.toast) {
+              window.DatagonNotify.toast({ type: "danger", message: hint });
+            }
+            throw e;
+          });
         })
         .finally(function () {
           busy = false;

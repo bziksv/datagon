@@ -32,9 +32,14 @@ description: Справочник REST-эндпоинтов p.datagon.ru (осн
 | Ручной матчинг, очереди, вспомогательные GET | [Расширенные маршруты матчинга](#расширенные-маршруты-матчинга) |
 | МойСклад, `ms_export` | [MoySklad](#moysklad) |
 | Выгрузки Ozon / WB / Я.Маркет | [Exports / marketplaces](#exports--marketplaces) |
+| Конкуренты МП / Габариты / Новые товары / Отснять / Huckster | [Exports / Competitors](#exports--competitors-конкуренты) … [Huckster](#exports--huckster) |
 | Продажи МС (отгрузки) | [Продажи МС](#продажи-мс) |
+| Заказы покупателей МС | [Заказы в МС](#заказы-в-мс) |
+| Медмаркет (стыковка кодов) | [Медмаркет](#медмаркет) · [справка](/docs/medmarket/) |
 | Закупки товары (планирование, overrides) | [Закупки](#закупки) |
+| Поставщики / анализ поставщиков / анализ товаров | роуты в [Подключение роутов](#подключение-роутов); UI — [Поставщики](/docs/suppliers/), [Анализ поставщиков](/docs/supplier-analysis/), [Анализ товаров](/docs/product-analysis/) |
 | Карточка товара (детальная страница) | [Карточка товара](#карточка-товара) |
+| График работы (`ws_*`) | [График работы](/docs/work-schedule/) |
 | Массовый синк источников | [Глобальная синхронизация (server.js)](#глобальная-синхронизация-serverjs) |
 | Сводка фоновых задач (логи в UI) | [Обзор процессов](#обзор-процессов) |
 | События активности в UI | [Активность](#активность) |
@@ -42,8 +47,9 @@ description: Справочник REST-эндпоинтов p.datagon.ru (осн
 | Балансы и проводки Точки | [Финансы](#финансы) |
 | Годовые таблицы менеджеров | [Таблицы менеджеров](#таблицы-менеджеров) |
 | Операционный лист | [Операционный лист](#операционный-лист) |
+| Карта экранов панели | [Карта панели](/docs/panel-map/) |
 | Примеры `curl` | [Минимальные проверки через curl](#минимальные-проверки-через-curl) |
-| Версии скриптов синка | [Версионирование скриптов](./script-versioning) (эталон — Huckster `sync_script`) |
+| Версии скриптов синка | [Версионирование скриптов](/docs/script-versioning/) (эталон — Huckster `sync_script`) |
 
 Если якорь в браузере отличается (локализация заголовков), откройте оглавление справа на этой странице Docusaurus — там верные ссылки.
 
@@ -57,7 +63,7 @@ description: Справочник REST-эндпоинтов p.datagon.ru (осн
 - Основной префикс API: `/api`.
 - Для старого фронтенда есть алиас входа: `POST /api/login`.
 - Пагинация обычно поддерживает параметры `limit` и `offset`.
-- Скрипты синка и матриц **версионируются** при изменении алгоритма: реестр `lib/*SyncRevision.js`, поле `sync_script` в ответах API, бейдж в UI. Подробно: [Версионирование скриптов](./script-versioning).
+- Скрипты синка и матриц **версионируются** при изменении алгоритма: реестр `lib/*SyncRevision.js`, поле `sync_script` в ответах API, бейдж в UI. Подробно: [Версионирование скриптов](/docs/script-versioning/).
 
 ## Подключение роутов
 
@@ -70,7 +76,7 @@ description: Справочник REST-эндпоинтов p.datagon.ru (осн
 - `/api/results` -> `routes/results.js`
 - `/api/my-sites` -> `routes/mysites.js`
 - `/api/my-products` -> `routes/myproducts.js`
-- `/api/network-prices` -> `routes/networkPrices.js` (Цены сети: эталон → целевые сайты с `%`; `GET/POST /settings`, `GET /matrix`, `GET /resolve-product`, `POST /link`, `POST /unlink`, `POST /deactivate`, `POST /activate`, `GET /action-log`, `POST /apply`, автосинк `triggerNetworkPricesSyncFromSettings`)
+- `/api/network-prices` -> `routes/networkPrices.js` (Цены сети: эталон → целевые сайты с `%`; `GET/POST /settings`, `GET /matrix`, `GET /resolve-product`, `POST /link`, `POST /content-task`, `POST /unlink`, `POST /deactivate`, `POST /activate`, `GET /action-log`, `POST /apply`, автосинк `triggerNetworkPricesSyncFromSettings`)
 - `/api/matches` -> `routes/matches.js`
 - `/api/ms` -> `routes/moysklad.js`
 - `/api/medmarket` -> `routes/medmarket.js` (Медмаркет: стыковка `code`+тип (`10088+Товар`); `GET /`, `GET /sync-status`, `POST /sync`, `PATCH /mapping`, `POST /import`, `POST /fill-linkage-codes`)
@@ -86,24 +92,26 @@ description: Справочник REST-эндпоинтов p.datagon.ru (осн
 - `/api/supplier-analysis` -> `routes/supplierAnalysis.js` (Анализ поставщиков: продажи из `ms_demand` + `ms_export.supplier`; `GET /projects`, `/overview`, `/ranking`, `/highlights`, `/trend`, `/products`, `/export`, `/data-freshness`; фильтр `project_mode` / `project_uuids`)
 - `/api/product-analysis` -> `routes/productAnalysis.js` (Анализ товаров: продажи/остатки по SKU; `GET /projects`, `/presets`, `/overview`, `/ranking`, `/export`; `POST /decision`, `/decision/bulk`, `/min-stock/apply`; комментарии `POST|PATCH|DELETE /:code/comments[/:id]`; таблицы `dg_product_analysis_decisions`, `dg_product_analysis_comments`)
 - `/api/purchase` -> `routes/purchase.js` (Закупки: `GET` список — SQL `ORDER BY` + пагинация, enrich страницы; `POST /override`, `POST /overrides-import`, журнал overrides: `GET /log`, `GET /log/stats`, `POST /log/cleanup`; перенос «Предлагаемый нес.ост.» → `ms_export.min_stock` (только БД): `POST /min-stock-apply/run`, …; выгрузка в МС — `auto_sync_min_stock_export` / `lib/datagonMinStockExportMs.js`)
-- `/api/product` -> `routes/product.js` (Карточка товара: `ms_export` + `ms_entity_details` + продажи + `dg_bundle_components`; лог отсутствий — пакетно после синка МС: `stock≤0` или для базового кода `stock` < min суффикса в `код-число`, см. `syncZeroStockLogAfterMoyskladExport`; снимки остатка по дням — `dg_product_stock_snapshot`, см. `syncProductStockSnapshotsAfterMoyskladExport` — оба вызываются из `routes/moysklad.js` после сохранения `ms_export`)
+- `/api/product` -> `routes/product.js` (Карточка товара: `ms_export` + `ms_entity_details` + продажи + `dg_bundle_components`; лог отсутствий — пакетно после синка МС: `stock≤0` или для базового кода `stock` &lt; min суффикса в `код-число`, см. `syncZeroStockLogAfterMoyskladExport`; снимки остатка по дням — `dg_product_stock_snapshot`, см. `syncProductStockSnapshotsAfterMoyskladExport` — оба вызываются из `routes/moysklad.js` после сохранения `ms_export`)
 - `/api/activity` -> `routes/activity.js`
 - `/api/db-admin` -> `routes/dbAdmin.js` (Управление БД: размеры таблиц, связи, превью, ANALYZE/OPTIMIZE)
 - `/api/finance` -> `routes/finance.js` (Финансы: Точка JWT + Райф Open API + Т‑Банк T‑API, счета, балансы, проводки; **наличные** CRUD; банковские выписки — только чтение)
 - `/api/manager-sales` -> `routes/managerSales.js` (Таблицы менеджеров: годовой журнал оплат `dg_manager_sales_rows`)
 - `/api/ops-sheet` -> `routes/opsSheet.js` (Операционный лист: свод + Planfix-заявки `dg_ops_planfix_tasks`)
-- `/api/work-schedule` -> `routes/workSchedule.js` (График работы: `ws_*`, clock, табель, отпуска, payroll, audit, экспорт 1С; см. [work-schedule.md](./work-schedule))
+- `/api/work-schedule` -> `routes/workSchedule.js` (График работы: `ws_*`, clock, табель, отпуска, payroll, audit, экспорт 1С; см. [work-schedule.md](/docs/work-schedule/))
 - `GET /api/processes/overview`, `POST /api/sync-all-start`, `POST /api/sync-site-start`, `GET /api/sync-status` -> `server.js`
 
 ## Auth
 
 ### POST `/api/auth/login`
-Вход по логину и паролю.
+Вход по логину и паролю. UI: [`/login.html`](/docs/login/) (поле `then` из `?then=`).
 
 Body:
 ```json
-{ "username": "admin", "password": "..." }
+{ "username": "admin", "password": "...", "then": "/dashboard.html" }
 ```
+
+`then` опционален. В ответе — `auth_token`, `page_modes`, **`redirect_after_login`** (безопасный путь; при полностью закрытой матрице — `/no-access.html`).
 
 ### POST `/api/login`
 Legacy-алиас входа (тот же обработчик, что и выше).
@@ -469,6 +477,10 @@ Query: `target_site_id` (обяз.), `link_status` (`all` | `linked` | `unlinked
 
 Body: `{ target_site_id, source_product_id?, target_product_id?, source_query?, target_query? }` — ручная связь (снимает ignore). Можно передать ID пары или query для разрешения через `resolveSiteProduct`. Пишет строку в `network_prices_action_log` (`action=link`).
 
+### POST `/api/network-prices/content-task`
+
+Задачи контент-отделу по строке цели (`network_content_tasks`). Body: `{ target_site_id, target_product_id, selected?: string[] }` (массово выставить поля в `need`) **или** `{ target_site_id, target_product_id, field, value }` — одно поле (`add_photo` / `add_parent` / `add_satellite` / `delete_product`) и статус. Лог: `action=content_task`.
+
 ### POST `/api/network-prices/unlink`
 
 Body: `{ target_site_id, source_product_id, target_product_id? }` — удаляет manual-link и ставит ignore (чтобы автопо SKU не вернулась). Лог: `action=unlink`.
@@ -712,7 +724,7 @@ Body:
 
 ## MoySklad
 
-> **Эталон списочной страницы.** UI `/moysklad.html` — образец, по которому делаются все новые списочные страницы Datagon vanilla (две карточки: «Фильтры и действия» + «Выгрузка <X>», шестерёнка с auto-discovery полей, поиск-зеркало в шапке таблицы, кнопки `🧩 Столбцы` / `📏 Ширины` / `Свернуть` справа). Контракт — в правилах `.cursor/rules/datagon-list-page-baseline-moysklad.mdc` и `.cursor/rules/datagon-table-filter-apply.mdc`; пользовательская справка — [МойСклад](/docs/moysklad/#эталон-списочной-страницы).
+> **Эталон списочной страницы.** UI `/moysklad.html` — образец, по которому делаются все новые списочные страницы Datagon vanilla (две карточки: «Фильтры и действия» + «Выгрузка &lt;X&gt;», шестерёнка с auto-discovery полей, поиск-зеркало в шапке таблицы, кнопки `🧩 Столбцы` / `📏 Ширины` / `Свернуть` справа). Контракт — в правилах `.cursor/rules/datagon-list-page-baseline-moysklad.mdc` и `.cursor/rules/datagon-table-filter-apply.mdc`; пользовательская справка — [МойСклад](/docs/moysklad/#эталон-списочной-страницы).
 
 ### POST `/api/ms/sync`
 Запустить фоновую синхронизацию в таблицу `ms_export`.
@@ -777,7 +789,7 @@ Query:
 
 ## Exports / marketplaces
 
-Префикс: `/api/exports/marketplaces`. Доступ к API проверяется по странице **`exports-marketplaces`** (матрица `page_modes`: скрытие «Настроек» отключает и вызовы API выгрузок). Настройки ключей/лимитов перенесены в **`/settings.html#marketplaces`**; страница `/exports-marketplaces.html` оставлена как редирект. Отдельные экраны таблиц — **`/exports-marketplaces-ozon.html`**, **`/exports-marketplaces-wildberries.html`**, **`/exports-marketplaces-yandex.html`**: они автозагружают последний сохранённый снапшот и имеют кнопку принудительного обновления. UI-toolbox таблицы маркетплейсов: кнопки «Столбцы» (чекбоксы видимости) и «Ширины» (input px на колонку); состояние сохраняется в `localStorage` (`dg.mp.cols.<shop>`, `dg.mp.colwidths.<shop>`, `dg.mp.page.size.<shop>`). Заголовок таблицы — sticky-th под верхним меню (с CSS-переменной `--dg-table-sticky-top`). Сами запросы выполняются **на сервере** (долгие циклы допустимы; таймауты прокси/nginx настройте под свой каталог). Для новых страниц этой группы целевая структура — по эталону `/moysklad.html` (карточки «Фильтры и действия» + «Выгрузка <X>», кнопки «Столбцы»/«Ширины»/«Свернуть» в card-header справа, поиск-зеркало в шапке таблицы; см. `.cursor/rules/datagon-list-page-baseline-moysklad.mdc`).
+Префикс: `/api/exports/marketplaces`. Доступ к API проверяется по странице **`exports-marketplaces`** (матрица `page_modes`: скрытие родителя без `view`/`full` у дочернего листа закрывает и HTML shop-экранов — `isHtmlLeafAccessHidden`). Настройки ключей/лимитов — в **`/settings.html`** (и форма на `/exports-marketplaces.html` по прямому URL; пункт меню скрыт). Отдельные экраны таблиц — **`/exports-marketplaces-ozon.html`**, **`/exports-marketplaces-wildberries.html`**, **`/exports-marketplaces-yandex.html`**: автозагрузка последнего снапшота (`GET …/snapshot?shop=…`) и кнопка принудительного обновления (`GET …/ozon|wildberries|yandex-market` / sync). UI-toolbox таблицы маркетплейсов: кнопки «Столбцы» (чекбоксы видимости) и «Ширины» (input px на колонку); состояние сохраняется в `localStorage` (`dg.mp.cols.<shop>`, `dg.mp.colwidths.<shop>`, `dg.mp.page.size.<shop>`). Заголовок таблицы — sticky-th под верхним меню (с CSS-переменной `--dg-table-sticky-top`). Сами запросы выполняются **на сервере** (долгие циклы допустимы; таймауты прокси/nginx настройте под свой каталог). Для новых страниц этой группы целевая структура — по эталону `/moysklad.html` (карточки «Фильтры и действия» + «Выгрузка &lt;X&gt;», кнопки «Столбцы»/«Ширины»/«Свернуть» в card-header справа, поиск-зеркало в шапке таблицы; см. `.cursor/rules/datagon-list-page-baseline-moysklad.mdc`).
 
 **Учётные данные** (в порядке приоритета):
 
@@ -1073,7 +1085,7 @@ Body: `{ "code": "…", "field": "ozon"|"wb"|"yandex", "value": 0|1|2|3 }`
 
 ## Exports / Dimensions (Габариты)
 
-Префикс: `/api/exports/dimensions`. Экран: `/exports-dimensions.html` (входит в подменю **Маркетплейсы** сразу после «Яндекс Маркет»).
+Префикс: `/api/exports/dimensions`. Экран: `/exports-dimensions.html` (подменю **Маркетплейсы**, в меню после **Huckster**).
 
 Назначение: реестр замеров габаритов товаров и комплектов МойСклад с фиксацией **кто** и **когда** замерял. Базовые поля (код, наименование, тип) берутся из `ms_export`. Замеры хранятся в отдельной таблице **`ms_dimensions_measurements`** и подмешиваются к строкам `ms_export` по полю `code`. Журнал изменений по каждой позиции ведётся в **`ms_dimensions_log`** (см. ниже).
 
@@ -1930,7 +1942,7 @@ Body (JSON): `email`, `password` (обязательны), опциональн�
 ### Совместимость
 
 - В матрице доступа (`lib/datagonPageRegistry.js`) — `pageKey: 'ms-sales'`, `htmlFile: 'ms-sales.html'`, `navSlug: 'ms-sales'`. API-префикс `/ms-sales` подчиняется тому же режиму (`hidden` / `view` / `full`); в режиме `view` POST-эндпоинты (`/sync`, `/sync-cancel`, `/reresolve`) автоматически блокируются.
-- Меню: пункт «Продажи МС» в подменю «Маркетплейсы» — последний пункт после «Сводка и синхронизация».
+- Меню: пункт «Продажи МС» в блоке МойСклад — после «Заказы в МС» (не подменю «Маркетплейсы»).
 - Фронтенд: `static-html/vanilla/inners/ms-sales.{head,inner,scripts}.html` — две карточки (фильтры + таблица отгрузок с разворачивающимися позициями), поиск-зеркало в шапке таблицы.
 
 ## Заказы в МС
@@ -1988,7 +2000,22 @@ Body: `{ days }` (max = **`ms_orders_sync_days`**; если не передан�
 
 ### Доступ
 
-`pageKey: 'ms-orders'`, API-префикс `/ms-orders`. Пункт меню «Заказы в МС» после «Продажи МС».
+`pageKey: 'ms-orders'`, API-префикс `/ms-orders`. Пункт меню «Заказы в МС» — после «Мой Склад (товары)», перед «Продажи МС».
+
+## Медмаркет
+
+Страница `/medmarket.html`, роутер `routes/medmarket.js`. Матрица: **`medmarket`**. Канон связки: `код+Тип` (напр. `10088+Товар`) в `ms_export.medmarket_product_code`. Сценарий UI: [Медмаркет](/docs/medmarket/).
+
+| Метод | Путь | Назначение |
+|-------|------|------------|
+| GET | `/api/medmarket` | Список по фильтрам query (как UI) |
+| GET | `/api/medmarket/sync-status` | Статус импорта атрибута |
+| POST | `/api/medmarket/sync` | Подтянуть атрибут из `ms_entity_details` → `ms_export` |
+| PATCH | `/api/medmarket/mapping` | Правка одной связки |
+| POST | `/api/medmarket/import` | Массовый import `rows[]` |
+| POST | `/api/medmarket/fill-linkage-codes` | Запись код+тип в МС; `dry_run=1` — preflight со счётчиками |
+
+Автосинк: `medmarket` (импорт, вс) / `medmarket_fill` (запись в МС, пн–сб) — см. Settings / `auto_sync_medmarket_*`.
 
 ## Глобальная синхронизация (server.js)
 
@@ -2036,7 +2063,7 @@ Body: `{ days }` (max = **`ms_orders_sync_days`**; если не передан�
 
 ### GET `/api/processes/disk-usage`
 
-Используется виджетом «Дисковое пространство» на дашборде (`/dashboard.html`). Принудительный пересчёт также выполняется в составе ежедневной фоновой задачи `db_size` (галка «Размер БД и диска» в `/settings.html` → раздел «Авто-синхронизация»; одна задача `auto_sync_runs.task_type = 'db_size'` обновляет и размер БД, и разбивку диска). Возвращает:
+Используется виджетом «Дисковое пространство» на дашборде (`/dashboard.html`). Матрица API: ключ **`dashboard`** (как `GET /db-size`). Принудительный пересчёт также выполняется в составе ежедневной фоновой задачи `db_size` (галка «Размер БД и диска» в `/settings.html` → раздел «Авто-синхронизация»; одна задача `auto_sync_runs.task_type = 'db_size'` обновляет и размер БД, и разбивку диска). Возвращает:
 
 - `projectPath` — абсолютный путь к корню проекта (`__dirname` сервера);
 - `projectSizeBytes`, `projectFileCount`, `rootFilesBytes`, `rootFilesCount` — суммарный размер всех каталогов проекта, общее число файлов и размер/количество файлов в самом корне;
@@ -2058,7 +2085,7 @@ Body: `{ days }` (max = **`ms_orders_sync_days`**; если не передан�
 - Передача: `POST /api/manager-sales/:id/hand-over` `{ manager_user_id }`. Строка владельца остаётся у него и **появляется** у получателя (месяц = `paid_at`). У принимающего может быть **своя** строка с тем же № счёта — это не ошибка. У владельца суммы переданной строки в UI нули и не входят в `totals`; у получателя `amount_*` этой строки прибавляются. `0` — снять. `GET /meta` `managers` — отдел продаж. В списке колонка **Менеджер** — владелец строки.
 - Подсветка **№ нашего счета**: `PATCH` поле `our_invoice_mark` (`green` / пусто). Зелёный — создан заказ покупателя + счёт + входящий платёж. Клик по номеру в таблице включает или снимает отметку.
 - Подсветка **ссылки на счёт поставщика**: на **каждую** закупку отдельно в `suppliers[].invoice_mark` (`black` / `blue` / `orange` / `green` / пусто). `PATCH` `{ invoice_mark, supplier_index }`. Клик по ссылке в таблице открывает выбор цвета для этой строки закупки.
-- Комментарии к строке: таблица **`dg_manager_sales_comments`**. В `GET /api/manager-sales` у каждой строки массив `comments` (новые сверху). `POST /:id/comments` `{ body }` — добавить; `PATCH /:id/comments/:commentId` `{ body }` — править **только свой**. В UI колонка сразу после «Ссылка на счет поставщика»; формат «Имя Ф. — ДД.ММ.ГГГГ — текст».
+- Комментарии к строке: таблица **`dg_manager_sales_comments`**. В `GET /api/manager-sales` у каждой строки массив `comments` (новые сверху). `POST /:id/comments` `{ body }` — добавить; `PATCH` / `DELETE /:id/comments/:commentId` — править или удалить **только свой**. В UI колонка сразу после «Ссылка на счет поставщика»; формат «Имя Ф. — ДД.ММ.ГГГГ — текст».
 - **Отправка вместе:** поле `ship_group_id` у строки. Одинаковый id = одна отправка. В списке у строки `ship_group_mates: [{ id, our_invoice_no, row_no, manager_user_id, manager_name, year }]`, `ship_group_size`. `POST /:id/ship-group` `{ our_invoice_no }` (или `mate_row_id`) — связать с другой строкой того же года; при разных группах — merge. `DELETE /:id/ship-group` — выйти из связки (если осталась одна — у неё id тоже снимается). Query списка: `ship_together=1|0`, `ship_group_id=<id>`. Поиск находит и № счетов «соседей» по группе.
 
 Таблица **`dg_manager_sales_rows`**. Год строки — явное поле `year` (вкладки Google 2019–2026). Формулы при каждом save:
@@ -2218,7 +2245,7 @@ Preflight матча «Менеджер по продажам» ↔ Planfix `/us
 
 Снимки отчёта хранятся **по `(year, month)`** (`dg_ops_planfix_report_task` / `report_status_counts` / `report_meta`). Синк за месяц или другой год **не** делает глобальный `DELETE` чужого периода.
 
-Если после generate сейв **слабо пересекается** с задачами листа выбранного периода Datagon (<10% строк сейва или <100 задач в периоде) → код `REPORT_PERIOD_MISMATCH` (409), гистограмма **не** пишется. Раньше хватало **одного** совпавшего `task_id` — сейв за 2024 мог записаться как «весь 2025», а статусы в заявках 2025 оставались пустыми.
+Если после generate сейв **слабо пересекается** с задачами листа выбранного периода Datagon (&lt;10% строк сейва или &lt;100 задач в периоде) → код `REPORT_PERIOD_MISMATCH` (409), гистограмма **не** пишется. Раньше хватало **одного** совпавшего `task_id` — сейв за 2024 мог записаться как «весь 2025», а статусы в заявках 2025 оставались пустыми.
 
 Если часть «Менеджер по продажам» **не найдена** в Planfix `/user/list` (часто уволенные — в API только активные с урезанным `name`), это **не** значит «их нет в отчёте 450694»: в отчёте и на старых задачах они остаются. Синк делает **доп. проход** без фильтра постановщика и пишет в лист только задачи, где постановщик матчится с менеджером продаж по ФИО с задачи. `prune` не удаляет строки несматченных менеджеров. В UI прогресса: «нет в /user/list», не «не в Planfix».
 
@@ -2232,20 +2259,26 @@ Preflight матча «Менеджер по продажам» ↔ Planfix `/us
 
 ## Work schedule (график работы)
 
-Страницы `/work-schedule.html`, `/work-schedule-settings.html`. Роутер `routes/workSchedule.js`, схема `lib/datagonWorkScheduleSchema.js` (`ws_*`), расчёты `lib/datagonWorkScheduleCalc.js`. Матрица: **`work-schedule`** / **`work-schedule-settings`** (API-режим — max из двух). Роли внутри API: сотрудник (`ws_employee`), руководитель отдела (`head_user_id`), бухгалтерия (specialty «Бухгалтерия» / admin). Подробнее: [График работы](./work-schedule).
+Страницы `/work-schedule.html`, `/work-schedule-settings.html`. Роутер `routes/workSchedule.js`, схема `lib/datagonWorkScheduleSchema.js` (`ws_*`), расчёты `lib/datagonWorkScheduleCalc.js`, премии из продаж `lib/managerSalesMonthBonus.js`. Матрица: **`work-schedule`** / **`work-schedule-settings`** (API-режим — max из двух). Роли: сотрудник (`ws_employee`), руководитель (`head_user_id`), бухгалтерия (specialty «Бухгалтерия» / admin). Подробнее: [График работы](/docs/work-schedule/).
 
-Несколько юрлиц: `GET/POST/PUT/DELETE /organizations`; seed при пустой таблице **АЛЬМАМЕД** + **ВИЛМЕД**. `DELETE` орг. запрещён при наличии сотрудников (409); отделы — общий справочник (не удаляются с орг.). У сотрудника обязателен `hire_date` для стажа; `GET /employees` отдаёт `organization_name`, `department_name`. Премия: у отдела `premium_rule_json` (`stub` | `{ kind:"fixed", amount }`), у сотрудника опционально `personal_premium_rule_json` (null = из отдела).
+**Отделы = специальности:** `POST /departments/import-specialties` копирует имена из `specialties` (без «Полный доступ») в общий `ws_department`. Не заводить отделы вроде «Продажи», если в специальностях есть **«Менеджер по продажам»**.
+
+Несколько юрлиц: `GET/POST/PUT/DELETE /organizations`; seed при пустой таблице **АЛЬМАМЕД** + **ВИЛМЕД**. `DELETE` орг. запрещён при наличии сотрудников (409). У сотрудника обязателен `hire_date`. Премия: правило отдела/сотрудника (`stub` / `fixed` / `fixed_full`) **или** помесячный `ws_payroll_entry.premium_manual` (клик в табеле / «Премии из продаж»). Оклад и стаж в payroll — пропорционально ставкам месяца; в ответах также `salary_rate` / `seniority_full`.
 
 | Метод | Путь | Кто |
 |-------|------|-----|
 | GET | `/api/work-schedule/access` | любой авторизованный |
 | GET/POST/PUT | `/organizations`, `/departments`, `/employees`, `/users-available` | accounting |
+| GET | `/employees/:id/salary-history` | accounting (любой) / employee (свой); аудит `field_name=salary` (`create` / `salary_change`: кто, когда, было/стало) |
 | DELETE | `/organizations/:id` | accounting (409, если есть сотрудники) |
 | POST | `/departments/import-specialties` | accounting; отделы из `specialties` в **общий** справочник (без привязки к орг.; без «Полный доступ»), без дублей имён |
-| GET/POST | `/clock/status`, `/clock/start`, `/clock/stop` | сотрудник с карточкой |
-| GET | `/stuck-shifts` | head / accounting |
-| GET | `/me/month`, `/dept/month` | employee / head / accounting |
-| GET / PATCH | `/sheet`, `/sheet/cell` | accounting |
+| GET/POST | `/clock/status`, `/clock/start`, `/clock/stop` | сотрудник; `segments_json` append-only (+ `ip_in`/`ip_out`); `stop` сначала пишет часы/сегменты (payroll ошибка → `payroll_error`, часы уже в БД); повторный `start` → `resumed` + накопление |
+| GET | `/me/day?date=YYYY-MM-DD` | сотрудник; детали дня: сегменты старт/стоп, часы, IP, открытый сегмент |
+| GET | `/stuck-shifts?department_id=` | head / accounting; без `department_id` у head — свой отдел, у accounting — все; с параметром — только выбранный отдел |
+| GET | `/me/month`, `/dept/month` | employee / head / accounting; `dept/month` дополнительно отдаёт `today[]` (кто стартовал сегодня: `work_status` working/finished/not_started/vacation/sick, `check_in`, `hours`) и `today_date`; в `payroll` — `salary_rate` (полный оклад) + `base_salary` (накапало), `seniority_full` + `seniority_bonus` |
+| GET / PATCH | `/sheet`, `/sheet/cell` | accounting; в ячейках `open: true`, если смена не закрыта (UI — мигание «на работе»); у сотрудников `salary` / `salary_accrued`, `premium_*` / `premium_source`; при наличии отделов «…продаж…» — автозагрузка премий из журнала менеджеров (`sales_premium_sync`) |
+| PATCH | `/sheet/premium` | accounting; ручная премия: `{ employee_id, period_ym, premium_manual }` (`null` — сброс); пишет `premium_source=manual` |
+| POST | `/sheet/premium-from-sales` | accounting; принудительный пересчёт премий из журнала (`totals.bonus`) → `premium_manual` + `premium_source=sales`; body `{ period_ym, dry_run?, force?, organization_id?, department_id? }` |
 | POST | `/vacations`, `/vacations/:id/approve` | employee / head+accounting |
 | POST | `/sick`, `/absences`, `/vacation-compensation` | accounting |
 | GET/POST | `/payroll`, `/payroll/dry-run`, `/payroll/apply` | accounting (свой payroll — employee) |
@@ -2255,7 +2288,9 @@ Preflight матча «Менеджер по продажам» ↔ Planfix `/us
 | POST | `/import/timesheet-csv` | accounting (`dry_run`, `csv`) |
 | GET/PUT | `/1c-map`, `/1c-map/:employeeId` | accounting |
 
-Фон: раз в 15 мин `processStuckShifts` авто-закрывает открытые смены старше `clock_auto_close_hours` → `status=needs_confirm`.
+Фон: раз в 15 мин `processStuckShifts` авто-закрывает открытые смены:
+1. **смена суток (МСК):** `work_date` &lt; сегодня → `check_out` = `work_date 23:59:59`, сегмент `day-rollover`, `status=needs_confirm`;
+2. иначе открыта ≥ `clock_auto_close_hours` (дефолт 14) → `check_out` = сейчас, сегмент `auto-close`, `status=needs_confirm`.
 
 ## Финансы
 
@@ -2389,7 +2424,7 @@ Body: `{ "days": 30, "date_from?", "date_to?", "customer_code?", "customer_codes
 
 ## Управление БД
 
-Страница `/db-admin.html`, роутер `routes/dbAdmin.js`, каталог связей `lib/datagonDbRelations.js`. Только **основная** MySQL Datagon (не CMS сайтов). Доступ: **admin** или `can_manage_users` (как «Активность/Логи»). Матрица страниц: ключ `db-admin`. Имена таблиц для preview/ANALYZE/OPTIMIZE сверяются с `information_schema` текущей схемы — произвольный SQL запрещён.
+Страница `/db-admin.html`, роутер `routes/dbAdmin.js`, каталог связей `lib/datagonDbRelations.js`. Только **основная** MySQL Datagon (не CMS сайтов). Доступ API и пункт меню с замком: **admin** или `can_manage_users` (как «Активность/Логи») — жёсткая проверка в роутере, не только матрица. Ключ матрицы HTML: `db-admin`. UI: [Управление БД](/docs/db-admin/). Имена таблиц для preview/ANALYZE/OPTIMIZE сверяются с `information_schema` текущей схемы — произвольный SQL запрещён.
 
 ### GET `/api/db-admin/overview`
 
@@ -2453,7 +2488,7 @@ Query: `supplier_key`, `months` (3–24, default 12), `project_mode`, `project_u
 
 ### GET `/api/supplier-analysis/products`
 
-Query: `supplier_key`, `days`, `new_stock_days` (для `stale`/`new`), `mode` (`all`|`warehouse`|`catalog`|`all_skus`|`total`|`leaders`|`laggards`|`stale`|`new`|`weak`|`absence`), `limit` (до 500 для `warehouse`/`all_skus`), `project_mode`, `project_uuids`. **`warehouse`** / `catalog` — SKU складская (`sqlSupplierProductWhere`: не архив, не «перестали сотрудничать», складская «Да»). **`all_skus`** / `total` — все SKU поставщика (`sqlSupplierAllSkusWhere`: без архива и «перестали сотрудничать», комплекты исключены). **`stale`** / `laggards` — остаток > 0, 0 продаж, не новинка. **`new`** — остаток > 0, первый остаток в пределах `new_stock_days`. **`weak`** — есть продажи, но `sales_qty` < 25% медианы. **`absence`** — SKU с эпизодами нуля: `absent_days`, `episode_count`, `max_streak_days`, `avg_episode_days`, `chronic`, `flicker`, `sales_*` (рек. дни на UI анализа не показываются; они идут в формулу на `/purchase.html`); в ответе также `rollup` по счётчикам отсутствия. Ответ каталога: `total`, `truncated`, в строке `is_warehouse`, `stock_position`, `stock`, **`in_transit`** (ожидание / в пути: `ms_entity_details.denorm_in_transit` или `payload.inTransit`, как на закупках).
+Query: `supplier_key`, `days`, `new_stock_days` (для `stale`/`new`), `mode` (`all`|`warehouse`|`catalog`|`all_skus`|`total`|`leaders`|`laggards`|`stale`|`new`|`weak`|`absence`), `limit` (до 500 для `warehouse`/`all_skus`), `project_mode`, `project_uuids`. **`warehouse`** / `catalog` — SKU складская (`sqlSupplierProductWhere`: не архив, не «перестали сотрудничать», складская «Да»). **`all_skus`** / `total` — все SKU поставщика (`sqlSupplierAllSkusWhere`: без архива и «перестали сотрудничать», комплекты исключены). **`stale`** / `laggards` — остаток > 0, 0 продаж, не новинка. **`new`** — остаток > 0, первый остаток в пределах `new_stock_days`. **`weak`** — есть продажи, но `sales_qty` &lt; 25% медианы. **`absence`** — SKU с эпизодами нуля: `absent_days`, `episode_count`, `max_streak_days`, `avg_episode_days`, `chronic`, `flicker`, `sales_*` (рек. дни на UI анализа не показываются; они идут в формулу на `/purchase.html`); в ответе также `rollup` по счётчикам отсутствия. Ответ каталога: `total`, `truncated`, в строке `is_warehouse`, `stock_position`, `stock`, **`in_transit`** (ожидание / в пути: `ms_entity_details.denorm_in_transit` или `payload.inTransit`, как на закупках).
 
 ### GET `/api/supplier-analysis/export`
 
@@ -3144,21 +3179,21 @@ Query: `days` (default 90, max 1825).
 
 ### Заметки
 
-- Доступ контролируется через `lib/datagonPageRegistry.js` — `/api/product/*` использует `pageKey: 'purchase'` (карточка товара доступна там же, где доступны «Закупки»). HTML `/product.html` наследует доступ от `purchase` (см. `isHtmlLeafAccessHidden`).
-- Карточка открывается из таблицы «Закупки» (`/purchase.html`) — ссылка по **коду** в колонке «Наименование» открывает `/product.html?code=XXX` в новой вкладке.
+- Доступ: **API** `/api/product/*` → `pageKey: 'purchase'`. **HTML** `/product.html` — dual-gate: открыт, если `purchase` **или** `product` не `hidden` (`isHtmlLeafAccessHidden`); одного ключа `product` без `purchase` недостаточно для API. Подробнее — [Карточка товара](/docs/product/).
+- Карточка открывается из таблицы «Закупки» (`/purchase.html`) — ссылка по **наименованию** на `/product.html?code=XXX` в новой вкладке.
 - Перезапуск Node обязателен после изменений в `routes/product.js` / `lib/datagonPageRegistry.js` / `server.js` (`datagon-node-restart-lock.mdc`).
 
 ## Активность
 
-Маршруты `routes/activity.js` (события в интерфейсе):
+Маршруты `routes/activity.js`. UI — верх `/processes.html` ([Активность / Логи](/docs/processes/)). `GET /events`: только **admin** или `can_manage_users`. `POST /track`: любая сессия (pageKey API `null`). Префикс `/activity/events` в матрице привязан к ключу **`processes`**, но роутер дополнительно режет по manage-users.
 
 ### GET `/api/activity/events`
 
-Выборка событий активности (параметры пагинации/фильтры — в роутере).
+Выборка событий (фильтры/пагинация — в роутере).
 
 ### POST `/api/activity/track`
 
-Регистрация события активности с клиента.
+Регистрация события с клиента.
 
 ## Минимальные проверки через curl
 

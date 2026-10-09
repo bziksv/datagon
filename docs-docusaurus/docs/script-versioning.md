@@ -19,8 +19,8 @@ description: Обязательные ревизии при изменении �
 | Реестр ревизий | `lib/hucksterSyncRevision.js` |
 | Алгоритм | `routes/exportsHuckster.js`, `lib/hucksterMsBridgeMatrix.js`, `lib/hucksterSnapshotStore.js` |
 | API | поле `sync_script` в `GET /api/exports/huckster/config`, `GET …/sync-status`, `GET …/snapshot`, в `result` после sync |
-| UI | бейдж `v1.0.1 · rev.2` на `/exports-huckster.html` |
-| Справка API | раздел [Exports / Huckster](./api.md#exports--huckster) |
+| UI | бейдж `v1.0.4 · rev.5` (текущий) на `/exports-huckster.html` |
+| Справка API | раздел [Exports / Huckster](/docs/api/#exports--huckster) |
 
 Пример записи ревизии:
 
@@ -87,6 +87,7 @@ description: Обязательные ревизии при изменении �
 | rev | version | date | notes |
 |-----|---------|------|-------|
 | 1 | 1.0.0 | 2026-10-02 | Мгновенный комментарий (Альмамед — неразмещённые; маркеты — после заполнения полей) и сводка раз в N дней. Первое включение запоминает текущую очередь. |
+| 2 | 1.0.1 | 2026-10-07 | `created_at` комментария/уведомления — `UTC_TIMESTAMP()` (как RISE), не `NOW()` МСК. |
 | 2 | 1.0.1 | 2026-10-07 | `created_at` комментария/уведомления CRM — `UTC_TIMESTAMP()` (как RISE), не `NOW()` в МСК: иначе в ленте +3 ч. |
 
 ## Заявки Planfix (операционный лист)

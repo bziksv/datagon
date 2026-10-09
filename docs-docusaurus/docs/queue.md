@@ -4,12 +4,26 @@ title: Очередь
 description: URL в очереди парсинга — статусы, добавление, массовый запуск, reset, диагностика error
 ---
 
-**`/queue.html`** — операции над таблицей **`pages`**: какие **URL** какого **проекта** в каком **статусе**, массовое добавление, запуск парсера, очистка, **сброс в pending** после исправлений.
+**`/queue.html`** (меню **Парсинг → Очередь**) — операции над таблицей **`pages`**: URL × проект × статус, bulk-добавление, парсинг, clear, **reset → pending**. Карта: [Карта панели](/docs/panel-map/).
 
-При успешном разборе карточки на `pages` пишется кэш: **`product_name`**, **`last_sku`**, **`last_price`**, **`last_is_oos`** (название в таблице очереди и умный поиск по имени/SKU/URL). История цен — в `prices`; см. [Результаты](/docs/results/).
+Не путать с очередью **«Новые товары»** (`/exports-new-products.html`) — это другой модуль.
+
+При успешном разборе на `pages` пишется кэш: **`product_name`**, **`last_sku`**, **`last_price`**, **`last_is_oos`**. История цен — в `prices`; см. [Результаты](/docs/results/).
+
+## Доступ
+
+Ключ матрицы — **`queue`**. API: **`/api/pages`** и **`/api/parse`** (алиас одного `routes/pages.js`) → тот же ключ.
+
+| Режим | Что доступно |
+|-------|----------------|
+| **`hidden`** | HTML и pages/parse API недоступны |
+| **`view`** | Список / discover-status — GET |
+| **`full`** | bulk, clear, reset, parse one/visible, refresh, discover-start/stop |
+
+Фильтры списка — по **«Применить»** / Enter (не на каждый `input`). Лимиты парсера — [Настройки](/docs/settings/) (`page_delay_ms`, `parse_batch_size`, `discover_*`).
 
 <blockquote class="dg-doc-tip">
-<strong>Снимок интерфейса.</strong> PNG обновляют: <code>npm run docs:capture-screenshots</code> (с <code>DOCS_USER</code> и <code>DOCS_PASSWORD</code> — с живой панели; без входа — с макета <code>/doc-screenshots/queue-sample.html</code>) и <code>npm run docs:docusaurus:build</code>. Для очереди в кадр попадает <strong>область окна</strong> (viewport), не вся высота списка. <a href="./capture-screenshots.md">Подробнее о съёмке</a>.
+<strong>Снимок интерфейса.</strong> PNG: <code>npm run docs:capture-screenshots</code> + <code>npm run docs:docusaurus:build</code>. Кадр <strong>viewport</strong>; без входа — макет <code>/doc-screenshots/queue-sample.html</code>. <a href="/docs/capture-screenshots/">Съёмка</a>.
 </blockquote>
 
 <figure class="dg-doc-shot">

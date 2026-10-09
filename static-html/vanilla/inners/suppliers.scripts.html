@@ -1,5 +1,58 @@
   <script>
     (function () {
+      var spConfirmOnOk = null;
+
+      function closeSpConfirm() {
+        var ov = document.getElementById("dg-sp-confirm-overlay");
+        if (!ov) return;
+        ov.style.display = "none";
+        ov.setAttribute("aria-hidden", "true");
+        spConfirmOnOk = null;
+      }
+
+      /** Своя модалка вместо window.confirm (заказ в МС / открыть в МС). */
+      function openSpConfirm(opts) {
+        opts = opts || {};
+        var ov = document.getElementById("dg-sp-confirm-overlay");
+        var titleEl = document.getElementById("dg-sp-confirm-title");
+        var bodyEl = document.getElementById("dg-sp-confirm-body");
+        var okBtn = document.getElementById("dg-sp-confirm-ok");
+        if (!ov || !okBtn) {
+          if (typeof opts.onOk === "function") opts.onOk();
+          return;
+        }
+        if (titleEl) titleEl.textContent = opts.title || "Подтвердите действие";
+        if (bodyEl) bodyEl.textContent = opts.body || "";
+        okBtn.textContent = opts.okLabel || "Подтвердить";
+        okBtn.className = "btn " + (opts.okClass || "btn-danger");
+        if (opts.notifyStart) okBtn.setAttribute("data-dg-notify-start", opts.notifyStart);
+        else okBtn.removeAttribute("data-dg-notify-start");
+        spConfirmOnOk = typeof opts.onOk === "function" ? opts.onOk : null;
+        ov.style.display = "flex";
+        ov.setAttribute("aria-hidden", "false");
+      }
+
+      function bindSpConfirm() {
+        var cancel = document.getElementById("dg-sp-confirm-cancel");
+        var ok = document.getElementById("dg-sp-confirm-ok");
+        var backdrop = document.getElementById("dg-sp-confirm-backdrop");
+        if (cancel) cancel.addEventListener("click", closeSpConfirm);
+        if (backdrop) backdrop.addEventListener("click", closeSpConfirm);
+        if (ok) {
+          ok.addEventListener("click", function () {
+            var fn = spConfirmOnOk;
+            closeSpConfirm();
+            if (fn) fn();
+          });
+        }
+        document.addEventListener("keydown", function (e) {
+          if (e.key !== "Escape") return;
+          var ov = document.getElementById("dg-sp-confirm-overlay");
+          if (!ov || ov.style.display === "none" || ov.getAttribute("aria-hidden") === "true") return;
+          closeSpConfirm();
+        });
+      }
+
       var SP_COLS = [
         ["row_num", "№", { center: true, thTip: "Порядковый номер строки в текущей выборке." }],
         ["supplier_name", "Поставщик", { thTip: "Название поставщика из МойСклад (группировка по ms_export.supplier)." }],
@@ -1421,90 +1474,100 @@
         var n = Number(row.products_to_purchase || 0);
         if (!n) return;
         var assignee = String(row.assigned_user_name || "").trim() || "(не назначен)";
-        if (
-          !window.confirm(
+        openSpConfirm({
+          title: "Создать заказ в МойСклад?",
+          body:
             "Создать заказ поставщику «" +
-              supplierKey +
-              "» в МойСклад?\n\nПозиций к закупке: " +
-              n +
-              "\nСотрудник в названии: " +
-              assignee
-          )
-        ) {
-          return;
-        }
-        var url =
-          "/api/suppliers/" + encodeURIComponent(supplierKey) + "/send-ms-order";
-        var run = function () {
-          return fetch(url, {
-            method: "POST",
-            credentials: "same-origin",
-            headers: spAuthHeaders(true),
-            body: "{}",
-          }).then(function (r) {
-            return r
-              .json()
-              .catch(function () {
-                return {};
-              })
-              .then(function (j) {
-                if (!r.ok) {
-                  var er = new Error((j && j.error) || "HTTP " + r.status);
-                  er.responseJson = j;
-                  throw er;
-                }
-                return j;
+            supplierKey +
+            "» в МойСклад?\n\nПозиций к закупке: " +
+            n +
+            "\nСотрудник в названии: " +
+            assignee +
+            "\n\nЧерновик (не проведён): склад «Альмамед Ожидание», контрагент по имени поставщика.",
+          okLabel: "Создать заказ",
+          okClass: "btn-primary",
+          notifyStart: "Создаём заказ в МойСклад…",
+          onOk: function () {
+            var url =
+              "/api/suppliers/" + encodeURIComponent(supplierKey) + "/send-ms-order";
+            var run = function () {
+              return fetch(url, {
+                method: "POST",
+                credentials: "same-origin",
+                headers: spAuthHeaders(true),
+                body: "{}",
+              }).then(function (r) {
+                return r
+                  .json()
+                  .catch(function () {
+                    return {};
+                  })
+                  .then(function (j) {
+                    if (!r.ok) {
+                      var er = new Error((j && j.error) || "HTTP " + r.status);
+                      er.responseJson = j;
+                      throw er;
+                    }
+                    return j;
+                  });
               });
-          });
-        };
-        var onOk = function (j) {
-          var msg =
-            "Заказ «" +
-            (j.order_name || "") +
-            "» создан (" +
-            (j.positions_count != null ? j.positions_count : "?") +
-            " поз.)";
-          if (j.skipped_no_uuid && j.skipped_no_uuid.length) {
-            msg += ". Без uuid: " + j.skipped_no_uuid.length;
-          }
-          if (window.DatagonNotify && window.DatagonNotify.toast) {
-            window.DatagonNotify.toast({ type: "success", message: msg, duration: 8000 });
-          }
-          if (j.ms_web_href && window.confirm(msg + "\n\nОткрыть заказ в МойСклад?")) {
-            window.open(j.ms_web_href, "_blank", "noopener,noreferrer");
-          }
-          if (j.log_id) msOrderLogState.selectedLogId = j.log_id;
-          var ov = document.getElementById("dg-sp-ms-order-log-overlay");
-          if (ov && ov.style.display !== "none" && msOrderLogState.supplierKey) {
-            loadSupplierMsOrderLogList();
-          }
-        };
-        var onErr = function (err, j) {
-          var msg = (j && j.error) || err.message || "Ошибка создания заказа";
-          if (j && j.log_id) msg += " (журнал #" + j.log_id + ")";
-          if (window.DatagonNotify && window.DatagonNotify.toast) {
-            window.DatagonNotify.toast({
-              type: "danger",
-              message: msg,
-              duration: 12000,
-            });
-          } else {
-            window.alert(msg);
-          }
-        };
-        if (window.DatagonNotify && window.DatagonNotify.busyRun) {
-          window.DatagonNotify.busyRun(btn, run)
-            .then(onOk)
-            .catch(function (err) {
-              onErr(err, err && err.responseJson);
-            });
-        } else {
-          run()
-            .then(onOk)
-            .catch(function (err) {
-              onErr(err, err && err.responseJson);
-            });
-        }
+            };
+            var onOk = function (j) {
+              var msg =
+                "Заказ «" +
+                (j.order_name || "") +
+                "» создан (" +
+                (j.positions_count != null ? j.positions_count : "?") +
+                " поз.)";
+              if (j.skipped_no_uuid && j.skipped_no_uuid.length) {
+                msg += ". Без uuid: " + j.skipped_no_uuid.length;
+              }
+              if (window.DatagonNotify && window.DatagonNotify.toast) {
+                window.DatagonNotify.toast({ type: "success", message: msg, duration: 8000 });
+              }
+              if (j.ms_web_href) {
+                openSpConfirm({
+                  title: "Открыть заказ в МойСклад?",
+                  body: msg + "\n\nОткрыть карточку заказа в МойСклад в новой вкладке?",
+                  okLabel: "Открыть",
+                  okClass: "btn-primary",
+                  onOk: function () {
+                    window.open(j.ms_web_href, "_blank", "noopener,noreferrer");
+                  },
+                });
+              }
+              if (j.log_id) msOrderLogState.selectedLogId = j.log_id;
+              var ov = document.getElementById("dg-sp-ms-order-log-overlay");
+              if (ov && ov.style.display !== "none" && msOrderLogState.supplierKey) {
+                loadSupplierMsOrderLogList();
+              }
+            };
+            var onErr = function (err, j) {
+              var msg = (j && j.error) || err.message || "Ошибка создания заказа";
+              if (j && j.log_id) msg += " (журнал #" + j.log_id + ")";
+              if (window.DatagonNotify && window.DatagonNotify.toast) {
+                window.DatagonNotify.toast({
+                  type: "danger",
+                  message: msg,
+                  duration: 12000,
+                });
+              }
+            };
+            if (window.DatagonNotify && window.DatagonNotify.busyRun) {
+              window.DatagonNotify.busyRun(btn, run)
+                .then(onOk)
+                .catch(function (err) {
+                  onErr(err, err && err.responseJson);
+                });
+            } else {
+              run()
+                .then(onOk)
+                .catch(function (err) {
+                  onErr(err, err && err.responseJson);
+                });
+            }
+          },
+        });
       }
 
       function downloadSupplierExport(row, kind, btn) {
@@ -2761,6 +2824,7 @@
         bindTableCardCollapse();
         bindPagination();
         bindSupplierMsOrderLogModal();
+        bindSpConfirm();
         columnControls();
         updateSpStickyTopVar();
         window.addEventListener("scroll", onScrollSpFloatingHeader, { passive: true });

@@ -96,6 +96,17 @@ description: Планирование закупок поверх ms_export — 
 - `view` — только просмотр (GET), сохранение overrides отключено (POST вернёт 403);
 - `full` — полный доступ.
 
+Карточка **`/product.html?code=…`** (ключ матрицы **`product`**, вне сайдбара): HTML открыт, если доступен **`purchase` или `product`** (`isHtmlLeafAccessHidden`); API `/api/product` привязан к ключу **`purchase`**. Справка — [Карточка товара](/docs/product/).
+
+## Связанные действия
+
+| Действие | Где | Эффект |
+|----------|-----|--------|
+| **Пересчитать кэш** | кнопка на экране | `POST /api/settings/auto-sync-run` `task=purchase_formula_cache` → `dg_formula_proposed_cache`; прогресс `GET /api/purchase/formula-cache-progress` |
+| **Пр.→НС** | кнопка на экране | `POST /api/purchase/min-stock-apply/run` — пишет **`ms_export.min_stock` только в БД Datagon** (пакет + откат); **не** выгрузка в МойСклад |
+| Выгрузка НС в МС | [Настройки](/docs/settings/) → автосинк **`min_stock_export`** | `ms_export.min_stock` → `minimumBalance` в МС (отдельная задача) |
+| Ссылки с [Поставщиков](/docs/suppliers/) | `?supplier=…&to_buy=1` | фильтр поставщика + режим «к закупке» |
+
 ## Типичные вопросы
 
 **Не вижу значение «Кол-во в упаковке».** В МС у товара должны быть заведены **packagings** (Упаковки). Если в карточке МС их нет, показывается прочерк / пусто; при необходимости в БД можно положить ручное значение через `pack_qty_manual` (передать в `POST /api/purchase/override`).

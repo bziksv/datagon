@@ -1,29 +1,51 @@
 ---
 id: settings
 title: Настройки
-description: Глобальные параметры парсинга, синхронизации, пользователи; что менять осторожно
+description: Глобальные параметры парсинга, синхронизации, пользователи, матрица доступа, автосинк
 ---
 
-**`/settings.html`** — **глобальные** параметры приложения: лимиты **парсера** (`default_limit`, `parse_batch_size`, `page_delay_ms` и др.), батчи и паузы **синхронизации** `my_products`, блок **МойСклад** (если вынесен в форму), **пользователи** и пароли, при наличии — **расписания** автозапусков.
+**`/settings.html`** — глобальные параметры Datagon. Ключ матрицы: **`settings`**. Карта: [Карта панели](/docs/panel-map/).
 
 <blockquote class="dg-doc-tip">
-<strong>Снимок интерфейса.</strong> PNG обновляют: <code>npm run docs:capture-screenshots</code> (с <code>DOCS_USER</code> и <code>DOCS_PASSWORD</code> — с живой панели; без входа — с макета <code>/doc-screenshots/settings-sample.html</code>) и <code>npm run docs:docusaurus:build</code>. Полная страница в кадре. <a href="./capture-screenshots.md">Подробнее о съёмке</a>.
+<strong>Снимок интерфейса.</strong> PNG: <code>npm run docs:capture-screenshots</code> + <code>npm run docs:docusaurus:build</code>. Полная страница. <a href="/docs/capture-screenshots/">Съёмка</a>.
 </blockquote>
 
 <figure class="dg-doc-shot">
-<img src="/docs/screenshots/settings.png" alt="«Настройки»" loading="lazy" />
-<figcaption>Настройки: формы глобальных параметров (полная страница в кадре).</figcaption>
+<img src="/docs/screenshots/settings.png" alt="Настройки" loading="lazy" />
+<figcaption>Настройки: формы глобальных параметров.</figcaption>
 </figure>
+
+## Доступ
+
+| Кто | Что видит |
+|-----|-----------|
+| Матрица `settings` = `full` / `view` | HTML и `GET/POST /api/settings` (view — только GET) |
+| **`can_manage_users`** | HTML **всегда** открывается, даже если `settings` = `hidden` в матрице (`isHtmlLeafAccessHiddenForActor`); блок пользователей / специальностей |
+| API | `/api/settings`, `/api/auth/users`, `/api/specialties`, sync-all/site → ключ **`settings`** |
+
+Не путать с **«График · настройки»** (`/work-schedule-settings.html`, ключ `work-schedule-settings`).
+
+## Структура экрана (сверху вниз)
+
+1. **Пользователи системы** — список, создание, архив, specialty, `can_manage_users`, сессии в таблице.  
+2. **Специальности и доступ к разделам** — CRUD специальностей + матрица `hidden` / `view` / `full` по `PAGE_DEFS` (`PUT /api/specialties/:id/access`).  
+3. **Сессии и онлайн**, **Общие** (парсинг, discover, прокси), **синк Мои товары**, **МойСклад**, **Заказы в МС**.  
+4. **Ключи / паузы маркетплейсов** (Ozon, WB, Я.М., Huckster) — источник [вместо скрытого пункта меню «Настройки МП»](/docs/marketplaces/).  
+5. **Автосинхронизация по расписанию** — карточки = `AUTO_SYNC_TASKS` (`lib/datagonAutoSyncRegistry.js`, **21** задача): Сохранить / Запустить сейчас / Лог; категории UI.  
+6. Карточки retention / Planfix / формула продаж / журналы (габариты, закупки, auto_sync_runs, снимки остатка).
+
+Каждая кнопка **«Сохранить»** — inline-баннер + повторный `GET` и сверка ключей (`runSaveWithInlineFeedback`). Новое поле формы обязано попасть в whitelist `routes/settings.js`, иначе жёлтый баннер «отправили ≠ БД».
 
 ## Группы настроек (логика)
 
 | Группа | Зачем трогать |
 |--------|----------------|
-| **Парсинг** | Если конкуренты режут по IP или отдают 429 — **увеличьте** `page_delay_ms`, уменьшите размер батча парсинга. |
-| **Прокси для парсинга** | Если с датацентрового IP отдают антибот/WAF вместо карточки — включите глобальный список HTTP(S)-прокси (`fetch_proxy_*`); у отдельного конкурента в [Проектах](/docs/projects/) можно выбрать режим «наследовать» или «напрямую». |
-| **Синхронизация** | Длинные паузы между батчами снижают нагрузку на внешние БД источников. |
-| **Пользователи** | Доступ в панель; политика паролей — по договорённости в команде. |
-| **МойСклад** | Если токен задаётся не только в `config.js` — дублирование источников правды лучше избегать. |
+| **Парсинг** | 429 / антибот — увеличьте `page_delay_ms`, уменьшите батч. |
+| **Прокси** | `fetch_proxy_*`; у проекта — наследовать или напрямую ([Конкуренты](/docs/projects/)). |
+| **Синхронизация CMS** | Паузы батчей «Мои товары». |
+| **Пользователи / специальности** | Доступ в панель и матрица разделов. |
+| **Автосинк** | Расписание МСК; на проде scheduler вкл.; локально — только `dev:local` + «Запустить сейчас». |
+| **Маркетплейсы (ключи)** | Client id / токены / delay — здесь, не в скрытом exports-marketplaces.html. |
 
 ## Что менять осторожно
 
@@ -50,7 +72,9 @@ description: Глобальные параметры парсинга, синх�
 | `ms_orders_sync_days` / `ms_orders_exclude_owner_names` | **Заказы в МС** (`/ms-orders.html`): период синхронизации и списка (1..365 дн., default **30**) и исключение ответственных по подстроке имени. Карточка «Заказы в МС» на `/settings.html`. |
 | `auto_sync_mssales_enabled` / `auto_sync_mssales_time` / `auto_sync_mssales_days` / `auto_sync_mssales_weekdays` | Авто-импорт **Продаж МС** (`/ms-sales.html`). Окно `auto_sync_mssales_days` (1..1825, default **90**), время МСК (default **07:30**). **`auto_sync_mssales_weekdays`** — CSV **1=пн … 7=вс** по МСК; пусто, строка **`1,2,3,4,5,6,7`** или все семь галочек в UI — каждый день (в БД «все дни» сохраняется как явная семёрка, чтобы снятие одного дня не превращалось обратно в «все дни»). Расписание: `triggerSync(db, { days, incremental: true })` — догрузка с последней даты в БД, не head-resume по MIN(moment). «Запустить сейчас» → `task: 'mssales'`. |
 | `auto_sync_mssales_full_enabled` / `auto_sync_mssales_full_time` / `auto_sync_mssales_full_days` / `auto_sync_mssales_full_weekdays` | Отдельное расписание **полного** синка (`fresh: true`), своё окно (default **730** дн.) и дни недели (default **только вс**). `task: 'mssales_full'`. Не пересекайте время с обычным `mssales`, если оба включены — второй старт получит `already_running`. |
-| `auto_sync_myproducts_*` / `auto_sync_marketplaces_ozon_*` / `auto_sync_marketplaces_wb_*` / `auto_sync_marketplaces_ym_*` / `auto_sync_huckster_*` / `auto_sync_db_size_*` / `auto_sync_dimensions_*` | Расписание фоновых задач по московскому времени. **Маркетплейсы** — три отдельные задачи (Ozon / WB / Я.Маркет) с разнесённым временем и отдельными логами `logs/marketplace-*-sync.log`; legacy `auto_sync_marketplaces_*` только для старого ручного `task=marketplaces`. Галка «Размер БД и диска» (`auto_sync_db_size_*`) единовременно пересчитывает **обе** метрики дашборда. Также — **выгрузка габаритов** в МойСклад (`dimensions`). |
+| `auto_sync_myproducts_*` / `auto_sync_marketplaces_ozon_*` / `auto_sync_marketplaces_wb_*` / `auto_sync_marketplaces_ym_*` / `auto_sync_huckster_*` / `auto_sync_db_size_*` / `auto_sync_dimensions_*` | Расписание по МСК. **Маркетплейсы** — три задачи + логи `logs/marketplace-*-sync.log`; legacy `task=marketplaces`. **db_size** — размер БД и диск на дашборде. **dimensions** — выгрузка габаритов в МС. |
+| `auto_sync_min_stock_export_*` | **Неснижаемый остаток МС**: `ms_export.min_stock` → `minimumBalance` в МС (`task: 'min_stock_export'`, default **22:00**). Нужен мастер-выключатель экспорта в МС (`auto_sync_export_ms_enabled`), иначе секция на processes считается выкл. Ошибки — `ms_min_stock_export_log` / «Лог» на [processes](/docs/processes/). Не путать с «Пр.→НС» на закупках (только БД). |
+| `auto_sync_purchase_formula_cache_*` | **Закупки: кэш формулы** — заполнение `dg_formula_proposed_cache` для дефолтной выборки закупок без RAM-снимка (`task: 'purchase_formula_cache'`, default **08:30**). |
 | `auto_sync_np_ms_enrich_enabled` / `auto_sync_np_ms_enrich_interval_min` / `auto_sync_np_ms_enrich_weekdays` | Дозаполнение пустых кода / штрихкода / НДС / РУ в «Новые товары → маркеты» из **кэша** МойСклад (без live API). Интервал **15 / 30 / 60** мин (слоты МСК), дни недели CSV `1=пн…7=вс`. `task: 'np_ms_enrich'`. |
 | `auto_sync_np_crm_notify_enabled` / `auto_sync_np_crm_notify_interval_min` / `auto_sync_np_crm_notify_weekdays` | Комментарии в задачи CRM по очереди «Новые товары». Интервал **15 / 30 / 60** мин. Текст и период сводки настраиваются на `/exports-new-products.html#crm-notify`. `task: 'np_crm_notify'`. |
 | `auto_sync_medmarket_*` | **Воскресенье (вс):** полная выгрузка атрибута из карточек МС в `ms_export` (`medmarket`). Карточка в блоке **«Экспорт в МС»** (импорт, не запись в МС). |
@@ -67,22 +91,24 @@ description: Глобальные параметры парсинга, синх�
 | `planfix_account` / `planfix_rest_api_key` | REST ПланФикс для операционного листа. Аккаунт (`almamed` → `https://almamed.planfix.ru/rest`), Bearer-токен. Карточка «Planfix» на `/settings.html`; «Проверить подключение» → `POST /api/settings/planfix-test`. Синк заявок и привязка статусов — на `/ops-sheet.html`. |
 | `sales_formula_*` | Формула продаж v2 на [карточке товара](/docs/product): W/A; **пополнение в днях** (`sales_formula_replenishment_days`, k=дни÷W); **`sales_formula_sku_replenishment_enabled`** (1/0) — колонка «Рек. пополнение» = факт по эпизодам нуля (без пола на глобаль); в `k` только если рек. **строго выше** базы; **`sales_formula_absence_analysis_days`** — окно для **упущенных шт в спросе**. Два рычага (спрос / горизонт), не дубль одной поправки. «Базовый запас» / «для дорогих» — минимумы после кратности; «для редких» — ранняя ветка. См. `lib/datagonSalesFormula.js`. |
 
-Ручной запуск задач из той же карточки (кнопки «Запустить сейчас» → `POST /api/settings/auto-sync-run`): ответ сервера показывается **цветной плашкой** вверху блока (принято в очередь / уже выполняется или уже в очереди / ошибка), с указанием **занятости воркера** и **текущей очереди**; во время ожидания ответа кнопка блокируется. Кнопка **«Лог»** рядом открывает модалку с выбором **дня (МСК)** и списком записей `auto_sync_runs` этой задачи (`GET /api/settings/auto-sync-runs?task=&date=`). Подробный ход по всем задачам за день — на странице [«Логи фоновых процессов»](/docs/processes).
+Ручной запуск задач из той же карточки (кнопки «Запустить сейчас» → `POST /api/settings/auto-sync-run`): ответ сервера показывается **цветной плашкой** вверху блока (принято в очередь / уже выполняется или уже в очереди / ошибка), с указанием **занятости воркера** и **текущей очереди**; во время ожидания ответа кнопка блокируется. Кнопка **«Лог»** рядом открывает модалку с выбором **дня (МСК)** и списком записей `auto_sync_runs` этой задачи (`GET /api/settings/auto-sync-runs?task=&date=`). Подробный ход по всем задачам за день — на [Активность / Логи](/docs/processes/). Полный список `task` — `getAutoSyncTaskKeys()` / реестр (**21** ключ).
 
-**Локальная разработка с общей БД:** поднимайте Node через **`npm run dev:local`** (`DATAGON_AUTO_SYNC_SCHEDULER=off`). Расписание из карточек выше **не сработает** на локальном процессе (это намеренно — иначе дублируются запуски с продом); кнопки «Запустить сейчас» работают. На проде scheduler включён по умолчанию. См. [Деплой — переменные окружения](/docs/deploy).
+**Локально с общей БД:** только **`npm run dev:local`** (`DATAGON_AUTO_SYNC_SCHEDULER=off`) — расписание не тикает, «Запустить сейчас» работает. Прод — scheduler вкл. См. [Деплой](/docs/deploy/).
 
 ## Пользователи и безопасность
 
-- Минимальная длина пароля и смена через UI/API — см. [Auth в API](/docs/api/#auth).
-- Пользователь **`admin`** защищён от удаления и архивации; право «кто может создавать пользователей» — `can_manage_users`.
-- **Архив** (кнопка «В архив» на `/settings.html`): флаг `users.is_archived`, вход закрыт, сессии сбрасываются, привязки (сотрудник у поставщиков и т.п.) **не сбрасываются** — в списках имя помечается «(архивный)». Восстановление — «Из архива». Жёсткое удаление оставляйте на крайний случай.
-- После смены критичных параметров сессии имеет смысл **перелогинить** клиентов или дождаться естественного истечения TTL.
+- Пароли / сессии — [Auth в API](/docs/api/#auth).
+- **`admin`** нельзя удалить/архивировать; **`can_manage_users`** — CRUD пользователей и доступ к странице при скрытой матрице.
+- **Архив**: `users.is_archived`, вход закрыт, сессии сброс; привязки не трогаем; «Из архива» восстанавливает.
+- Матрица специальностей: ключи = `PAGE_DEFS` (+ `matrixOnly` вкладки новых товаров). После сохранения пользователь должен обновить профиль / перелогиниться, чтобы меню подтянуло `page_modes`.
 
 ## Связь с экранами
 
-- [Очередь](/docs/queue/) и [Результаты](/docs/results/) напрямую зависят от **лимитов парсинга**.
-- [Мои сайты](/docs/mysites/) — от **параметров синка**.
+- [Очередь](/docs/queue/) / [Результаты](/docs/results/) — лимиты парсинга.  
+- [Мои сайты](/docs/mysites/) — sync_*.  
+- [Активность / Логи](/docs/processes/) — зеркало автосинка.  
+- [Маркетплейсы](/docs/marketplaces/) — ключи здесь; таблицы выгрузок — отдельные HTML.
 
 ## API
 
-`GET` / `POST /api/settings` — см. [Settings](/docs/api/#settings). Тело `POST` — JSON с полями, совпадающими с формой (см. пример в API-справке).
+`GET` / `POST /api/settings`, `POST /api/settings/auto-sync-run`, auto-sync-runs stats/cleanup — [Settings](/docs/api/#settings). Whitelist полей POST — `routes/settings.js`.

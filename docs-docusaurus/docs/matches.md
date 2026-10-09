@@ -4,10 +4,29 @@ title: Сопоставление
 description: Матчинг мой товар ↔ конкурент — параметры запуска, статусы, confirm/reject, устранение зависаний
 ---
 
-**`/matches.html`** — настройка и запуск **фонового сопоставления**: для выбранного [Моего сайта](/docs/mysites/) и набора **проектов конкурентов** система ищет пары с оценкой похожести (SKU, название и т.д. по логике сервера). Результат — список кандидатов со статусами **pending** / **confirmed** / **rejected**.
+**`/matches.html`** (меню **Парсинг → Сопоставление**) — автомат и ручная стыковка **мой товар ↔ конкурент**. Карта: [Карта панели](/docs/panel-map/). API: `/api/matches` → `routes/matches.js`.
+
+## Доступ
+
+Ключ матрицы — **`matches`**.
+
+| Режим | Что доступно |
+|-------|----------------|
+| **`hidden`** | HTML и `/api/matches` недоступны |
+| **`view`** | Списки / status / log — GET |
+| **`full`** | start/stop, confirm/reject/unlink, manual-queue, archive (с **confirm-модалкой**, не `window.confirm`) |
+
+## Шаги экрана (гайд)
+
+1. **Автомат** — сайт + конкуренты, порог, start / stop / retry; кандидаты **pending**.
+2. **Подтверждение** — confirm / reject / unlink / упаковка (`PATCH …/pack`).
+3. **Ручная очередь** — товары без авто-пары; поиск в `prices`, confirm / archive / «Вернуть в авто» (массово по фильтрам).
+4. **Архив** — `match_manual_archive`; пагинация 100; выход из архива возвращает в ручной разбор.
+
+Фильтры внутри шагов — по **«Применить»** / Enter. Не путать с [Конкурентами МП](/docs/marketplaces/).
 
 <blockquote class="dg-doc-tip">
-<strong>Снимок интерфейса.</strong> PNG обновляют: <code>npm run docs:capture-screenshots</code> (с <code>DOCS_USER</code> и <code>DOCS_PASSWORD</code> — с живой панели; без входа — с макета <code>/doc-screenshots/matches-sample.html</code>) и <code>npm run docs:docusaurus:build</code>. Табличная часть — <strong>viewport</strong>. <a href="./capture-screenshots.md">Подробнее о съёмке</a>.
+<strong>Снимок интерфейса.</strong> PNG: <code>npm run docs:capture-screenshots</code> + <code>npm run docs:docusaurus:build</code>. Кадр <strong>viewport</strong>; без входа — макет <code>/doc-screenshots/matches-sample.html</code>. <a href="/docs/capture-screenshots/">Съёмка</a>.
 </blockquote>
 
 <figure class="dg-doc-shot">
@@ -61,8 +80,8 @@ description: Матчинг мой товар ↔ конкурент — пар�
 
 ## API (основное)
 
-- `POST /api/matches/start-matching` — тело с `mySiteId`, `competitorIds`, `threshold`, `batchSize`, …
-- `GET /api/matches/list` — список пар с фильтром по статусу.
-- `POST /api/matches/confirm` / `reject` — тело `{ "id": … }`.
+- Авто: `POST /start-matching`, `/stop`, `/retry-last`; `GET /status`, `/list`; `POST /confirm` / `/reject` / `/unlink`.
+- Ручное: `GET/DELETE /manual-queue`, `POST …/return-to-auto`, `…/archive-all`; `GET/DELETE /manual-archive`; `POST /manual-match/confirm|relink|archive`.
+- Вспомогательные: `/prices-search`, `/prices-resolve-sku`, `/product-match-log`.
 
 Полный перечень — [REST API — Matches](/docs/api/#matches).

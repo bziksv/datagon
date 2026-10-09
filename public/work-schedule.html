@@ -95,12 +95,38 @@
   }
   .dg-ws-earn-chip .lbl { color: #868e96; margin-right: 0.35rem; }
   .dg-ws-earn-chip .val { font-weight: 600; }
-  .dg-ws-earn-chip.total { background: #e8f5e9; }
+  .dg-ws-earn-chip .val .dg-ws-earn-sub {
+    display: block;
+    font-size: 0.7rem;
+    font-weight: 500;
+    color: #868e96;
+    margin-top: 0.1rem;
+    white-space: nowrap;
+  }
+  .dg-ws-earn-chip.total { background: #e8f5e9; border: 1px solid #c8e6c9; }
+  button.dg-ws-earn-chip.dg-ws-earn-salary {
+    border: 1px solid #d0d7de;
+    cursor: pointer;
+    text-align: left;
+    white-space: normal;
+  }
+  button.dg-ws-earn-chip.dg-ws-earn-salary:hover {
+    background: #e8eef6;
+    border-color: #b8c4d4;
+  }
 
   .dg-ws-month-title {
     font-size: 0.95rem;
     text-transform: capitalize;
     color: #495057;
+  }
+  .dg-ws-cal-summary {
+    background: #eef3fb;
+    border: 1px solid #d0dcf0;
+    border-radius: 0.35rem;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.9rem;
+    color: #343a40;
   }
   .dg-ws-cal-grid {
     display: grid;
@@ -115,22 +141,63 @@
     font-weight: 600;
   }
   .dg-ws-cal-cell {
-    min-height: 56px;
+    min-height: 64px;
     border: 1px solid #e9ecef;
     border-radius: 0.25rem;
     padding: 4px 6px;
     font-size: 0.72rem;
     background: #fff;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
   }
   .dg-ws-cal-cell.muted { background: #f8f9fa; color: #adb5bd; }
   .dg-ws-cal-cell .day-num { font-weight: 600; font-size: 0.8rem; }
-  .dg-ws-cal-cell.rate-1 { border-left: 3px solid #28a745; }
-  .dg-ws-cal-cell.rate-05 { border-left: 3px solid #ffc107; }
+  .dg-ws-cal-hours {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: #212529;
+    line-height: 1.2;
+  }
+  .dg-ws-cal-hours.open { color: #0d6efd; }
+  .dg-ws-cal-hours.muted-hrs { color: #868e96; font-weight: 600; font-size: 0.75rem; }
+  .dg-ws-cal-rate { font-size: 0.68rem; color: #6c757d; }
+  .dg-ws-cal-empty { color: #ced4da; }
+  .dg-ws-cal-cell.rate-1 { border-left: 3px solid #28a745; background: #f3faf4; }
+  .dg-ws-cal-cell.rate-05 { border-left: 3px solid #ffc107; background: #fffbf0; }
+  .dg-ws-cal-cell.has-hours { border-left: 3px solid #17a2b8; background: #f0fafc; }
   .dg-ws-cal-cell.rate-0 { border-left: 3px solid #dee2e6; }
   .dg-ws-cal-cell.type-vacation { background: #e3f2fd; }
   .dg-ws-cal-cell.type-sick { background: #fce4ec; }
   .dg-ws-cal-cell.type-busy { background: #ffebee; outline: 1px dashed #e57373; }
   .dg-ws-cal-cell.today { box-shadow: inset 0 0 0 2px #3f6ad8; }
+  .dg-ws-cal-cell.clickable {
+    cursor: pointer;
+  }
+  .dg-ws-cal-cell.clickable:hover {
+    background: #e8eef8;
+  }
+  .dg-ws-day-panel {
+    width: min(720px, 100%) !important;
+    max-height: min(90vh, 640px);
+    display: flex;
+    flex-direction: column;
+  }
+  .dg-ws-day-panel .card-body {
+    overflow: auto;
+  }
+  .dg-ws-day-seg-table {
+    font-size: 0.82rem;
+  }
+  .dg-ws-day-seg-table th,
+  .dg-ws-day-seg-table td {
+    vertical-align: middle;
+    white-space: nowrap;
+  }
+  .dg-ws-day-seg-table .ip {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.75rem;
+  }
 
   .dg-ws-legend {
     display: flex;
@@ -188,6 +255,29 @@
     white-space: nowrap;
   }
   .dg-ws-sheet th { background: #f4f6f9; }
+  .dg-ws-sheet th.dg-ws-day-h {
+    line-height: 1.15;
+    padding: 0.25rem 0.3rem;
+    min-width: 2.1rem;
+    vertical-align: bottom;
+  }
+  .dg-ws-sheet th.dg-ws-day-h .dg-ws-day-n {
+    display: block;
+    font-weight: 600;
+  }
+  .dg-ws-sheet th.dg-ws-day-h .dg-ws-day-wd {
+    display: block;
+    font-size: 0.65rem;
+    font-weight: 500;
+    text-transform: lowercase;
+    color: #6c757d;
+  }
+  .dg-ws-sheet th.dg-ws-day-h.weekend .dg-ws-day-wd {
+    color: #c0392b;
+  }
+  .dg-ws-sheet th.dg-ws-day-h.weekend {
+    background: #faf2f2;
+  }
   .dg-ws-sheet th.emp,
   .dg-ws-sheet td.emp {
     text-align: left;
@@ -199,6 +289,52 @@
     font-weight: 500;
   }
   .dg-ws-sheet th.emp { z-index: 2; background: #f4f6f9; }
+  .dg-ws-sheet th.dg-ws-pay-h,
+  .dg-ws-sheet td.dg-ws-pay {
+    text-align: right;
+    white-space: normal;
+    min-width: 6.5rem;
+    max-width: 7.5rem;
+    line-height: 1.2;
+    vertical-align: middle;
+    background: #fafbfc;
+  }
+  .dg-ws-sheet th.dg-ws-pay-h {
+    background: #eef2f7;
+    font-size: 0.72rem;
+    font-weight: 600;
+  }
+  .dg-ws-sheet .dg-ws-pay-main {
+    display: block;
+    font-weight: 600;
+    font-size: 0.78rem;
+  }
+  .dg-ws-sheet .dg-ws-pay-sub {
+    display: block;
+    font-size: 0.65rem;
+    color: #868e96;
+    font-weight: 500;
+  }
+  .dg-ws-sheet td.dg-ws-pay-prem {
+    cursor: pointer;
+  }
+  .dg-ws-sheet td.dg-ws-pay-prem:hover {
+    outline: 2px solid #3f6ad8;
+    outline-offset: -2px;
+    background: #eef3fb;
+  }
+  .dg-ws-sheet td.dg-ws-pay-prem.dg-ws-pay-manual {
+    background: #fff8e6;
+  }
+  .dg-ws-sheet td.dg-ws-pay-prem.dg-ws-pay-manual .dg-ws-pay-sub {
+    color: #b78103;
+  }
+  .dg-ws-sheet td.dg-ws-pay-prem.dg-ws-pay-sales {
+    background: #eef7f0;
+  }
+  .dg-ws-sheet td.dg-ws-pay-prem.dg-ws-pay-sales .dg-ws-pay-sub {
+    color: #2d6a3e;
+  }
   .dg-ws-sheet td.cell-click { cursor: pointer; }
   .dg-ws-sheet td.cell-click:hover {
     outline: 2px solid #3f6ad8;
@@ -209,6 +345,20 @@
   .dg-ws-sheet .c-0 { background: #fafafa; color: #adb5bd; }
   .dg-ws-sheet .c-v { background: #e3f2fd; }
   .dg-ws-sheet .c-s { background: #fce4ec; }
+  /* Открытый таймер: мягкое светло-зелёное мигание */
+  @keyframes dg-ws-open-pulse {
+    0%, 100% { background-color: #c8f0d0; box-shadow: inset 0 0 0 1px rgba(40, 167, 69, 0.35); }
+    50% { background-color: #eafaf0; box-shadow: inset 0 0 0 1px rgba(40, 167, 69, 0.15); }
+  }
+  .dg-ws-sheet td.c-open {
+    animation: dg-ws-open-pulse 1.4s ease-in-out infinite;
+    color: #1b5e20;
+    font-weight: 600;
+  }
+  .dg-ws-legend .swatch.dg-ws-swatch-open {
+    background: #c8f0d0;
+    animation: dg-ws-open-pulse 1.4s ease-in-out infinite;
+  }
 
   .dg-ws-clock-wrap .dg-ws-clock-btn { white-space: nowrap; }
   @media (max-width: 767.98px) {
@@ -1039,7 +1189,7 @@
                   <div class="vr d-none d-md-block"></div>
                   <div class="flex-grow-1">
                     <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
-                      <span class="text-muted small text-uppercase mb-0">Заработано · <span id="dg-ws-earn-period">—</span></span>
+                      <span class="text-muted small text-uppercase mb-0">Расчёт ЗП · <span id="dg-ws-earn-period">—</span></span>
                       <div class="d-flex flex-wrap align-items-center gap-2">
                         <div class="btn-group btn-group-sm" role="group" aria-label="Месяц начислений">
                           <button type="button" class="btn btn-outline-secondary" id="dg-ws-month-prev" data-dg-notify-start="Предыдущий месяц…" title="Предыдущий месяц">‹</button>
@@ -1134,12 +1284,15 @@
             <div class="row g-3 mb-3">
               <div class="col-lg-5">
                 <div class="main-card card mb-0">
-                  <div class="card-header py-2">Сегодня по отделу</div>
+                  <div class="card-header py-2 d-flex justify-content-between align-items-center gap-2">
+                    <span>Кто работает сегодня</span>
+                    <span class="small text-muted" id="dg-ws-head-team-date"></span>
+                  </div>
                   <div class="card-body p-0">
                     <div class="table-responsive">
                       <table class="table table-sm mb-0">
                         <thead>
-                          <tr><th>ФИО</th><th>Статус</th><th>Часы</th></tr>
+                          <tr><th>ФИО</th><th>Статус</th><th>Старт</th><th>Часы</th></tr>
                         </thead>
                         <tbody id="dg-ws-head-team"></tbody>
                       </table>
@@ -1149,7 +1302,7 @@
               </div>
               <div class="col-lg-7">
                 <div class="main-card card mb-0">
-                  <div class="card-header py-2">Зависшие смены</div>
+                  <div class="card-header py-2">Открытые смены отдела</div>
                   <div class="card-body p-0">
                     <ul class="list-group list-group-flush" id="dg-ws-stuck-shifts"></ul>
                   </div>
@@ -1179,17 +1332,28 @@
                 <span>Фильтры</span>
                 <div class="d-flex flex-wrap gap-2">
                   <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-ws-btn-export" data-dg-notify-start="Экспорт…">Экспорт CSV</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-ws-btn-prem-sales" title="Принудительно пересчитать из журнала менеджеров (автозагрузка уже при открытии табеля)" data-dg-notify-start="Обновляем премии из продаж…">Обновить из продаж</button>
                   <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-ws-btn-dryrun" data-dg-notify-start="Тестовый расчёт…">Пересчёт без применения</button>
                   <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-ws-btn-audit" data-dg-notify-start="Журнал…">Журнал</button>
                 </div>
               </div>
               <div class="card-body py-3" id="dg-ws-acc-filters-body">
                 <div class="row g-2 align-items-end">
-                  <div class="col-md-3">
+                  <div class="col-md-3" data-dg-ws-filter-field="search">
+                    <label class="form-label mb-1" for="dg-ws-f-search">Сотрудник</label>
+                    <input
+                      type="search"
+                      class="form-control form-control-sm"
+                      id="dg-ws-f-search"
+                      placeholder="ФИО, отдел…"
+                      autocomplete="off"
+                    />
+                  </div>
+                  <div class="col-md-2">
                     <label class="form-label mb-1" for="dg-ws-f-org">Организация</label>
                     <select class="form-select form-select-sm" id="dg-ws-f-org"></select>
                   </div>
-                  <div class="col-md-3">
+                  <div class="col-md-2">
                     <label class="form-label mb-1" for="dg-ws-f-dept">Отдел</label>
                     <select class="form-select form-select-sm" id="dg-ws-f-dept"></select>
                   </div>
@@ -1197,7 +1361,7 @@
                     <label class="form-label mb-1" for="dg-ws-f-month">Месяц</label>
                     <input type="month" class="form-control form-control-sm" id="dg-ws-f-month" />
                   </div>
-                  <div class="col-md-4">
+                  <div class="col-md-3">
                     <button type="button" class="btn btn-sm btn-primary" id="dg-ws-f-apply" data-dg-notify-start="Применяем…">Применить</button>
                     <button type="button" class="btn btn-sm btn-link" id="dg-ws-f-reset">Сбросить</button>
                   </div>
@@ -1222,12 +1386,85 @@
 
             <div class="main-card mb-0 card">
               <div class="card-header py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
-                <span>Сотрудники × даты</span>
-                <span class="small text-muted">Клик по ячейке — правка</span>
+                <div class="d-flex flex-wrap align-items-center gap-3 flex-grow-1" style="min-width: 0">
+                  <span class="flex-shrink-0">Сотрудники × даты</span>
+                  <div class="input-group input-group-sm dg-ws-sheet-header-search" style="flex: 0 1 320px; min-width: 180px">
+                    <span class="input-group-text">🔎</span>
+                    <input
+                      type="search"
+                      class="form-control"
+                      id="dg-ws-sheet-search-mirror"
+                      placeholder="Поиск сотрудника…"
+                      autocomplete="off"
+                    />
+                  </div>
+                </div>
+                <span class="small text-muted flex-shrink-0">Клик по ячейке — правка</span>
               </div>
               <div class="card-body py-3">
                 <div class="dg-ws-legend mb-2" id="dg-ws-sheet-legend"></div>
                 <div class="dg-ws-sheet-wrap" id="dg-ws-sheet-host"></div>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-ws-day-overlay" class="dg-ws-overlay" style="display: none" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="dg-ws-day-title">
+            <div class="dg-ws-overlay-backdrop" id="dg-ws-day-backdrop"></div>
+            <div class="dg-ws-overlay-panel card shadow-lg border-0 dg-ws-day-panel">
+              <div class="card-header d-flex justify-content-between align-items-center py-2">
+                <div class="fw-semibold" id="dg-ws-day-title">День</div>
+                <button type="button" class="btn-close" id="dg-ws-day-close" aria-label="Закрыть" data-dg-no-activity="1"></button>
+              </div>
+              <div class="card-body">
+                <p class="small text-muted mb-2" id="dg-ws-day-summary"></p>
+                <div class="table-responsive">
+                  <table class="table table-sm table-bordered mb-0 dg-ws-day-seg-table">
+                    <thead>
+                      <tr>
+                        <th>#</th>
+                        <th>Старт</th>
+                        <th>Стоп</th>
+                        <th>ЧЧ:ММ</th>
+                        <th>IP старт</th>
+                        <th>IP стоп</th>
+                        <th>Устройство</th>
+                      </tr>
+                    </thead>
+                    <tbody id="dg-ws-day-segments"></tbody>
+                  </table>
+                </div>
+              </div>
+              <div class="card-footer d-flex justify-content-end bg-white border-top-0">
+                <button type="button" class="btn btn-outline-secondary" id="dg-ws-day-cancel" data-dg-no-activity="1">Закрыть</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-ws-salary-hist-overlay" class="dg-ws-overlay" style="display: none" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="dg-ws-salary-hist-title">
+            <div class="dg-ws-overlay-backdrop" id="dg-ws-salary-hist-backdrop"></div>
+            <div class="dg-ws-overlay-panel card shadow-lg border-0 dg-ws-day-panel">
+              <div class="card-header d-flex justify-content-between align-items-center py-2">
+                <div class="fw-semibold" id="dg-ws-salary-hist-title">История оклада</div>
+                <button type="button" class="btn-close" id="dg-ws-salary-hist-close" aria-label="Закрыть" data-dg-no-activity="1"></button>
+              </div>
+              <div class="card-body">
+                <p class="small text-muted mb-2" id="dg-ws-salary-hist-meta"></p>
+                <div class="table-responsive">
+                  <table class="table table-sm table-bordered mb-0">
+                    <thead>
+                      <tr>
+                        <th>Когда</th>
+                        <th>Кто</th>
+                        <th>Было</th>
+                        <th>Стало</th>
+                      </tr>
+                    </thead>
+                    <tbody id="dg-ws-salary-hist-tbody"></tbody>
+                  </table>
+                </div>
+              </div>
+              <div class="card-footer d-flex justify-content-end bg-white border-top-0">
+                <button type="button" class="btn btn-outline-secondary" id="dg-ws-salary-hist-cancel" data-dg-no-activity="1">Закрыть</button>
               </div>
             </div>
           </div>
@@ -1266,6 +1503,45 @@
               <div class="card-footer d-flex justify-content-end gap-2 bg-white border-top-0">
                 <button type="button" class="btn btn-outline-secondary" id="dg-ws-cell-cancel" data-dg-no-activity="1">Отмена</button>
                 <button type="button" class="btn btn-primary" id="dg-ws-cell-save" data-dg-notify-start="Сохраняем…">Сохранить</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-ws-prem-overlay" class="dg-ws-overlay" style="display: none" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="dg-ws-prem-title">
+            <div class="dg-ws-overlay-backdrop" id="dg-ws-prem-backdrop"></div>
+            <div class="dg-ws-overlay-panel card shadow-lg border-0">
+              <div class="card-header d-flex justify-content-between align-items-center py-2">
+                <div class="fw-semibold" id="dg-ws-prem-title">Премия за месяц</div>
+                <button type="button" class="btn-close" id="dg-ws-prem-close" aria-label="Закрыть" data-dg-no-activity="1"></button>
+              </div>
+              <div class="card-body">
+                <p class="small text-muted mb-2" id="dg-ws-prem-meta"></p>
+                <p class="small mb-2" id="dg-ws-prem-hint"></p>
+                <div class="mb-2">
+                  <label class="form-label" for="dg-ws-prem-amount">Сумма премии, ₽</label>
+                  <input type="text" class="form-control" id="dg-ws-prem-amount" inputmode="decimal" placeholder="например 15000" />
+                </div>
+                <p class="small text-muted mb-0">Пустое поле + «По правилу» снимает ручной ввод — снова считается из настроек отдела/сотрудника.</p>
+              </div>
+              <div class="card-footer d-flex justify-content-end gap-2 flex-wrap bg-white border-top-0">
+                <button type="button" class="btn btn-outline-secondary" id="dg-ws-prem-cancel" data-dg-no-activity="1">Отмена</button>
+                <button type="button" class="btn btn-outline-primary" id="dg-ws-prem-clear" data-dg-notify-start="Сбрасываем премию…">По правилу</button>
+                <button type="button" class="btn btn-primary" id="dg-ws-prem-save" data-dg-notify-start="Сохраняем премию…">Сохранить</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-ws-prem-sales-overlay" class="dg-ws-overlay" style="display: none" aria-hidden="true" role="dialog" aria-modal="true">
+            <div class="dg-ws-overlay-backdrop" data-dg-ws-prem-sales-close="1"></div>
+            <div class="dg-ws-overlay-panel card shadow-lg border-0">
+              <div class="card-header py-2 fw-semibold">Обновить премии из продаж</div>
+              <div class="card-body">
+                <p class="mb-2" id="dg-ws-prem-sales-confirm-text">Принудительно перезаписать премии из журнала менеджеров?</p>
+                <div id="dg-ws-prem-sales-preview" class="small text-muted"></div>
+              </div>
+              <div class="card-footer d-flex justify-content-end gap-2 bg-white border-top-0">
+                <button type="button" class="btn btn-outline-secondary" data-dg-ws-prem-sales-close="1" data-dg-no-activity="1">Отмена</button>
+                <button type="button" class="btn btn-primary" id="dg-ws-prem-sales-ok" data-dg-notify-start="Записываем премии…">Записать</button>
               </div>
             </div>
           </div>
@@ -1382,8 +1658,8 @@
     tab: "me",
     calMode: "mine",
     earnPeriod: "month",
-    filters: { orgId: 0, deptId: 0, month: "" },
-    pending: { orgId: 0, deptId: 0, month: "" },
+    filters: { orgId: 0, deptId: 0, month: "", search: "" },
+    pending: { orgId: 0, deptId: 0, month: "", search: "" },
     orgs: [],
     departments: [],
     meMonth: null,
@@ -1392,6 +1668,7 @@
     pendingVacations: [],
     stuck: [],
     editCell: null,
+    editPremium: null,
   };
 
   function money(n) {
@@ -1450,6 +1727,27 @@
 
   function daysInMonth(y, m) {
     return new Date(y, m, 0).getDate();
+  }
+
+  var WD_SHORT = ["вс", "пн", "вт", "ср", "чт", "пт", "сб"];
+
+  /** Шапка колонки дня: «9» + «пт»; выходные — класс weekend. */
+  function dayColHeaderHtml(y, m, day) {
+    var wd = new Date(y, m - 1, day).getDay();
+    var weekend = wd === 0 || wd === 6;
+    return (
+      '<th class="dg-ws-day-h' +
+      (weekend ? " weekend" : "") +
+      '" title="' +
+      day +
+      " · " +
+      WD_SHORT[wd] +
+      '"><span class="dg-ws-day-n">' +
+      day +
+      '</span><span class="dg-ws-day-wd">' +
+      WD_SHORT[wd] +
+      "</span></th>"
+    );
   }
 
   function parseMonthValue(v) {
@@ -1566,9 +1864,21 @@
       '<span><i class="swatch" style="background:#ffc107"></i> 0,5</span>' +
       '<span><i class="swatch" style="background:#e3f2fd"></i> отпуск</span>' +
       '<span><i class="swatch" style="background:#fce4ec"></i> больничный</span>' +
+      '<span><i class="swatch dg-ws-swatch-open"></i> на работе (таймер)</span>' +
       (withBusy
         ? '<span><i class="swatch" style="background:#ffebee"></i> занято в отделе</span>'
         : "");
+  }
+
+  /** Длительность из дробных часов → ЧЧ:ММ (час = 60 мин). */
+  function fmtHours(h) {
+    var n = Number(h);
+    if (!Number.isFinite(n) || n <= 0) return "00:00";
+    var totalMin = Math.round(n * 60);
+    if (totalMin < 1) return "<1 мин";
+    var hh = Math.floor(totalMin / 60);
+    var mm = totalMin % 60;
+    return (hh < 10 ? "0" : "") + hh + ":" + (mm < 10 ? "0" : "") + mm;
   }
 
   function renderEarnings() {
@@ -1576,31 +1886,161 @@
     syncMonthUi();
     var grid = document.getElementById("dg-ws-earn-grid");
     if (!grid) return;
-    if (!p) {
-      grid.innerHTML = '<div class="text-muted small">Нет карточки сотрудника или данных</div>';
+    if (!(state.access && state.access.is_employee)) {
+      grid.innerHTML = '<div class="text-muted small">Нет карточки сотрудника — попросите бухгалтерию привязать вас в настройках графика</div>';
       return;
     }
+    if (!state.meMonth) {
+      grid.innerHTML = '<div class="text-muted small">Не удалось загрузить данные за месяц</div>';
+      return;
+    }
+    if (!p) {
+      grid.innerHTML = '<div class="text-muted small">Нет расчёта за этот месяц</div>';
+      return;
+    }
+    var hoursM = state.meMonth.hours_month != null ? state.meMonth.hours_month : 0;
+    var salaryRate = p.salary_rate != null ? p.salary_rate : null;
+    var senFull = p.seniority_full != null ? p.seniority_full : null;
+    var okladVal =
+      money(p.base_salary) +
+      (salaryRate != null
+        ? '<span class="dg-ws-earn-sub">ставка ' + money(salaryRate) + "</span>"
+        : "");
+    var senVal =
+      money(p.seniority_bonus) +
+      (senFull != null && Number(senFull) > 0
+        ? '<span class="dg-ws-earn-sub">полная ' + money(senFull) + "</span>"
+        : "");
     var rows = [
-      ["Оклад", p.base_salary],
-      ["Премия", p.premium],
-      ["Стаж", p.seniority_bonus],
-      ["Отпускные", p.vacation_pay],
-      ["Больничные", p.sick_pay],
-      ["Итого", p.total, true],
+      ["Часы за месяц", fmtHours(hoursM), false, true, false],
+      [
+        "Смены (ставки)",
+        (p.worked_days != null ? p.worked_days : "—") + " / " + (p.norm_days != null ? p.norm_days : "—"),
+        false,
+        true,
+        false,
+      ],
+      ["Оклад", okladVal, false, true, true],
+      ["Премия (доплата)", p.premium, false, false, false],
+      ["Доплата за стаж", senVal, false, true, false],
+      ["Отпускные", p.vacation_pay, false, false, false],
+      ["Больничные", p.sick_pay, false, false, false],
+      ["Итого к выплате", p.total, true, false, false],
     ];
     grid.innerHTML = rows
       .map(function (r) {
+        var tag = r[4] ? "button" : "div";
+        var extra = r[4]
+          ? ' type="button" class="dg-ws-earn-chip dg-ws-earn-salary" data-dg-ws-salary-hist="1" data-dg-notify-start="Загружаем историю оклада…" title="История изменений оклада"'
+          : ' class="dg-ws-earn-chip' + (r[2] ? " total" : "") + '"';
+        var valHtml = r[3] ? String(r[1]) : money(r[1]);
         return (
-          '<div class="dg-ws-earn-chip' +
-          (r[2] ? " total" : "") +
-          '"><span class="lbl">' +
+          "<" +
+          tag +
+          extra +
+          '><span class="lbl">' +
           r[0] +
           '</span><span class="val">' +
-          money(r[1]) +
-          "</span></div>"
+          valHtml +
+          "</span></" +
+          tag +
+          ">"
         );
       })
       .join("");
+  }
+
+  function fmtAuditWhen(v) {
+    if (!v) return "—";
+    try {
+      var d = new Date(v);
+      if (!Number.isFinite(d.getTime())) return String(v);
+      var dd = d.getDate();
+      var mm = d.getMonth() + 1;
+      var yyyy = d.getFullYear();
+      var hh = d.getHours();
+      var mi = d.getMinutes();
+      return (
+        (dd < 10 ? "0" : "") +
+        dd +
+        "-" +
+        (mm < 10 ? "0" : "") +
+        mm +
+        "-" +
+        yyyy +
+        " " +
+        (hh < 10 ? "0" : "") +
+        hh +
+        ":" +
+        (mi < 10 ? "0" : "") +
+        mi
+      );
+    } catch (e) {
+      return String(v);
+    }
+  }
+
+  function closeSalaryHistModal() {
+    var ov = document.getElementById("dg-ws-salary-hist-overlay");
+    if (!ov) return;
+    ov.style.display = "none";
+    ov.setAttribute("aria-hidden", "true");
+  }
+
+  function openSalaryHistModal() {
+    var empId =
+      (state.meMonth && state.meMonth.employee && state.meMonth.employee.id) ||
+      (state.access && state.access.employee && state.access.employee.id);
+    if (!empId) {
+      toast("warning", "Нет карточки сотрудника");
+      return;
+    }
+    var ov = document.getElementById("dg-ws-salary-hist-overlay");
+    var title = document.getElementById("dg-ws-salary-hist-title");
+    var meta = document.getElementById("dg-ws-salary-hist-meta");
+    var tb = document.getElementById("dg-ws-salary-hist-tbody");
+    if (!ov) return;
+    if (title) title.textContent = "История оклада";
+    if (meta) meta.textContent = "Загрузка…";
+    if (tb) tb.innerHTML = '<tr><td colspan="4" class="text-muted">Загрузка…</td></tr>';
+    ov.style.display = "flex";
+    ov.setAttribute("aria-hidden", "false");
+    api("/employees/" + empId + "/salary-history")
+      .then(function (j) {
+        var emp = j.employee || {};
+        if (title) title.textContent = "История оклада · " + (emp.full_name || "");
+        if (meta) meta.textContent = "Текущий оклад: " + money(emp.salary) + " · кто менял и когда";
+        var rows = j.rows || [];
+        if (!tb) return;
+        if (!rows.length) {
+          tb.innerHTML =
+            '<tr><td colspan="4" class="text-muted">Пока нет записей об изменении оклада</td></tr>';
+          return;
+        }
+        tb.innerHTML = rows
+          .map(function (r) {
+            var who = r.full_name || r.username || (r.user_id ? "#" + r.user_id : "—");
+            var was = r.old_value != null && r.old_value !== "" ? money(Number(r.old_value) || 0) : "—";
+            var became = r.new_value != null && r.new_value !== "" ? money(Number(r.new_value) || 0) : "—";
+            return (
+              "<tr><td>" +
+              fmtAuditWhen(r.created_at) +
+              "</td><td>" +
+              who +
+              "</td><td>" +
+              was +
+              "</td><td>" +
+              became +
+              "</td></tr>"
+            );
+          })
+          .join("");
+      })
+      .catch(function (e) {
+        if (meta) meta.textContent = e.message || "Ошибка";
+        if (tb) tb.innerHTML = '<tr><td colspan="4" class="text-danger">' + (e.message || "Ошибка") + "</td></tr>";
+        toast("danger", e.message || "Не удалось загрузить историю оклада");
+      });
   }
 
   function renderMyVacations() {
@@ -1672,7 +2112,29 @@
       (state.deptMonth && state.deptMonth.vacations) || [],
       monthStr
     );
-    var html = '<div class="dg-ws-cal-grid">';
+    var hoursMonth = 0;
+    var daysWorked = 0;
+    Object.keys(cells).forEach(function (k) {
+      var c = cells[k];
+      if (!c) return;
+      var h = Number(c.hours) || 0;
+      if (h > 0 || c.logged || c.closed || c.open) {
+        hoursMonth += h;
+        daysWorked += 1;
+      }
+    });
+    hoursMonth = Math.round(hoursMonth * 100) / 100;
+
+    var html = "";
+    if (state.calMode === "mine") {
+      html +=
+        '<div class="dg-ws-cal-summary mb-2">' +
+        "<strong>Отработано за месяц:</strong> " +
+        fmtHours(hoursMonth) +
+        (daysWorked ? " · дней с отметкой: " + daysWorked : "") +
+        "</div>";
+    }
+    html += '<div class="dg-ws-cal-grid">';
     ["пн", "вт", "ср", "чт", "пт", "сб", "вс"].forEach(function (h) {
       html += '<div class="dg-ws-cal-head">' + h + "</div>";
     });
@@ -1684,42 +2146,172 @@
       var weekend = wd === 0 || wd === 6;
       var cls = ["dg-ws-cal-cell"];
       if (weekend) cls.push("muted");
+      var hasHours = Number(cell.hours) > 0 || cell.open || cell.closed || cell.logged;
       if (cell.type === "vacation") cls.push("type-vacation");
       else if (cell.type === "sick") cls.push("type-sick");
       else if (Number(cell.rate) === 1) cls.push("rate-1");
       else if (Number(cell.rate) === 0.5) cls.push("rate-05");
+      else if (hasHours) cls.push("has-hours");
       else cls.push("rate-0");
       if (state.calMode === "free" && busy.indexOf(d) >= 0) cls.push("type-busy");
       if (pm.y === today.getFullYear() && pm.m === today.getMonth() + 1 && d === today.getDate()) cls.push("today");
+      var ymd =
+        pm.y +
+        "-" +
+        (pm.m < 10 ? "0" + pm.m : pm.m) +
+        "-" +
+        (d < 10 ? "0" + d : d);
+      if (state.calMode === "mine") cls.push("clickable");
       var body = "";
       if (state.calMode === "mine") {
-        body =
-          '<div class="day-num">' +
-          d +
-          "</div>" +
-          (cell.type === "vacation"
-            ? "отпуск"
-            : cell.type === "sick"
-              ? "больн."
-              : cell.hours
-                ? cell.rate + " · " + cell.hours + " ч"
-                : "—");
+        var hoursLabel = "";
+        if (cell.type === "vacation") hoursLabel = '<span class="dg-ws-cal-hours">отпуск</span>';
+        else if (cell.type === "sick") hoursLabel = '<span class="dg-ws-cal-hours">больн.</span>';
+        else if (hasHours) {
+          if (cell.open) {
+            hoursLabel =
+              '<span class="dg-ws-cal-hours open">' +
+              (Number(cell.hours) > 0 ? fmtHours(cell.hours) + " · идёт" : "идёт…") +
+              "</span>";
+          } else if (Number(cell.hours) > 0) {
+            hoursLabel =
+              '<span class="dg-ws-cal-hours">' +
+              fmtHours(cell.hours) +
+              "</span>" +
+              '<span class="dg-ws-cal-rate">ставка ' +
+              cell.rate +
+              "</span>";
+          } else {
+            hoursLabel = '<span class="dg-ws-cal-hours muted-hrs">&lt;5 мин</span>';
+          }
+        } else {
+          hoursLabel = '<span class="dg-ws-cal-empty">—</span>';
+        }
+        body = '<div class="day-num">' + d + "</div>" + hoursLabel;
       } else {
         body = '<div class="day-num">' + d + "</div>" + (busy.indexOf(d) >= 0 ? "занято" : "свободно");
       }
-      html += '<div class="' + cls.join(" ") + '">' + body + "</div>";
+      html +=
+        '<div class="' +
+        cls.join(" ") +
+        '"' +
+        (state.calMode === "mine" ? ' data-dg-ws-day="' + ymd + '" title="Открыть детали дня"' : "") +
+        ">" +
+        body +
+        "</div>";
     }
     html += "</div>";
     host.innerHTML = html;
   }
 
+  function fmtDateTimeRu(sql) {
+    if (!sql) return "—";
+    var s = String(sql).replace("T", " ").slice(0, 19);
+    var m = s.match(/^(\d{4})-(\d{2})-(\d{2})[ ](\d{2}):(\d{2})(?::(\d{2}))?/);
+    if (!m) return s;
+    return m[3] + "-" + m[2] + "-" + m[1] + " " + m[4] + ":" + m[5] + (m[6] ? ":" + m[6] : "");
+  }
+
+  function cleanIp(ip) {
+    if (!ip) return "—";
+    return String(ip).replace(/^::ffff:/i, "");
+  }
+
+  function closeDayModal() {
+    var ov = document.getElementById("dg-ws-day-overlay");
+    if (!ov) return;
+    ov.style.display = "none";
+    ov.setAttribute("aria-hidden", "true");
+  }
+
+  function openDayModal(ymd) {
+    var ov = document.getElementById("dg-ws-day-overlay");
+    var title = document.getElementById("dg-ws-day-title");
+    var summary = document.getElementById("dg-ws-day-summary");
+    var tb = document.getElementById("dg-ws-day-segments");
+    if (!ov || !tb) return;
+    if (title) title.textContent = "День " + fmtDate(ymd);
+    if (summary) summary.textContent = "Загрузка…";
+    tb.innerHTML = '<tr><td colspan="7" class="text-muted">Загрузка…</td></tr>';
+    ov.style.display = "flex";
+    ov.setAttribute("aria-hidden", "false");
+    api("/me/day?date=" + encodeURIComponent(ymd))
+      .then(function (j) {
+        var segs = (j.segments || []).slice();
+        if (j.open) segs.push(j.open);
+        var n = segs.length;
+        if (summary) {
+          summary.textContent =
+            (j.found
+              ? "Сегментов: " + n + " · всего " + fmtHours(j.hours_worked) + " · ставка " + (j.rate != null ? j.rate : "—")
+              : "Отметок за этот день нет") +
+            (j.status ? " · статус: " + j.status : "");
+        }
+        if (!n) {
+          tb.innerHTML = '<tr><td colspan="7" class="text-muted">Нет запусков / остановок</td></tr>';
+          return;
+        }
+        tb.innerHTML = segs
+          .map(function (s, i) {
+            var open = !!s.open;
+            return (
+              "<tr>" +
+              "<td>" +
+              (i + 1) +
+              "</td>" +
+              "<td>" +
+              fmtDateTimeRu(s.in) +
+              "</td>" +
+              "<td>" +
+              (open ? '<span class="text-primary fw-semibold">идёт…</span>' : fmtDateTimeRu(s.out)) +
+              "</td>" +
+              "<td>" +
+              fmtHours(s.hours) +
+              "</td>" +
+              '<td class="ip">' +
+              cleanIp(s.ip_in) +
+              "</td>" +
+              '<td class="ip">' +
+              (open ? "—" : cleanIp(s.ip_out)) +
+              "</td>" +
+              "<td>" +
+              (s.device_in || s.device_out
+                ? [s.device_in, open ? "" : s.device_out].filter(Boolean).join(" → ")
+                : "—") +
+              "</td>" +
+              "</tr>"
+            );
+          })
+          .join("");
+      })
+      .catch(function (e) {
+        if (summary) summary.textContent = e.message || "Ошибка загрузки";
+        tb.innerHTML = '<tr><td colspan="7" class="text-danger">Не удалось загрузить</td></tr>';
+      });
+  }
+
   function cellLabel(c) {
     if (!c) return { cls: "c-0", label: "" };
-    if (c.type === "vacation") return { cls: "c-v", label: "О" };
-    if (c.type === "sick") return { cls: "c-s", label: "Б" };
-    if (Number(c.rate) === 1) return { cls: "c-1", label: "1" };
-    if (Number(c.rate) === 0.5) return { cls: "c-05", label: "½" };
-    return { cls: "c-0", label: "0" };
+    var cls;
+    var label;
+    if (c.type === "vacation") {
+      cls = "c-v";
+      label = "О";
+    } else if (c.type === "sick") {
+      cls = "c-s";
+      label = "Б";
+    } else if (Number(c.rate) === 1) {
+      cls = "c-1";
+      label = "1";
+    } else if (Number(c.rate) === 0.5) {
+      cls = "c-05";
+      label = "½";
+    } else {
+      cls = "c-0";
+      label = c.open ? "▶" : "0";
+    }
+    if (c.open) cls += " c-open";
+    return { cls: cls, label: label };
   }
 
   function renderDeptMatrix() {
@@ -1731,7 +2323,7 @@
     var dim = daysInMonth(pm.y, pm.m);
     var dm = state.deptMonth || { employees: [], cells: {} };
     var html = '<table class="dg-ws-sheet"><thead><tr><th class="emp">Сотрудник</th>';
-    for (var d = 1; d <= dim; d++) html += "<th>" + d + "</th>";
+    for (var d = 1; d <= dim; d++) html += dayColHeaderHtml(pm.y, pm.m, d);
     html += "</tr></thead><tbody>";
     (dm.employees || []).forEach(function (e) {
       html += '<tr><td class="emp">' + (e.full_name || "") + "</td>";
@@ -1762,26 +2354,58 @@
     syncClockMirror();
   }
 
+  function deptTodayStatusLabel(row) {
+    var st = row && row.work_status;
+    if (st === "working") return '<span class="badge bg-success">работает</span>';
+    if (st === "finished") return '<span class="badge bg-secondary">закончил</span>';
+    if (st === "vacation") return '<span class="badge bg-info text-dark">отпуск</span>';
+    if (st === "sick") return '<span class="badge bg-warning text-dark">больничный</span>';
+    return '<span class="text-muted">не начинал</span>';
+  }
+
   function renderDept() {
     renderDeptMatrix();
     var team = document.getElementById("dg-ws-head-team");
+    var teamDate = document.getElementById("dg-ws-head-team-date");
+    var dm = state.deptMonth || { employees: [], cells: {}, today: [] };
+    if (teamDate) {
+      teamDate.textContent = dm.today_date ? fmtDate(dm.today_date) : "";
+    }
     if (team) {
-      var dm = state.deptMonth || { employees: [], cells: {} };
-      var day = new Date().getDate();
-      team.innerHTML = (dm.employees || [])
-        .map(function (e) {
-          var c = (dm.cells[e.id] && dm.cells[e.id][day]) || { rate: 0, hours: 0 };
-          return (
-            "<tr><td>" +
-            (e.full_name || "") +
-            "</td><td>" +
-            (c.type === "vacation" ? "отпуск" : c.rate != null ? c.rate : "—") +
-            "</td><td>" +
-            (c.hours != null ? c.hours : "—") +
-            "</td></tr>"
-          );
-        })
-        .join("") || '<tr><td colspan="3" class="text-muted">Нет данных</td></tr>';
+      var rows = dm.today && dm.today.length ? dm.today : null;
+      if (!rows) {
+        var day = new Date().getDate();
+        rows = (dm.employees || []).map(function (e) {
+          var c = (dm.cells[e.id] && dm.cells[e.id][day]) || {};
+          var work_status = "not_started";
+          if (c.type === "sick") work_status = "sick";
+          else if (c.type === "vacation") work_status = "vacation";
+          else if (c.open) work_status = "working";
+          else if (c.closed || Number(c.hours) > 0 || Number(c.rate) > 0) work_status = "finished";
+          return {
+            full_name: e.full_name,
+            work_status: work_status,
+            check_in: c.check_in ? String(c.check_in).slice(11, 16) : null,
+            hours: c.hours || 0,
+          };
+        });
+      }
+      team.innerHTML =
+        rows
+          .map(function (r) {
+            return (
+              "<tr><td>" +
+              (r.full_name || "") +
+              "</td><td>" +
+              deptTodayStatusLabel(r) +
+              "</td><td>" +
+              (r.check_in || "—") +
+              "</td><td>" +
+              (r.hours != null ? fmtHours(r.hours) : "—") +
+              "</td></tr>"
+            );
+          })
+          .join("") || '<tr><td colspan="4" class="text-muted">Нет сотрудников отдела</td></tr>';
     }
     var stuck = document.getElementById("dg-ws-stuck-shifts");
     if (stuck) {
@@ -1794,12 +2418,12 @@
               (s.full_name || "") +
               " · с " +
               String(s.check_in || "").slice(11, 16) +
-              '</span><span class="badge bg-danger">' +
-              (s.hours_open != null ? s.hours_open : "?") +
-              " ч</span></li>"
+              '</span><span class="badge bg-success">' +
+              (s.hours_open != null ? fmtHours(s.hours_open) : "?") +
+              "</span></li>"
             );
           })
-          .join("") || '<li class="list-group-item text-muted">Нет зависших смен</li>';
+          .join("") || '<li class="list-group-item text-muted">Сейчас никто не в смене</li>';
     }
     var appr = document.getElementById("dg-ws-approve-vacations");
     if (appr) {
@@ -1827,19 +2451,60 @@
     }
   }
 
+  function sheetEmpMatchesSearch(e, q) {
+    var s = String(q || "")
+      .trim()
+      .toLowerCase()
+      .replace(/ё/g, "е")
+      .replace(/\s+/g, " ");
+    if (!s) return true;
+    var hay = [e.full_name, e.department_name, e.salary, e.salary_accrued, e.premium_accrued]
+      .map(function (x) {
+        return x == null ? "" : String(x);
+      })
+      .join(" ")
+      .toLowerCase()
+      .replace(/ё/g, "е")
+      .replace(/\s+/g, " ");
+    return s.split(" ").every(function (tok) {
+      return tok && hay.indexOf(tok) !== -1;
+    });
+  }
+
+  function syncSheetFilterDirty() {
+    var btn = document.getElementById("dg-ws-f-apply");
+    if (!btn) return;
+    var dirty =
+      Number(state.pending.orgId || 0) !== Number(state.filters.orgId || 0) ||
+      Number(state.pending.deptId || 0) !== Number(state.filters.deptId || 0) ||
+      String(state.pending.month || "") !== String(state.filters.month || "") ||
+      String(state.pending.search || "") !== String(state.filters.search || "");
+    btn.classList.toggle("dg-flt-dirty", dirty);
+    btn.textContent = dirty ? "Применить •" : "Применить";
+  }
+
   function renderSheet() {
     renderLegend(document.getElementById("dg-ws-sheet-legend"), false);
     var sh = state.sheet;
     var month = state.filters.month || defaultMonthStr();
     var pm = parseMonthValue(month);
     var dim = daysInMonth(pm.y, pm.m);
+    var q = state.filters.search || "";
+    var emps = (sh && sh.employees) || [];
+    var filtered = emps.filter(function (e) {
+      return sheetEmpMatchesSearch(e, q);
+    });
     var elMd = document.getElementById("dg-ws-kpi-mandays");
     var elFot = document.getElementById("dg-ws-kpi-fot");
     var elEm = document.getElementById("dg-ws-kpi-emps");
     if (sh && sh.kpi) {
       if (elMd) elMd.textContent = String(sh.kpi.mandays);
       if (elFot) elFot.textContent = money(sh.kpi.fot);
-      if (elEm) elEm.textContent = String(sh.kpi.count);
+      if (elEm) {
+        elEm.textContent = q
+          ? String(filtered.length) + " / " + String(sh.kpi.count)
+          : String(sh.kpi.count);
+      }
     }
     var host = document.getElementById("dg-ws-sheet-host");
     if (!host) return;
@@ -1847,11 +2512,52 @@
       host.innerHTML = '<div class="text-muted p-3">Загрузка…</div>';
       return;
     }
-    var html = '<table class="dg-ws-sheet"><thead><tr><th class="emp">Сотрудник</th>';
-    for (var d = 1; d <= dim; d++) html += "<th>" + d + "</th>";
+    if (!filtered.length) {
+      host.innerHTML =
+        '<div class="text-muted p-3">' +
+        (q ? "Никого не найдено по запросу «" + q + "»" : "Нет сотрудников") +
+        "</div>";
+      return;
+    }
+    var html =
+      '<table class="dg-ws-sheet"><thead><tr><th class="emp">Сотрудник</th>' +
+      '<th class="dg-ws-pay-h" title="Накапало / ставка">Оклад</th>' +
+      '<th class="dg-ws-pay-h" title="Клик — ручная премия за месяц">Премия</th>';
+    for (var d = 1; d <= dim; d++) html += dayColHeaderHtml(pm.y, pm.m, d);
     html += "<th>Σ</th></tr></thead><tbody>";
-    (sh.employees || []).forEach(function (e) {
-      html += '<tr><td class="emp">' + (e.full_name || "") + "</td>";
+    filtered.forEach(function (e) {
+      var salAcc = e.salary_accrued != null ? e.salary_accrued : 0;
+      var salRate = e.salary != null ? e.salary : 0;
+      var premAcc = e.premium_accrued != null ? e.premium_accrued : 0;
+      var premFull = e.premium_full != null ? e.premium_full : 0;
+      var premManual = e.premium_manual != null && e.premium_manual !== "";
+      var premSrc = e.premium_source || "";
+      var premSub = premSrc === "sales"
+        ? "из продаж"
+        : premSrc === "manual" || premManual
+          ? "ручная" + (premFull > 0 ? " · правило " + money(premFull) : "")
+          : premFull > 0
+            ? "полная " + money(premFull)
+            : "клик — ввести";
+      html +=
+        '<tr><td class="emp">' +
+        (e.full_name || "") +
+        '</td><td class="dg-ws-pay">' +
+        '<span class="dg-ws-pay-main">' +
+        money(salAcc) +
+        '</span><span class="dg-ws-pay-sub">ставка ' +
+        money(salRate) +
+        "</span></td>" +
+        '<td class="dg-ws-pay cell-click dg-ws-pay-prem' +
+        (premSrc === "sales" ? " dg-ws-pay-sales" : premManual ? " dg-ws-pay-manual" : "") +
+        '" data-emp-prem="' +
+        e.id +
+        '" title="Ручная премия за месяц">' +
+        '<span class="dg-ws-pay-main">' +
+        money(premAcc) +
+        '</span><span class="dg-ws-pay-sub">' +
+        premSub +
+        "</span></td>";
       var sum = 0;
       for (var day = 1; day <= dim; day++) {
         var c = (sh.cells[e.id] && sh.cells[e.id][day]) || null;
@@ -1888,6 +2594,8 @@
     var org = document.getElementById("dg-ws-f-org");
     var dept = document.getElementById("dg-ws-f-dept");
     var month = document.getElementById("dg-ws-f-month");
+    var search = document.getElementById("dg-ws-f-search");
+    var mirror = document.getElementById("dg-ws-sheet-search-mirror");
     if (org) {
       org.innerHTML =
         '<option value="0">Все</option>' +
@@ -1909,17 +2617,24 @@
       dept.value = String(state.pending.deptId || 0);
     }
     if (month) month.value = state.pending.month || defaultMonthStr();
+    if (search) search.value = state.pending.search || "";
+    if (mirror) mirror.value = state.pending.search || "";
+    syncSheetFilterDirty();
   }
 
   function commitFilters() {
     state.pending.orgId = Number((document.getElementById("dg-ws-f-org") || {}).value) || 0;
     state.pending.deptId = Number((document.getElementById("dg-ws-f-dept") || {}).value) || 0;
     state.pending.month = (document.getElementById("dg-ws-f-month") || {}).value || defaultMonthStr();
+    var searchEl = document.getElementById("dg-ws-f-search");
+    state.pending.search = searchEl ? String(searchEl.value || "").trim() : "";
     state.filters = {
       orgId: state.pending.orgId,
       deptId: state.pending.deptId,
       month: state.pending.month,
+      search: state.pending.search,
     };
+    syncSheetFilterDirty();
     syncMonthUi();
     loadSheet();
     showActionLog(
@@ -1928,7 +2643,8 @@
         " · dept=" +
         state.filters.deptId +
         " · " +
-        formatMonthRu(state.filters.month)
+        formatMonthRu(state.filters.month) +
+        (state.filters.search ? " · поиск «" + state.filters.search + "»" : "")
     );
   }
 
@@ -1937,6 +2653,85 @@
     if (!el) return;
     el.style.display = show ? "flex" : "none";
     el.setAttribute("aria-hidden", show ? "false" : "true");
+  }
+
+  function showPremOverlay(show) {
+    var el = document.getElementById("dg-ws-prem-overlay");
+    if (!el) return;
+    el.style.display = show ? "flex" : "none";
+    el.setAttribute("aria-hidden", show ? "false" : "true");
+  }
+
+  function openPremModal(empId) {
+    var month = state.filters.month || defaultMonthStr();
+    var emp = (state.sheet && state.sheet.employees || []).find(function (e) {
+      return Number(e.id) === Number(empId);
+    });
+    if (!emp) return;
+    state.editPremium = { empId: empId, month: month };
+    var meta = document.getElementById("dg-ws-prem-meta");
+    if (meta) meta.textContent = (emp.full_name || "") + " · " + formatMonthRu(month);
+    var hint = document.getElementById("dg-ws-prem-hint");
+    if (hint) {
+      var ruleAmt = emp.premium_full != null ? Number(emp.premium_full) : 0;
+      var fromRule = emp.premium_from_rule != null ? Number(emp.premium_from_rule) : 0;
+      hint.textContent =
+        "Правило в настройках: " +
+        (ruleAmt > 0 ? money(ruleAmt) : "нет") +
+        (fromRule > 0 ? " → за месяц по дням " + money(fromRule) : "") +
+        ". Ручной ввод действует только на этот месяц.";
+    }
+    var inp = document.getElementById("dg-ws-prem-amount");
+    if (inp) {
+      inp.value =
+        emp.premium_manual != null && emp.premium_manual !== ""
+          ? String(emp.premium_manual)
+          : emp.premium_accrued != null
+            ? String(emp.premium_accrued)
+            : "";
+      setTimeout(function () {
+        inp.focus();
+        inp.select();
+      }, 50);
+    }
+    showPremOverlay(true);
+  }
+
+  function savePremModal(clear) {
+    if (!state.editPremium) return;
+    var inp = document.getElementById("dg-ws-prem-amount");
+    var raw = inp ? String(inp.value || "").trim() : "";
+    var body = {
+      employee_id: state.editPremium.empId,
+      period_ym: state.editPremium.month,
+      premium_manual: clear || !raw ? null : raw.replace(/\s/g, "").replace(",", "."),
+    };
+    var btn = document.getElementById(clear ? "dg-ws-prem-clear" : "dg-ws-prem-save");
+    var run = function () {
+      return api("/sheet/premium", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }).then(function () {
+        toast("success", clear || !raw ? "Премия по правилу настроек" : "Премия сохранена");
+        showActionLog(
+          "Премия: emp=" +
+            body.employee_id +
+            ", " +
+            body.period_ym +
+            ", " +
+            (body.premium_manual == null ? "сброс → правило" : body.premium_manual + " ₽")
+        );
+        showPremOverlay(false);
+        state.editPremium = null;
+        return loadSheet();
+      });
+    };
+    if (window.DatagonNotify && window.DatagonNotify.busyRun) window.DatagonNotify.busyRun(btn, run);
+    else
+      run().catch(function (e) {
+        toast("danger", e.message);
+      });
   }
 
   function openCellModal(empId, day) {
@@ -2009,12 +2804,18 @@
   function loadDept() {
     var month = state.filters.month || defaultMonthStr();
     var q = "/dept/month?month=" + encodeURIComponent(month);
-    if (state.filters.deptId) q += "&department_id=" + state.filters.deptId;
+    var deptId =
+      state.filters.deptId ||
+      (state.access && state.access.employee && state.access.employee.department_id) ||
+      "";
+    if (deptId) q += "&department_id=" + deptId;
+    var stuckQ = "/stuck-shifts";
+    if (deptId) stuckQ += "?department_id=" + deptId;
     return Promise.all([
       api(q).catch(function () {
-        return { employees: [], cells: {}, vacations: [] };
+        return { employees: [], cells: {}, today: [], vacations: [] };
       }),
-      api("/stuck-shifts").catch(function () {
+      api(stuckQ).catch(function () {
         return { rows: [] };
       }),
       api("/vacations/pending").catch(function () {
@@ -2119,6 +2920,49 @@
     bindMonthNav("dg-ws-month-prev", "dg-ws-month-next");
     bindMonthNav("dg-ws-cal-month-prev", "dg-ws-cal-month-next");
     bindMonthNav("dg-ws-dept-month-prev", "dg-ws-dept-month-next");
+    var calHost = document.getElementById("dg-ws-cal-host");
+    if (calHost) {
+      calHost.addEventListener("click", function (ev) {
+        var cell = ev.target.closest("[data-dg-ws-day]");
+        if (!cell || state.calMode !== "mine") return;
+        if (window.getSelection && String(window.getSelection()).trim()) return;
+        openDayModal(cell.getAttribute("data-dg-ws-day"));
+      });
+    }
+    ["dg-ws-day-close", "dg-ws-day-cancel", "dg-ws-day-backdrop"].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el)
+        el.addEventListener("click", function () {
+          closeDayModal();
+        });
+    });
+    var earnGrid = document.getElementById("dg-ws-earn-grid");
+    if (earnGrid) {
+      earnGrid.addEventListener("click", function (ev) {
+        var btn = ev.target.closest("[data-dg-ws-salary-hist]");
+        if (!btn) return;
+        openSalaryHistModal();
+      });
+    }
+    ["dg-ws-salary-hist-close", "dg-ws-salary-hist-cancel", "dg-ws-salary-hist-backdrop"].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el)
+        el.addEventListener("click", function () {
+          closeSalaryHistModal();
+        });
+    });
+    document.addEventListener("keydown", function (ev) {
+      if (ev.key !== "Escape") return;
+      var salOv = document.getElementById("dg-ws-salary-hist-overlay");
+      if (salOv && salOv.style.display !== "none" && salOv.getAttribute("aria-hidden") !== "true") {
+        closeSalaryHistModal();
+        return;
+      }
+      var dayOv = document.getElementById("dg-ws-day-overlay");
+      if (dayOv && dayOv.style.display !== "none" && dayOv.getAttribute("aria-hidden") !== "true") {
+        closeDayModal();
+      }
+    });
     var monthPick = document.getElementById("dg-ws-month-pick");
     if (monthPick) {
       monthPick.addEventListener("change", function () {
@@ -2130,15 +2974,83 @@
     var reset = document.getElementById("dg-ws-f-reset");
     if (reset) {
       reset.addEventListener("click", function () {
-        state.pending = { orgId: 0, deptId: 0, month: defaultMonthStr() };
+        state.pending = { orgId: 0, deptId: 0, month: defaultMonthStr(), search: "" };
         fillFilterSelects();
         commitFilters();
       });
     }
+    (function bindSheetSearchMirror() {
+      var a = document.getElementById("dg-ws-f-search");
+      var b = document.getElementById("dg-ws-sheet-search-mirror");
+      if (!a || !b) return;
+      var syncing = false;
+      function sync(from, to) {
+        if (syncing) return;
+        syncing = true;
+        to.value = from.value;
+        state.pending.search = from.value || "";
+        syncSheetFilterDirty();
+        syncing = false;
+      }
+      a.addEventListener("input", function () {
+        sync(a, b);
+      });
+      b.addEventListener("input", function () {
+        sync(b, a);
+      });
+      function onEnter(ev) {
+        if (ev.key !== "Enter") return;
+        ev.preventDefault();
+        if (apply) apply.click();
+      }
+      function onEsc(ev) {
+        if (ev.key !== "Escape") return;
+        a.value = "";
+        b.value = "";
+        state.pending.search = "";
+        syncSheetFilterDirty();
+        commitFilters();
+      }
+      a.addEventListener("keydown", onEnter);
+      b.addEventListener("keydown", onEnter);
+      a.addEventListener("keydown", onEsc);
+      b.addEventListener("keydown", onEsc);
+      a.addEventListener("search", function () {
+        if (!a.value) {
+          b.value = "";
+          state.pending.search = "";
+          syncSheetFilterDirty();
+          commitFilters();
+        }
+      });
+      b.addEventListener("search", function () {
+        if (!b.value) {
+          a.value = "";
+          state.pending.search = "";
+          syncSheetFilterDirty();
+          commitFilters();
+        }
+      });
+      ["dg-ws-f-org", "dg-ws-f-dept", "dg-ws-f-month"].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener("change", function () {
+          if (id === "dg-ws-f-org") state.pending.orgId = Number(el.value) || 0;
+          if (id === "dg-ws-f-dept") state.pending.deptId = Number(el.value) || 0;
+          if (id === "dg-ws-f-month") state.pending.month = el.value || defaultMonthStr();
+          syncSheetFilterDirty();
+        });
+      });
+    })();
     var sheetHost = document.getElementById("dg-ws-sheet-host");
     if (sheetHost) {
       sheetHost.addEventListener("click", function (ev) {
-        var td = ev.target.closest("td.cell-click");
+        var premTd = ev.target.closest("td[data-emp-prem]");
+        if (premTd) {
+          openPremModal(Number(premTd.getAttribute("data-emp-prem")));
+          return;
+        }
+        var td = ev.target.closest("td.cell-click[data-emp][data-day]");
         if (!td) return;
         openCellModal(Number(td.getAttribute("data-emp")), Number(td.getAttribute("data-day")));
       });
@@ -2152,8 +3064,35 @@
           showCellOverlay(false);
         });
     });
+    var premSave = document.getElementById("dg-ws-prem-save");
+    if (premSave) premSave.addEventListener("click", function () { savePremModal(false); });
+    var premClear = document.getElementById("dg-ws-prem-clear");
+    if (premClear) premClear.addEventListener("click", function () { savePremModal(true); });
+    ["dg-ws-prem-cancel", "dg-ws-prem-close", "dg-ws-prem-backdrop"].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el)
+        el.addEventListener("click", function () {
+          showPremOverlay(false);
+          state.editPremium = null;
+        });
+    });
+    var premAmt = document.getElementById("dg-ws-prem-amount");
+    if (premAmt) {
+      premAmt.addEventListener("keydown", function (ev) {
+        if (ev.key === "Enter") {
+          ev.preventDefault();
+          savePremModal(false);
+        }
+      });
+    }
     document.addEventListener("keydown", function (ev) {
       if (ev.key !== "Escape") return;
+      var premOv = document.getElementById("dg-ws-prem-overlay");
+      if (premOv && premOv.style.display === "flex") {
+        showPremOverlay(false);
+        state.editPremium = null;
+        return;
+      }
       var ov = document.getElementById("dg-ws-cell-overlay");
       if (ov && ov.style.display === "flex") showCellOverlay(false);
     });
@@ -2187,6 +3126,142 @@
           });
       });
     }
+
+    function showPremSalesOverlay(show) {
+      var ov = document.getElementById("dg-ws-prem-sales-overlay");
+      if (!ov) return;
+      ov.style.display = show ? "flex" : "none";
+      ov.setAttribute("aria-hidden", show ? "false" : "true");
+    }
+
+    function formatPremSalesLog(j, phase) {
+      var rows = j.rows || [];
+      var lines = rows
+        .filter(function (r) {
+          return r.changed || Number(r.bonus) > 0;
+        })
+        .slice(0, 20)
+        .map(function (r) {
+          return (
+            "<li>" +
+            (r.full_name || "") +
+            " · " +
+            money(r.bonus) +
+            (r.pct_mp != null ? " (" + r.pct_mp + "% МП)" : "") +
+            (r.changed ? "" : " — без изменений") +
+            "</li>"
+          );
+        });
+      return (
+        "<strong>" +
+        (phase || "Премии из продаж") +
+        " · " +
+        (j.period_ym || "") +
+        "</strong><br>" +
+        "Отделы «…продаж…»: " +
+        (j.total != null ? j.total : "—") +
+        "; к записи: " +
+        (j.updated != null ? j.updated : "—") +
+        "; без изменений: " +
+        (j.skipped != null ? j.skipped : "—") +
+        "; без строк в журнале: " +
+        (j.no_sales != null ? j.no_sales : "—") +
+        (j.duration_sec != null ? "; " + j.duration_sec + " с" : "") +
+        (lines.length ? '<ul class="mb-0 mt-2">' + lines.join("") + "</ul>" : "")
+      );
+    }
+
+    var premSalesBtn = document.getElementById("dg-ws-btn-prem-sales");
+    if (premSalesBtn) {
+      premSalesBtn.addEventListener("click", function () {
+        var month = state.filters.month || defaultMonthStr();
+        var body = { period_ym: month, dry_run: 1 };
+        if (state.filters.orgId) body.organization_id = state.filters.orgId;
+        if (state.filters.deptId) body.department_id = state.filters.deptId;
+        var run = function () {
+          return api("/sheet/premium-from-sales", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          }).then(function (j) {
+            state._premSalesPreview = j;
+            showActionLog(formatPremSalesLog(j, "Пробный прогон"));
+            var tx = document.getElementById("dg-ws-prem-sales-confirm-text");
+            if (tx) {
+              tx.textContent =
+                "Принудительно перезаписать премии из журнала менеджеров за " +
+                formatMonthRu(month) +
+                " (в т.ч. поверх ручных). К записи: " +
+                (j.updated != null ? j.updated : 0) +
+                " из " +
+                (j.total != null ? j.total : 0) +
+                ". Обычно премии подтягиваются сами при открытии табеля.";
+            }
+            var prev = document.getElementById("dg-ws-prem-sales-preview");
+            if (prev) {
+              prev.innerHTML = (j.rows || [])
+                .filter(function (r) {
+                  return r.changed;
+                })
+                .slice(0, 12)
+                .map(function (r) {
+                  return (
+                    "<div>" +
+                    (r.full_name || "") +
+                    ": " +
+                    money(r.bonus) +
+                    (r.previous_manual != null ? " (было " + money(r.previous_manual) + ")" : "") +
+                    "</div>"
+                  );
+                })
+                .join("") || "<div class=\"text-muted\">Нет изменений — все уже совпадают</div>";
+            }
+            showPremSalesOverlay(true);
+            toast("success", "Пробный прогон готов");
+          });
+        };
+        if (window.DatagonNotify && window.DatagonNotify.busyRun) {
+          window.DatagonNotify.busyRun(premSalesBtn, run);
+        } else {
+          run().catch(function (e) {
+            toast("danger", e.message);
+          });
+        }
+      });
+    }
+    var premSalesOk = document.getElementById("dg-ws-prem-sales-ok");
+    if (premSalesOk) {
+      premSalesOk.addEventListener("click", function () {
+        var month = state.filters.month || defaultMonthStr();
+        var body = { period_ym: month, dry_run: 0 };
+        if (state.filters.orgId) body.organization_id = state.filters.orgId;
+        if (state.filters.deptId) body.department_id = state.filters.deptId;
+        var run = function () {
+          return api("/sheet/premium-from-sales", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          }).then(function (j) {
+            showPremSalesOverlay(false);
+            showActionLog(formatPremSalesLog(j, "Записано"));
+            toast("success", j.message || "Премии записаны");
+            return loadSheet();
+          });
+        };
+        if (window.DatagonNotify && window.DatagonNotify.busyRun) {
+          window.DatagonNotify.busyRun(premSalesOk, run);
+        } else {
+          run().catch(function (e) {
+            toast("danger", e.message);
+          });
+        }
+      });
+    }
+    document.querySelectorAll("[data-dg-ws-prem-sales-close]").forEach(function (el) {
+      el.addEventListener("click", function () {
+        showPremSalesOverlay(false);
+      });
+    });
 
     var exportBtn = document.getElementById("dg-ws-btn-export");
     if (exportBtn) {

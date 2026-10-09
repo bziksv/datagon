@@ -1,16 +1,43 @@
 ---
 id: architectui-migration
-title: План миграции ArchitectUI (архив)
-description: Исторический план React-миграции; актуальный UI — vanilla public/*.html
+title: ArchitectUI (демо и архив плана)
+description: Пункт меню ArchitectUI, каталог ref, React-демо; ниже — архивный план миграции
 ---
 
-> **Устарело как план продакшена (2026):** основной UI панели — vanilla (`static-html/vanilla/` → `public/*.html`). Каталог **`vendor/architectui-react-pro/`** по-прежнему в репозитории как эталон ArchitectUI и демо (`npm run build:architectui-demo`). Ниже — исторический план React-миграции (не текущий процесс релизов).
+> **Продакшен-UI (2026):** vanilla (`static-html/vanilla/` → `public/*.html`) + тема `public/static/css/main.*.css`. Источник визуальных паттернов при сверке — **`vendor/architectui-react-pro/src/**`** (правило `architectui-design-source.mdc`). Ниже сначала **живой пункт меню**, затем исторический план React-миграции (не процесс релизов).
 
-## Кому читать этот архив
+## Живой пункт меню «ArchitectUI»
 
-- **Новым разработчикам** — чтобы понять, почему в репозитории есть следы React/ArchitectUI и куда смотреть сейчас: **`static-html/vanilla/`** и тема **`public/static/css/main.*.css`**.
-- **При планировании крупного UI-рефакторинга** — как ориентир на поэтапный перенос (даже если целевой стек сменится).
-- **Для ежедневной работы с панелью** этот документ **не обязателен** — актуальные экраны описаны в разделах слева и в [Деплой](/docs/deploy/).
+| | |
+|--|--|
+| Меню | «ArchitectUI» 🔒, сразу после «Управление БД» |
+| URL каталога | `/ref/react-demo-index.html` |
+| `data-nav` | `architectui-demo` |
+| `PAGE_DEFS` | **нет** (осознанно: не в матрице специальностей) |
+| API Datagon | нет (статика + отдельное SPA-демо) |
+
+**Доступ к пункту меню:** как у «Активность/Логи» / «Управление БД» — `data-dg-nav-restricted="activity"`: виден только **admin** или при **`can_manage_users`** (`datagon-vanilla.js` → `applyDatagonRestrictedNavVisibility`). Матрица `page_modes` этот пункт **не открывает** снова, если замок скрыл его.
+
+**Прямой URL:** файл `react-demo-index.html` не в `PAGE_DEFS`, поэтому middleware HTML **не** режет его по матрице — достаточно обычной сессии. Ограничение — в основном через скрытие пункта меню. SPA под `/architectui-react-pro/` обслуживается отдельно в `server.js` (если собран).
+
+**Что на экране каталога:** список разделов шаблона (dashboards, pages, apps, elements, …) со ссылками в **`/architectui-react-pro/…`**. Исходник inner: `static-html/vanilla/inners/ref-react-demo-index.inner.html` → `npm run sync:vanilla-public`. Рядом в `/ref/` — статичные эталоны темы (`index`, `tables`, `forms`, …).
+
+**Сборка React-демо:**
+
+```bash
+npm run build:architectui-demo   # → public/architectui-react-pro/
+npm run sync:architectui-nav     # синхрон NavItems с каталогом маршрутов SPA
+```
+
+Если демо не собрано, `/architectui-react-pro/` отдаёт подсказку со ссылкой обратно на `/ref/react-demo-index.html`.
+
+Карта панели: [Карта панели](/docs/panel-map/).
+
+## Кому читать архив ниже
+
+- **Новым разработчикам** — зачем в репо React/ArchitectUI; актуальный код панели — **`static-html/vanilla/`**.
+- **При крупном UI-рефакторинге** — исторический поэтапный план.
+- **Для ежедневной работы с бизнес-экранами** — не обязателен; см. разделы слева и [Деплой](/docs/deploy/).
 
 Цель (исторически): поэтапно перенести интерфейс Datagon на React-шаблон без остановки работы текущего приложения.
 

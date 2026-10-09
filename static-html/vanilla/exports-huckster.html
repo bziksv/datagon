@@ -563,6 +563,27 @@
         padding-bottom: 86px;
       }
     }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"] .dg-huckster-confirm-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 2000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"] .dg-huckster-confirm-overlay .dg-huckster-confirm-backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.28);
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"] .dg-huckster-confirm-overlay .dg-huckster-confirm-panel {
+      position: relative;
+      z-index: 1;
+      width: min(440px, 100%);
+      max-height: calc(100vh - 2rem);
+      overflow: auto;
+    }
   </style>
 
   <style>
@@ -1981,6 +2002,42 @@
             </div>
           </div>
 
+          <div
+            id="dg-huckster-clear-confirm-overlay"
+            class="dg-huckster-confirm-overlay"
+            style="display: none"
+            aria-hidden="true"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="dg-huckster-clear-confirm-title"
+          >
+            <div class="dg-huckster-confirm-backdrop" id="dg-huckster-clear-confirm-backdrop"></div>
+            <div class="dg-huckster-confirm-panel card shadow-lg border-0">
+              <div class="card-header">
+                <div class="fw-semibold" id="dg-huckster-clear-confirm-title">Очистить таблицы?</div>
+              </div>
+              <div class="card-body">
+                <p class="mb-0">
+                  Очистить обе матрицы на экране и удалить последний сохранённый снапшот Huckster из базы.
+                  Конфиг наборов не меняется. Данные появятся снова после «Обновить Huckster».
+                </p>
+              </div>
+              <div class="card-footer d-flex justify-content-end gap-2 flex-wrap bg-white border-top-0">
+                <button type="button" class="btn btn-outline-secondary" id="dg-huckster-clear-confirm-cancel" data-dg-no-activity="1">
+                  Отмена
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-danger"
+                  id="dg-huckster-clear-confirm-ok"
+                  data-dg-notify-start="Удаляем снапшот Huckster и очищаем таблицы…"
+                >
+                  Очистить таблицы
+                </button>
+              </div>
+            </div>
+          </div>
+
           <script>
             (function () {
               function matrixWidthStorageKey(which) {
@@ -2249,14 +2306,22 @@
               }
 
               /** Очистка экрана + удаление снапшота в БД. Во время синка кнопка disabled. */
-              function clearHucksterDisplayedMatrices() {
-                if (
-                  !window.confirm(
-                    "Очистить обе матрицы на экране и удалить последний сохранённый снапшот Huckster из базы?\n\nДанные появятся снова после «Обновить Huckster»."
-                  )
-                ) {
-                  return;
-                }
+              function closeHucksterClearConfirm() {
+                var ov = document.getElementById("dg-huckster-clear-confirm-overlay");
+                if (!ov) return;
+                ov.style.display = "none";
+                ov.setAttribute("aria-hidden", "true");
+              }
+
+              function openHucksterClearConfirm() {
+                var ov = document.getElementById("dg-huckster-clear-confirm-overlay");
+                if (!ov) return;
+                ov.style.display = "flex";
+                ov.setAttribute("aria-hidden", "false");
+              }
+
+              function runClearHucksterDisplayedMatrices() {
+                closeHucksterClearConfirm();
                 fetchJsonSafe(API_SNAPSHOT, {
                   method: "DELETE",
                   credentials: "same-origin",
@@ -2304,6 +2369,21 @@
                   .catch(function (e) {
                     setStatusBase("Ошибка: " + String(e.message || e), false);
                   });
+              }
+
+              function bindHucksterClearConfirm() {
+                var ov = document.getElementById("dg-huckster-clear-confirm-overlay");
+                var cancel = document.getElementById("dg-huckster-clear-confirm-cancel");
+                var ok = document.getElementById("dg-huckster-clear-confirm-ok");
+                var backdrop = document.getElementById("dg-huckster-clear-confirm-backdrop");
+                if (cancel) cancel.addEventListener("click", closeHucksterClearConfirm);
+                if (backdrop) backdrop.addEventListener("click", closeHucksterClearConfirm);
+                if (ok) ok.addEventListener("click", runClearHucksterDisplayedMatrices);
+                document.addEventListener("keydown", function (e) {
+                  if (e.key !== "Escape") return;
+                  if (!ov || ov.style.display === "none" || ov.getAttribute("aria-hidden") === "true") return;
+                  closeHucksterClearConfirm();
+                });
               }
 
               function stopPolling() {
@@ -5320,8 +5400,9 @@
               if (testUidBtn) testUidBtn.addEventListener("click", runSyncTestUids);
               var stopBtn = document.getElementById("dg-huckster-stop-btn");
               if (stopBtn) stopBtn.addEventListener("click", stopSync);
+              bindHucksterClearConfirm();
               var clearDispBtn = document.getElementById("dg-huckster-clear-display-btn");
-              if (clearDispBtn) clearDispBtn.addEventListener("click", clearHucksterDisplayedMatrices);
+              if (clearDispBtn) clearDispBtn.addEventListener("click", openHucksterClearConfirm);
               var add1 = document.getElementById("dg-huckster-add-set1");
               var add2 = document.getElementById("dg-huckster-add-set2");
               var saveCfg = document.getElementById("dg-huckster-save-config");

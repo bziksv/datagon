@@ -991,9 +991,9 @@
       }
 
       /**
-       * Подтверждение массового действия.
-       * Без галочек — модалка с обязательным чекбоксом «понимаю».
-       * С галочками — обычный confirm.
+       * Подтверждение массового действия — своя модалка (не window.confirm).
+       * Без галочек — обязательный чекбокс «понимаю» (вся выборка по фильтру).
+       * С галочками — подтверждение числа отмеченных SKU.
        * @returns {Promise<boolean>}
        */
       function confirmBulkWrite(opts) {
@@ -1002,46 +1002,56 @@
         var codesLen = Number((opts && opts.codesLen) || 0);
         var byFilter = !codesLen;
 
-        if (!byFilter) {
-          return Promise.resolve(
-            window.confirm(label + ": обновить " + would + " отмеченных SKU?")
-          );
-        }
-
         return new Promise(function (resolve) {
           var ov = document.getElementById("dg-pa-bulk-confirm-overlay");
+          var titleEl = document.getElementById("dg-pa-bulk-confirm-title");
           var lead = document.getElementById("dg-pa-bulk-confirm-lead");
           var filtersEl = document.getElementById("dg-pa-bulk-confirm-filters");
+          var ackWrap = document.getElementById("dg-pa-bulk-confirm-ack-wrap");
           var ack = document.getElementById("dg-pa-bulk-confirm-ack");
           var okBtn = document.getElementById("dg-pa-bulk-confirm-ok");
           var cancelBtn = document.getElementById("dg-pa-bulk-confirm-cancel");
-          if (!ov || !okBtn || !cancelBtn || !ack) {
-            resolve(
-              window.confirm(
-                "Галочки не отмечены. " + label + " применится к " + would + " SKU по фильтру. Продолжить?"
-              )
-            );
+          if (!ov || !okBtn || !cancelBtn) {
+            resolve(false);
             return;
           }
 
-          if (lead) {
-            lead.innerHTML =
-              "Действие <strong>«" +
-              esc(label) +
-              "»</strong> затронет <strong>" +
-              would +
-              "</strong> SKU.<br>" +
-              "Строки <strong>не отмечены</strong> галочками — применяется ко <strong>всей текущей выборке</strong> по пресету/фильтрам (лимит API до 500 за раз).";
+          if (titleEl) {
+            titleEl.textContent = byFilter ? "Подтверждение по фильтру" : "Подтверждение по отмеченным";
           }
-          if (filtersEl) filtersEl.textContent = filtersHintText(0);
-          ack.checked = false;
-          okBtn.disabled = true;
+          if (lead) {
+            if (byFilter) {
+              lead.innerHTML =
+                "Действие <strong>«" +
+                esc(label) +
+                "»</strong> затронет <strong>" +
+                would +
+                "</strong> SKU.<br>" +
+                "Строки <strong>не отмечены</strong> галочками — применяется ко <strong>всей текущей выборке</strong> по пресету/фильтрам (лимит API до 500 за раз).";
+            } else {
+              lead.innerHTML =
+                "Действие <strong>«" +
+                esc(label) +
+                "»</strong> обновит <strong>" +
+                would +
+                "</strong> отмеченных SKU.";
+            }
+          }
+          if (filtersEl) filtersEl.textContent = filtersHintText(codesLen);
+          if (ackWrap) ackWrap.style.display = byFilter ? "" : "none";
+          if (ack) ack.checked = !byFilter;
+          okBtn.textContent = byFilter ? "Применить ко всей выборке" : "Обновить отмеченные";
+          okBtn.disabled = byFilter;
 
           function syncOk() {
-            okBtn.disabled = !ack.checked;
+            if (!byFilter) {
+              okBtn.disabled = false;
+              return;
+            }
+            okBtn.disabled = !(ack && ack.checked);
           }
           function cleanup(result) {
-            ack.removeEventListener("change", syncOk);
+            if (ack) ack.removeEventListener("change", syncOk);
             okBtn.removeEventListener("click", onOk);
             cancelBtn.removeEventListener("click", onCancel);
             ov.removeEventListener("click", onBackdrop);
@@ -1052,7 +1062,7 @@
           }
           function onOk(ev) {
             ev.preventDefault();
-            if (!ack.checked) return;
+            if (byFilter && ack && !ack.checked) return;
             cleanup(true);
           }
           function onCancel(ev) {
@@ -1066,7 +1076,7 @@
             if (ev.key === "Escape") onCancel(ev);
           }
 
-          ack.addEventListener("change", syncOk);
+          if (ack) ack.addEventListener("change", syncOk);
           okBtn.addEventListener("click", onOk);
           cancelBtn.addEventListener("click", onCancel);
           ov.addEventListener("click", onBackdrop);
@@ -1075,7 +1085,8 @@
           ov.classList.add("is-open");
           syncOk();
           try {
-            ack.focus();
+            if (byFilter && ack) ack.focus();
+            else okBtn.focus();
           } catch (e) {}
         });
       }

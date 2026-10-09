@@ -3893,22 +3893,34 @@
     chk.setAttribute("data-dg-notify-start", "Сохраняем «Проверено менеджером»…");
     chk.addEventListener("change", function () {
       var on = chk.checked ? 1 : 0;
+      var doPatch = function () {
+        patchRow(row.id, { manager_checked: on })
+          .then(function (j) {
+            applyPatched(row, j);
+            renderTable();
+          })
+          .catch(function (e) {
+            chk.checked = !on;
+            alert(e.message || "Ошибка");
+            load();
+          });
+      };
       if (!on && String(row.status) === "verified") {
-        if (!window.confirm("Снять галочку? Статус «Проверен» вернётся на «На проверку».")) {
-          chk.checked = true;
-          return;
-        }
-      }
-      patchRow(row.id, { manager_checked: on })
-        .then(function (j) {
-          applyPatched(row, j);
-          renderTable();
-        })
-        .catch(function (e) {
-          chk.checked = !on;
-          alert(e.message || "Ошибка");
-          load();
+        openNpConfirm({
+          title: "Снять «Проверено»?",
+          message: "Статус «Проверен» вернётся на «На проверку».",
+          okLabel: "Снять галочку",
+          notifyStart: "Снимаем отметку менеджера…",
+        }).then(function (ok) {
+          if (!ok) {
+            chk.checked = true;
+            return;
+          }
+          doPatch();
         });
+        return;
+      }
+      doPatch();
     });
     td.appendChild(chk);
     return attachFieldLog(td, row, "manager_checked");
@@ -5264,13 +5276,19 @@
       applyAlmamedHidePlacedPreset();
       return;
     }
-    if (
-      !window.confirm(
-        "Убрать из таблицы все строки со статусом «Добавлен» (размещение на маркетах)?\nДелайте после проверки."
-      )
-    ) {
-      return;
-    }
+    openNpConfirm({
+      title: "Убрать размещённые?",
+      message:
+        "Убрать из таблицы все строки со статусом «Добавлен» (размещение на маркетах)? Делайте после проверки.",
+      okLabel: "Убрать размещённые",
+      notifyStart: "Убираем размещённые из таблицы…",
+    }).then(function (ok) {
+      if (!ok) return;
+      removePlacedRun();
+    });
+  }
+
+  function removePlacedRun() {
     var t0 = Date.now();
     var tick = null;
     var filtersLine = "Канал: <b>Размещение на маркеты</b>; статус: <b>Добавлен</b>";
@@ -5380,13 +5398,19 @@
   }
 
   function distribute() {
-    if (
-      !window.confirm(
-        "Раздать строки без ответственного между контент-менеджерами поровну блоками подряд (похожие SKU в пачке — одному человеку)?"
-      )
-    ) {
-      return;
-    }
+    openNpConfirm({
+      title: "Раздать ответственных?",
+      message:
+        "Раздать строки без ответственного между контент-менеджерами поровну блоками подряд (похожие SKU в пачке — одному человеку)?",
+      okLabel: "Раздать",
+      notifyStart: "Раздаём ответственных…",
+    }).then(function (ok) {
+      if (!ok) return;
+      distributeRun();
+    });
+  }
+
+  function distributeRun() {
     var t0 = Date.now();
     showLog(
       "warning",

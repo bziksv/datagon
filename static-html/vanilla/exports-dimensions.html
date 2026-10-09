@@ -826,6 +826,30 @@
       flex: 0 0 auto;
       margin: 0;
     }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-confirm-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 2000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-confirm-overlay .dg-dim-confirm-backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.28);
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-confirm-overlay .dg-dim-confirm-panel {
+      position: relative;
+      z-index: 1;
+      width: min(480px, 100%);
+      max-height: calc(100vh - 2rem);
+      overflow: auto;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] #dg-dim-confirm-body {
+      white-space: pre-line;
+    }
   </style>
 
   <style>
@@ -1999,6 +2023,34 @@
             </div>
           </div>
 
+          <div
+            id="dg-dim-confirm-overlay"
+            class="dg-dim-confirm-overlay"
+            style="display: none"
+            aria-hidden="true"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="dg-dim-confirm-title"
+          >
+            <div class="dg-dim-confirm-backdrop" id="dg-dim-confirm-backdrop"></div>
+            <div class="dg-dim-confirm-panel card shadow-lg border-0">
+              <div class="card-header">
+                <div class="fw-semibold" id="dg-dim-confirm-title">Подтвердите действие</div>
+              </div>
+              <div class="card-body">
+                <p class="mb-0" id="dg-dim-confirm-body"></p>
+              </div>
+              <div class="card-footer d-flex justify-content-end gap-2 flex-wrap bg-white border-top-0">
+                <button type="button" class="btn btn-outline-secondary" id="dg-dim-confirm-cancel" data-dg-no-activity="1">
+                  Отмена
+                </button>
+                <button type="button" class="btn btn-danger" id="dg-dim-confirm-ok" data-dg-no-activity="1">
+                  Подтвердить
+                </button>
+              </div>
+            </div>
+          </div>
+
         </div>
 
         <div class="app-footer">
@@ -2119,6 +2171,62 @@
         rows: [],
         lastError: '',
       };
+
+      var dimConfirmOnOk = null;
+
+      function closeDimConfirm() {
+        var ov = document.getElementById('dg-dim-confirm-overlay');
+        if (!ov) return;
+        ov.style.display = 'none';
+        ov.setAttribute('aria-hidden', 'true');
+        dimConfirmOnOk = null;
+      }
+
+      /**
+       * Своя модалка вместо window.confirm (запись в МС / откат журнала).
+       * opts: { title, body, okLabel, okClass, notifyStart, onOk }
+       */
+      function openDimConfirm(opts) {
+        opts = opts || {};
+        var ov = document.getElementById('dg-dim-confirm-overlay');
+        var titleEl = document.getElementById('dg-dim-confirm-title');
+        var bodyEl = document.getElementById('dg-dim-confirm-body');
+        var okBtn = document.getElementById('dg-dim-confirm-ok');
+        if (!ov || !okBtn) {
+          if (typeof opts.onOk === 'function') opts.onOk();
+          return;
+        }
+        if (titleEl) titleEl.textContent = opts.title || 'Подтвердите действие';
+        if (bodyEl) bodyEl.textContent = opts.body || '';
+        okBtn.textContent = opts.okLabel || 'Подтвердить';
+        okBtn.className = 'btn ' + (opts.okClass || 'btn-danger');
+        if (opts.notifyStart) okBtn.setAttribute('data-dg-notify-start', opts.notifyStart);
+        else okBtn.removeAttribute('data-dg-notify-start');
+        dimConfirmOnOk = typeof opts.onOk === 'function' ? opts.onOk : null;
+        ov.style.display = 'flex';
+        ov.setAttribute('aria-hidden', 'false');
+      }
+
+      function bindDimConfirm() {
+        var cancel = document.getElementById('dg-dim-confirm-cancel');
+        var ok = document.getElementById('dg-dim-confirm-ok');
+        var backdrop = document.getElementById('dg-dim-confirm-backdrop');
+        if (cancel) cancel.addEventListener('click', closeDimConfirm);
+        if (backdrop) backdrop.addEventListener('click', closeDimConfirm);
+        if (ok) {
+          ok.addEventListener('click', function () {
+            var fn = dimConfirmOnOk;
+            closeDimConfirm();
+            if (fn) fn();
+          });
+        }
+        document.addEventListener('keydown', function (e) {
+          if (e.key !== 'Escape') return;
+          var ov = document.getElementById('dg-dim-confirm-overlay');
+          if (!ov || ov.style.display === 'none' || ov.getAttribute('aria-hidden') === 'true') return;
+          closeDimConfirm();
+        });
+      }
 
       function cloneFilters(src) {
         var measure = String((src && src.measure_scope) || '');
@@ -3761,36 +3869,44 @@
         var oldRaw = btn.getAttribute('data-dg-old');
         if (!logId || !field) return;
         var oldDisplay = oldRaw == null || oldRaw === '' ? '«пусто»' : '«' + oldRaw + '»';
-        if (!window.confirm('Откатить поле «' + (FIELD_LABELS[field] || field) + '» к ' + oldDisplay + '?')) return;
-        btn.disabled = true;
-        var origText = btn.textContent;
-        btn.textContent = '⏳…';
-        fetch('/api/exports/dimensions/log/revert', {
-          method: 'POST',
-          credentials: 'same-origin',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ log_id: logId }),
-        })
-          .then(function (r) {
-            return r.json().then(function (j) { return { ok: r.ok, j: j }; });
-          })
-          .then(function (x) {
-            if (!x.ok || !x.j || x.j.success === false) {
-              setStatusHint('Откат не выполнен: ' + ((x.j && x.j.error) || 'неизвестная ошибка'), 'error');
-              btn.disabled = false;
-              btn.textContent = origText;
-              return;
-            }
-            var code = String(x.j.code || logModalState.code || '');
-            applyRevertResultToUi(code, x.j.field, x.j.reverted_to, x.j.measured_by_name, x.j.measured_at, x.j.measurement);
-            setStatusHint('Откат «' + (FIELD_LABELS[field] || field) + '» применён', 'success');
-            loadLogFor(logModalState.code, { offset: logModalState.offset, limit: logModalState.limit });
-          })
-          .catch(function (e) {
-            setStatusHint('Сетевая ошибка отката: ' + ((e && e.message) || String(e)), 'error');
-            btn.disabled = false;
-            btn.textContent = origText;
-          });
+        openDimConfirm({
+          title: 'Откатить правку?',
+          body: 'Откатить поле «' + (FIELD_LABELS[field] || field) + '» к ' + oldDisplay + '?',
+          okLabel: 'Откатить',
+          okClass: 'btn-warning',
+          notifyStart: 'Откатываем правку габаритов…',
+          onOk: function () {
+            btn.disabled = true;
+            var origText = btn.textContent;
+            btn.textContent = '⏳…';
+            fetch('/api/exports/dimensions/log/revert', {
+              method: 'POST',
+              credentials: 'same-origin',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ log_id: logId }),
+            })
+              .then(function (r) {
+                return r.json().then(function (j) { return { ok: r.ok, j: j }; });
+              })
+              .then(function (x) {
+                if (!x.ok || !x.j || x.j.success === false) {
+                  setStatusHint('Откат не выполнен: ' + ((x.j && x.j.error) || 'неизвестная ошибка'), 'error');
+                  btn.disabled = false;
+                  btn.textContent = origText;
+                  return;
+                }
+                var code = String(x.j.code || logModalState.code || '');
+                applyRevertResultToUi(code, x.j.field, x.j.reverted_to, x.j.measured_by_name, x.j.measured_at, x.j.measurement);
+                setStatusHint('Откат «' + (FIELD_LABELS[field] || field) + '» применён', 'success');
+                loadLogFor(logModalState.code, { offset: logModalState.offset, limit: logModalState.limit });
+              })
+              .catch(function (e) {
+                setStatusHint('Сетевая ошибка отката: ' + ((e && e.message) || String(e)), 'error');
+                btn.disabled = false;
+                btn.textContent = origText;
+              });
+          },
+        });
       }
 
       /**
@@ -4133,8 +4249,16 @@
               '  • на других страницах (из БД): ' + dbTasks.length + '\n' +
               warnLines + '\n' +
               'Отправить ВСЕ в МойСклад?\n\nДля позиций текущей страницы сервер сначала сохранит inline-значения в БД, для остальных — возьмёт уже сохранённый override.';
-            if (!window.confirm(msg)) return;
-            runBulkSync(allTasks, btn, { label: 'Балк-синк (все правки)' });
+            openDimConfirm({
+              title: 'Отправить габариты в МойСклад?',
+              body: msg,
+              okLabel: 'Отправить в МС',
+              okClass: 'btn-primary',
+              notifyStart: 'Отправляем правки габаритов в МойСклад…',
+              onOk: function () {
+                runBulkSync(allTasks, btn, { label: 'Балк-синк (все правки)' });
+              },
+            });
           })
           .catch(function (e) {
             btn.disabled = false;
@@ -5185,6 +5309,7 @@
         bindDimColumnResize();
         bindCellEditors();
         bindLogModal();
+        bindDimConfirm();
         bindColumnsToolbox();
         bindSyncAllButton();
         bindPackingTypesRefresh();

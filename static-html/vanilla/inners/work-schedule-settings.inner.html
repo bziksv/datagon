@@ -131,22 +131,43 @@
                 <button type="button" class="btn btn-sm btn-outline-primary" id="dg-ws-set-emp-add" data-dg-notify-start="Привязка…">Привязать пользователя</button>
               </div>
             </div>
+            <div class="card-body border-bottom py-2 px-3" id="dg-ws-set-emp-filters">
+              <div class="d-flex flex-wrap align-items-end gap-2">
+                <div class="flex-grow-1" style="min-width: 220px; max-width: 420px">
+                  <label class="form-label mb-1 small text-muted" for="dg-ws-set-emp-search">Умный поиск</label>
+                  <div class="input-group input-group-sm">
+                    <span class="input-group-text"><i class="pe-7s-search"></i></span>
+                    <input
+                      type="search"
+                      class="form-control"
+                      id="dg-ws-set-emp-search"
+                      placeholder="ФИО, орг, отдел, оклад, стаж…"
+                      autocomplete="off"
+                    />
+                  </div>
+                </div>
+                <button type="button" class="btn btn-sm btn-primary" id="dg-ws-set-emp-apply" data-dg-notify-start="Применяем поиск…">Применить</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-ws-set-emp-reset" data-dg-notify-start="Сбрасываем поиск…">Сбросить</button>
+              </div>
+            </div>
             <div class="card-body p-0">
               <div class="table-responsive">
-                <table class="table table-sm mb-0 align-middle">
+                <table class="table table-sm mb-0 align-middle" id="dg-ws-set-emp-table">
                   <thead>
-                    <tr>
-                      <th>ФИО</th>
-                      <th>Организация</th>
-                      <th>Отдел</th>
-                      <th>Дата приёма</th>
-                      <th>Оклад</th>
-                      <th>График (личн.)</th>
-                      <th>Норма дня</th>
-                      <th>Больничный ₽</th>
-                      <th>Премия</th>
-                      <th>Переопред.</th>
-                      <th></th>
+                    <tr id="dg-ws-set-emp-thead">
+                      <th class="dg-ws-set-sortable" data-dg-ws-set-emp-sort="name" scope="col">ФИО</th>
+                      <th class="dg-ws-set-sortable" data-dg-ws-set-emp-sort="org" scope="col">Организация</th>
+                      <th class="dg-ws-set-sortable" data-dg-ws-set-emp-sort="dept" scope="col">Отдел</th>
+                      <th class="dg-ws-set-sortable" data-dg-ws-set-emp-sort="hire" scope="col">Дата приёма</th>
+                      <th class="dg-ws-set-sortable" data-dg-ws-set-emp-sort="seniority" scope="col">Стаж</th>
+                      <th class="dg-ws-set-sortable" data-dg-ws-set-emp-sort="seniority_bonus" scope="col">За стаж</th>
+                      <th class="dg-ws-set-sortable" data-dg-ws-set-emp-sort="salary" scope="col">Оклад</th>
+                      <th class="dg-ws-set-sortable" data-dg-ws-set-emp-sort="schedule" scope="col">График (личн.)</th>
+                      <th class="dg-ws-set-sortable" data-dg-ws-set-emp-sort="norm" scope="col">Норма дня</th>
+                      <th class="dg-ws-set-sortable" data-dg-ws-set-emp-sort="sick" scope="col">Больничный ₽</th>
+                      <th class="dg-ws-set-sortable" data-dg-ws-set-emp-sort="premium" scope="col">Премия</th>
+                      <th class="dg-ws-set-sortable" data-dg-ws-set-emp-sort="overrides" scope="col">Переопред.</th>
+                      <th scope="col"></th>
                     </tr>
                   </thead>
                   <tbody id="dg-ws-set-emp-tbody"></tbody>
@@ -200,12 +221,14 @@
                   <label class="form-label" for="dg-ws-set-dept-prem-kind">Правило премии</label>
                   <select class="form-select" id="dg-ws-set-dept-prem-kind">
                     <option value="stub">Нет</option>
-                    <option value="fixed">Фикс, ₽</option>
+                    <option value="fixed">Фикс по дням, ₽</option>
+                    <option value="fixed_full">Фикс целиком, ₽</option>
                   </select>
                 </div>
                 <div class="mb-0" id="dg-ws-set-dept-prem-amount-wrap">
-                  <label class="form-label" for="dg-ws-set-dept-prem-amount">Сумма фикса, ₽</label>
+                  <label class="form-label" for="dg-ws-set-dept-prem-amount">Сумма, ₽</label>
                   <input type="text" class="form-control" id="dg-ws-set-dept-prem-amount" inputmode="decimal" placeholder="0" />
+                  <div class="form-text">По дням — пропорционально ставкам месяца; целиком — вся сумма (продажи).</div>
                 </div>
               </div>
               <div class="card-footer d-flex justify-content-end gap-2 bg-white border-top-0">
@@ -276,7 +299,10 @@
                   </div>
                   <div class="col-md-4">
                     <label class="form-label" for="dg-ws-set-emp-salary">Оклад</label>
-                    <input type="text" class="form-control" id="dg-ws-set-emp-salary" />
+                    <div class="input-group">
+                      <input type="text" class="form-control" id="dg-ws-set-emp-salary" />
+                      <button type="button" class="btn btn-outline-secondary" id="dg-ws-set-emp-salary-hist" title="История изменений оклада" data-dg-notify-start="Загружаем историю оклада…">История</button>
+                    </div>
                   </div>
                   <div class="col-md-4">
                     <label class="form-label" for="dg-ws-set-emp-sched">График (личный)</label>
@@ -309,11 +335,12 @@
                     <select class="form-select" id="dg-ws-set-emp-prem-kind">
                       <option value="">— из отдела —</option>
                       <option value="stub">Нет</option>
-                      <option value="fixed">Фикс, ₽</option>
+                      <option value="fixed">Фикс по дням, ₽</option>
+                      <option value="fixed_full">Фикс целиком, ₽</option>
                     </select>
                   </div>
                   <div class="col-md-4" id="dg-ws-set-emp-prem-amount-wrap">
-                    <label class="form-label" for="dg-ws-set-emp-prem-amount">Сумма фикса, ₽</label>
+                    <label class="form-label" for="dg-ws-set-emp-prem-amount">Сумма, ₽</label>
                     <input type="text" class="form-control" id="dg-ws-set-emp-prem-amount" inputmode="decimal" placeholder="0" />
                   </div>
                 </div>
@@ -339,6 +366,35 @@
               <div class="card-footer d-flex justify-content-end gap-2 bg-white border-top-0">
                 <button type="button" class="btn btn-outline-secondary" data-dg-ws-set-close="org-del" data-dg-no-activity="1">Отмена</button>
                 <button type="button" class="btn btn-danger" id="dg-ws-set-org-del-ok" data-dg-notify-start="Удаляем организацию…">Удалить</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-ws-set-salary-hist-overlay" class="dg-ws-set-overlay" style="display: none" aria-hidden="true" role="dialog" aria-modal="true">
+            <div class="dg-ws-set-overlay-backdrop" data-dg-ws-set-close="salary-hist"></div>
+            <div class="dg-ws-set-overlay-panel card shadow-lg border-0 wide">
+              <div class="card-header d-flex justify-content-between align-items-center">
+                <div class="fw-semibold" id="dg-ws-set-salary-hist-title">История оклада</div>
+                <button type="button" class="btn-close" data-dg-ws-set-close="salary-hist" aria-label="Закрыть" data-dg-no-activity="1"></button>
+              </div>
+              <div class="card-body">
+                <p class="small text-muted mb-2" id="dg-ws-set-salary-hist-meta"></p>
+                <div class="table-responsive">
+                  <table class="table table-sm table-bordered mb-0">
+                    <thead>
+                      <tr>
+                        <th>Когда</th>
+                        <th>Кто</th>
+                        <th>Было</th>
+                        <th>Стало</th>
+                      </tr>
+                    </thead>
+                    <tbody id="dg-ws-set-salary-hist-tbody"></tbody>
+                  </table>
+                </div>
+              </div>
+              <div class="card-footer d-flex justify-content-end bg-white border-top-0">
+                <button type="button" class="btn btn-outline-secondary" data-dg-ws-set-close="salary-hist" data-dg-no-activity="1">Закрыть</button>
               </div>
             </div>
           </div>

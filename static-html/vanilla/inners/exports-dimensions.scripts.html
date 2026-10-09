@@ -39,6 +39,62 @@
         lastError: '',
       };
 
+      var dimConfirmOnOk = null;
+
+      function closeDimConfirm() {
+        var ov = document.getElementById('dg-dim-confirm-overlay');
+        if (!ov) return;
+        ov.style.display = 'none';
+        ov.setAttribute('aria-hidden', 'true');
+        dimConfirmOnOk = null;
+      }
+
+      /**
+       * Своя модалка вместо window.confirm (запись в МС / откат журнала).
+       * opts: { title, body, okLabel, okClass, notifyStart, onOk }
+       */
+      function openDimConfirm(opts) {
+        opts = opts || {};
+        var ov = document.getElementById('dg-dim-confirm-overlay');
+        var titleEl = document.getElementById('dg-dim-confirm-title');
+        var bodyEl = document.getElementById('dg-dim-confirm-body');
+        var okBtn = document.getElementById('dg-dim-confirm-ok');
+        if (!ov || !okBtn) {
+          if (typeof opts.onOk === 'function') opts.onOk();
+          return;
+        }
+        if (titleEl) titleEl.textContent = opts.title || 'Подтвердите действие';
+        if (bodyEl) bodyEl.textContent = opts.body || '';
+        okBtn.textContent = opts.okLabel || 'Подтвердить';
+        okBtn.className = 'btn ' + (opts.okClass || 'btn-danger');
+        if (opts.notifyStart) okBtn.setAttribute('data-dg-notify-start', opts.notifyStart);
+        else okBtn.removeAttribute('data-dg-notify-start');
+        dimConfirmOnOk = typeof opts.onOk === 'function' ? opts.onOk : null;
+        ov.style.display = 'flex';
+        ov.setAttribute('aria-hidden', 'false');
+      }
+
+      function bindDimConfirm() {
+        var cancel = document.getElementById('dg-dim-confirm-cancel');
+        var ok = document.getElementById('dg-dim-confirm-ok');
+        var backdrop = document.getElementById('dg-dim-confirm-backdrop');
+        if (cancel) cancel.addEventListener('click', closeDimConfirm);
+        if (backdrop) backdrop.addEventListener('click', closeDimConfirm);
+        if (ok) {
+          ok.addEventListener('click', function () {
+            var fn = dimConfirmOnOk;
+            closeDimConfirm();
+            if (fn) fn();
+          });
+        }
+        document.addEventListener('keydown', function (e) {
+          if (e.key !== 'Escape') return;
+          var ov = document.getElementById('dg-dim-confirm-overlay');
+          if (!ov || ov.style.display === 'none' || ov.getAttribute('aria-hidden') === 'true') return;
+          closeDimConfirm();
+        });
+      }
+
       function cloneFilters(src) {
         var measure = String((src && src.measure_scope) || '');
         if (!measure && src && src.scope) {
@@ -1680,36 +1736,44 @@
         var oldRaw = btn.getAttribute('data-dg-old');
         if (!logId || !field) return;
         var oldDisplay = oldRaw == null || oldRaw === '' ? '«пусто»' : '«' + oldRaw + '»';
-        if (!window.confirm('Откатить поле «' + (FIELD_LABELS[field] || field) + '» к ' + oldDisplay + '?')) return;
-        btn.disabled = true;
-        var origText = btn.textContent;
-        btn.textContent = '⏳…';
-        fetch('/api/exports/dimensions/log/revert', {
-          method: 'POST',
-          credentials: 'same-origin',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ log_id: logId }),
-        })
-          .then(function (r) {
-            return r.json().then(function (j) { return { ok: r.ok, j: j }; });
-          })
-          .then(function (x) {
-            if (!x.ok || !x.j || x.j.success === false) {
-              setStatusHint('Откат не выполнен: ' + ((x.j && x.j.error) || 'неизвестная ошибка'), 'error');
-              btn.disabled = false;
-              btn.textContent = origText;
-              return;
-            }
-            var code = String(x.j.code || logModalState.code || '');
-            applyRevertResultToUi(code, x.j.field, x.j.reverted_to, x.j.measured_by_name, x.j.measured_at, x.j.measurement);
-            setStatusHint('Откат «' + (FIELD_LABELS[field] || field) + '» применён', 'success');
-            loadLogFor(logModalState.code, { offset: logModalState.offset, limit: logModalState.limit });
-          })
-          .catch(function (e) {
-            setStatusHint('Сетевая ошибка отката: ' + ((e && e.message) || String(e)), 'error');
-            btn.disabled = false;
-            btn.textContent = origText;
-          });
+        openDimConfirm({
+          title: 'Откатить правку?',
+          body: 'Откатить поле «' + (FIELD_LABELS[field] || field) + '» к ' + oldDisplay + '?',
+          okLabel: 'Откатить',
+          okClass: 'btn-warning',
+          notifyStart: 'Откатываем правку габаритов…',
+          onOk: function () {
+            btn.disabled = true;
+            var origText = btn.textContent;
+            btn.textContent = '⏳…';
+            fetch('/api/exports/dimensions/log/revert', {
+              method: 'POST',
+              credentials: 'same-origin',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ log_id: logId }),
+            })
+              .then(function (r) {
+                return r.json().then(function (j) { return { ok: r.ok, j: j }; });
+              })
+              .then(function (x) {
+                if (!x.ok || !x.j || x.j.success === false) {
+                  setStatusHint('Откат не выполнен: ' + ((x.j && x.j.error) || 'неизвестная ошибка'), 'error');
+                  btn.disabled = false;
+                  btn.textContent = origText;
+                  return;
+                }
+                var code = String(x.j.code || logModalState.code || '');
+                applyRevertResultToUi(code, x.j.field, x.j.reverted_to, x.j.measured_by_name, x.j.measured_at, x.j.measurement);
+                setStatusHint('Откат «' + (FIELD_LABELS[field] || field) + '» применён', 'success');
+                loadLogFor(logModalState.code, { offset: logModalState.offset, limit: logModalState.limit });
+              })
+              .catch(function (e) {
+                setStatusHint('Сетевая ошибка отката: ' + ((e && e.message) || String(e)), 'error');
+                btn.disabled = false;
+                btn.textContent = origText;
+              });
+          },
+        });
       }
 
       /**
@@ -2052,8 +2116,16 @@
               '  • на других страницах (из БД): ' + dbTasks.length + '\n' +
               warnLines + '\n' +
               'Отправить ВСЕ в МойСклад?\n\nДля позиций текущей страницы сервер сначала сохранит inline-значения в БД, для остальных — возьмёт уже сохранённый override.';
-            if (!window.confirm(msg)) return;
-            runBulkSync(allTasks, btn, { label: 'Балк-синк (все правки)' });
+            openDimConfirm({
+              title: 'Отправить габариты в МойСклад?',
+              body: msg,
+              okLabel: 'Отправить в МС',
+              okClass: 'btn-primary',
+              notifyStart: 'Отправляем правки габаритов в МойСклад…',
+              onOk: function () {
+                runBulkSync(allTasks, btn, { label: 'Балк-синк (все правки)' });
+              },
+            });
           })
           .catch(function (e) {
             btn.disabled = false;
@@ -3104,6 +3176,7 @@
         bindDimColumnResize();
         bindCellEditors();
         bindLogModal();
+        bindDimConfirm();
         bindColumnsToolbox();
         bindSyncAllButton();
         bindPackingTypesRefresh();

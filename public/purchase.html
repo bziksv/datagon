@@ -553,6 +553,30 @@
       opacity: 0.55;
       pointer-events: none;
     }
+    body.datagon-vanilla-body[data-dg-active-nav='purchase'] .dg-pu-confirm-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 2000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='purchase'] .dg-pu-confirm-overlay .dg-pu-confirm-backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.28);
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='purchase'] .dg-pu-confirm-overlay .dg-pu-confirm-panel {
+      position: relative;
+      z-index: 1;
+      width: min(480px, 100%);
+      max-height: calc(100vh - 2rem);
+      overflow: auto;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='purchase'] #dg-pu-confirm-body {
+      white-space: pre-line;
+    }
   </style>
 
   <style>
@@ -1638,6 +1662,30 @@
             </div>
           </div>
 
+          <div
+            id="dg-pu-confirm-overlay"
+            class="dg-pu-confirm-overlay"
+            style="display: none"
+            aria-hidden="true"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="dg-pu-confirm-title"
+          >
+            <div class="dg-pu-confirm-backdrop" id="dg-pu-confirm-backdrop"></div>
+            <div class="dg-pu-confirm-panel card shadow-lg border-0">
+              <div class="card-header">
+                <div class="fw-semibold" id="dg-pu-confirm-title">Подтвердите действие</div>
+              </div>
+              <div class="card-body">
+                <p class="mb-0" id="dg-pu-confirm-body"></p>
+              </div>
+              <div class="card-footer d-flex justify-content-end gap-2 flex-wrap bg-white border-top-0">
+                <button type="button" class="btn btn-outline-secondary" id="dg-pu-confirm-cancel" data-dg-no-activity="1">Отмена</button>
+                <button type="button" class="btn btn-danger" id="dg-pu-confirm-ok" data-dg-no-activity="1">Подтвердить</button>
+              </div>
+            </div>
+          </div>
+
         </div>
 
         <div class="app-footer">
@@ -1720,6 +1768,59 @@
   <script src="/datagon-vanilla.js?v=20261009-dates"></script>
     <script>
     (function () {
+      var puConfirmOnOk = null;
+
+      function closePuConfirm() {
+        var ov = document.getElementById("dg-pu-confirm-overlay");
+        if (!ov) return;
+        ov.style.display = "none";
+        ov.setAttribute("aria-hidden", "true");
+        puConfirmOnOk = null;
+      }
+
+      /** Своя модалка вместо window.confirm (Пр.→НС / откат пакета). */
+      function openPuConfirm(opts) {
+        opts = opts || {};
+        var ov = document.getElementById("dg-pu-confirm-overlay");
+        var titleEl = document.getElementById("dg-pu-confirm-title");
+        var bodyEl = document.getElementById("dg-pu-confirm-body");
+        var okBtn = document.getElementById("dg-pu-confirm-ok");
+        if (!ov || !okBtn) {
+          if (typeof opts.onOk === "function") opts.onOk();
+          return;
+        }
+        if (titleEl) titleEl.textContent = opts.title || "Подтвердите действие";
+        if (bodyEl) bodyEl.textContent = opts.body || "";
+        okBtn.textContent = opts.okLabel || "Подтвердить";
+        okBtn.className = "btn " + (opts.okClass || "btn-danger");
+        if (opts.notifyStart) okBtn.setAttribute("data-dg-notify-start", opts.notifyStart);
+        else okBtn.removeAttribute("data-dg-notify-start");
+        puConfirmOnOk = typeof opts.onOk === "function" ? opts.onOk : null;
+        ov.style.display = "flex";
+        ov.setAttribute("aria-hidden", "false");
+      }
+
+      function bindPuConfirm() {
+        var cancel = document.getElementById("dg-pu-confirm-cancel");
+        var ok = document.getElementById("dg-pu-confirm-ok");
+        var backdrop = document.getElementById("dg-pu-confirm-backdrop");
+        if (cancel) cancel.addEventListener("click", closePuConfirm);
+        if (backdrop) backdrop.addEventListener("click", closePuConfirm);
+        if (ok) {
+          ok.addEventListener("click", function () {
+            var fn = puConfirmOnOk;
+            closePuConfirm();
+            if (fn) fn();
+          });
+        }
+        document.addEventListener("keydown", function (e) {
+          if (e.key !== "Escape") return;
+          var ov = document.getElementById("dg-pu-confirm-overlay");
+          if (!ov || ov.style.display === "none" || ov.getAttribute("aria-hidden") === "true") return;
+          closePuConfirm();
+        });
+      }
+
       // Один источник истины для колонок: видимость, ширины, шапка и тело берут отсюда.
       // [key, label, opts?]
       //   opts.editable → редактируемое override-поле (POST /api/purchase/override)
@@ -4098,8 +4199,19 @@
             e.stopPropagation();
             var bid = Number(btn.getAttribute("data-batch-id"));
             if (!Number.isFinite(bid) || bid <= 0) return;
-            if (!window.confirm("Откатить пакет #" + bid + "? Неснижаемый остаток (МС) вернётся к значениям до переноса.")) return;
-            revertMsApplyBatch(bid, btn);
+            openPuConfirm({
+              title: "Откатить пакет?",
+              body:
+                "Откатить пакет #" +
+                bid +
+                "? Неснижаемый остаток (МС) в Datagon вернётся к значениям до переноса. В МойСклад это не отправляется.",
+              okLabel: "Откатить",
+              okClass: "btn-warning",
+              notifyStart: "Откатываем пакет переноса НС…",
+              onOk: function () {
+                revertMsApplyBatch(bid, btn);
+              },
+            });
           });
         });
       }
@@ -4898,10 +5010,21 @@
           runPurchaseFormulaCacheRebuild();
         });
       }
+      bindPuConfirm();
       var puApplyMinStockBtn = document.getElementById("dg-pu-apply-formula-min-stock");
       if (puApplyMinStockBtn) {
         puApplyMinStockBtn.addEventListener("click", function () {
-          runPurchaseMinStockApply();
+          openPuConfirm({
+            title: "Пр.→НС — перенос в БД?",
+            body:
+              "Перенести «Предлагаемый нес.ост.» в колонку «Неснижаемый остаток» (ms_export.min_stock) только в Datagon по текущим применённым фильтрам?\n\nВ МойСклад это не уходит — выгрузка отдельно: Настройки → Экспорт в МС → «Неснижаемый остаток».",
+            okLabel: "Пр.→НС",
+            okClass: "btn-primary",
+            notifyStart: "Запускаем перенос предлагаемого в неснижаемый (БД)…",
+            onOk: function () {
+              runPurchaseMinStockApply();
+            },
+          });
         });
       }
       loadMsApplyLog();

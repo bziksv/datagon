@@ -1,19 +1,33 @@
 ---
 id: processes
-title: Логи
-description: Мониторинг фоновых задач — глобальный синк, МойСклад, парсинг, матчинг; как читать статусы
+title: Активность / Логи
+description: Журнал действий команды и сводка фоновых задач — синки, автосинк, парсинг, матчинг
 ---
 
-**`/processes.html`** — **сводка**, а не место изменения параметров: здесь видно, идёт ли **глобальная синхронизация** всех источников, **синхронизация МойСклад**, **обход URL** / очередь парсинга, **сопоставление** по выбранному `my_site_id`. Для изменения лимитов идите в [Настройки](/docs/settings/).
+В меню: **«Активность/Логи»** → **`/processes.html`**. Ключ матрицы: **`processes`**. Экран — **сводка и журнал**, не место правки лимитов (они в [Настройках](/docs/settings/)). Карта: [Карта панели](/docs/panel-map/).
 
 <blockquote class="dg-doc-tip">
-<strong>Снимок интерфейса.</strong> PNG обновляют: <code>npm run docs:capture-screenshots</code> (с <code>DOCS_USER</code> и <code>DOCS_PASSWORD</code> — с живой панели; без входа — с макета <code>/doc-screenshots/processes-sample.html</code>) и <code>npm run docs:docusaurus:build</code>. Экран в кадре — <strong>viewport</strong> (верх страницы). <a href="./capture-screenshots.md">Подробнее о съёмке</a>.
+<strong>Снимок интерфейса.</strong> PNG: <code>npm run docs:capture-screenshots</code> (с входом — живая панель; без — макет <code>/doc-screenshots/processes-sample.html</code>) и <code>npm run docs:docusaurus:build</code>. Кадр — <strong>viewport</strong>. <a href="/docs/capture-screenshots/">Съёмка</a>.
 </blockquote>
 
 <figure class="dg-doc-shot">
-<img src="/docs/screenshots/processes.png" alt="«Логи»" loading="lazy" />
-<figcaption>Логи: сводка фоновых процессов (кадр <strong>viewport</strong>).</figcaption>
+<img src="/docs/screenshots/processes.png" alt="Активность / Логи" loading="lazy" />
+<figcaption>Активность/Логи: журнал и сводка процессов (viewport).</figcaption>
 </figure>
+
+## Доступ
+
+| Что | Правило |
+|-----|---------|
+| Пункт меню 🔒 | Только **admin** или **`can_manage_users`** (`data-dg-nav-restricted="activity"`). Матрица `full` **не** показывает пункт без этого права. |
+| HTML `/processes.html` | Матрица ключа **`processes`** (`hidden` → редирект). |
+| `GET /api/processes/overview` | Ключ API **`processes`**. |
+| Журнал активности `GET /api/activity/events` | Жёстко **admin** / `can_manage_users` в `routes/activity.js` (403 иначе). |
+| `POST /api/activity/track` | Любая сессия (телеметрия кликов; pageKey `null`). |
+
+## Журнал активности (верх страницы)
+
+Карточка **«Журнал активности»** (`#dg-activity-hero`): лента login / logout / page / click / ui. Свои фильтры и пагинация; **не** зависит от выбора «За день (МСК)» ниже. Сворачивание — `localStorage` `datagon_processes_activity_journal_collapsed_v1`. Данные: `GET /api/activity/events`. Без manage-users блок пустой/ошибка при запросе.
 
 ## Когда смотреть этот экран
 
@@ -28,9 +42,10 @@ description: Мониторинг фоновых задач — глобальн
 - **За день (МСК)** — единый выбор календарной даты для трёх блоков ниже: «Синхронизация МойСклад», «Автосинхронизация по расписанию», «Сопоставление товаров». По умолчанию — сегодня; доступно **14 дней** (включая сегодня) через `<input type="date">` или быстрые чипы «Сегодня / Вчера / −2 …». Активити-журнал не зависит от этого выбора — у него свои фильтры. Поллинг сводки на каждые 3 секунды работает только в режиме «сегодня»; на любую другую дату он останавливается, чтобы не дёргать сервер ради историчных данных.
 - **Глобальная синхронизация** — массовый прогон по всем включённым источникам «Мои сайты»; длительность зависит от объёма и `sync_*` в [Настройках](/docs/settings/). Не запускайте параллельно с тяжёлыми ручными операциями на той же БД без окна обслуживания.
 - **МойСклад** — фоновый `POST /api/ms/sync`: статус смотрите здесь и через [`GET /api/ms/status`](/docs/api/#moysklad). Под блоком — **архив шагов в БД** за выбранный день: `dg_ms_sync_log` за этот день (поле `moyskladPersistedLogs` в [`GET /api/processes/overview`](/docs/api/)). Сортировка журнала — **последние шаги сверху** (DESC по `id`), чтобы свежие записи были видны без скролла. «Текущая сессия (память процесса, до 30 строк)» отдаётся только для «сегодня» — память процесса не различает дат.
-- **Автосинхронизация по расписанию** — разнесена по разделам с человеко-читаемыми названиями из `lib/datagonAutoSyncRegistry.js`: **Мои товары**, **МойСклад: ms_export (МСК)** (выгрузка номенклатуры/остатков в `ms_export` и журнал нулевых остатков; не путать с **Продажи МС**), **Маркетплейсы**, **Калькуляция Huckster**, **Размер БД и диска**, **Габариты МС**, **Продажи МС** (обычный и полный). У каждого раздела видны статус расписания (вкл/выкл и время старта по МСК) и **запуски этого раздела за выбранный день** (`auto_sync_runs.task_type`), с продолжительностью и значком `по расписанию`/`вручную`. Для строки со статусом `running` UI добавляет **живую** вторую строку «Сейчас: …» из `autoSync.tasks_live` в [`GET /api/processes/overview`](/docs/api/) (прогресс из памяти процесса, только пока открыт этот запуск автосинка). Если за день не было — раздел показывает заглушку «За выбранный день запусков не было».
-- **Парсинг / очередь** — связано с `worker.js` и таблицей `pages`: если статус в логах «завис», проверьте процесс воркера на сервере (pm2/systemd) и свободное место на диске для временных файлов (если используются).
-- **Сопоставление** — последняя `matching_jobs` для выбранного `my_site_id`, чей `started_at` пришёлся на выбранный день; соответствует `POST /api/matches/start-matching`. Если за день задач не было — «За выбранный день задач сопоставления не было».
+- **Автосинхронизация по расписанию** — секции **только** из `autoSync.sections` (`lib/datagonAutoSyncRegistry.js` → `AUTO_SYNC_TASKS`, сейчас **21** задача: myproducts, moysklad, ms_orders, marketplaces_ozon/wb/ym, huckster, np_ms_enrich, np_crm_notify, db_size, dimensions, min_stock_export, mssales, mssales_full, purchase_formula_cache, medmarket, medmarket_fill, price_comp_sync, network_prices, finance_tochka, ops_planfix). Не путать **МойСклад: каталог** с **Продажи МС**. У раздела: вкл/выкл, время МСК, extras, запуски за день (`auto_sync_runs`), бейдж расписание/вручную, кнопка **«Лог»** (полный `message`; для `dimensions` — ещё ошибки из журнала габаритов; для `min_stock_export` — `GET /api/processes/min-stock-export-errors`). У `running` — строка «Сейчас: …» из `autoSync.tasks_live`. Расписание правится на `/settings.html`.
+- **Парсинг / очередь** — `worker.js` и таблица `pages`.
+- **Сопоставление** — последняя `matching_jobs` за день для `my_site_id`.
+- **Остановить МС** (если доступно в UI) — `POST /api/ms/stop` (ключ API `moysklad`).
 
 ## Чеклист диагностики (кратко)
 
@@ -61,4 +76,12 @@ description: Мониторинг фоновых задач — глобальн
 
 ## API
 
-Глобальная синхронизация: [Глобальная синхронизация (server.js)](/docs/api/#глобальная-синхронизация-serverjs). МойСклад и матчи — соответствующие разделы той же страницы API.
+| Метод | Путь | Ключ матрицы |
+|--------|------|--------------|
+| GET | `/api/processes/overview?for_date=&my_site_id=` | `processes` |
+| GET | `/api/processes/min-stock-export-errors` | `processes` |
+| GET | `/api/activity/events` | жёстко admin / manage users |
+| POST | `/api/activity/track` | любая сессия |
+| POST | `/api/ms/stop` | `moysklad` |
+
+Подробно: [Обзор процессов](/docs/api/#обзор-процессов), [Активность](/docs/api/#активность), [Глобальная синхронизация](/docs/api/#глобальная-синхронизация-serverjs).

@@ -72,12 +72,38 @@
   }
   .dg-ws-earn-chip .lbl { color: #868e96; margin-right: 0.35rem; }
   .dg-ws-earn-chip .val { font-weight: 600; }
-  .dg-ws-earn-chip.total { background: #e8f5e9; }
+  .dg-ws-earn-chip .val .dg-ws-earn-sub {
+    display: block;
+    font-size: 0.7rem;
+    font-weight: 500;
+    color: #868e96;
+    margin-top: 0.1rem;
+    white-space: nowrap;
+  }
+  .dg-ws-earn-chip.total { background: #e8f5e9; border: 1px solid #c8e6c9; }
+  button.dg-ws-earn-chip.dg-ws-earn-salary {
+    border: 1px solid #d0d7de;
+    cursor: pointer;
+    text-align: left;
+    white-space: normal;
+  }
+  button.dg-ws-earn-chip.dg-ws-earn-salary:hover {
+    background: #e8eef6;
+    border-color: #b8c4d4;
+  }
 
   .dg-ws-month-title {
     font-size: 0.95rem;
     text-transform: capitalize;
     color: #495057;
+  }
+  .dg-ws-cal-summary {
+    background: #eef3fb;
+    border: 1px solid #d0dcf0;
+    border-radius: 0.35rem;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.9rem;
+    color: #343a40;
   }
   .dg-ws-cal-grid {
     display: grid;
@@ -92,22 +118,63 @@
     font-weight: 600;
   }
   .dg-ws-cal-cell {
-    min-height: 56px;
+    min-height: 64px;
     border: 1px solid #e9ecef;
     border-radius: 0.25rem;
     padding: 4px 6px;
     font-size: 0.72rem;
     background: #fff;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
   }
   .dg-ws-cal-cell.muted { background: #f8f9fa; color: #adb5bd; }
   .dg-ws-cal-cell .day-num { font-weight: 600; font-size: 0.8rem; }
-  .dg-ws-cal-cell.rate-1 { border-left: 3px solid #28a745; }
-  .dg-ws-cal-cell.rate-05 { border-left: 3px solid #ffc107; }
+  .dg-ws-cal-hours {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: #212529;
+    line-height: 1.2;
+  }
+  .dg-ws-cal-hours.open { color: #0d6efd; }
+  .dg-ws-cal-hours.muted-hrs { color: #868e96; font-weight: 600; font-size: 0.75rem; }
+  .dg-ws-cal-rate { font-size: 0.68rem; color: #6c757d; }
+  .dg-ws-cal-empty { color: #ced4da; }
+  .dg-ws-cal-cell.rate-1 { border-left: 3px solid #28a745; background: #f3faf4; }
+  .dg-ws-cal-cell.rate-05 { border-left: 3px solid #ffc107; background: #fffbf0; }
+  .dg-ws-cal-cell.has-hours { border-left: 3px solid #17a2b8; background: #f0fafc; }
   .dg-ws-cal-cell.rate-0 { border-left: 3px solid #dee2e6; }
   .dg-ws-cal-cell.type-vacation { background: #e3f2fd; }
   .dg-ws-cal-cell.type-sick { background: #fce4ec; }
   .dg-ws-cal-cell.type-busy { background: #ffebee; outline: 1px dashed #e57373; }
   .dg-ws-cal-cell.today { box-shadow: inset 0 0 0 2px #3f6ad8; }
+  .dg-ws-cal-cell.clickable {
+    cursor: pointer;
+  }
+  .dg-ws-cal-cell.clickable:hover {
+    background: #e8eef8;
+  }
+  .dg-ws-day-panel {
+    width: min(720px, 100%) !important;
+    max-height: min(90vh, 640px);
+    display: flex;
+    flex-direction: column;
+  }
+  .dg-ws-day-panel .card-body {
+    overflow: auto;
+  }
+  .dg-ws-day-seg-table {
+    font-size: 0.82rem;
+  }
+  .dg-ws-day-seg-table th,
+  .dg-ws-day-seg-table td {
+    vertical-align: middle;
+    white-space: nowrap;
+  }
+  .dg-ws-day-seg-table .ip {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.75rem;
+  }
 
   .dg-ws-legend {
     display: flex;
@@ -165,6 +232,29 @@
     white-space: nowrap;
   }
   .dg-ws-sheet th { background: #f4f6f9; }
+  .dg-ws-sheet th.dg-ws-day-h {
+    line-height: 1.15;
+    padding: 0.25rem 0.3rem;
+    min-width: 2.1rem;
+    vertical-align: bottom;
+  }
+  .dg-ws-sheet th.dg-ws-day-h .dg-ws-day-n {
+    display: block;
+    font-weight: 600;
+  }
+  .dg-ws-sheet th.dg-ws-day-h .dg-ws-day-wd {
+    display: block;
+    font-size: 0.65rem;
+    font-weight: 500;
+    text-transform: lowercase;
+    color: #6c757d;
+  }
+  .dg-ws-sheet th.dg-ws-day-h.weekend .dg-ws-day-wd {
+    color: #c0392b;
+  }
+  .dg-ws-sheet th.dg-ws-day-h.weekend {
+    background: #faf2f2;
+  }
   .dg-ws-sheet th.emp,
   .dg-ws-sheet td.emp {
     text-align: left;
@@ -176,6 +266,52 @@
     font-weight: 500;
   }
   .dg-ws-sheet th.emp { z-index: 2; background: #f4f6f9; }
+  .dg-ws-sheet th.dg-ws-pay-h,
+  .dg-ws-sheet td.dg-ws-pay {
+    text-align: right;
+    white-space: normal;
+    min-width: 6.5rem;
+    max-width: 7.5rem;
+    line-height: 1.2;
+    vertical-align: middle;
+    background: #fafbfc;
+  }
+  .dg-ws-sheet th.dg-ws-pay-h {
+    background: #eef2f7;
+    font-size: 0.72rem;
+    font-weight: 600;
+  }
+  .dg-ws-sheet .dg-ws-pay-main {
+    display: block;
+    font-weight: 600;
+    font-size: 0.78rem;
+  }
+  .dg-ws-sheet .dg-ws-pay-sub {
+    display: block;
+    font-size: 0.65rem;
+    color: #868e96;
+    font-weight: 500;
+  }
+  .dg-ws-sheet td.dg-ws-pay-prem {
+    cursor: pointer;
+  }
+  .dg-ws-sheet td.dg-ws-pay-prem:hover {
+    outline: 2px solid #3f6ad8;
+    outline-offset: -2px;
+    background: #eef3fb;
+  }
+  .dg-ws-sheet td.dg-ws-pay-prem.dg-ws-pay-manual {
+    background: #fff8e6;
+  }
+  .dg-ws-sheet td.dg-ws-pay-prem.dg-ws-pay-manual .dg-ws-pay-sub {
+    color: #b78103;
+  }
+  .dg-ws-sheet td.dg-ws-pay-prem.dg-ws-pay-sales {
+    background: #eef7f0;
+  }
+  .dg-ws-sheet td.dg-ws-pay-prem.dg-ws-pay-sales .dg-ws-pay-sub {
+    color: #2d6a3e;
+  }
   .dg-ws-sheet td.cell-click { cursor: pointer; }
   .dg-ws-sheet td.cell-click:hover {
     outline: 2px solid #3f6ad8;
@@ -186,6 +322,20 @@
   .dg-ws-sheet .c-0 { background: #fafafa; color: #adb5bd; }
   .dg-ws-sheet .c-v { background: #e3f2fd; }
   .dg-ws-sheet .c-s { background: #fce4ec; }
+  /* Открытый таймер: мягкое светло-зелёное мигание */
+  @keyframes dg-ws-open-pulse {
+    0%, 100% { background-color: #c8f0d0; box-shadow: inset 0 0 0 1px rgba(40, 167, 69, 0.35); }
+    50% { background-color: #eafaf0; box-shadow: inset 0 0 0 1px rgba(40, 167, 69, 0.15); }
+  }
+  .dg-ws-sheet td.c-open {
+    animation: dg-ws-open-pulse 1.4s ease-in-out infinite;
+    color: #1b5e20;
+    font-weight: 600;
+  }
+  .dg-ws-legend .swatch.dg-ws-swatch-open {
+    background: #c8f0d0;
+    animation: dg-ws-open-pulse 1.4s ease-in-out infinite;
+  }
 
   .dg-ws-clock-wrap .dg-ws-clock-btn { white-space: nowrap; }
   @media (max-width: 767.98px) {

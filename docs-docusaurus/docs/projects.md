@@ -4,10 +4,22 @@ title: Конкуренты
 description: Проекты парсинга — поля формы, селекторы, проверка в DevTools, типичные ошибки
 ---
 
-Раздел **`/projects.html`** — карточки **конкурентов**: домен (или базовый URL), **CSS-селекторы** для извлечения данных с HTML-страницы карточки товара. Качество селекторов напрямую влияет на [Очередь](/docs/queue/), [Результаты](/docs/results/) и далее на [Сопоставление](/docs/matches/).
+Раздел **`/projects.html`** (меню **Парсинг → Конкуренты**) — карточки **сайтов-конкурентов**: домен, **CSS-селекторы** для парсинга карточки товара. Качество селекторов влияет на [Очередь](/docs/queue/), [Результаты](/docs/results/) и [Сопоставление](/docs/matches/). Карта: [Карта панели](/docs/panel-map/). API: `/api/projects` → `routes/projects.js`.
+
+Не путать с **Маркетплейсы → Конкуренты** (`/exports-marketplaces-competitors.html`) — поиск аналогов на Ozon/WB/Я.М. по каталогу МС ([marketplaces](/docs/marketplaces/)).
+
+## Доступ
+
+Ключ матрицы — **`projects`**.
+
+| Режим | Что доступно |
+|-------|----------------|
+| **`hidden`** | HTML и `/api/projects` недоступны |
+| **`view`** | Список проектов — GET |
+| **`full`** | POST / PUT / DELETE |
 
 <blockquote class="dg-doc-tip">
-<strong>Снимок интерфейса.</strong> PNG обновляют: <code>npm run docs:capture-screenshots</code> (с <code>DOCS_USER</code> и <code>DOCS_PASSWORD</code> — с живой панели; без входа — с макета <code>/doc-screenshots/projects-sample.html</code>) и <code>npm run docs:docusaurus:build</code>. Полная страница в кадре. <a href="./capture-screenshots.md">Подробнее о съёмке</a>.
+<strong>Снимок интерфейса.</strong> PNG: <code>npm run docs:capture-screenshots</code> + <code>npm run docs:docusaurus:build</code>. Полная страница; без входа — макет <code>/doc-screenshots/projects-sample.html</code>. <a href="/docs/capture-screenshots/">Съёмка</a>.
 </blockquote>
 
 <figure class="dg-doc-shot">

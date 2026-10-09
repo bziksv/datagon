@@ -4,7 +4,19 @@ title: Мои сайты
 description: Подробно — подключение БД Bitrix/Webasyst, поля, синхронизация my_products, ошибки
 ---
 
-Раздел **`/my-sites.html`** — учёт **источников** собственного каталога: подключение к **внешней MySQL** (магазин на Bitrix, Webasyst и т.д.), проверка чтения полей и **синхронизация** данных в локальную таблицу Datagon **`my_products`**. Без рабочих источников неполноценны «Мои товары», сопоставление и часть отчётов по конкурентам.
+Раздел **`/my-sites.html`** — учёт **источников** собственного каталога: подключение к **внешней MySQL** (магазин на Bitrix, Webasyst и т.д.), проверка чтения полей и **синхронизация** данных в локальную таблицу Datagon **`my_products`**. Без рабочих источников неполноценны «Мои товары», сопоставление и часть отчётов по конкурентам. Карта: [Карта панели](/docs/panel-map/). API: `/api/my-sites` → `routes/mysites.js`.
+
+## Доступ
+
+Ключ матрицы — **`my-sites`**.
+
+| Режим | Что доступно |
+|-------|----------------|
+| **`hidden`** | HTML и `/api/my-sites` недоступны |
+| **`view`** | Список / GET; запись и sync — нет |
+| **`full`** | CRUD источника, fetch, sync, verify-stats, sync-all-real |
+
+Фильтры списка сайтов — только по **«Применить»** (или Enter), не на каждый `input`. Расписание массового синка в `my_products` — карточка автосинка на [Настройках](/docs/settings/) (`auto_sync_myproducts_*`), журнал — [Активность / Логи](/docs/processes/).
 
 ## Карточки экрана и «Свернуть / Развернуть»
 
@@ -19,7 +31,7 @@ description: Подробно — подключение БД Bitrix/Webasyst, �
 Кнопка **«Изменить»** в строке таблицы принудительно **разворачивает** форму (`expandAddFormCard`), чтобы поля редактирования были видны.
 
 <blockquote class="dg-doc-tip">
-<strong>Снимок интерфейса.</strong> PNG обновляют: <code>npm run docs:capture-screenshots</code> (с <code>DOCS_USER</code> и <code>DOCS_PASSWORD</code> — с живой панели; без входа — с макета <code>/doc-screenshots/mysites-sample.html</code>) и <code>npm run docs:docusaurus:build</code>. Для этого экрана — полная страница в кадре (см. <a href="./capture-screenshots.md">съёмка</a>).
+<strong>Снимок интерфейса.</strong> PNG: <code>npm run docs:capture-screenshots</code> + <code>npm run docs:docusaurus:build</code>. Полная страница; без входа — макет <code>/doc-screenshots/mysites-sample.html</code>. <a href="/docs/capture-screenshots/">Съёмка</a>.
 </blockquote>
 
 <figure class="dg-doc-shot">
