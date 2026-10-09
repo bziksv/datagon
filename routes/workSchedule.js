@@ -2366,15 +2366,17 @@ function createWorkScheduleRouter(db) {
         const emp = await getEmployeeByUserId(db, a.id);
         const headedIds = accounting ? [] : await getHeadedDepartmentIds(db, a.id);
         if (!accounting && !(emp && (isDeptHead(a, emp) || headedIds.length))) {
-            return res.status(403).json({ success: false, error: 'forbidden' });
+            // Для футер-поллера: не-руководителям отдаём пусто, без 403.
+            return res.json({ success: true, can_approve: false, rows: [] });
         }
         let sql = `SELECT v.id, v.employee_id, v.days_count, v.type, v.status,
                           COALESCE(v.reject_reason, '') AS comment,
-                          u.full_name, e.department_id,
+                          u.full_name, e.department_id, d.name AS department_name,
                           DATE_FORMAT(v.date_from, '%Y-%m-%d') AS date_from,
                           DATE_FORMAT(v.date_to, '%Y-%m-%d') AS date_to
                    FROM ws_vacation_request v
                    JOIN ws_employee e ON e.id=v.employee_id
+                   JOIN ws_department d ON d.id=e.department_id
                    JOIN users u ON u.id=e.user_id WHERE v.status='pending'`;
         const params = [];
         if (!accounting) {
@@ -2384,14 +2386,18 @@ function createWorkScheduleRouter(db) {
                 if (isDeptHead(a, emp)) ids.push(Number(emp.department_id));
             }
             if (!ids.length) {
-                return res.json({ success: true, rows: [] });
+                return res.json({ success: true, can_approve: false, rows: [] });
             }
             sql += ` AND e.department_id IN (?)`;
             params.push(ids);
         }
         sql += ' ORDER BY v.date_from';
         const [rows] = await db.query(sql, params);
-        res.json({ success: true, rows: (rows || []).map(mapVacationRow) });
+        res.json({
+            success: true,
+            can_approve: true,
+            rows: (rows || []).map(mapVacationRow),
+        });
     });
 
     router.post('/vacations/:id/approve', async (req, res) => {

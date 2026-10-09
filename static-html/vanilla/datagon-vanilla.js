@@ -2240,9 +2240,210 @@
   });
 
   /**
-   * Форматирование чисел для UI (ru-RU, разделитель тысяч — пробел: 1 000).
-   * API: DatagonFmt.formatNumber / formatInteger / formatMoney / parseNumberInput
+   * Футер «Уведомления» (megaphone / PopoverFooter-1): согласования отпусков.
+   * Поллинг GET /api/work-schedule/vacations/pending; тост при появлении новых.
    */
+  (function installFooterNotifications() {
+    var SEEN_KEY = "datagon_footer_notif_vac_seen_v1";
+    var POLL_MS = 60000;
+    var rowsCache = [];
+    var canApprove = false;
+    var timer = null;
+    var bootstrapped = false;
+
+    function esc(s) {
+      return String(s == null ? "" : s)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    function fmtD(ymd) {
+      if (window.DatagonFmt && window.DatagonFmt.formatDate) return window.DatagonFmt.formatDate(ymd);
+      var m = String(ymd || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+      return m ? m[3] + "-" + m[2] + "-" + m[1] : "—";
+    }
+
+    function readSeenIds() {
+      try {
+        var raw = localStorage.getItem(SEEN_KEY);
+        if (!raw) return {};
+        var arr = JSON.parse(raw);
+        var o = {};
+        (Array.isArray(arr) ? arr : []).forEach(function (id) {
+          o[Number(id)] = true;
+        });
+        return o;
+      } catch (e) {
+        return {};
+      }
+    }
+
+    function writeSeenIds(ids) {
+      try {
+        localStorage.setItem(SEEN_KEY, JSON.stringify(ids || []));
+      } catch (e) {}
+    }
+
+    function markAllSeen() {
+      writeSeenIds(
+        (rowsCache || []).map(function (r) {
+          return Number(r.id);
+        })
+      );
+    }
+
+    function setBadge(n) {
+      var dot = document.getElementById("dg-footer-notif-dot");
+      var pulse = document.getElementById("dg-footer-notif-view-pulse");
+      if (dot) {
+        if (n > 0) {
+          dot.classList.remove("d-none");
+          dot.setAttribute("aria-hidden", "false");
+        } else {
+          dot.classList.add("d-none");
+          dot.setAttribute("aria-hidden", "true");
+        }
+      }
+      if (pulse) pulse.style.display = n > 0 ? "" : "none";
+    }
+
+    function renderList(rows) {
+      var host = document.getElementById("dg-footer-notif-list");
+      var sub = document.getElementById("dg-footer-notif-subtitle");
+      var n = (rows || []).length;
+      if (sub) {
+        sub.innerHTML =
+          n > 0
+            ? "Ожидают согласования: <b class=\"text-warning\">" + n + "</b>"
+            : canApprove
+              ? "Нет заявок на согласование"
+              : "Нет уведомлений для вашей роли";
+      }
+      setBadge(n);
+      if (!host) return;
+      if (!n) {
+        host.innerHTML =
+          '<div class="text-muted small p-3 mb-0">' +
+          (canApprove
+            ? "Очередь согласования отпусков пуста."
+            : "Согласования отпусков видят руководитель отдела (head) и бухгалтерия.") +
+          "</div>";
+        return;
+      }
+      host.innerHTML = rows
+        .slice(0, 12)
+        .map(function (r) {
+          var period = fmtD(r.date_from) + " — " + fmtD(r.date_to);
+          var dept = r.department_name ? esc(r.department_name) : "";
+          return (
+            '<a class="dropdown-item d-flex align-items-start gap-2 py-2 border-bottom" href="/work-schedule.html?tab=dept">' +
+            '<span class="badge badge-dot badge-dot-sm bg-warning mt-2 flex-shrink-0"></span>' +
+            '<span class="flex-grow-1 min-w-0">' +
+            '<span class="d-block text-truncate fw-semibold">' +
+            esc(r.full_name || "Сотрудник") +
+            "</span>" +
+            '<span class="d-block small text-muted">' +
+            period +
+            (r.days_count != null ? " · " + r.days_count + " дн." : "") +
+            (dept ? " · " + dept : "") +
+            "</span>" +
+            '<span class="d-block small text-primary">Отпуск · ожидает</span>' +
+            "</span></a>"
+          );
+        })
+        .join("");
+    }
+
+    function toastNew(newRows) {
+      if (!newRows || !newRows.length) return;
+      var msg =
+        newRows.length === 1
+          ? "Новая заявка на отпуск: " + (newRows[0].full_name || "сотрудник")
+          : "Новых заявок на отпуск: " + newRows.length;
+      if (window.DatagonNotify && window.DatagonNotify.toast) {
+        window.DatagonNotify.toast({ type: "warning", message: msg });
+      }
+    }
+
+    function applyRows(rows, opts) {
+      opts = opts || {};
+      rowsCache = rows || [];
+      var seen = readSeenIds();
+      var fresh = rowsCache.filter(function (r) {
+        return !seen[Number(r.id)];
+      });
+      if (bootstrapped && fresh.length) toastNew(fresh);
+      if (!bootstrapped) {
+        markAllSeen();
+        bootstrapped = true;
+      }
+      renderList(rowsCache);
+      if (opts.markSeen) markAllSeen();
+    }
+
+    function poll() {
+      return fetch("/api/work-schedule/vacations/pending", {
+        credentials: "same-origin",
+        headers: { Accept: "application/json" },
+      })
+        .then(function (r) {
+          return r.json().then(function (j) {
+            return { r: r, j: j };
+          });
+        })
+        .then(function (x) {
+          if (!x.r.ok || !x.j || !x.j.success) {
+            canApprove = false;
+            applyRows([]);
+            return;
+          }
+          canApprove = x.j.can_approve !== false;
+          applyRows(x.j.rows || []);
+        })
+        .catch(function () {});
+    }
+
+    function start() {
+      if (timer) return;
+      poll();
+      timer = window.setInterval(poll, POLL_MS);
+    }
+
+    function bindOpen() {
+      var btn = document.getElementById("PopoverFooter-1");
+      if (!btn || btn.getAttribute("data-dg-footer-notif-bound") === "1") return;
+      btn.setAttribute("data-dg-footer-notif-bound", "1");
+      btn.addEventListener("click", function () {
+        window.setTimeout(function () {
+          markAllSeen();
+          setBadge(0);
+        }, 0);
+      });
+      var viewAll = document.getElementById("dg-footer-notif-view-all");
+      if (viewAll) {
+        viewAll.addEventListener("click", function () {
+          markAllSeen();
+        });
+      }
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", bindOpen);
+    } else {
+      bindOpen();
+    }
+    window.addEventListener("datagon-profile-loaded", function () {
+      bootstrapped = false;
+      start();
+    });
+    // если профиль уже был — стартуем чуть позже
+    window.setTimeout(function () {
+      if (!timer) start();
+    }, 1500);
+  })();
+
   /**
    * Учёт смены: кнопка #dg-ws-clock-btn → /api/work-schedule/clock/*
    * API: window.DatagonWorkClock.{ start, stop, isOpen, getState, subscribe, refreshStatus }

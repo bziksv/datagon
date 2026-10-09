@@ -2284,6 +2284,7 @@ Preflight матча «Менеджер по продажам» ↔ Planfix `/us
 | PATCH | `/sheet/premium` | accounting; ручная премия: `{ employee_id, period_ym, premium_manual }` (`null` — сброс); пишет `premium_source=manual` |
 | POST | `/sheet/premium-from-sales` | accounting; принудительный пересчёт премий из журнала (`totals.bonus`) → `premium_manual` + `premium_source=sales`; body `{ period_ym, dry_run?, force?, organization_id?, department_id? }` |
 | POST | `/vacations`, `/vacations/:id/approve` | employee / head+accounting |
+| GET | `/vacations/pending` | head / accounting → `can_approve`, `rows[]` (+ `department_name`); остальные роли — `{ success, can_approve:false, rows:[] }` (для футер-уведомлений, без 403) |
 | POST | `/sick`, `/absences`, `/vacation-compensation` | accounting |
 | GET/POST | `/payroll`, `/payroll/dry-run`, `/payroll/apply` | accounting (свой payroll — employee) |
 | GET | `/calendar?year=`, `/calendar/month?month=YYYY-MM` | любой; при пустой БД год подтягивается из xmlcalendar.ru / бандла; month → `non_working_days`, `short_days`, `source` |

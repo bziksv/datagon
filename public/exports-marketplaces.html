@@ -1520,9 +1520,23 @@
           <div class="app-footer__inner">
             <div class="app-footer-left">
               <div class="footer-dots">
-                <a href="#" class="dot-btn-wrapper dg-vanilla-footer-toggle" id="PopoverFooter-1" aria-expanded="false" aria-haspopup="true">
+                <a
+                  href="#"
+                  class="dot-btn-wrapper dg-vanilla-footer-toggle"
+                  id="PopoverFooter-1"
+                  aria-expanded="false"
+                  aria-haspopup="true"
+                  title="Уведомления"
+                  aria-label="Уведомления"
+                >
                   <i class="dot-btn-icon lnr-bullhorn icon-gradient bg-mean-fruit"></i>
-                  <div class="badge badge-dot badge-abs badge-dot-sm bg-danger">Notifications</div>
+                  <div
+                    class="badge badge-dot badge-abs badge-dot-sm bg-danger d-none"
+                    id="dg-footer-notif-dot"
+                    aria-hidden="true"
+                  >
+                    ·
+                  </div>
                 </a>
                 <div class="dots-separator"></div>
                 <a href="#" class="dot-btn-wrapper dg-vanilla-footer-toggle" id="PopoverFooter-3" aria-expanded="false" aria-haspopup="true">
@@ -1534,26 +1548,39 @@
                     <div class="dropdown-menu-header-inner bg-strong-bliss">
                       <div class="menu-header-image opacity-1" style="background-image:url('./assets/utils/images/dropdown-header/city2.jpg')"></div>
                       <div class="menu-header-content text-white">
-                        <h5 class="menu-header-title">Notifications</h5>
-                        <h6 class="menu-header-subtitle">You have <b class="text-warning">21</b> unread messages</h6>
+                        <h5 class="menu-header-title">Уведомления</h5>
+                        <h6 class="menu-header-subtitle" id="dg-footer-notif-subtitle">
+                          Нет непрочитанных
+                        </h6>
                       </div>
                     </div>
                   </div>
                   <div class="card-tabs-animated card-tabs-animated-inner">
                     <ul class="nav nav-justified">
-                      <li class="nav-item"><a href="#" class="nav-link active">Messages</a></li>
-                      <li class="nav-item"><a href="#" class="nav-link">Events</a></li>
-                      <li class="nav-item"><a href="#" class="nav-link">Errors</a></li>
+                      <li class="nav-item">
+                        <a href="#" class="nav-link active" id="dg-footer-notif-tab-approvals" data-dg-no-activity="1">Согласования</a>
+                      </li>
+                      <li class="nav-item">
+                        <a href="#" class="nav-link disabled text-muted" tabindex="-1" aria-disabled="true" data-dg-no-activity="1">События</a>
+                      </li>
+                      <li class="nav-item">
+                        <a href="#" class="nav-link disabled text-muted" tabindex="-1" aria-disabled="true" data-dg-no-activity="1">Ошибки</a>
+                      </li>
                     </ul>
-                    <div class="p-3">
-                      <div class="text-muted small">Chat, timeline and system tabs in React version.</div>
+                    <div class="p-0" id="dg-footer-notif-list" style="max-height: 16rem; overflow-y: auto">
+                      <div class="text-muted small p-3 mb-0">Пока нет согласований.</div>
                     </div>
                   </div>
                   <div class="nav-item-btn text-center pt-3 pb-3">
-                    <button type="button" class="btn btn-shadow btn-wide btn-pill btn-dark">
-                      <span class="badge badge-dot badge-dot-lg bg-warning badge-pulse me-2"></span>
-                      View All Messages
-                    </button>
+                    <a
+                      href="/work-schedule.html?tab=dept"
+                      class="btn btn-shadow btn-wide btn-pill btn-dark"
+                      id="dg-footer-notif-view-all"
+                      data-dg-notify-start="Открываем согласования…"
+                    >
+                      <span class="badge badge-dot badge-dot-lg bg-warning badge-pulse me-2" id="dg-footer-notif-view-pulse"></span>
+                      К согласованиям
+                    </a>
                   </div>
                 </div>
                 <div class="dropdown-menu popover-custom popover-custom-lg rm-pointers p-0 dg-vanilla-footer-popover" data-footer-popover="PopoverFooter-3" style="min-width:380px">
