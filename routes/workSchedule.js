@@ -780,7 +780,7 @@ function createWorkScheduleRouter(db) {
         for (const L of logs) {
             const key = L.employee_id;
             if (!byEmp[key]) byEmp[key] = {};
-            const day = Number(String(L.work_date).slice(8, 10));
+            const day = Number(String(calc.toYmd(L.work_date) || '').slice(8, 10));
             byEmp[key][day] = {
                 type: L.type,
                 rate: Number(L.rate),
@@ -874,7 +874,7 @@ function createWorkScheduleRouter(db) {
         );
         const cells = {};
         for (const L of logs) {
-            const day = Number(String(L.work_date).slice(8, 10));
+            const day = Number(String(calc.toYmd(L.work_date) || '').slice(8, 10));
             cells[day] = { type: L.type, rate: Number(L.rate), hours: L.hours_worked, status: L.status };
         }
         const payroll = await recalcPayroll(db, emp.id, ym);
@@ -928,7 +928,7 @@ function createWorkScheduleRouter(db) {
             );
             for (const L of logs) {
                 if (!byEmp[L.employee_id]) byEmp[L.employee_id] = {};
-                const day = Number(String(L.work_date).slice(8, 10));
+                const day = Number(String(calc.toYmd(L.work_date) || '').slice(8, 10));
                 byEmp[L.employee_id][day] = { type: L.type, rate: Number(L.rate), hours: L.hours_worked };
             }
         }
