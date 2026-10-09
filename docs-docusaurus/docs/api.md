@@ -2234,12 +2234,13 @@ Preflight матча «Менеджер по продажам» ↔ Planfix `/us
 
 Страницы `/work-schedule.html`, `/work-schedule-settings.html`. Роутер `routes/workSchedule.js`, схема `lib/datagonWorkScheduleSchema.js` (`ws_*`), расчёты `lib/datagonWorkScheduleCalc.js`. Матрица: **`work-schedule`** / **`work-schedule-settings`** (API-режим — max из двух). Роли внутри API: сотрудник (`ws_employee`), руководитель отдела (`head_user_id`), бухгалтерия (specialty «Бухгалтерия» / admin). Подробнее: [График работы](./work-schedule).
 
-Несколько юрлиц: `GET/POST/PUT /organizations`; seed **ООО «АЛЬМАМЕД»** + **ООО «ВИЛМЕД»**. У сотрудника обязателен `hire_date` для стажа; `GET /employees` отдаёт `organization_name`, `department_name`.
+Несколько юрлиц: `GET/POST/PUT/DELETE /organizations`; seed **ООО «АЛЬМАМЕД»** + **ООО «ВИЛМЕД»**. `DELETE` запрещён при наличии сотрудников (409); пустые отделы удаляются вместе с орг. У сотрудника обязателен `hire_date` для стажа; `GET /employees` отдаёт `organization_name`, `department_name`.
 
 | Метод | Путь | Кто |
 |-------|------|-----|
 | GET | `/api/work-schedule/access` | любой авторизованный |
 | GET/POST/PUT | `/organizations`, `/departments`, `/employees`, `/users-available` | accounting |
+| DELETE | `/organizations/:id` | accounting (409, если есть сотрудники) |
 | GET/POST | `/clock/status`, `/clock/start`, `/clock/stop` | сотрудник с карточкой |
 | GET | `/stuck-shifts` | head / accounting |
 | GET | `/me/month`, `/dept/month` | employee / head / accounting |

@@ -303,6 +303,48 @@ function createWorkScheduleRouter(db) {
         res.json({ success: true, row: rows[0] });
     });
 
+    router.delete('/organizations/:id', async (req, res) => {
+        if (!isAccounting(actorOf(req))) return res.status(403).json({ success: false, error: 'forbidden' });
+        const id = Number(req.params.id);
+        if (!id) return res.status(400).json({ success: false, error: 'id required' });
+        const [[org]] = await db.query('SELECT id, name FROM ws_organization WHERE id=?', [id]);
+        if (!org) return res.status(404).json({ success: false, error: 'организация не найдена' });
+        const [[empCnt]] = await db.query(
+            'SELECT COUNT(*) AS c FROM ws_employee WHERE organization_id=?',
+            [id]
+        );
+        const employees = Number(empCnt && empCnt.c) || 0;
+        if (employees > 0) {
+            return res.status(409).json({
+                success: false,
+                error:
+                    'Нельзя удалить: в организации ' +
+                    employees +
+                    ' сотрудник(ов). Сначала перенесите или удалите карточки.',
+                employees,
+            });
+        }
+        const [[deptCnt]] = await db.query(
+            'SELECT COUNT(*) AS c FROM ws_department WHERE organization_id=?',
+            [id]
+        );
+        const departments = Number(deptCnt && deptCnt.c) || 0;
+        await db.query('DELETE FROM ws_department WHERE organization_id=?', [id]);
+        await db.query('DELETE FROM ws_organization WHERE id=?', [id]);
+        await writeAudit(db, req, {
+            entity_type: 'organization',
+            entity_id: id,
+            action: 'delete',
+            payload: { name: org.name, departments_removed: departments },
+        });
+        res.json({
+            success: true,
+            id,
+            name: org.name,
+            departments_removed: departments,
+        });
+    });
+
     // ----- departments -----
     router.get('/departments', async (req, res) => {
         const a = actorOf(req);

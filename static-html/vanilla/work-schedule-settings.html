@@ -873,6 +873,7 @@
                   <select id="dg-ws-set-org-pick" class="form-select form-select-sm"></select>
                 </div>
                 <button type="button" class="btn btn-sm btn-outline-primary" id="dg-ws-set-org-add" data-dg-notify-start="Новая организация…">Добавить</button>
+                <button type="button" class="btn btn-sm btn-outline-danger" id="dg-ws-set-org-del" data-dg-notify-start="Удаление организации…">Удалить</button>
               </div>
               <div class="row g-3">
                 <div class="col-md-6 col-xl-3">
@@ -1130,6 +1131,24 @@
               <div class="card-footer d-flex justify-content-end gap-2 bg-white border-top-0">
                 <button type="button" class="btn btn-outline-secondary" data-dg-ws-set-close="emp" data-dg-no-activity="1">Отмена</button>
                 <button type="button" class="btn btn-primary" id="dg-ws-set-emp-save" data-dg-notify-start="Сохраняем сотрудника…">Сохранить</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-ws-set-org-del-overlay" class="dg-ws-set-overlay" style="display: none" aria-hidden="true" role="dialog" aria-modal="true">
+            <div class="dg-ws-set-overlay-backdrop" data-dg-ws-set-close="org-del"></div>
+            <div class="dg-ws-set-overlay-panel card shadow-lg border-0">
+              <div class="card-header d-flex justify-content-between align-items-center">
+                <div class="fw-semibold text-danger">Удалить организацию?</div>
+                <button type="button" class="btn-close" data-dg-ws-set-close="org-del" aria-label="Закрыть" data-dg-no-activity="1"></button>
+              </div>
+              <div class="card-body">
+                <p class="mb-2" id="dg-ws-set-org-del-text">Организация и её пустые отделы будут удалены безвозвратно.</p>
+                <p class="small text-muted mb-0">Если есть сотрудники — удаление запрещено: сначала перенесите карточки в другую организацию.</p>
+              </div>
+              <div class="card-footer d-flex justify-content-end gap-2 bg-white border-top-0">
+                <button type="button" class="btn btn-outline-secondary" data-dg-ws-set-close="org-del" data-dg-no-activity="1">Отмена</button>
+                <button type="button" class="btn btn-danger" id="dg-ws-set-org-del-ok" data-dg-notify-start="Удаляем организацию…">Удалить</button>
               </div>
             </div>
           </div>
@@ -1428,6 +1447,7 @@
       dept: "dg-ws-set-dept-overlay",
       emp: "dg-ws-set-emp-overlay",
       "emp-add": "dg-ws-set-emp-add-overlay",
+      "org-del": "dg-ws-set-org-del-overlay",
     };
     var el = document.getElementById(map[kind] || "");
     if (!el) return;
@@ -1790,6 +1810,51 @@
       });
   }
 
+  function openDeleteOrg() {
+    if (!state.org) {
+      toast("warning", "Нет выбранной организации");
+      return;
+    }
+    var txt = document.getElementById("dg-ws-set-org-del-text");
+    var depts = deptsForOrg(state.org.id).length;
+    if (txt) {
+      txt.textContent =
+        "Удалить «" +
+        (state.org.name || "#" + state.org.id) +
+        "»" +
+        (depts ? " и " + depts + " отдел(ов) без сотрудников" : "") +
+        "? Действие необратимо.";
+    }
+    showOverlay("org-del", true);
+  }
+
+  function confirmDeleteOrg() {
+    if (!state.org) return;
+    var id = Number(state.org.id);
+    var btn = document.getElementById("dg-ws-set-org-del-ok");
+    var run = function () {
+      return api("/organizations/" + id, { method: "DELETE" })
+        .then(function (j) {
+          showOverlay("org-del", false);
+          try {
+            localStorage.removeItem(ORG_PICK_KEY);
+          } catch (e) {}
+          toast(
+            "success",
+            "Удалено: " +
+              (j.name || id) +
+              (j.departments_removed ? " (+" + j.departments_removed + " отд.)" : "")
+          );
+          return loadAll();
+        })
+        .catch(function (e) {
+          toast("danger", e.message || "Не удалось удалить");
+        });
+    };
+    if (window.DatagonNotify && window.DatagonNotify.busyRun) window.DatagonNotify.busyRun(btn, run);
+    else run();
+  }
+
   function loadAll() {
     return Promise.all([api("/organizations"), api("/departments"), api("/employees")])
       .then(function (arr) {
@@ -1826,6 +1891,10 @@
     if (orgSave) orgSave.addEventListener("click", saveOrg);
     var orgAdd = document.getElementById("dg-ws-set-org-add");
     if (orgAdd) orgAdd.addEventListener("click", addOrg);
+    var orgDel = document.getElementById("dg-ws-set-org-del");
+    if (orgDel) orgDel.addEventListener("click", openDeleteOrg);
+    var orgDelOk = document.getElementById("dg-ws-set-org-del-ok");
+    if (orgDelOk) orgDelOk.addEventListener("click", confirmDeleteOrg);
     var orgPick = document.getElementById("dg-ws-set-org-pick");
     if (orgPick) {
       orgPick.addEventListener("change", function () {
@@ -1897,6 +1966,7 @@
       showOverlay("dept", false);
       showOverlay("emp", false);
       showOverlay("emp-add", false);
+      showOverlay("org-del", false);
     });
   }
 

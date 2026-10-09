@@ -212,6 +212,7 @@
       dept: "dg-ws-set-dept-overlay",
       emp: "dg-ws-set-emp-overlay",
       "emp-add": "dg-ws-set-emp-add-overlay",
+      "org-del": "dg-ws-set-org-del-overlay",
     };
     var el = document.getElementById(map[kind] || "");
     if (!el) return;
@@ -574,6 +575,51 @@
       });
   }
 
+  function openDeleteOrg() {
+    if (!state.org) {
+      toast("warning", "Нет выбранной организации");
+      return;
+    }
+    var txt = document.getElementById("dg-ws-set-org-del-text");
+    var depts = deptsForOrg(state.org.id).length;
+    if (txt) {
+      txt.textContent =
+        "Удалить «" +
+        (state.org.name || "#" + state.org.id) +
+        "»" +
+        (depts ? " и " + depts + " отдел(ов) без сотрудников" : "") +
+        "? Действие необратимо.";
+    }
+    showOverlay("org-del", true);
+  }
+
+  function confirmDeleteOrg() {
+    if (!state.org) return;
+    var id = Number(state.org.id);
+    var btn = document.getElementById("dg-ws-set-org-del-ok");
+    var run = function () {
+      return api("/organizations/" + id, { method: "DELETE" })
+        .then(function (j) {
+          showOverlay("org-del", false);
+          try {
+            localStorage.removeItem(ORG_PICK_KEY);
+          } catch (e) {}
+          toast(
+            "success",
+            "Удалено: " +
+              (j.name || id) +
+              (j.departments_removed ? " (+" + j.departments_removed + " отд.)" : "")
+          );
+          return loadAll();
+        })
+        .catch(function (e) {
+          toast("danger", e.message || "Не удалось удалить");
+        });
+    };
+    if (window.DatagonNotify && window.DatagonNotify.busyRun) window.DatagonNotify.busyRun(btn, run);
+    else run();
+  }
+
   function loadAll() {
     return Promise.all([api("/organizations"), api("/departments"), api("/employees")])
       .then(function (arr) {
@@ -610,6 +656,10 @@
     if (orgSave) orgSave.addEventListener("click", saveOrg);
     var orgAdd = document.getElementById("dg-ws-set-org-add");
     if (orgAdd) orgAdd.addEventListener("click", addOrg);
+    var orgDel = document.getElementById("dg-ws-set-org-del");
+    if (orgDel) orgDel.addEventListener("click", openDeleteOrg);
+    var orgDelOk = document.getElementById("dg-ws-set-org-del-ok");
+    if (orgDelOk) orgDelOk.addEventListener("click", confirmDeleteOrg);
     var orgPick = document.getElementById("dg-ws-set-org-pick");
     if (orgPick) {
       orgPick.addEventListener("change", function () {
@@ -681,6 +731,7 @@
       showOverlay("dept", false);
       showOverlay("emp", false);
       showOverlay("emp-add", false);
+      showOverlay("org-del", false);
     });
   }
 
