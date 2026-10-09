@@ -4129,8 +4129,16 @@
           var el = document.getElementById(id);
           if (!el || el.tagName !== "SELECT") return;
           var prev = el.value;
+          var forCreate = id === "dg-set-new-specialty";
+          // Менеджер пользователей не может выдать «Полный доступ» при создании.
+          var list =
+            forCreate && !isAdmin()
+              ? specList.filter(function (sp) {
+                  return String(sp.name || "") !== DEFAULT_SPEC_NAME;
+                })
+              : specList;
           el.replaceChildren();
-          specList.forEach(function (sp) {
+          list.forEach(function (sp) {
             var o = document.createElement("option");
             o.value = String(sp.id);
             o.textContent = sp.name + (sp.users_count != null ? " (" + sp.users_count + ")" : "");
@@ -4138,6 +4146,8 @@
           });
           if (prev && Array.prototype.some.call(el.options, function (op) { return op.value === prev; })) {
             el.value = prev;
+          } else if (forCreate && el.options.length) {
+            el.selectedIndex = 0;
           }
         });
         var flt = document.getElementById("dg-set-users-filter-specialty");
@@ -6129,8 +6139,16 @@
         if (password.length < 15) return alert("Пароль должен быть не короче 15 символов");
         var specRaw = document.getElementById("dg-set-new-specialty") && document.getElementById("dg-set-new-specialty").value;
         var specId = parseInt(specRaw, 10);
-        var payload = { full_name: full_name, username: username, password: password };
-        if (Number.isFinite(specId) && specId > 0) payload.specialty_id = specId;
+        if (!Number.isFinite(specId) || specId <= 0) return alert("Выберите специальность");
+        if (!isAdmin()) {
+          var spMeta = specList.find(function (s) {
+            return Number(s.id) === Number(specId);
+          });
+          if (spMeta && String(spMeta.name || "") === DEFAULT_SPEC_NAME) {
+            return alert("Назначить «Полный доступ» может только admin");
+          }
+        }
+        var payload = { full_name: full_name, username: username, password: password, specialty_id: specId };
         fetch("/api/auth/users", {
           method: "POST",
           credentials: "same-origin",

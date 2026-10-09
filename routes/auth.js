@@ -459,16 +459,30 @@ module.exports = (db, appSettings = {}) => {
                 return res.status(409).json({ error: 'Пользователь с таким логином уже существует' });
             }
             const passwordHash = await bcrypt.hash(rawPassword, 10);
+            const isAdmin = await isAdminActor(req);
             let specId = parseInt(req.body?.specialty_id, 10);
             if (!Number.isFinite(specId) || specId <= 0) {
+                // Без specialty_id admin по умолчанию получает «Полный доступ»;
+                // менеджер пользователей обязан выбрать специальность явно.
+                if (!isAdmin) {
+                    return res.status(400).json({ error: 'Выберите специальность' });
+                }
                 const [[d]] = await db.query(
                     'SELECT id FROM specialties WHERE name = ? ORDER BY id ASC LIMIT 1',
                     [datagonSpecialties.DEFAULT_SPECIALTY_NAME]
                 );
                 specId = d && d.id ? Number(d.id) : null;
             } else {
-                const [ex] = await db.query('SELECT id FROM specialties WHERE id = ?', [specId]);
+                const [ex] = await db.query('SELECT id, name FROM specialties WHERE id = ?', [specId]);
                 if (!ex.length) return res.status(400).json({ error: 'Некорректная специальность' });
+                if (
+                    !isAdmin &&
+                    String(ex[0].name || '') === datagonSpecialties.DEFAULT_SPECIALTY_NAME
+                ) {
+                    return res.status(403).json({
+                        error: 'Назначить специальность «Полный доступ» может только admin',
+                    });
+                }
             }
             await db.query(
                 'INSERT INTO users (username, full_name, password_hash, can_manage_users, specialty_id) VALUES (?, ?, ?, 0, ?)',
