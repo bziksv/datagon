@@ -976,50 +976,69 @@
     return String(m);
   }
 
-  /** Разделители сайдбара: скрыть, если нет видимого пункта и сверху, и снизу (иначе пустые линии). */
+  /** Разделители сайдбара: между двумя видимыми блоками — максимум одна линия; подряд и «висячие» — скрыть. */
   function syncSidebarNavDividers() {
     document
       .querySelectorAll(".datagon-vanilla-shell .vertical-nav-menu > .metismenu-container")
       .forEach(function (ul) {
+        function nearestVisibleContent(from, dir) {
+          var el = from;
+          while (el) {
+            el = dir < 0 ? el.previousElementSibling : el.nextElementSibling;
+            if (!el) return null;
+            if (el.style.display === "none") continue;
+            if (el.classList && el.classList.contains("dg-sidebar-nav-divider")) continue;
+            return el;
+          }
+          return null;
+        }
+        var shownDividerSinceContent = false;
         Array.prototype.forEach.call(ul.children, function (li) {
-          if (!li.classList || !li.classList.contains("dg-sidebar-nav-divider")) return;
-          function nearestVisibleContent(from, dir) {
-            var el = from;
-            while (el) {
-              el = dir < 0 ? el.previousElementSibling : el.nextElementSibling;
-              if (!el) return null;
-              if (el.style.display === "none") continue;
-              if (el.classList.contains("dg-sidebar-nav-divider")) continue;
-              return el;
-            }
-            return null;
+          if (!li.classList) return;
+          if (!li.classList.contains("dg-sidebar-nav-divider")) {
+            if (li.style.display !== "none") shownDividerSinceContent = false;
+            return;
           }
           var hasPrev = !!nearestVisibleContent(li, -1);
           var hasNext = !!nearestVisibleContent(li, 1);
-          li.style.display = hasPrev && hasNext ? "" : "none";
+          if (!hasPrev || !hasNext || shownDividerSinceContent) {
+            li.style.display = "none";
+            return;
+          }
+          li.style.display = "";
+          shownDividerSinceContent = true;
         });
       });
   }
 
   function applyDatagonRestrictedNavVisibility() {
     var showRestricted = canViewActivityNav();
-    document.querySelectorAll('[data-dg-nav-restricted="activity"]').forEach(function (li) {
-      li.style.display = showRestricted ? "" : "none";
-    });
     var isAdmin = false;
     try {
       isAdmin =
         window.localStorage.getItem("isAdmin") === "true" ||
         window.localStorage.getItem("currentUser") === "admin";
     } catch (eAdm) {}
+    // ArchitectUI — только admin (не can_manage_users): иначе у кадровиков/рук. склада снова всплывает пункт.
+    document.querySelectorAll('[data-dg-nav-restricted="admin"]').forEach(function (li) {
+      li.style.display = isAdmin ? "" : "none";
+    });
+    document.querySelectorAll('[data-dg-nav-restricted="activity"]').forEach(function (li) {
+      li.style.display = showRestricted ? "" : "none";
+    });
     var pm = readStoredPageModes();
     document.querySelectorAll(".metismenu-link[data-nav]").forEach(function (a) {
       var navKey = a.getAttribute("data-nav");
       if (!navKey) return;
       var li = a.closest(".metismenu-item");
       if (!li) return;
-      // ArchitectUI / Управление БД / Активность: не открывать снова через pageModes=full
-      if (li.getAttribute("data-dg-nav-restricted") === "activity" && !showRestricted) {
+      var restricted = li.getAttribute("data-dg-nav-restricted");
+      // Не открывать снова через pageModes=full
+      if (restricted === "admin" && !isAdmin) {
+        li.style.display = "none";
+        return;
+      }
+      if (restricted === "activity" && !showRestricted) {
         li.style.display = "none";
         return;
       }

@@ -14,7 +14,7 @@ description: Все пункты бокового меню Datagon — URL, кл
 |------|-----|--------------|---------|
 | Дашборд | `/dashboard.html` | `dashboard` | [Дашборд](/docs/dashboard/) |
 | Управление БД 🔒 | `/db-admin.html` | `db-admin` | [Управление БД](/docs/db-admin/) |
-| ArchitectUI 🔒 | `/ref/react-demo-index.html` | вне `PAGE_DEFS`; меню — admin / `can_manage_users` | [ArchitectUI](/docs/architectui-migration/) |
+| ArchitectUI 🔒 | `/ref/react-demo-index.html` | вне `PAGE_DEFS`; меню — **только admin** (не `can_manage_users`) | [ArchitectUI](/docs/architectui-migration/) |
 | Активность/Логи 🔒 | `/processes.html` | `processes` (+ меню: manage-users) | [Активность / Логи](/docs/processes/) |
 | Настройки | `/settings.html` | `settings` (+ HTML при `can_manage_users`) | [Настройки](/docs/settings/) |
 

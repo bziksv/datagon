@@ -16,7 +16,7 @@ description: Пункт меню ArchitectUI, каталог ref, React-демо
 | `PAGE_DEFS` | **нет** (осознанно: не в матрице специальностей) |
 | API Datagon | нет (статика + отдельное SPA-демо) |
 
-**Доступ к пункту меню:** как у «Активность/Логи» / «Управление БД» — `data-dg-nav-restricted="activity"`: виден только **admin** или при **`can_manage_users`** (`datagon-vanilla.js` → `applyDatagonRestrictedNavVisibility`). Матрица `page_modes` этот пункт **не открывает** снова, если замок скрыл его.
+**Доступ к пункту меню:** `data-dg-nav-restricted="admin"` — виден **только администратору** (`datagon-vanilla.js` → `applyDatagonRestrictedNavVisibility`). Право `can_manage_users` (кадры / создание пользователей) ArchitectUI **не** открывает — иначе пункт снова всплывает у ролей вроде «Руководитель склада». «Управление БД» / «Активность» по-прежнему: admin или `can_manage_users`. Матрица `page_modes` этот пункт **не открывает** снова.
 
 **Прямой URL:** файл `react-demo-index.html` не в `PAGE_DEFS`, поэтому middleware HTML **не** режет его по матрице — достаточно обычной сессии. Ограничение — в основном через скрытие пункта меню. SPA под `/architectui-react-pro/` обслуживается отдельно в `server.js` (если собран).
 
