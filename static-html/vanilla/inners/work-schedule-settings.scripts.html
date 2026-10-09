@@ -240,6 +240,43 @@
     }
   }
 
+  function importDeptsFromSpecialties() {
+    if (!state.org) {
+      toast("warning", "Сначала выберите организацию");
+      return;
+    }
+    var btn = document.getElementById("dg-ws-set-dept-import");
+    var run = function () {
+      return api("/departments/import-specialties", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ organization_id: state.org.id }),
+      }).then(function (j) {
+        var created = Number(j.created) || 0;
+        var skipped = Number(j.skipped) || 0;
+        if (created) {
+          toast(
+            "success",
+            "Добавлено отделов: " + created + (skipped ? " (уже было: " + skipped + ")" : "")
+          );
+        } else {
+          toast(
+            "info",
+            skipped
+              ? "Все специальности уже есть как отделы (" + skipped + ")"
+              : "В Настройках нет специальностей для импорта"
+          );
+        }
+        return loadAll();
+      });
+    };
+    if (window.DatagonNotify && window.DatagonNotify.busyRun) window.DatagonNotify.busyRun(btn, run);
+    else
+      run().catch(function (e) {
+        toast("danger", e.message);
+      });
+  }
+
   function openDept(id) {
     if (!state.org) {
       toast("warning", "Сначала выберите или создайте организацию");
@@ -675,6 +712,8 @@
       deptAdd.addEventListener("click", function () {
         openDept(null);
       });
+    var deptImport = document.getElementById("dg-ws-set-dept-import");
+    if (deptImport) deptImport.addEventListener("click", importDeptsFromSpecialties);
     var empAdd = document.getElementById("dg-ws-set-emp-add");
     if (empAdd) empAdd.addEventListener("click", openEmpAdd);
     var empCreate = document.getElementById("dg-ws-set-emp-create");

@@ -1,7 +1,10 @@
 'use strict';
 
 const express = require('express');
-const { ensureWorkScheduleSchema } = require('../lib/datagonWorkScheduleSchema');
+const {
+    ensureWorkScheduleSchema,
+    importDepartmentsFromSpecialties,
+} = require('../lib/datagonWorkScheduleSchema');
 const calc = require('../lib/datagonWorkScheduleCalc');
 
 let schemaReady = false;
@@ -389,6 +392,28 @@ function createWorkScheduleRouter(db) {
         );
         await writeAudit(db, req, { entity_type: 'department', entity_id: r.insertId, action: 'create' });
         res.json({ success: true, id: r.insertId });
+    });
+
+    /**
+     * Импорт отделов из специальностей Настроек (`specialties`).
+     * Body/query: organization_id. Не дублирует имена, не трогает существующих.
+     */
+    router.post('/departments/import-specialties', async (req, res) => {
+        if (!isAccounting(actorOf(req))) return res.status(403).json({ success: false, error: 'forbidden' });
+        const orgId = Number(
+            (req.body && req.body.organization_id) || req.query.organization_id || 0
+        );
+        if (!orgId) return res.status(400).json({ success: false, error: 'organization_id required' });
+        const [[org]] = await db.query('SELECT id, name FROM ws_organization WHERE id=?', [orgId]);
+        if (!org) return res.status(404).json({ success: false, error: 'организация не найдена' });
+        const result = await importDepartmentsFromSpecialties(db, orgId);
+        await writeAudit(db, req, {
+            entity_type: 'department',
+            entity_id: orgId,
+            action: 'import_specialties',
+            payload: result,
+        });
+        res.json({ success: true, organization_id: orgId, ...result });
     });
 
     router.put('/departments/:id', async (req, res) => {

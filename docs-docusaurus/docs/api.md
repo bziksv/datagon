@@ -2241,6 +2241,7 @@ Preflight матча «Менеджер по продажам» ↔ Planfix `/us
 | GET | `/api/work-schedule/access` | любой авторизованный |
 | GET/POST/PUT | `/organizations`, `/departments`, `/employees`, `/users-available` | accounting |
 | DELETE | `/organizations/:id` | accounting (409, если есть сотрудники) |
+| POST | `/departments/import-specialties` | accounting; body `{ organization_id }` — отделы из `specialties` (без «Полный доступ»), без дублей имён |
 | GET/POST | `/clock/status`, `/clock/start`, `/clock/stop` | сотрудник с карточкой |
 | GET | `/stuck-shifts` | head / accounting |
 | GET | `/me/month`, `/dept/month` | employee / head / accounting |
