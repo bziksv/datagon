@@ -103,10 +103,20 @@
   body.datagon-vanilla-body[data-dg-active-nav="work-schedule-settings"] .dg-ws-set-overlay .dg-ws-set-overlay-panel {
     position: relative;
     z-index: 1;
-    width: min(520px, 100%);
+    width: min(560px, 100%);
   }
   body.datagon-vanilla-body[data-dg-active-nav="work-schedule-settings"] .dg-ws-set-overlay .dg-ws-set-overlay-panel.wide {
     width: min(720px, 100%);
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="work-schedule-settings"] .dg-ws-set-dept-manage-list {
+    max-height: 220px;
+    overflow: auto;
+    border: 1px solid #e9ecef;
+    border-radius: 0.35rem;
+    padding: 0.35rem 0.65rem;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="work-schedule-settings"] .dg-ws-set-dept-manage-row + .dg-ws-set-dept-manage-row {
+    border-top: 1px solid #f1f3f5;
   }
 </style>
 
@@ -942,6 +952,79 @@
             </div>
           </div>
 
+          <!-- Bitcop -->
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex justify-content-between align-items-center gap-2 flex-wrap">
+              <div class="d-flex align-items-center">
+                <i class="header-icon pe-7s-cloud-upload icon-gradient bg-tempting-azure me-2"></i>
+                <span>Bitcop · учёт часов</span>
+              </div>
+              <span class="small text-muted">Продуктивное время → табель (часовики / контент)</span>
+            </div>
+            <div class="card-body" id="dg-ws-set-bitcop-body">
+              <p class="small text-muted mb-3">
+                API-ключ в кабинете Bitcop: <strong>Настройки → Токены доступа → API-ключ</strong>.
+                База запросов: <code>https://&lt;аккаунт&gt;.bitcop.ru:4443/api/v1/</code>.
+                В карточке сотрудника укажите соответствие с пользователем Bitcop.
+              </p>
+              <div class="row g-3">
+                <div class="col-md-4">
+                  <label class="form-label" for="dg-ws-set-bitcop-account">Аккаунт (поддомен)</label>
+                  <input type="text" class="form-control form-control-sm" id="dg-ws-set-bitcop-account" placeholder="например company" autocomplete="off" />
+                </div>
+                <div class="col-md-5">
+                  <label class="form-label" for="dg-ws-set-bitcop-key">API-ключ</label>
+                  <input type="password" class="form-control form-control-sm" id="dg-ws-set-bitcop-key" placeholder="оставьте пустым, чтобы не менять" autocomplete="new-password" />
+                  <div class="form-text" id="dg-ws-set-bitcop-key-hint">не задан</div>
+                </div>
+                <div class="col-md-3">
+                  <label class="form-label" for="dg-ws-set-bitcop-metric">Что тянем в часы</label>
+                  <select class="form-select form-select-sm" id="dg-ws-set-bitcop-metric">
+                    <option value="productiveTime">Продуктивное (рекоменд.)</option>
+                    <option value="activeTime">Активное</option>
+                    <option value="totalTime">Общее время</option>
+                  </select>
+                </div>
+              </div>
+              <div class="mt-3 d-flex flex-wrap gap-2">
+                <button type="button" class="btn btn-sm btn-primary" id="dg-ws-set-bitcop-save" data-dg-notify-start="Сохраняем Bitcop…">Сохранить</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-ws-set-bitcop-test" data-dg-notify-start="Проверяем Bitcop…">Проверить связь</button>
+                <button type="button" class="btn btn-sm btn-outline-danger" id="dg-ws-set-bitcop-clear-key" data-dg-notify-start="Сбрасываем ключ…">Сбросить ключ</button>
+              </div>
+              <div id="dg-ws-set-bitcop-msg" class="alert mt-3 mb-0 d-none" role="status"></div>
+            </div>
+          </div>
+
+          <!-- Производственный календарь РФ -->
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+              <div class="d-flex align-items-center flex-wrap gap-2">
+                <i class="header-icon pe-7s-date icon-gradient bg-happy-itmeo me-2"></i>
+                <span>Производственный календарь РФ</span>
+              </div>
+              <span class="small text-muted">норма дней для графика 5/2 · подсветка выходных</span>
+            </div>
+            <div class="card-body" id="dg-ws-set-cal-body">
+              <p class="small text-muted mb-2">
+                Источник: <a href="http://xmlcalendar.ru/?country=ru" target="_blank" rel="noopener">xmlcalendar.ru</a>
+                (бандл 2026–2027 в репозитории как запасной). Для 5/2 норма «ставки / N» и розовая подсветка
+                нерабочих дней берутся отсюда.
+              </p>
+              <div class="small mb-2" id="dg-ws-set-cal-status">Статус: —</div>
+              <div class="d-flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  class="btn btn-sm btn-primary"
+                  id="dg-ws-set-cal-sync"
+                  data-dg-notify-start="Подтягиваем календарь РФ…"
+                >
+                  Подтянуть календарь РФ
+                </button>
+              </div>
+              <div id="dg-ws-set-cal-msg" class="alert mt-3 mb-0 d-none" role="status"></div>
+            </div>
+          </div>
+
           <!-- Отделы -->
           <div class="main-card mb-3 card">
             <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
@@ -1087,10 +1170,18 @@
                     <option value="fixed_full">Фикс целиком, ₽</option>
                   </select>
                 </div>
-                <div class="mb-0" id="dg-ws-set-dept-prem-amount-wrap">
+                <div class="mb-2" id="dg-ws-set-dept-prem-amount-wrap">
                   <label class="form-label" for="dg-ws-set-dept-prem-amount">Сумма, ₽</label>
                   <input type="text" class="form-control" id="dg-ws-set-dept-prem-amount" inputmode="decimal" placeholder="0" />
                   <div class="form-text">По дням — пропорционально ставкам месяца; целиком — вся сумма (продажи).</div>
+                </div>
+                <div class="mb-0 mt-3 pt-2 border-top" id="dg-ws-set-dept-manage-wrap">
+                  <label class="form-label mb-1">Доступ к другим отделам</label>
+                  <p class="small text-muted mb-2">
+                    Сотрудники <em>этого</em> отдела смогут открывать выбранные отделы на вкладке «Отдел» графика.
+                    Пример: «Руководитель склада» → «Склад». «Правки» — редактирование табеля.
+                  </p>
+                  <div id="dg-ws-set-dept-manage-list" class="dg-ws-set-dept-manage-list"></div>
                 </div>
               </div>
               <div class="card-footer d-flex justify-content-end gap-2 bg-white border-top-0">
@@ -1204,6 +1295,19 @@
                   <div class="col-md-4" id="dg-ws-set-emp-prem-amount-wrap">
                     <label class="form-label" for="dg-ws-set-emp-prem-amount">Сумма, ₽</label>
                     <input type="text" class="form-control" id="dg-ws-set-emp-prem-amount" inputmode="decimal" placeholder="0" />
+                  </div>
+                  <div class="col-md-8">
+                    <label class="form-label" for="dg-ws-set-emp-bitcop">Сотрудник в Bitcop</label>
+                    <select class="form-select" id="dg-ws-set-emp-bitcop">
+                      <option value="">— не привязан —</option>
+                    </select>
+                    <div class="form-text">Список из Bitcop API (нужен сохранённый токен). Часы подтягиваются кнопкой на табеле.</div>
+                  </div>
+                  <div class="col-md-4 d-flex align-items-end">
+                    <div class="form-check mb-2">
+                      <input class="form-check-input" type="checkbox" id="dg-ws-set-emp-no-seniority" />
+                      <label class="form-check-label" for="dg-ws-set-emp-no-seniority">Не выплачиваем за стаж</label>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1356,6 +1460,7 @@
     departmentsAll: [],
     employees: [],
     usersAvailable: [],
+    bitcopPeople: [],
     empSort: { key: "name", dir: "asc" },
     empSearch: "",
     pendingEmpSearch: "",
@@ -1487,6 +1592,7 @@
   /** Доплата за стаж по параметрам организации (как seniorityBonus на бэке). */
   function seniorityBonusAmount(emp) {
     if (!emp || !emp.hire_date) return null;
+    if (Number(emp.seniority_pay_disabled) === 1) return 0;
     var m = seniorityMonthsFromHire(emp.hire_date);
     if (m == null) return null;
     if (m < 12) return 0;
@@ -1514,9 +1620,144 @@
   }
 
   function fmtSeniorityBonus(emp) {
+    if (Number(emp.seniority_pay_disabled) === 1) {
+      return '<span class="text-muted" title="Не выплачиваем за стаж">выкл</span>';
+    }
     var n = seniorityBonusAmount(emp);
     if (n == null) return "—";
     return money(n);
+  }
+
+  function setBitcopMsg(cls, text) {
+    var msg = document.getElementById("dg-ws-set-bitcop-msg");
+    if (!msg) return;
+    msg.className = "alert " + cls + " mt-3 mb-0";
+    msg.classList.remove("d-none");
+    msg.textContent = text;
+  }
+
+  function applyBitcopConfig(j) {
+    var acc = document.getElementById("dg-ws-set-bitcop-account");
+    var met = document.getElementById("dg-ws-set-bitcop-metric");
+    var hint = document.getElementById("dg-ws-set-bitcop-key-hint");
+    var key = document.getElementById("dg-ws-set-bitcop-key");
+    if (acc) acc.value = j.account || "";
+    if (met) met.value = j.metric || "productiveTime";
+    if (key) key.value = "";
+    if (hint) {
+      hint.textContent = j.api_key_set
+        ? "сохранён: " + (j.api_key_masked || "••••")
+        : "не задан";
+    }
+  }
+
+  function loadBitcopConfig() {
+    return api("/bitcop/config")
+      .then(applyBitcopConfig)
+      .catch(function (e) {
+        setBitcopMsg("alert-warning", e.message || "Не удалось загрузить Bitcop");
+      });
+  }
+
+  function saveBitcopConfig(opts) {
+    opts = opts || {};
+    var btn = document.getElementById("dg-ws-set-bitcop-save");
+    var body = {
+      account: (document.getElementById("dg-ws-set-bitcop-account") || {}).value || "",
+      metric: (document.getElementById("dg-ws-set-bitcop-metric") || {}).value || "productiveTime",
+    };
+    if (opts.clear_api_key) body.clear_api_key = true;
+    else {
+      var keyEl = document.getElementById("dg-ws-set-bitcop-key");
+      var raw = keyEl ? String(keyEl.value || "").trim() : "";
+      if (raw) body.api_key = raw;
+    }
+    setBitcopMsg("alert-warning", "Сохраняем…");
+    var run = function () {
+      return api("/bitcop/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }).then(function (j) {
+        applyBitcopConfig(j);
+        setBitcopMsg(
+          "alert-success",
+          "Сохранено · аккаунт «" +
+            (j.account || "") +
+            "» · метрика " +
+            (j.metric || "") +
+            (j.api_key_set ? " · ключ " + (j.api_key_masked || "есть") : " · ключ не задан")
+        );
+        toast("success", "Bitcop сохранён");
+        return loadBitcopPeople().catch(function () {
+          return null;
+        });
+      });
+    };
+    if (window.DatagonNotify && window.DatagonNotify.busyRun && btn && !opts.clear_api_key) {
+      window.DatagonNotify.busyRun(btn, run);
+    } else {
+      run().catch(function (e) {
+        setBitcopMsg("alert-danger", e.message || "Ошибка");
+        toast("danger", e.message);
+      });
+    }
+  }
+
+  function testBitcop() {
+    var btn = document.getElementById("dg-ws-set-bitcop-test");
+    setBitcopMsg("alert-warning", "Проверяем…");
+    var run = function () {
+      return api("/bitcop/test", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" })
+        .then(function (j) {
+          setBitcopMsg("alert-success", j.message || "OK");
+          toast("success", j.message || "Bitcop OK");
+          return loadBitcopPeople();
+        })
+        .catch(function (e) {
+          var msg = (e && e.message) || "Ошибка связи с Bitcop";
+          setBitcopMsg("alert-danger", msg);
+          toast("danger", msg);
+          throw e;
+        });
+    };
+    if (window.DatagonNotify && window.DatagonNotify.busyRun) window.DatagonNotify.busyRun(btn, run);
+    else run().catch(function () {});
+  }
+
+  function loadBitcopPeople() {
+    return api("/bitcop/employees")
+      .then(function (j) {
+        state.bitcopPeople = j.rows || [];
+        return state.bitcopPeople;
+      })
+      .catch(function () {
+        state.bitcopPeople = [];
+        return [];
+      });
+  }
+
+  function fillBitcopSelect(selectedId) {
+    var sel = document.getElementById("dg-ws-set-emp-bitcop");
+    if (!sel) return;
+    var cur = selectedId != null && selectedId !== "" ? Number(selectedId) : 0;
+    var opts = ['<option value="">— не привязан —</option>'];
+    (state.bitcopPeople || []).forEach(function (p) {
+      opts.push(
+        '<option value="' +
+          p.id +
+          '"' +
+          (Number(p.id) === cur ? " selected" : "") +
+          ">" +
+          (p.full_name || p.id) +
+          (p.email ? " · " + p.email : "") +
+          "</option>"
+      );
+    });
+    if (cur && !(state.bitcopPeople || []).some(function (p) { return Number(p.id) === cur; })) {
+      opts.push('<option value="' + cur + '" selected>Bitcop #' + cur + " (нет в списке)</option>");
+    }
+    sel.innerHTML = opts.join("");
   }
 
   function toDateInput(v) {
@@ -2070,6 +2311,92 @@
       });
   }
 
+  function fieldNum(v, def) {
+    if (v == null || v === "" || v === "undefined" || v === "null") return String(def);
+    var n = Number(v);
+    if (Number.isNaN(n)) return String(def);
+    return String(n);
+  }
+
+  function renderDeptManageScopes(currentDeptId, scopes) {
+    var host = document.getElementById("dg-ws-set-dept-manage-list");
+    if (!host) return;
+    var selected = {};
+    (scopes || []).forEach(function (s) {
+      var tid = Number(s.department_id != null ? s.department_id : s.target_department_id);
+      if (!tid) return;
+      selected[tid] = s.can_edit !== false && s.can_edit !== 0 && s.can_edit !== "0";
+    });
+    var others = (state.departmentsAll || []).filter(function (d) {
+      return !currentDeptId || Number(d.id) !== Number(currentDeptId);
+    });
+    if (!others.length) {
+      host.innerHTML = '<div class="small text-muted">Нет других отделов — сначала создайте или «Подтянуть группы».</div>';
+      return;
+    }
+    host.innerHTML = others
+      .map(function (d) {
+        var tid = Number(d.id);
+        var on = Object.prototype.hasOwnProperty.call(selected, tid);
+        var editOn = on ? selected[tid] : true;
+        return (
+          '<div class="dg-ws-set-dept-manage-row d-flex align-items-center flex-wrap gap-2 py-1">' +
+          '<div class="form-check mb-0 flex-grow-1">' +
+          '<input class="form-check-input" type="checkbox" id="dg-ws-set-manage-' +
+          tid +
+          '" data-dg-ws-manage-dept="' +
+          tid +
+          '"' +
+          (on ? " checked" : "") +
+          " />" +
+          '<label class="form-check-label" for="dg-ws-set-manage-' +
+          tid +
+          '">' +
+          (d.name || "Отдел #" + tid) +
+          "</label>" +
+          "</div>" +
+          '<div class="form-check mb-0">' +
+          '<input class="form-check-input" type="checkbox" id="dg-ws-set-manage-edit-' +
+          tid +
+          '" data-dg-ws-manage-edit="' +
+          tid +
+          '"' +
+          (editOn ? " checked" : "") +
+          (on ? "" : " disabled") +
+          " />" +
+          '<label class="form-check-label small text-muted" for="dg-ws-set-manage-edit-' +
+          tid +
+          '">правки</label>' +
+          "</div>" +
+          "</div>"
+        );
+      })
+      .join("");
+    host.querySelectorAll("[data-dg-ws-manage-dept]").forEach(function (cb) {
+      cb.addEventListener("change", function () {
+        var tid = cb.getAttribute("data-dg-ws-manage-dept");
+        var edit = host.querySelector('[data-dg-ws-manage-edit="' + tid + '"]');
+        if (!edit) return;
+        edit.disabled = !cb.checked;
+        if (cb.checked && !edit.checked) edit.checked = true;
+      });
+    });
+  }
+
+  function readDeptManageScopes() {
+    var host = document.getElementById("dg-ws-set-dept-manage-list");
+    if (!host) return [];
+    var out = [];
+    host.querySelectorAll("[data-dg-ws-manage-dept]").forEach(function (cb) {
+      if (!cb.checked) return;
+      var tid = Number(cb.getAttribute("data-dg-ws-manage-dept"));
+      if (!tid) return;
+      var edit = host.querySelector('[data-dg-ws-manage-edit="' + tid + '"]');
+      out.push({ department_id: tid, can_edit: !!(edit && edit.checked) });
+    });
+    return out;
+  }
+
   function openDept(id) {
     var d = id
       ? state.departmentsAll.find(function (x) {
@@ -2079,10 +2406,10 @@
     document.getElementById("dg-ws-set-dept-id").value = d ? String(d.id) : "";
     document.getElementById("dg-ws-set-dept-name").value = d ? d.name || "" : "";
     document.getElementById("dg-ws-set-dept-sched").value = d ? d.schedule_type || "5/2" : "5/2";
-    document.getElementById("dg-ws-set-dept-norm").value = d ? String(d.norm_hours) : "8";
-    document.getElementById("dg-ws-set-dept-t1").value = d ? String(d.rate_full_hours) : "7";
-    document.getElementById("dg-ws-set-dept-t05").value = d ? String(d.rate_half_hours) : "4";
-    document.getElementById("dg-ws-set-dept-vaclim").value = d ? String(d.vacation_overlap_limit) : "1";
+    document.getElementById("dg-ws-set-dept-norm").value = d ? fieldNum(d.norm_hours, 8) : "8";
+    document.getElementById("dg-ws-set-dept-t1").value = d ? fieldNum(d.rate_full_hours, 7) : "7";
+    document.getElementById("dg-ws-set-dept-t05").value = d ? fieldNum(d.rate_half_hours, 4) : "4";
+    document.getElementById("dg-ws-set-dept-vaclim").value = d ? fieldNum(d.vacation_overlap_limit, 1) : "1";
     fillPremForm(
       "dg-ws-set-dept-prem-kind",
       "dg-ws-set-dept-prem-amount",
@@ -2090,6 +2417,7 @@
       d ? d.premium_rule_json : { kind: "stub" },
       false
     );
+    renderDeptManageScopes(d ? d.id : null, d ? d.manage_scopes || [] : []);
     showOverlay("dept", true);
   }
 
@@ -2103,6 +2431,7 @@
       rate_half_hours: Number(document.getElementById("dg-ws-set-dept-t05").value) || 4,
       vacation_overlap_limit: Number(document.getElementById("dg-ws-set-dept-vaclim").value) || 1,
       premium_rule_json: readPremFromForm("dg-ws-set-dept-prem-kind", "dg-ws-set-dept-prem-amount", false),
+      manage_scopes: readDeptManageScopes(),
     };
     var btn = document.getElementById("dg-ws-set-dept-save");
     var run = function () {
@@ -2266,7 +2595,17 @@
       e.personal_premium_rule_json,
       true
     );
-    showOverlay("emp", true);
+    var noSen = document.getElementById("dg-ws-set-emp-no-seniority");
+    if (noSen) noSen.checked = Number(e.seniority_pay_disabled) === 1;
+    var openOverlay = function () {
+      fillBitcopSelect(e.bitcop_employee_id);
+      showOverlay("emp", true);
+    };
+    if (!(state.bitcopPeople || []).length) {
+      loadBitcopPeople().then(openOverlay).catch(openOverlay);
+    } else {
+      openOverlay();
+    }
   }
 
   function saveEmp() {
@@ -2280,6 +2619,8 @@
       toast("warning", "Укажите дату приёма — без неё стаж не считается");
       return;
     }
+    var bitcopSel = document.getElementById("dg-ws-set-emp-bitcop");
+    var noSen = document.getElementById("dg-ws-set-emp-no-seniority");
     var body = {
       organization_id: Number(document.getElementById("dg-ws-set-emp-edit-org").value) || e.organization_id,
       department_id: Number(document.getElementById("dg-ws-set-emp-edit-dept").value) || e.department_id,
@@ -2299,6 +2640,8 @@
         "dg-ws-set-emp-prem-amount",
         true
       ),
+      bitcop_employee_id: bitcopSel && bitcopSel.value ? Number(bitcopSel.value) : null,
+      seniority_pay_disabled: !!(noSen && noSen.checked),
     };
     var btn = document.getElementById("dg-ws-set-emp-save");
     var run = function () {
@@ -2513,10 +2856,83 @@
       });
   }
 
+  function setCalMsg(cls, text) {
+    var el = document.getElementById("dg-ws-set-cal-msg");
+    if (!el) return;
+    el.className = "alert mt-3 mb-0 " + (cls || "alert-light");
+    el.classList.remove("d-none");
+    el.textContent = text || "";
+  }
+
+  function loadCalendarStatus() {
+    var y = new Date().getFullYear();
+    var st = document.getElementById("dg-ws-set-cal-status");
+    return Promise.all([
+      api("/calendar?year=" + y).catch(function () {
+        return null;
+      }),
+      api("/calendar?year=" + (y + 1)).catch(function () {
+        return null;
+      }),
+    ]).then(function (arr) {
+      if (!st) return;
+      var parts = (arr || [])
+        .filter(Boolean)
+        .map(function (j) {
+          var c = j.coverage || {};
+          return (
+            j.year +
+            ": " +
+            (c.days || 0) +
+            " дн. / " +
+            (c.workdays || 0) +
+            " раб."
+          );
+        });
+      st.textContent = parts.length ? "В БД · " + parts.join(" · ") : "В БД пусто — нажмите «Подтянуть»";
+    });
+  }
+
+  function syncRfCalendar() {
+    var btn = document.getElementById("dg-ws-set-cal-sync");
+    setCalMsg("alert-warning", "Загружаем производственный календарь…");
+    var run = function () {
+      return api("/calendar/sync-rf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ years: [2025, 2026, 2027, 2028] }),
+      }).then(function (j) {
+        var lines = (j.results || [])
+          .map(function (r) {
+            return (
+              r.year +
+              ": " +
+              (r.error || r.imported + " дн., раб. " + (r.workdays || "—") + " (" + (r.source || "?") + ")")
+            );
+          })
+          .join("; ");
+        setCalMsg(
+          j.success ? "alert-success" : "alert-warning",
+          (j.success ? "Готово. " : "Частично. ") + lines
+        );
+        toast(j.success ? "success" : "warning", "Календарь РФ: " + (j.imported || 0) + " дн.");
+        return loadCalendarStatus();
+      });
+    };
+    if (window.DatagonNotify && window.DatagonNotify.busyRun) window.DatagonNotify.busyRun(btn, run);
+    else
+      run().catch(function (e) {
+        setCalMsg("alert-danger", e.message || "Ошибка");
+        toast("danger", e.message);
+      });
+  }
+
   function loadAll() {
     return Promise.all([api("/organizations"), api("/departments"), api("/employees")])
       .then(function (arr) {
         applyLoaded(arr);
+        loadBitcopConfig();
+        loadCalendarStatus();
         return ensureGroupsAsDepartments();
       })
       .catch(function (e) {
@@ -2525,6 +2941,18 @@
   }
 
   function bind() {
+    var bitcopSave = document.getElementById("dg-ws-set-bitcop-save");
+    if (bitcopSave) bitcopSave.addEventListener("click", function () { saveBitcopConfig(); });
+    var bitcopTest = document.getElementById("dg-ws-set-bitcop-test");
+    if (bitcopTest) bitcopTest.addEventListener("click", testBitcop);
+    var bitcopClear = document.getElementById("dg-ws-set-bitcop-clear-key");
+    if (bitcopClear) {
+      bitcopClear.addEventListener("click", function () {
+        saveBitcopConfig({ clear_api_key: true });
+      });
+    }
+    var calSync = document.getElementById("dg-ws-set-cal-sync");
+    if (calSync) calSync.addEventListener("click", syncRfCalendar);
     var orgSave = document.getElementById("dg-ws-set-org-save");
     if (orgSave) orgSave.addEventListener("click", saveOrg);
     var orgAdd = document.getElementById("dg-ws-set-org-add");

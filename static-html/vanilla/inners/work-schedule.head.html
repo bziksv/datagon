@@ -129,6 +129,16 @@
     gap: 2px;
   }
   .dg-ws-cal-cell.muted { background: #f8f9fa; color: #adb5bd; }
+  /* Нерабочий по производственному календарю РФ (праздник / выходной / перенос) */
+  .dg-ws-cal-cell.nonwork {
+    background: #fff0f0;
+    color: #a94442;
+  }
+  .dg-ws-cal-cell.nonwork .day-num { color: #c0392b; }
+  .dg-ws-cal-cell.nonwork .dg-ws-cal-empty { color: #e0a0a0; }
+  .dg-ws-cal-cell.short-day {
+    box-shadow: inset 0 -2px 0 #f0ad4e;
+  }
   .dg-ws-cal-cell .day-num { font-weight: 600; font-size: 0.8rem; }
   .dg-ws-cal-hours {
     font-size: 0.85rem;
@@ -249,11 +259,16 @@
     text-transform: lowercase;
     color: #6c757d;
   }
-  .dg-ws-sheet th.dg-ws-day-h.weekend .dg-ws-day-wd {
+  .dg-ws-sheet th.dg-ws-day-h.weekend .dg-ws-day-wd,
+  .dg-ws-sheet th.dg-ws-day-h.nonwork .dg-ws-day-wd {
     color: #c0392b;
   }
-  .dg-ws-sheet th.dg-ws-day-h.weekend {
+  .dg-ws-sheet th.dg-ws-day-h.weekend,
+  .dg-ws-sheet th.dg-ws-day-h.nonwork {
     background: #faf2f2;
+  }
+  .dg-ws-sheet th.dg-ws-day-h.short-day {
+    background: #fff8e8;
   }
   .dg-ws-sheet th.emp,
   .dg-ws-sheet td.emp {
@@ -266,6 +281,14 @@
     font-weight: 500;
   }
   .dg-ws-sheet th.emp { z-index: 2; background: #f4f6f9; }
+  .dg-ws-sheet th.dg-ws-pay-h.dg-ws-pay-total-h,
+  .dg-ws-sheet td.dg-ws-pay-total {
+    min-width: 7.5rem;
+    background: #f8fafc;
+  }
+  .dg-ws-sheet td.dg-ws-pay-total .dg-ws-pay-main {
+    font-weight: 600;
+  }
   .dg-ws-sheet th.dg-ws-pay-h,
   .dg-ws-sheet td.dg-ws-pay {
     text-align: right;
@@ -313,6 +336,27 @@
     color: #2d6a3e;
   }
   .dg-ws-sheet td.cell-click { cursor: pointer; }
+  .dg-ws-sheet-wrap.dg-ws-bulk-on td.cell-click[data-emp][data-day] {
+    outline: 1px dashed rgba(58, 122, 254, 0.35);
+  }
+  .dg-ws-sheet-wrap.dg-ws-bulk-on td.cell-click[data-emp][data-day]:hover {
+    outline-color: rgba(58, 122, 254, 0.75);
+  }
+  .dg-ws-sheet td.cell-click.dg-ws-bulk-sel {
+    outline: 2px solid #3a7afe !important;
+    box-shadow: inset 0 0 0 2px rgba(58, 122, 254, 0.25);
+    position: relative;
+  }
+  .dg-ws-sheet td.cell-click.dg-ws-bulk-sel::after {
+    content: "✓";
+    position: absolute;
+    top: 0;
+    right: 2px;
+    font-size: 9px;
+    font-weight: 700;
+    color: #3a7afe;
+    line-height: 1;
+  }
   .dg-ws-sheet td.cell-click:hover {
     outline: 2px solid #3f6ad8;
     outline-offset: -2px;
@@ -365,5 +409,61 @@
   /* Tighter page bottom above fixed footer */
   body.datagon-vanilla-body[data-dg-active-nav="work-schedule"] .app-main__inner {
     padding-bottom: 2.5rem;
+  }
+
+  .dg-ws-dept-select {
+    width: auto;
+    min-width: 12rem;
+    max-width: 18rem;
+  }
+  .dg-ws-dept-section-title {
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .dg-ws-dept-section-title .badge {
+    font-weight: 500;
+  }
+
+  .dg-ws-audit-feed {
+    max-height: 28rem;
+    overflow-y: auto;
+  }
+  .dg-ws-audit-item {
+    display: flex;
+    gap: 0.75rem;
+    padding: 0.65rem 0;
+    border-bottom: 1px solid #f0f2f5;
+  }
+  .dg-ws-audit-item:last-child { border-bottom: 0; }
+  .dg-ws-audit-dot {
+    width: 0.55rem;
+    height: 0.55rem;
+    border-radius: 50%;
+    margin-top: 0.4rem;
+    flex-shrink: 0;
+    background: #3f6ad8;
+  }
+  .dg-ws-audit-dot.is-warn { background: #f7b924; }
+  .dg-ws-audit-dot.is-danger { background: #d92550; }
+  .dg-ws-audit-dot.is-ok { background: #3ac47d; }
+  .dg-ws-audit-dot.is-muted { background: #adb5bd; }
+  .dg-ws-audit-body { min-width: 0; flex: 1; }
+  .dg-ws-audit-who {
+    font-weight: 600;
+    font-size: 0.9rem;
+  }
+  .dg-ws-audit-what {
+    font-size: 0.875rem;
+    color: #495057;
+  }
+  .dg-ws-audit-when {
+    font-size: 0.75rem;
+    color: #868e96;
+    margin-top: 0.15rem;
   }
 </style>

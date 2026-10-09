@@ -80,6 +80,79 @@
             </div>
           </div>
 
+          <!-- Bitcop -->
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex justify-content-between align-items-center gap-2 flex-wrap">
+              <div class="d-flex align-items-center">
+                <i class="header-icon pe-7s-cloud-upload icon-gradient bg-tempting-azure me-2"></i>
+                <span>Bitcop · учёт часов</span>
+              </div>
+              <span class="small text-muted">Продуктивное время → табель (часовики / контент)</span>
+            </div>
+            <div class="card-body" id="dg-ws-set-bitcop-body">
+              <p class="small text-muted mb-3">
+                API-ключ в кабинете Bitcop: <strong>Настройки → Токены доступа → API-ключ</strong>.
+                База запросов: <code>https://&lt;аккаунт&gt;.bitcop.ru:4443/api/v1/</code>.
+                В карточке сотрудника укажите соответствие с пользователем Bitcop.
+              </p>
+              <div class="row g-3">
+                <div class="col-md-4">
+                  <label class="form-label" for="dg-ws-set-bitcop-account">Аккаунт (поддомен)</label>
+                  <input type="text" class="form-control form-control-sm" id="dg-ws-set-bitcop-account" placeholder="например company" autocomplete="off" />
+                </div>
+                <div class="col-md-5">
+                  <label class="form-label" for="dg-ws-set-bitcop-key">API-ключ</label>
+                  <input type="password" class="form-control form-control-sm" id="dg-ws-set-bitcop-key" placeholder="оставьте пустым, чтобы не менять" autocomplete="new-password" />
+                  <div class="form-text" id="dg-ws-set-bitcop-key-hint">не задан</div>
+                </div>
+                <div class="col-md-3">
+                  <label class="form-label" for="dg-ws-set-bitcop-metric">Что тянем в часы</label>
+                  <select class="form-select form-select-sm" id="dg-ws-set-bitcop-metric">
+                    <option value="productiveTime">Продуктивное (рекоменд.)</option>
+                    <option value="activeTime">Активное</option>
+                    <option value="totalTime">Общее время</option>
+                  </select>
+                </div>
+              </div>
+              <div class="mt-3 d-flex flex-wrap gap-2">
+                <button type="button" class="btn btn-sm btn-primary" id="dg-ws-set-bitcop-save" data-dg-notify-start="Сохраняем Bitcop…">Сохранить</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-ws-set-bitcop-test" data-dg-notify-start="Проверяем Bitcop…">Проверить связь</button>
+                <button type="button" class="btn btn-sm btn-outline-danger" id="dg-ws-set-bitcop-clear-key" data-dg-notify-start="Сбрасываем ключ…">Сбросить ключ</button>
+              </div>
+              <div id="dg-ws-set-bitcop-msg" class="alert mt-3 mb-0 d-none" role="status"></div>
+            </div>
+          </div>
+
+          <!-- Производственный календарь РФ -->
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+              <div class="d-flex align-items-center flex-wrap gap-2">
+                <i class="header-icon pe-7s-date icon-gradient bg-happy-itmeo me-2"></i>
+                <span>Производственный календарь РФ</span>
+              </div>
+              <span class="small text-muted">норма дней для графика 5/2 · подсветка выходных</span>
+            </div>
+            <div class="card-body" id="dg-ws-set-cal-body">
+              <p class="small text-muted mb-2">
+                Источник: <a href="http://xmlcalendar.ru/?country=ru" target="_blank" rel="noopener">xmlcalendar.ru</a>
+                (бандл 2026–2027 в репозитории как запасной). Для 5/2 норма «ставки / N» и розовая подсветка
+                нерабочих дней берутся отсюда.
+              </p>
+              <div class="small mb-2" id="dg-ws-set-cal-status">Статус: —</div>
+              <div class="d-flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  class="btn btn-sm btn-primary"
+                  id="dg-ws-set-cal-sync"
+                  data-dg-notify-start="Подтягиваем календарь РФ…"
+                >
+                  Подтянуть календарь РФ
+                </button>
+              </div>
+              <div id="dg-ws-set-cal-msg" class="alert mt-3 mb-0 d-none" role="status"></div>
+            </div>
+          </div>
+
           <!-- Отделы -->
           <div class="main-card mb-3 card">
             <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
@@ -225,10 +298,18 @@
                     <option value="fixed_full">Фикс целиком, ₽</option>
                   </select>
                 </div>
-                <div class="mb-0" id="dg-ws-set-dept-prem-amount-wrap">
+                <div class="mb-2" id="dg-ws-set-dept-prem-amount-wrap">
                   <label class="form-label" for="dg-ws-set-dept-prem-amount">Сумма, ₽</label>
                   <input type="text" class="form-control" id="dg-ws-set-dept-prem-amount" inputmode="decimal" placeholder="0" />
                   <div class="form-text">По дням — пропорционально ставкам месяца; целиком — вся сумма (продажи).</div>
+                </div>
+                <div class="mb-0 mt-3 pt-2 border-top" id="dg-ws-set-dept-manage-wrap">
+                  <label class="form-label mb-1">Доступ к другим отделам</label>
+                  <p class="small text-muted mb-2">
+                    Сотрудники <em>этого</em> отдела смогут открывать выбранные отделы на вкладке «Отдел» графика.
+                    Пример: «Руководитель склада» → «Склад». «Правки» — редактирование табеля.
+                  </p>
+                  <div id="dg-ws-set-dept-manage-list" class="dg-ws-set-dept-manage-list"></div>
                 </div>
               </div>
               <div class="card-footer d-flex justify-content-end gap-2 bg-white border-top-0">
@@ -342,6 +423,19 @@
                   <div class="col-md-4" id="dg-ws-set-emp-prem-amount-wrap">
                     <label class="form-label" for="dg-ws-set-emp-prem-amount">Сумма, ₽</label>
                     <input type="text" class="form-control" id="dg-ws-set-emp-prem-amount" inputmode="decimal" placeholder="0" />
+                  </div>
+                  <div class="col-md-8">
+                    <label class="form-label" for="dg-ws-set-emp-bitcop">Сотрудник в Bitcop</label>
+                    <select class="form-select" id="dg-ws-set-emp-bitcop">
+                      <option value="">— не привязан —</option>
+                    </select>
+                    <div class="form-text">Список из Bitcop API (нужен сохранённый токен). Часы подтягиваются кнопкой на табеле.</div>
+                  </div>
+                  <div class="col-md-4 d-flex align-items-end">
+                    <div class="form-check mb-2">
+                      <input class="form-check-input" type="checkbox" id="dg-ws-set-emp-no-seniority" />
+                      <label class="form-check-label" for="dg-ws-set-emp-no-seniority">Не выплачиваем за стаж</label>
+                    </div>
                   </div>
                 </div>
               </div>

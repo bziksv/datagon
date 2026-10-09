@@ -2267,23 +2267,29 @@ Preflight матча «Менеджер по продажам» ↔ Planfix `/us
 
 | Метод | Путь | Кто |
 |-------|------|-----|
-| GET | `/api/work-schedule/access` | любой авторизованный |
-| GET/POST/PUT | `/organizations`, `/departments`, `/employees`, `/users-available` | accounting |
+| GET | `/api/work-schedule/access` | любой авторизованный; `visible_departments[]` (`id`, `name`, `can_edit`, `is_own`, `is_headed`, `via_manage`), `headed_department_ids` |
+| GET/POST/PUT | `/organizations`, `/departments`, `/employees`, `/users-available` | accounting; `GET /departments` — сотрудник/рук: свой + headed + `ws_department_manage_scope`; accounting: все поля `d.*` + `manage_scopes[]` (`department_id`, `name`, `can_edit`). `POST/PUT /departments` body: `manage_scopes: [{ department_id, can_edit }]` — отделы, которые видят/правят сотрудники **этого** отдела (пример: «Руководитель склада» → «Склад») |
 | GET | `/employees/:id/salary-history` | accounting (любой) / employee (свой); аудит `field_name=salary` (`create` / `salary_change`: кто, когда, было/стало) |
 | DELETE | `/organizations/:id` | accounting (409, если есть сотрудники) |
 | POST | `/departments/import-specialties` | accounting; отделы из `specialties` в **общий** справочник (без привязки к орг.; без «Полный доступ»), без дублей имён |
 | GET/POST | `/clock/status`, `/clock/start`, `/clock/stop` | сотрудник; `segments_json` append-only (+ `ip_in`/`ip_out`); `stop` сначала пишет часы/сегменты (payroll ошибка → `payroll_error`, часы уже в БД); повторный `start` → `resumed` + накопление |
 | GET | `/me/day?date=YYYY-MM-DD` | сотрудник; детали дня: сегменты старт/стоп, часы, IP, открытый сегмент |
 | GET | `/stuck-shifts?department_id=` | head / accounting; без `department_id` у head — свой отдел, у accounting — все; с параметром — только выбранный отдел |
-| GET | `/me/month`, `/dept/month` | employee / head / accounting; `dept/month` дополнительно отдаёт `today[]` (кто стартовал сегодня: `work_status` working/finished/not_started/vacation/sick, `check_in`, `hours`) и `today_date`; в `payroll` — `salary_rate` (полный оклад) + `base_salary` (накапало), `seniority_full` + `seniority_bonus` |
-| GET / PATCH | `/sheet`, `/sheet/cell` | accounting; в ячейках `open: true`, если смена не закрыта (UI — мигание «на работе»); у сотрудников `salary` / `salary_accrued`, `premium_*` / `premium_source`; при наличии отделов «…продаж…» — автозагрузка премий из журнала менеджеров (`sales_premium_sync`) |
+| GET | `/me/month`, `/dept/month` | employee / head / accounting; `dept/month?department_id=` — свой / headed / manage_scope; `can_edit` — head, accounting или scope с `can_edit=1`; в `payroll` — `salary_rate` + `base_salary`, `seniority_full` + `seniority_bonus` |
+| GET / PATCH | `/sheet`, `/sheet/cell` | `GET /sheet` — accounting; `PATCH /sheet/cell` — accounting, `head_user_id` отдела сотрудника **или** manage_scope с `can_edit` у отдела актёра; в ячейках `open: true`, если смена не закрыта; у сотрудников `salary` / `salary_accrued`, `premium_*` / `premium_source`, `seniority_*`, `total_accrued` / `total_planned`; автопремии sales при наличии отделов «…продаж…» |
+| PATCH | `/sheet/cells-bulk` | accounting или head (только свои отделы); body `{ cells: [{ employee_id, work_date }], type, rate, hours }` → `total` / `created` / `updated` / `failed` / `errors[]` / `duration_sec` (лимит 366) |
+| GET / POST | `/bitcop/config` | accounting; аккаунт + API-ключ Bitcop + метрика (`productiveTime`/`activeTime`/`totalTime`); ключ в GET только маской |
+| GET / POST | `/bitcop/employees`, `/bitcop/test` | accounting; список сотрудников Bitcop / проверка ключа |
+| POST | `/bitcop/sync-hours` | accounting; body `{ period_ym, dry_run?, force?, organization_id?, department_id?, employee_id? }` — часы из Bitcop в `ws_work_log` (`source=bitcop`) для карточек с `bitcop_employee_id` |
 | PATCH | `/sheet/premium` | accounting; ручная премия: `{ employee_id, period_ym, premium_manual }` (`null` — сброс); пишет `premium_source=manual` |
 | POST | `/sheet/premium-from-sales` | accounting; принудительный пересчёт премий из журнала (`totals.bonus`) → `premium_manual` + `premium_source=sales`; body `{ period_ym, dry_run?, force?, organization_id?, department_id? }` |
 | POST | `/vacations`, `/vacations/:id/approve` | employee / head+accounting |
 | POST | `/sick`, `/absences`, `/vacation-compensation` | accounting |
 | GET/POST | `/payroll`, `/payroll/dry-run`, `/payroll/apply` | accounting (свой payroll — employee) |
-| GET/POST | `/calendar`, `/calendar/import` | read all / import accounting |
-| GET | `/audit` | accounting |
+| GET | `/calendar?year=`, `/calendar/month?month=YYYY-MM` | любой; при пустой БД год подтягивается из xmlcalendar.ru / бандла; month → `non_working_days`, `short_days`, `source` |
+| POST | `/calendar/sync-rf` | accounting; body `{ years?: number[] }` — залить производственный календарь РФ в `ws_work_calendar` (норма 5/2) |
+| POST | `/calendar/import` | accounting; ручной массив `days[]` |
+| GET | `/audit` | accounting; query `limit`, `month=YYYY-MM`, `scope=edits`, `employee_id` / `employee_q` (фильтр по **сотруднику-субъекту** правки, не по автору), `entity_type`, `user_id`; в строках — `subject_name`, `subject_work_date`, `subject_department_name` для `work_log` |
 | GET | `/export/1c?format=csv\|xml&month=YYYY-MM` | accounting |
 | POST | `/import/timesheet-csv` | accounting (`dry_run`, `csv`) |
 | GET/PUT | `/1c-map`, `/1c-map/:employeeId` | accounting |

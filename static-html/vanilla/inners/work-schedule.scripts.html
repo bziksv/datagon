@@ -3,11 +3,12 @@
   "use strict";
 
   var TAB_KEY = "datagon_ws_tab_v1";
+  var DEPT_SEL_KEY = "datagon_ws_dept_selected_v1";
   var API = "/api/work-schedule";
 
   var TAB_HINTS = {
     me: "Личный табель, заработок и заявки на отпуск",
-    dept: "График отдела, зависшие смены и согласование отпусков",
+    dept: "График отдела, правки руководителем, согласование отпусков",
     sheet: "Табель бухгалтерии: сотрудники × дни",
   };
 
@@ -20,13 +21,27 @@
     pending: { orgId: 0, deptId: 0, month: "", search: "" },
     orgs: [],
     departments: [],
+    /** Выбранный отдел на вкладке «Отдел» */
+    deptSelectedId: 0,
     meMonth: null,
     deptMonth: null,
+    /** Производственный календарь текущего месяца (из me/dept/sheet) */
+    workCalendar: null,
+    /** Ответ /dept/month (для совместимости с findDeptBundleCell — массив из одного) */
+    deptBundles: [],
     sheet: null,
+    auditRows: [],
+    /** Применённый фильтр журнала по ФИО сотрудника (subject) */
+    auditEmpQ: "",
     pendingVacations: [],
     stuck: [],
     editCell: null,
     editPremium: null,
+    /** Режим массовой правки дней табеля */
+    bulkMode: false,
+    /** Ключи "empId:day" */
+    bulkSelected: {},
+    bulkLast: null,
   };
 
   function money(n) {
@@ -89,17 +104,54 @@
 
   var WD_SHORT = ["вс", "пн", "вт", "ср", "чт", "пт", "сб"];
 
-  /** Шапка колонки дня: «9» + «пт»; выходные — класс weekend. */
-  function dayColHeaderHtml(y, m, day) {
+  function calendarNonWorkSet(cal) {
+    var set = {};
+    if (!cal) return set;
+    (cal.non_working_days || []).forEach(function (d) {
+      set[Number(d)] = true;
+    });
+    return set;
+  }
+
+  function calendarShortSet(cal) {
+    var set = {};
+    if (!cal) return set;
+    (cal.short_days || []).forEach(function (d) {
+      set[Number(d)] = true;
+    });
+    return set;
+  }
+
+  function activeMonthCalendar() {
+    if (state.tab === "sheet" && state.sheet && state.sheet.calendar) return state.sheet.calendar;
+    if (state.tab === "dept") {
+      var b = (state.deptBundles || [])[0] || state.deptMonth;
+      if (b && b.calendar) return b.calendar;
+    }
+    if (state.meMonth && state.meMonth.calendar) return state.meMonth.calendar;
+    return state.workCalendar || null;
+  }
+
+  /** Шапка колонки дня: «9» + «пт»; нерабочие по производственному календарю / сб–вс. */
+  function dayColHeaderHtml(y, m, day, cal) {
     var wd = new Date(y, m - 1, day).getDay();
     var weekend = wd === 0 || wd === 6;
+    var map = cal || activeMonthCalendar();
+    var nonWork = calendarNonWorkSet(map);
+    var short = calendarShortSet(map);
+    var isNonWork = nonWork[day] || (!map && weekend);
+    var isShort = !!short[day];
+    var tip = day + " · " + WD_SHORT[wd];
+    if (map && map.days && map.days[day] && map.days[day].holiday_name) {
+      tip += " · " + map.days[day].holiday_name;
+    } else if (isNonWork) tip += " · выходной";
+    if (isShort) tip += " · сокращённый";
     return (
       '<th class="dg-ws-day-h' +
-      (weekend ? " weekend" : "") +
+      (isNonWork ? " nonwork weekend" : "") +
+      (isShort ? " short-day" : "") +
       '" title="' +
-      day +
-      " · " +
-      WD_SHORT[wd] +
+      tip.replace(/"/g, "&quot;") +
       '"><span class="dg-ws-day-n">' +
       day +
       '</span><span class="dg-ws-day-wd">' +
@@ -156,10 +208,12 @@
   function syncMonthUi() {
     var ym = state.filters.month || defaultMonthStr();
     var label = formatMonthRu(ym);
-    ["dg-ws-cal-month-title", "dg-ws-dept-month-title", "dg-ws-earn-period"].forEach(function (id) {
-      var el = document.getElementById(id);
-      if (el) el.textContent = label;
-    });
+    ["dg-ws-cal-month-title", "dg-ws-dept-month-title", "dg-ws-sheet-month-title", "dg-ws-earn-period"].forEach(
+      function (id) {
+        var el = document.getElementById(id);
+        if (el) el.textContent = label;
+      }
+    );
     var pick = document.getElementById("dg-ws-month-pick");
     if (pick && pick.value !== ym) pick.value = ym;
     var sheetMonth = document.getElementById("dg-ws-f-month");
@@ -197,6 +251,13 @@
     try {
       sessionStorage.setItem(TAB_KEY, tab);
     } catch (e) {}
+    try {
+      var url = new URL(window.location.href);
+      if (url.searchParams.get("tab") !== tab) {
+        url.searchParams.set("tab", tab);
+        window.history.replaceState({}, "", url.pathname + url.search + url.hash);
+      }
+    } catch (e2) {}
     ["me", "dept", "sheet"].forEach(function (t) {
       var btn = document.getElementById("dg-ws-tab-" + t);
       if (btn) {
@@ -222,6 +283,7 @@
       '<span><i class="swatch" style="background:#ffc107"></i> 0,5</span>' +
       '<span><i class="swatch" style="background:#e3f2fd"></i> отпуск</span>' +
       '<span><i class="swatch" style="background:#fce4ec"></i> больничный</span>' +
+      '<span><i class="swatch" style="background:#fff0f0;border:1px solid #e0a0a0"></i> выходной (календарь РФ)</span>' +
       '<span><i class="swatch dg-ws-swatch-open"></i> на работе (таймер)</span>' +
       (withBusy
         ? '<span><i class="swatch" style="background:#ffebee"></i> занято в отделе</span>'
@@ -453,13 +515,23 @@
     renderLegend(document.getElementById("dg-ws-cal-legend"), state.calMode === "free");
     var monthStr = state.filters.month || defaultMonthStr();
     var hint = document.getElementById("dg-ws-cal-hint");
+    var cal = (state.meMonth && state.meMonth.calendar) || state.workCalendar || null;
+    var nonWork = calendarNonWorkSet(cal);
+    var shortDays = calendarShortSet(cal);
     if (hint) {
+      var calNote =
+        cal && cal.source === "rf"
+          ? " Нерабочие дни (розовый) — по производственному календарю РФ."
+          : cal && cal.source === "fallback_mon_fri"
+            ? " Календарь РФ не загружен — показаны сб/вс."
+            : "";
       hint.textContent =
         formatMonthRu(monthStr) +
         ". " +
         (state.calMode === "free"
           ? "Красная подсветка — в отделе уже кто-то в отпуске (пересечения ограничены)."
-          : "Стрелки ‹ › или поле месяца сверху — сменить месяц. Отпуск — даты в блоке ниже (любой месяц).");
+          : "Стрелки ‹ › — сменить месяц. Отпуск — в блоке ниже.") +
+        calNote;
     }
     var pm = parseMonthValue(monthStr);
     var dim = daysInMonth(pm.y, pm.m);
@@ -502,8 +574,11 @@
       var cell = cells[d] || { rate: 0, type: "work", hours: 0 };
       var wd = new Date(pm.y, pm.m - 1, d).getDay();
       var weekend = wd === 0 || wd === 6;
+      var isNonWork = nonWork[d] || (!cal && weekend);
       var cls = ["dg-ws-cal-cell"];
-      if (weekend) cls.push("muted");
+      if (isNonWork) cls.push("nonwork");
+      else if (weekend) cls.push("muted");
+      if (shortDays[d]) cls.push("short-day");
       var hasHours = Number(cell.hours) > 0 || cell.open || cell.closed || cell.logged;
       if (cell.type === "vacation") cls.push("type-vacation");
       else if (cell.type === "sick") cls.push("type-sick");
@@ -520,6 +595,12 @@
         "-" +
         (d < 10 ? "0" + d : d);
       if (state.calMode === "mine") cls.push("clickable");
+      var dayTip = "";
+      if (cal && cal.days && cal.days[d]) {
+        var meta = cal.days[d];
+        if (meta.holiday_name) dayTip = meta.holiday_name;
+        if (meta.transfer_note) dayTip += (dayTip ? " · " : "") + meta.transfer_note;
+      }
       var body = "";
       if (state.calMode === "mine") {
         var hoursLabel = "";
@@ -549,11 +630,13 @@
       } else {
         body = '<div class="day-num">' + d + "</div>" + (busy.indexOf(d) >= 0 ? "занято" : "свободно");
       }
+      var titleAttr = dayTip || (state.calMode === "mine" ? "Открыть детали дня" : "");
       html +=
         '<div class="' +
         cls.join(" ") +
         '"' +
-        (state.calMode === "mine" ? ' data-dg-ws-day="' + ymd + '" title="Открыть детали дня"' : "") +
+        (state.calMode === "mine" ? ' data-dg-ws-day="' + ymd + '"' : "") +
+        (titleAttr ? ' title="' + String(titleAttr).replace(/"/g, "&quot;") + '"' : "") +
         ">" +
         body +
         "</div>";
@@ -672,6 +755,88 @@
     return { cls: cls, label: label };
   }
 
+  function visibleDeptList() {
+    if (state.access && state.access.visible_departments && state.access.visible_departments.length) {
+      return state.access.visible_departments;
+    }
+    return state.departments || [];
+  }
+
+  function defaultDeptSelectedId() {
+    var list = visibleDeptList();
+    var own =
+      state.access && state.access.employee && state.access.employee.department_id
+        ? Number(state.access.employee.department_id)
+        : 0;
+    if (own && list.some(function (d) { return Number(d.id) === own; })) return own;
+    if (list.length) return Number(list[0].id);
+    return 0;
+  }
+
+  function loadDeptSelectedFromStorage() {
+    var allowed = {};
+    visibleDeptList().forEach(function (d) {
+      allowed[Number(d.id)] = true;
+    });
+    var id = 0;
+    try {
+      var raw = localStorage.getItem(DEPT_SEL_KEY);
+      if (raw) {
+        var parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          for (var i = 0; i < parsed.length; i++) {
+            var n = Number(parsed[i]);
+            if (n && allowed[n]) {
+              id = n;
+              break;
+            }
+          }
+        } else {
+          var one = Number(parsed);
+          if (one && allowed[one]) id = one;
+        }
+      }
+    } catch (e) {}
+    if (!id) id = defaultDeptSelectedId();
+    state.deptSelectedId = id;
+  }
+
+  function saveDeptSelectedToStorage() {
+    try {
+      localStorage.setItem(DEPT_SEL_KEY, String(state.deptSelectedId || 0));
+    } catch (e) {}
+  }
+
+  function fillDeptSelect() {
+    var sel = document.getElementById("dg-ws-dept-select");
+    if (!sel) return;
+    var list = visibleDeptList();
+    var cur = Number(state.deptSelectedId) || defaultDeptSelectedId();
+    if (cur && !list.some(function (d) { return Number(d.id) === cur; })) {
+      cur = defaultDeptSelectedId();
+    }
+    state.deptSelectedId = cur;
+    sel.innerHTML = list.length
+      ? list
+          .map(function (d) {
+            var id = Number(d.id);
+            return (
+              '<option value="' +
+              id +
+              '"' +
+              (id === cur ? " selected" : "") +
+              ">" +
+              (d.name || "Отдел") +
+              (d.can_edit ? " ✎" : "") +
+              (d.is_own ? " (мой)" : "") +
+              "</option>"
+            );
+          })
+          .join("")
+      : '<option value="">Нет доступных отделов</option>';
+    if (cur) sel.value = String(cur);
+  }
+
   function renderDeptMatrix() {
     var host = document.getElementById("dg-ws-dept-sheet-host");
     if (!host) return;
@@ -679,21 +844,54 @@
     var monthStr = state.filters.month || defaultMonthStr();
     var pm = parseMonthValue(monthStr);
     var dim = daysInMonth(pm.y, pm.m);
-    var dm = state.deptMonth || { employees: [], cells: {} };
-    var html = '<table class="dg-ws-sheet"><thead><tr><th class="emp">Сотрудник</th>';
-    for (var d = 1; d <= dim; d++) html += dayColHeaderHtml(pm.y, pm.m, d);
-    html += "</tr></thead><tbody>";
-    (dm.employees || []).forEach(function (e) {
-      html += '<tr><td class="emp">' + (e.full_name || "") + "</td>";
-      for (var day = 1; day <= dim; day++) {
-        var c = (dm.cells[e.id] && dm.cells[e.id][day]) || null;
-        var L = cellLabel(c);
-        html += '<td class="' + L.cls + '">' + L.label + "</td>";
+    var bundles = state.deptBundles && state.deptBundles.length
+      ? state.deptBundles
+      : state.deptMonth
+        ? [state.deptMonth]
+        : [];
+    if (!bundles.length) {
+      host.innerHTML = '<div class="text-muted">Выберите отдел</div>';
+      return;
+    }
+    var html = "";
+    bundles.forEach(function (dm) {
+      var canEdit = !!dm.can_edit;
+      var title = dm.department_name || "Отдел";
+      html += '<div class="dg-ws-dept-section" data-dg-ws-dept-bundle="' + (dm.department_id || "") + '">';
+      html +=
+        '<div class="dg-ws-dept-section-title"><span>' +
+        title +
+        "</span>" +
+        (canEdit
+          ? '<span class="badge bg-success">можно править</span>'
+          : '<span class="badge bg-secondary">только просмотр</span>') +
+        "</div>";
+      html += '<div class="dg-ws-sheet-wrap"><table class="dg-ws-sheet"><thead><tr><th class="emp">Сотрудник</th>';
+      for (var d = 1; d <= dim; d++) html += dayColHeaderHtml(pm.y, pm.m, d, dm.calendar || activeMonthCalendar());
+      html += "</tr></thead><tbody>";
+      var emps = dm.employees || [];
+      if (!emps.length) {
+        html +=
+          '<tr><td class="emp text-muted" colspan="' +
+          (dim + 1) +
+          '">Нет сотрудников</td></tr>';
+      } else {
+        emps.forEach(function (e) {
+          html += '<tr><td class="emp">' + (e.full_name || "") + "</td>";
+          for (var day = 1; day <= dim; day++) {
+            var c = (dm.cells[e.id] && dm.cells[e.id][day]) || null;
+            var L = cellLabel(c);
+            var click = canEdit
+              ? ' cell-click" data-emp="' + e.id + '" data-day="' + day + '" data-dept="' + (dm.department_id || "") + '"'
+              : '"';
+            html += '<td class="' + L.cls + click + ">" + L.label + "</td>";
+          }
+          html += "</tr>";
+        });
       }
-      html += "</tr>";
+      html += "</tbody></table></div></div>";
     });
-    html += "</tbody></table>";
-    host.innerHTML = html || '<div class="text-muted p-3">Нет сотрудников отдела</div>';
+    host.innerHTML = html;
   }
 
   function syncClockMirror() {
@@ -723,29 +921,42 @@
 
   function renderDept() {
     renderDeptMatrix();
+    fillDeptSelect();
     var team = document.getElementById("dg-ws-head-team");
     var teamDate = document.getElementById("dg-ws-head-team-date");
-    var dm = state.deptMonth || { employees: [], cells: {}, today: [] };
+    var bundles = state.deptBundles && state.deptBundles.length
+      ? state.deptBundles
+      : state.deptMonth
+        ? [state.deptMonth]
+        : [];
+    var dm = bundles[0] || { employees: [], cells: {}, today: [] };
     if (teamDate) {
       teamDate.textContent = dm.today_date ? fmtDate(dm.today_date) : "";
     }
     if (team) {
-      var rows = dm.today && dm.today.length ? dm.today : null;
-      if (!rows) {
+      var rows = [];
+      bundles.forEach(function (b) {
+        (b.today || []).forEach(function (r) {
+          rows.push(r);
+        });
+      });
+      if (!rows.length) {
         var day = new Date().getDate();
-        rows = (dm.employees || []).map(function (e) {
-          var c = (dm.cells[e.id] && dm.cells[e.id][day]) || {};
-          var work_status = "not_started";
-          if (c.type === "sick") work_status = "sick";
-          else if (c.type === "vacation") work_status = "vacation";
-          else if (c.open) work_status = "working";
-          else if (c.closed || Number(c.hours) > 0 || Number(c.rate) > 0) work_status = "finished";
-          return {
-            full_name: e.full_name,
-            work_status: work_status,
-            check_in: c.check_in ? String(c.check_in).slice(11, 16) : null,
-            hours: c.hours || 0,
-          };
+        bundles.forEach(function (b) {
+          (b.employees || []).forEach(function (e) {
+            var c = (b.cells[e.id] && b.cells[e.id][day]) || {};
+            var work_status = "not_started";
+            if (c.type === "sick") work_status = "sick";
+            else if (c.type === "vacation") work_status = "vacation";
+            else if (c.open) work_status = "working";
+            else if (c.closed || Number(c.hours) > 0 || Number(c.rate) > 0) work_status = "finished";
+            rows.push({
+              full_name: e.full_name,
+              work_status: work_status,
+              check_in: c.check_in ? String(c.check_in).slice(11, 16) : null,
+              hours: c.hours || 0,
+            });
+          });
         });
       }
       team.innerHTML =
@@ -763,7 +974,7 @@
               "</td></tr>"
             );
           })
-          .join("") || '<tr><td colspan="4" class="text-muted">Нет сотрудников отдела</td></tr>';
+          .join("") || '<tr><td colspan="4" class="text-muted">Нет сотрудников в отделе</td></tr>';
     }
     var stuck = document.getElementById("dg-ws-stuck-shifts");
     if (stuck) {
@@ -880,8 +1091,10 @@
     var html =
       '<table class="dg-ws-sheet"><thead><tr><th class="emp">Сотрудник</th>' +
       '<th class="dg-ws-pay-h" title="Накапало / ставка">Оклад</th>' +
-      '<th class="dg-ws-pay-h" title="Клик — ручная премия за месяц">Премия</th>';
-    for (var d = 1; d <= dim; d++) html += dayColHeaderHtml(pm.y, pm.m, d);
+      '<th class="dg-ws-pay-h" title="Клик — ручная премия за месяц">Премия</th>' +
+      '<th class="dg-ws-pay-h" title="Накапало / полная за месяц">За стаж</th>' +
+      '<th class="dg-ws-pay-h dg-ws-pay-total-h" title="Накапало по графику / плановый итог за полный месяц">Итого</th>';
+    for (var d = 1; d <= dim; d++) html += dayColHeaderHtml(pm.y, pm.m, d, sh.calendar || activeMonthCalendar());
     html += "<th>Σ</th></tr></thead><tbody>";
     filtered.forEach(function (e) {
       var salAcc = e.salary_accrued != null ? e.salary_accrued : 0;
@@ -890,6 +1103,20 @@
       var premFull = e.premium_full != null ? e.premium_full : 0;
       var premManual = e.premium_manual != null && e.premium_manual !== "";
       var premSrc = e.premium_source || "";
+      var senAcc = e.seniority_accrued != null ? e.seniority_accrued : 0;
+      var senFull = e.seniority_full != null ? e.seniority_full : 0;
+      var totAcc =
+        e.total_accrued != null ? e.total_accrued : Number(salAcc) + Number(premAcc) + Number(senAcc);
+      var totPlan =
+        e.total_planned != null
+          ? e.total_planned
+          : Number(salRate) +
+            (e.premium_planned != null
+              ? Number(e.premium_planned)
+              : premManual
+                ? Number(e.premium_manual) || 0
+                : Number(premFull) || 0) +
+            Number(senFull);
       var premSub = premSrc === "sales"
         ? "из продаж"
         : premSrc === "manual" || premManual
@@ -915,6 +1142,22 @@
         money(premAcc) +
         '</span><span class="dg-ws-pay-sub">' +
         premSub +
+        "</span></td>" +
+        '<td class="dg-ws-pay" title="Доплата за стаж">' +
+        '<span class="dg-ws-pay-main">' +
+        (e.seniority_pay_disabled ? "—" : money(senAcc)) +
+        '</span><span class="dg-ws-pay-sub">' +
+        (e.seniority_pay_disabled
+          ? "выкл"
+          : senFull > 0
+            ? "полная " + money(senFull)
+            : "нет стажа") +
+        "</span></td>" +
+        '<td class="dg-ws-pay dg-ws-pay-total" title="Накапало / плановый итог">' +
+        '<span class="dg-ws-pay-main">' +
+        money(totAcc) +
+        '</span><span class="dg-ws-pay-sub">план ' +
+        money(totPlan) +
         "</span></td>";
       var sum = 0;
       for (var day = 1; day <= dim; day++) {
@@ -924,9 +1167,12 @@
           if (c.type === "vacation" || c.type === "sick") sum += 1;
           else sum += Number(c.rate) || 0;
         }
+        var selKey = e.id + ":" + day;
+        var selCls = state.bulkSelected[selKey] ? " dg-ws-bulk-sel" : "";
         html +=
           '<td class="cell-click ' +
           L.cls +
+          selCls +
           '" data-emp="' +
           e.id +
           '" data-day="' +
@@ -939,6 +1185,141 @@
     });
     html += "</tbody></table>";
     host.innerHTML = html;
+    host.classList.toggle("dg-ws-bulk-on", !!state.bulkMode);
+    syncBulkUi();
+  }
+
+  function bulkSelectedCount() {
+    return Object.keys(state.bulkSelected || {}).length;
+  }
+
+  function bulkSelectedList() {
+    return Object.keys(state.bulkSelected || {}).map(function (k) {
+      var p = k.split(":");
+      return { empId: Number(p[0]), day: Number(p[1]) };
+    });
+  }
+
+  function clearBulkSelection() {
+    state.bulkSelected = {};
+    state.bulkLast = null;
+  }
+
+  function setBulkMode(on) {
+    state.bulkMode = !!on;
+    if (!state.bulkMode) clearBulkSelection();
+    var host = document.getElementById("dg-ws-sheet-host");
+    if (host) host.classList.toggle("dg-ws-bulk-on", !!state.bulkMode);
+    if (host && host.querySelectorAll) {
+      host.querySelectorAll("td.dg-ws-bulk-sel").forEach(function (td) {
+        if (!state.bulkMode) td.classList.remove("dg-ws-bulk-sel");
+      });
+    }
+    syncBulkUi();
+  }
+
+  function syncBulkUi() {
+    var n = bulkSelectedCount();
+    var btn = document.getElementById("dg-ws-bulk-toggle");
+    var cancel = document.getElementById("dg-ws-bulk-cancel");
+    var banner = document.getElementById("dg-ws-bulk-banner");
+    var hint = document.getElementById("dg-ws-sheet-hint");
+    if (banner) banner.classList.toggle("d-none", !state.bulkMode);
+    if (cancel) cancel.classList.toggle("d-none", !state.bulkMode);
+    if (hint) {
+      hint.textContent = state.bulkMode
+        ? "Выбор дней · Shift+клик — диапазон"
+        : "Клик по ячейке — правка";
+    }
+    if (!btn) return;
+    btn.classList.toggle("btn-outline-primary", !state.bulkMode);
+    btn.classList.toggle("btn-primary", !!state.bulkMode);
+    if (!state.bulkMode) {
+      btn.textContent = "Массовая смена";
+      btn.setAttribute("data-dg-notify-start", "Режим массовой смены…");
+    } else if (n === 0) {
+      btn.textContent = "Массовая смена · выберите дни";
+      btn.setAttribute("data-dg-notify-start", "Сначала выберите дни…");
+    } else {
+      btn.textContent = "Править выбранные (" + n + ")";
+      btn.setAttribute("data-dg-notify-start", "Открываем правку " + n + " дн.…");
+    }
+  }
+
+  function toggleBulkCell(empId, day, withShift) {
+    var key = empId + ":" + day;
+    if (withShift && state.bulkLast && Number(state.bulkLast.empId) === Number(empId)) {
+      var a = Math.min(state.bulkLast.day, day);
+      var b = Math.max(state.bulkLast.day, day);
+      for (var d = a; d <= b; d++) state.bulkSelected[empId + ":" + d] = 1;
+    } else if (state.bulkSelected[key]) {
+      delete state.bulkSelected[key];
+    } else {
+      state.bulkSelected[key] = 1;
+    }
+    state.bulkLast = { empId: empId, day: day };
+    var host = document.getElementById("dg-ws-sheet-host");
+    if (host) {
+      host.querySelectorAll("td.cell-click[data-emp][data-day]").forEach(function (td) {
+        var e = Number(td.getAttribute("data-emp"));
+        var d = Number(td.getAttribute("data-day"));
+        td.classList.toggle("dg-ws-bulk-sel", !!state.bulkSelected[e + ":" + d]);
+      });
+    }
+    syncBulkUi();
+  }
+
+  function openBulkCellModal() {
+    var list = bulkSelectedList();
+    if (!list.length) {
+      toast("warning", "Сначала выберите дни в таблице");
+      return;
+    }
+    list.sort(function (a, b) {
+      if (a.empId !== b.empId) return a.empId - b.empId;
+      return a.day - b.day;
+    });
+    var month = state.filters.month || defaultMonthStr();
+    var first = list[0];
+    var c =
+      state.sheet &&
+      state.sheet.cells &&
+      state.sheet.cells[first.empId] &&
+      state.sheet.cells[first.empId][first.day]
+        ? state.sheet.cells[first.empId][first.day]
+        : { rate: 1, type: "vacation", hours: 0 };
+    var empNames = {};
+    (state.sheet && state.sheet.employees ? state.sheet.employees : []).forEach(function (e) {
+      empNames[e.id] = e.full_name || "#" + e.id;
+    });
+    var empIds = {};
+    list.forEach(function (x) {
+      empIds[x.empId] = 1;
+    });
+    var empCount = Object.keys(empIds).length;
+    var nameHint =
+      empCount === 1
+        ? empNames[first.empId] || "сотрудник"
+        : empCount + " сотр.";
+    state.editCell = { bulk: true, month: month, cells: list };
+    var title = document.getElementById("dg-ws-cell-title");
+    if (title) title.textContent = "Массовая правка";
+    var meta = document.getElementById("dg-ws-cell-meta");
+    if (meta) {
+      meta.textContent =
+        nameHint + " · " + list.length + " дн. · " + formatMonthRu(month);
+    }
+    var rate = document.getElementById("dg-ws-cell-rate");
+    var hours = document.getElementById("dg-ws-cell-hours");
+    var type = document.getElementById("dg-ws-cell-type");
+    if (type) type.value = c.type || "vacation";
+    if (rate) {
+      var r = c.rate != null ? c.rate : type && type.value !== "work" ? 1 : 0;
+      if (type && (type.value === "vacation" || type.value === "sick")) r = 1;
+      rate.value = String(r);
+    }
+    if (hours) hours.value = String(c.hours != null ? c.hours : 0);
+    showCellOverlay(true);
   }
 
   function showActionLog(html) {
@@ -1092,18 +1473,48 @@
       });
   }
 
-  function openCellModal(empId, day) {
+  function findDeptBundleCell(empId, day) {
+    var bundles = state.deptBundles || [];
+    for (var i = 0; i < bundles.length; i++) {
+      var b = bundles[i];
+      var c = b.cells && b.cells[empId] && b.cells[empId][day];
+      if (c || (b.employees || []).some(function (e) { return Number(e.id) === Number(empId); })) {
+        var emp = (b.employees || []).find(function (e) {
+          return Number(e.id) === Number(empId);
+        });
+        return { cell: c || { rate: 0, type: "work", hours: 0 }, emp: emp, bundle: b };
+      }
+    }
+    return null;
+  }
+
+  function openCellModal(empId, day, opts) {
+    opts = opts || {};
     var month = state.filters.month || defaultMonthStr();
-    var c =
-      state.sheet && state.sheet.cells && state.sheet.cells[empId] && state.sheet.cells[empId][day]
-        ? state.sheet.cells[empId][day]
-        : { rate: 0, type: "work", hours: 0 };
-    var emp = (state.sheet.employees || []).find(function (e) {
-      return Number(e.id) === Number(empId);
-    });
-    state.editCell = { empId: empId, day: day, month: month };
+    var source = opts.source || "sheet";
+    var c = { rate: 0, type: "work", hours: 0 };
+    var empName = "";
+    if (source === "dept") {
+      var found = findDeptBundleCell(empId, day);
+      if (found) {
+        c = found.cell;
+        empName = found.emp ? found.emp.full_name : "";
+      }
+    } else {
+      c =
+        state.sheet && state.sheet.cells && state.sheet.cells[empId] && state.sheet.cells[empId][day]
+          ? state.sheet.cells[empId][day]
+          : { rate: 0, type: "work", hours: 0 };
+      var emp = (state.sheet && state.sheet.employees ? state.sheet.employees : []).find(function (e) {
+        return Number(e.id) === Number(empId);
+      });
+      empName = emp ? emp.full_name : "";
+    }
+    state.editCell = { empId: empId, day: day, month: month, bulk: false, source: source };
+    var title = document.getElementById("dg-ws-cell-title");
+    if (title) title.textContent = "Правка дня";
     var meta = document.getElementById("dg-ws-cell-meta");
-    if (meta) meta.textContent = (emp ? emp.full_name : "") + " · день " + day + " · " + month;
+    if (meta) meta.textContent = (empName || "") + " · день " + day + " · " + month;
     var rate = document.getElementById("dg-ws-cell-rate");
     var hours = document.getElementById("dg-ws-cell-hours");
     var type = document.getElementById("dg-ws-cell-type");
@@ -1115,17 +1526,110 @@
 
   function saveCellModal() {
     if (!state.editCell) return;
+    var rateVal = Number((document.getElementById("dg-ws-cell-rate") || {}).value) || 0;
+    var hoursVal =
+      Number(String((document.getElementById("dg-ws-cell-hours") || {}).value).replace(",", ".")) || 0;
+    var typeVal = (document.getElementById("dg-ws-cell-type") || {}).value || "work";
+    var btn = document.getElementById("dg-ws-cell-save");
+
+    if (state.editCell.bulk) {
+      var month = state.editCell.month || defaultMonthStr();
+      var cells = (state.editCell.cells || []).map(function (x) {
+        var d = Number(x.day);
+        return {
+          employee_id: Number(x.empId),
+          work_date: month + "-" + (d < 10 ? "0" + d : String(d)),
+        };
+      });
+      var bodyBulk = { cells: cells, rate: rateVal, hours: hoursVal, type: typeVal };
+      var t0 = Date.now();
+      showActionLog(
+        "Массовая правка: " +
+          cells.length +
+          " дн. · тип «" +
+          typeVal +
+          "» · ставка " +
+          rateVal +
+          "<br><span class=\"text-muted\">идёт запись…</span>"
+      );
+      var runBulk = function () {
+        return api("/sheet/cells-bulk", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(bodyBulk),
+        }).then(function (j) {
+          var sec = j.duration_sec != null ? j.duration_sec : Math.round((Date.now() - t0) / 1000);
+          var errHtml = "";
+          if (j.errors && j.errors.length) {
+            errHtml =
+              "<ul class=\"mb-0 mt-1\">" +
+              j.errors
+                .slice(0, 20)
+                .map(function (e) {
+                  return (
+                    "<li>emp " +
+                    e.employee_id +
+                    " " +
+                    e.work_date +
+                    ": " +
+                    (e.error || "") +
+                    "</li>"
+                  );
+                })
+                .join("") +
+              "</ul>";
+          }
+          showActionLog(
+            "Массовая правка · тип «" +
+              typeVal +
+              "» · ставка " +
+              rateVal +
+              "<br>Всего: " +
+              (j.total || cells.length) +
+              " · создано " +
+              (j.created || 0) +
+              " · обновлено " +
+              (j.updated || 0) +
+              (j.failed ? " · ошибок " + j.failed : "") +
+              " · " +
+              sec +
+              " с" +
+              errHtml
+          );
+          toast(
+            j.failed ? "warning" : "success",
+            j.failed
+              ? "Сохранено с ошибками: " + (j.updated + j.created) + "/" + j.total
+              : "Сохранено дней: " + (j.total || cells.length)
+          );
+          showCellOverlay(false);
+          state.editCell = null;
+          setBulkMode(false);
+          return loadSheet().then(function () {
+            return loadAuditJournal();
+          });
+        });
+      };
+      if (window.DatagonNotify && window.DatagonNotify.busyRun) window.DatagonNotify.busyRun(btn, runBulk);
+      else
+        runBulk().catch(function (e) {
+          toast("danger", e.message);
+          showActionLog("Ошибка массовой правки: " + e.message);
+        });
+      return;
+    }
+
     var day = state.editCell.day;
     var workDate =
       state.editCell.month + "-" + (day < 10 ? "0" + day : String(day));
     var body = {
       employee_id: state.editCell.empId,
       work_date: workDate,
-      rate: Number((document.getElementById("dg-ws-cell-rate") || {}).value) || 0,
-      hours: Number(String((document.getElementById("dg-ws-cell-hours") || {}).value).replace(",", ".")) || 0,
-      type: (document.getElementById("dg-ws-cell-type") || {}).value || "work",
+      rate: rateVal,
+      hours: hoursVal,
+      type: typeVal,
     };
-    var btn = document.getElementById("dg-ws-cell-save");
+    var editSource = state.editCell.source || "sheet";
     var run = function () {
       return api("/sheet/cell", {
         method: "PATCH",
@@ -1133,9 +1637,19 @@
         body: JSON.stringify(body),
       }).then(function () {
         toast("success", "Ячейка сохранена");
-        showActionLog("Правка: emp=" + body.employee_id + ", " + workDate + ", rate=" + body.rate);
+        if (editSource === "sheet") {
+          showActionLog("Правка: emp=" + body.employee_id + ", " + workDate + ", rate=" + body.rate);
+        }
         showCellOverlay(false);
-        return loadSheet();
+        state.editCell = null;
+        if (editSource === "dept") {
+          return loadDept().then(function () {
+            if (state.access && state.access.is_accounting) return loadAuditJournal();
+          });
+        }
+        return loadSheet().then(function () {
+          return loadAuditJournal();
+        });
       });
     };
     if (window.DatagonNotify && window.DatagonNotify.busyRun) window.DatagonNotify.busyRun(btn, run);
@@ -1150,6 +1664,7 @@
     return api("/me/month?month=" + encodeURIComponent(month))
       .then(function (j) {
         state.meMonth = j;
+        if (j.calendar) state.workCalendar = j.calendar;
         renderMe();
       })
       .catch(function (e) {
@@ -1161,32 +1676,58 @@
 
   function loadDept() {
     var month = state.filters.month || defaultMonthStr();
-    var q = "/dept/month?month=" + encodeURIComponent(month);
-    var deptId =
-      state.filters.deptId ||
-      (state.access && state.access.employee && state.access.employee.department_id) ||
-      "";
-    if (deptId) q += "&department_id=" + deptId;
-    var stuckQ = "/stuck-shifts";
-    if (deptId) stuckQ += "?department_id=" + deptId;
+    if (!state.deptSelectedId) {
+      loadDeptSelectedFromStorage();
+    }
+    var id = Number(state.deptSelectedId) || defaultDeptSelectedId();
+    state.deptSelectedId = id;
+    fillDeptSelect();
+    if (!id) {
+      state.deptBundles = [];
+      state.deptMonth = null;
+      state.stuck = [];
+      state.pendingVacations = [];
+      renderDept();
+      return Promise.resolve();
+    }
+
     return Promise.all([
-      api(q).catch(function () {
-        return { employees: [], cells: {}, today: [], vacations: [] };
+      api(
+        "/dept/month?month=" + encodeURIComponent(month) + "&department_id=" + encodeURIComponent(id)
+      ).catch(function (e) {
+        return {
+          department_id: id,
+          department_name: String(id),
+          can_edit: false,
+          employees: [],
+          cells: {},
+          today: [],
+          vacations: [],
+          _error: e.message,
+        };
       }),
-      api(stuckQ).catch(function () {
+      api("/stuck-shifts?department_id=" + encodeURIComponent(id)).catch(function () {
         return { rows: [] };
       }),
       api("/vacations/pending").catch(function () {
         return { rows: [] };
       }),
     ]).then(function (arr) {
-      state.deptMonth = arr[0];
-      state.stuck = arr[1].rows || [];
-      state.pendingVacations = arr[2].rows || [];
-      var title = document.getElementById("dg-ws-dept-title");
-      if (title && state.access && state.access.employee) {
-        title.textContent = "Отдел «" + (state.access.employee.department_name || "") + "» · график";
+      state.deptBundles = arr[0] ? [arr[0]] : [];
+      state.deptMonth = state.deptBundles[0] || null;
+      if (state.deptMonth && state.deptMonth.calendar) state.workCalendar = state.deptMonth.calendar;
+      var stuck = arr[1] && arr[1].rows ? arr[1].rows.slice() : [];
+      state.stuck = stuck;
+      var pending = arr[2].rows || [];
+      var hasDept = pending.some(function (v) {
+        return v.department_id != null;
+      });
+      if (hasDept && id) {
+        pending = pending.filter(function (v) {
+          return Number(v.department_id) === Number(id);
+        });
       }
+      state.pendingVacations = pending;
       syncMonthUi();
       renderDept();
     });
@@ -1205,10 +1746,277 @@
     return api(q)
       .then(function (j) {
         state.sheet = j;
+        if (j.calendar) state.workCalendar = j.calendar;
         renderSheet();
+        return loadAuditJournal();
       })
       .catch(function (e) {
         toast("danger", e.message);
+      });
+  }
+
+  function auditActionLabel(a) {
+    var act = String(a.action || "");
+    var map = {
+      manual_create: "добавил день в табель",
+      manual_edit: "изменил день",
+      manual_bulk: "массовая правка дней",
+      manual_restore_full_day: "восстановил полный день",
+      premium_manual_set: "задал премию вручную",
+      premium_manual_clear: "сбросил ручную премию",
+      premium_from_sales: "премия из продаж",
+      premium_from_sales_auto: "автозагрузка премий из продаж",
+      premium_from_sales_batch: "обновление премий из продаж",
+      salary_change: "изменил оклад",
+      department_move: "перевёл в другой отдел",
+      approve: "согласовал отпуск",
+      reject: "отклонил отпуск",
+      create: "создал запись",
+      update: "обновил",
+      clock_start: "начал смену",
+      clock_stop: "закончил смену",
+      clock_restart: "продолжил смену",
+    };
+    return map[act] || act || "действие";
+  }
+
+  function auditDotClass(a) {
+    var act = String(a.action || "");
+    if (/reject|delete|clear/.test(act)) return "is-danger";
+    if (/manual_|premium_manual|salary|bulk/.test(act)) return "is-warn";
+    if (/approve|create|sales/.test(act)) return "is-ok";
+    if (/clock_/.test(act)) return "is-muted";
+    return "";
+  }
+
+  function parseAuditJson(v) {
+    if (v == null || v === "") return null;
+    if (typeof v === "object") return v;
+    try {
+      return JSON.parse(String(v));
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function fmtAuditMoney(n) {
+    if (n == null || n === "") return null;
+    var x = Number(n);
+    if (!Number.isFinite(x)) return String(n);
+    return money(x);
+  }
+
+  /** Старые строки «автопремия · 0» без смысла — не показываем. */
+  function isAuditNoiseRow(a) {
+    var act = String(a.action || "");
+    if (act !== "premium_from_sales_auto" && act !== "premium_from_sales") return false;
+    var nv = a.new_value;
+    if (nv == null || nv === "" || nv === "0" || nv === "0.0" || nv === "0.00") return true;
+    var j = parseAuditJson(nv);
+    if (j && typeof j === "object" && j.amount != null && Number(j.amount) === 0 && j.updated == null) {
+      return true;
+    }
+    return false;
+  }
+
+  function fmtAuditWhen(v) {
+    if (!v) return "—";
+    var s = String(v);
+    try {
+      var d = new Date(s);
+      if (Number.isFinite(d.getTime())) {
+        var dd = d.getDate();
+        var mm = d.getMonth() + 1;
+        var yyyy = d.getFullYear();
+        var hh = d.getHours();
+        var mi = d.getMinutes();
+        return (
+          (dd < 10 ? "0" + dd : dd) +
+          "-" +
+          (mm < 10 ? "0" + mm : mm) +
+          "-" +
+          yyyy +
+          " " +
+          (hh < 10 ? "0" + hh : hh) +
+          ":" +
+          (mi < 10 ? "0" + mi : mi)
+        );
+      }
+    } catch (e) {}
+    return s.slice(0, 16).replace("T", " ");
+  }
+
+  function auditDetailText(a) {
+    var parts = [];
+    var act = String(a.action || "");
+    var j = parseAuditJson(a.new_value);
+
+    if (act === "premium_from_sales_auto" || act === "premium_from_sales_batch") {
+      if (j && typeof j === "object") {
+        parts.push("обновлено " + (j.updated != null ? j.updated : "—"));
+        if (j.skipped != null) parts.push("без изменений " + j.skipped);
+        if (j.period_ym) parts.push("период " + j.period_ym);
+        if (j.people && j.people.length) {
+          var names = j.people
+            .slice(0, 8)
+            .map(function (p) {
+              var amt = fmtAuditMoney(p.amount);
+              return (p.name || "?") + (amt ? " " + amt : "");
+            })
+            .join("; ");
+          parts.push(names + (j.people.length > 8 ? "…" : ""));
+        }
+        return parts.join(" · ");
+      }
+    }
+
+    if (act === "premium_from_sales" || act === "premium_manual_set" || act === "premium_manual_clear") {
+      var emp = (j && j.employee) || a.subject_name;
+      if (emp) parts.push(emp);
+      if (j && j.department) parts.push("отд. «" + j.department + "»");
+      else if (a.subject_department_name) parts.push("отд. «" + a.subject_department_name + "»");
+      var amt = j && j.amount != null ? j.amount : a.new_value;
+      var was = a.old_value;
+      if (act === "premium_manual_clear") {
+        parts.push("сброс" + (was != null && was !== "" ? " (было " + fmtAuditMoney(was) + ")" : ""));
+      } else {
+        var m = fmtAuditMoney(amt);
+        if (m) {
+          if (was != null && was !== "" && String(was) !== String(amt)) {
+            parts.push(fmtAuditMoney(was) + " → " + m);
+          } else parts.push(m);
+        }
+      }
+      if (j && j.period_ym) parts.push(j.period_ym);
+      return parts.join(" · ");
+    }
+
+    if (a.subject_name) parts.push(a.subject_name);
+    if (a.subject_department_name) parts.push("отд. «" + a.subject_department_name + "»");
+    if (a.subject_work_date) parts.push(fmtDate(a.subject_work_date));
+
+    if (j && typeof j === "object") {
+      if (j.type) parts.push("тип: " + j.type);
+      if (j.rate != null) parts.push("ставка " + j.rate);
+      if (j.hours != null && Number(j.hours) > 0) parts.push("часы " + j.hours);
+      if (j.total != null && j.type) {
+        parts.push(
+          "ячеек " +
+            j.total +
+            (j.created != null ? ", +" + j.created : "") +
+            (j.updated != null ? ", ~" + j.updated : "")
+        );
+      } else if (j.total != null && !j.type && j.updated == null) {
+        /* skip bare total */
+      }
+    } else if (a.new_value != null && a.new_value !== "" && a.field_name !== "salary") {
+      var raw = String(a.new_value);
+      if (/^\d+(\.\d+)?$/.test(raw) && (a.field_name === "premium_manual" || /premium|salary/.test(act))) {
+        parts.push(fmtAuditMoney(raw));
+      } else if (raw.length < 80 && raw !== "0") {
+        parts.push(raw);
+      }
+    }
+
+    if (a.old_value && a.action === "manual_edit") {
+      var o = parseAuditJson(a.old_value);
+      if (o && o.type != null) parts.push("было: " + o.type + "/" + o.rate);
+    }
+    if (a.field_name === "salary" && (a.old_value || a.new_value)) {
+      parts.push(
+        (fmtAuditMoney(a.old_value) || a.old_value || "—") +
+          " → " +
+          (fmtAuditMoney(a.new_value) || a.new_value || "—")
+      );
+    }
+    return parts.join(" · ");
+  }
+
+  function renderAuditJournal() {
+    var host = document.getElementById("dg-ws-audit-host");
+    var meta = document.getElementById("dg-ws-audit-meta");
+    if (!host) return;
+    var empQ = String(state.auditEmpQ || "").trim();
+    var rows = (state.auditRows || []).filter(function (a) {
+      return !isAuditNoiseRow(a);
+    });
+    if (meta) {
+      var bits = [];
+      bits.push(rows.length ? "показано " + rows.length : "пусто");
+      bits.push("месяц " + (state.filters.month || defaultMonthStr()));
+      if (empQ) bits.push("сотрудник «" + empQ + "»");
+      meta.textContent = bits.join(" · ");
+    }
+    if (!rows.length) {
+      host.innerHTML = empQ
+        ? '<div class="text-muted small">По сотруднику «' + empQ + "» за месяц записей нет</div>"
+        : '<div class="text-muted small">За выбранный месяц значимых правок нет</div>';
+      return;
+    }
+    host.innerHTML = rows
+      .map(function (a) {
+        var who = a.full_name || a.username || ("user #" + (a.user_id || "?"));
+        var what = auditActionLabel(a);
+        var detail = auditDetailText(a);
+        var role =
+          a.user_role === "accounting"
+            ? "бухгалтерия"
+            : a.user_role === "employee"
+              ? "сотрудник"
+              : a.user_role || "";
+        return (
+          '<div class="dg-ws-audit-item">' +
+          '<span class="dg-ws-audit-dot ' +
+          auditDotClass(a) +
+          '"></span>' +
+          '<div class="dg-ws-audit-body">' +
+          '<div class="dg-ws-audit-who">' +
+          who +
+          ' <span class="fw-normal text-muted">· ' +
+          what +
+          "</span></div>" +
+          (detail ? '<div class="dg-ws-audit-what">' + detail + "</div>" : "") +
+          '<div class="dg-ws-audit-when">' +
+          fmtAuditWhen(a.created_at) +
+          (role ? " · " + role : "") +
+          "</div>" +
+          "</div></div>"
+        );
+      })
+      .join("");
+  }
+
+  function commitAuditEmpFilter() {
+    var el = document.getElementById("dg-ws-audit-emp");
+    state.auditEmpQ = el ? String(el.value || "").trim() : "";
+    return loadAuditJournal();
+  }
+
+  function loadAuditJournal() {
+    var card = document.getElementById("dg-ws-audit-card");
+    if (!(state.access && state.access.is_accounting)) {
+      if (card) card.classList.add("d-none");
+      return Promise.resolve();
+    }
+    if (card) card.classList.remove("d-none");
+    var month = state.filters.month || defaultMonthStr();
+    var host = document.getElementById("dg-ws-audit-host");
+    var empEl = document.getElementById("dg-ws-audit-emp");
+    if (empEl && empEl.value !== state.auditEmpQ) {
+      // не затираем черновик ввода — только синхронизируем, если пустой applied
+      if (!String(empEl.value || "").trim() && state.auditEmpQ) empEl.value = state.auditEmpQ;
+    }
+    if (host) host.innerHTML = '<div class="text-muted small">Загрузка…</div>';
+    var q =
+      "/audit?scope=edits&limit=100&month=" + encodeURIComponent(month);
+    if (state.auditEmpQ) q += "&employee_q=" + encodeURIComponent(state.auditEmpQ);
+    return api(q)
+      .then(function (j) {
+        state.auditRows = j.rows || [];
+        renderAuditJournal();
+      })
+      .catch(function (e) {
+        if (host) host.innerHTML = '<div class="text-danger small">' + (e.message || "Ошибка журнала") + "</div>";
       });
   }
 
@@ -1278,6 +2086,8 @@
     bindMonthNav("dg-ws-month-prev", "dg-ws-month-next");
     bindMonthNav("dg-ws-cal-month-prev", "dg-ws-cal-month-next");
     bindMonthNav("dg-ws-dept-month-prev", "dg-ws-dept-month-next");
+    bindMonthNav("dg-ws-sheet-month-prev", "dg-ws-sheet-month-next");
+    bindMonthNav("dg-ws-sheet-hdr-month-prev", "dg-ws-sheet-hdr-month-next");
     var calHost = document.getElementById("dg-ws-cal-host");
     if (calHost) {
       calHost.addEventListener("click", function (ev) {
@@ -1405,12 +2215,69 @@
       sheetHost.addEventListener("click", function (ev) {
         var premTd = ev.target.closest("td[data-emp-prem]");
         if (premTd) {
+          if (state.bulkMode) return;
           openPremModal(Number(premTd.getAttribute("data-emp-prem")));
           return;
         }
         var td = ev.target.closest("td.cell-click[data-emp][data-day]");
         if (!td) return;
-        openCellModal(Number(td.getAttribute("data-emp")), Number(td.getAttribute("data-day")));
+        var empId = Number(td.getAttribute("data-emp"));
+        var day = Number(td.getAttribute("data-day"));
+        if (state.bulkMode) {
+          ev.preventDefault();
+          toggleBulkCell(empId, day, !!ev.shiftKey);
+          return;
+        }
+        openCellModal(empId, day, { source: "sheet" });
+      });
+    }
+    var deptHost = document.getElementById("dg-ws-dept-sheet-host");
+    if (deptHost) {
+      deptHost.addEventListener("click", function (ev) {
+        var td = ev.target.closest("td.cell-click[data-emp][data-day]");
+        if (!td) return;
+        if (window.getSelection && String(window.getSelection()).trim()) return;
+        openCellModal(Number(td.getAttribute("data-emp")), Number(td.getAttribute("data-day")), {
+          source: "dept",
+        });
+      });
+    }
+    (function bindDeptSelect() {
+      var sel = document.getElementById("dg-ws-dept-select");
+      if (!sel) return;
+      sel.addEventListener("change", function () {
+        var id = Number(sel.value) || 0;
+        if (!id) return;
+        state.deptSelectedId = id;
+        saveDeptSelectedToStorage();
+        if (window.DatagonNotify && window.DatagonNotify.toast) {
+          window.DatagonNotify.toast({ type: "info", message: "Загружаем отдел…" });
+        }
+        loadDept().catch(function (e) {
+          toast("danger", e.message || "Ошибка загрузки");
+        });
+      });
+    })();
+    var bulkToggle = document.getElementById("dg-ws-bulk-toggle");
+    if (bulkToggle) {
+      bulkToggle.addEventListener("click", function () {
+        if (!state.bulkMode) {
+          setBulkMode(true);
+          toast("info", "Выберите дни, затем снова нажмите кнопку");
+          return;
+        }
+        if (!bulkSelectedCount()) {
+          toast("warning", "Сначала выберите дни в таблице");
+          return;
+        }
+        openBulkCellModal();
+      });
+    }
+    var bulkCancel = document.getElementById("dg-ws-bulk-cancel");
+    if (bulkCancel) {
+      bulkCancel.addEventListener("click", function () {
+        setBulkMode(false);
+        toast("info", "Выбор сброшен");
       });
     }
     var saveBtn = document.getElementById("dg-ws-cell-save");
@@ -1420,6 +2287,7 @@
       if (el)
         el.addEventListener("click", function () {
           showCellOverlay(false);
+          if (state.editCell && state.editCell.bulk) state.editCell = null;
         });
     });
     var premSave = document.getElementById("dg-ws-prem-save");
@@ -1452,7 +2320,15 @@
         return;
       }
       var ov = document.getElementById("dg-ws-cell-overlay");
-      if (ov && ov.style.display === "flex") showCellOverlay(false);
+      if (ov && ov.style.display === "flex") {
+        showCellOverlay(false);
+        if (state.editCell && state.editCell.bulk) state.editCell = null;
+        return;
+      }
+      if (state.bulkMode) {
+        setBulkMode(false);
+        toast("info", "Выбор сброшен");
+      }
     });
 
     var vacBtn = document.getElementById("dg-ws-vac-submit");
@@ -1621,6 +2497,131 @@
       });
     });
 
+    function showBitcopOverlay(show) {
+      var el = document.getElementById("dg-ws-bitcop-overlay");
+      if (!el) return;
+      el.style.display = show ? "flex" : "none";
+      el.setAttribute("aria-hidden", show ? "false" : "true");
+    }
+
+    function formatBitcopLog(j, title) {
+      return (
+        (title || "Bitcop") +
+        " · метрика «" +
+        (j.metric || "") +
+        "» · " +
+        formatMonthRu(j.period_ym || state.filters.month) +
+        "<br>Сотрудников с привязкой: " +
+        (j.employees != null ? j.employees : "—") +
+        "; создано: " +
+        (j.created != null ? j.created : "—") +
+        "; обновлено: " +
+        (j.updated != null ? j.updated : "—") +
+        "; пропуск: " +
+        (j.skipped != null ? j.skipped : "—") +
+        (j.failed ? "; ошибок: " + j.failed : "") +
+        (j.duration_sec != null ? "; " + j.duration_sec + " с" : "") +
+        (j.errors && j.errors.length
+          ? "<ul class=\"mb-0 mt-1\">" +
+            j.errors
+              .slice(0, 10)
+              .map(function (e) {
+                return (
+                  "<li>" +
+                  (e.work_date || "") +
+                  (e.employee_id ? " emp " + e.employee_id : "") +
+                  ": " +
+                  (e.error || "") +
+                  "</li>"
+                );
+              })
+              .join("") +
+            "</ul>"
+          : "")
+      );
+    }
+
+    var bitcopBtn = document.getElementById("dg-ws-btn-bitcop");
+    if (bitcopBtn) {
+      bitcopBtn.addEventListener("click", function () {
+        var month = state.filters.month || defaultMonthStr();
+        var body = { period_ym: month, dry_run: 1 };
+        if (state.filters.orgId) body.organization_id = state.filters.orgId;
+        if (state.filters.deptId) body.department_id = state.filters.deptId;
+        showActionLog("Bitcop: пробный прогон за " + formatMonthRu(month) + "…");
+        var run = function () {
+          return api("/bitcop/sync-hours", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          }).then(function (j) {
+            state._bitcopPreview = j;
+            showActionLog(formatBitcopLog(j, "Пробный прогон Bitcop"));
+            var tx = document.getElementById("dg-ws-bitcop-confirm-text");
+            if (tx) {
+              tx.textContent =
+                "Записать часы из Bitcop за " +
+                formatMonthRu(month) +
+                " (метрика «" +
+                (j.metric || "productiveTime") +
+                "»). К записи: " +
+                ((j.created || 0) + (j.updated || 0)) +
+                " яч., пропуск " +
+                (j.skipped || 0) +
+                ". Отпуск/больничный не затираются.";
+            }
+            var prev = document.getElementById("dg-ws-bitcop-preview");
+            if (prev) {
+              prev.textContent = j.message || "";
+            }
+            showBitcopOverlay(true);
+            toast("success", "Пробный прогон Bitcop готов");
+          });
+        };
+        if (window.DatagonNotify && window.DatagonNotify.busyRun) {
+          window.DatagonNotify.busyRun(bitcopBtn, run);
+        } else {
+          run().catch(function (e) {
+            toast("danger", e.message);
+            showActionLog("Bitcop ошибка: " + e.message);
+          });
+        }
+      });
+    }
+    var bitcopOk = document.getElementById("dg-ws-bitcop-ok");
+    if (bitcopOk) {
+      bitcopOk.addEventListener("click", function () {
+        var month = state.filters.month || defaultMonthStr();
+        var body = { period_ym: month, dry_run: 0 };
+        if (state.filters.orgId) body.organization_id = state.filters.orgId;
+        if (state.filters.deptId) body.department_id = state.filters.deptId;
+        var run = function () {
+          return api("/bitcop/sync-hours", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          }).then(function (j) {
+            showBitcopOverlay(false);
+            showActionLog(formatBitcopLog(j, "Записано из Bitcop"));
+            toast(j.failed ? "warning" : "success", j.message || "Часы записаны");
+            return loadSheet();
+          });
+        };
+        if (window.DatagonNotify && window.DatagonNotify.busyRun) {
+          window.DatagonNotify.busyRun(bitcopOk, run);
+        } else {
+          run().catch(function (e) {
+            toast("danger", e.message);
+          });
+        }
+      });
+    }
+    document.querySelectorAll("[data-dg-ws-bitcop-close]").forEach(function (el) {
+      el.addEventListener("click", function () {
+        showBitcopOverlay(false);
+      });
+    });
+
     var exportBtn = document.getElementById("dg-ws-btn-export");
     if (exportBtn) {
       exportBtn.addEventListener("click", function () {
@@ -1675,43 +2676,56 @@
           });
       });
     }
-    var audit = document.getElementById("dg-ws-btn-audit");
-    if (audit) {
-      audit.addEventListener("click", function () {
+    var auditApply = document.getElementById("dg-ws-btn-audit-apply");
+    if (auditApply) {
+      auditApply.addEventListener("click", function () {
         var run = function () {
-          return api("/audit?limit=50").then(function (j) {
-            var rows = j.rows || [];
-            var html =
-              "<strong>Журнал (последние " +
-              rows.length +
-              ")</strong><ul class=\"mb-0 mt-2\">" +
-              rows
-                .slice(0, 20)
-                .map(function (a) {
-                  return (
-                    "<li>" +
-                    String(a.created_at || "").slice(0, 19) +
-                    " · " +
-                    (a.username || a.user_id || "") +
-                    " · " +
-                    a.entity_type +
-                    "/" +
-                    a.entity_id +
-                    " · " +
-                    a.action +
-                    "</li>"
-                  );
-                })
-                .join("") +
-              "</ul>";
-            showActionLog(html);
-          });
+          return commitAuditEmpFilter();
         };
-        if (window.DatagonNotify && window.DatagonNotify.busyRun) window.DatagonNotify.busyRun(audit, run);
-        else
+        if (window.DatagonNotify && window.DatagonNotify.busyRun) {
+          window.DatagonNotify.busyRun(auditApply, run);
+        } else {
           run().catch(function (e) {
             toast("danger", e.message);
           });
+        }
+      });
+    }
+    var auditEmp = document.getElementById("dg-ws-audit-emp");
+    if (auditEmp) {
+      auditEmp.addEventListener("keydown", function (ev) {
+        if (ev.key === "Enter") {
+          ev.preventDefault();
+          if (auditApply) auditApply.click();
+          else commitAuditEmpFilter();
+        }
+        if (ev.key === "Escape") {
+          ev.preventDefault();
+          auditEmp.value = "";
+          state.auditEmpQ = "";
+          loadAuditJournal();
+        }
+      });
+      auditEmp.addEventListener("search", function () {
+        if (!auditEmp.value) {
+          state.auditEmpQ = "";
+          loadAuditJournal();
+        }
+      });
+    }
+    var auditRefresh = document.getElementById("dg-ws-btn-audit-refresh");
+    if (auditRefresh) {
+      auditRefresh.addEventListener("click", function () {
+        var run = function () {
+          return commitAuditEmpFilter();
+        };
+        if (window.DatagonNotify && window.DatagonNotify.busyRun) {
+          window.DatagonNotify.busyRun(auditRefresh, run);
+        } else {
+          run().catch(function (e) {
+            toast("danger", e.message);
+          });
+        }
       });
     }
 
@@ -1766,6 +2780,9 @@
       .then(function (acc) {
         state.access = acc;
         var loads = [];
+        if (acc.visible_departments && acc.visible_departments.length) {
+          state.departments = acc.visible_departments;
+        }
         if (acc.is_accounting) {
           loads.push(
             api("/organizations").then(function (j) {
@@ -1777,21 +2794,48 @@
               state.departments = j.rows || [];
             })
           );
-        } else if (acc.employee) {
+        } else if (!state.departments.length && acc.employee) {
           state.departments = [
-            { id: acc.employee.department_id, name: acc.employee.department_name, schedule_type: "" },
+            {
+              id: acc.employee.department_id,
+              name: acc.employee.department_name,
+              schedule_type: "",
+              can_edit: !!acc.is_dept_head,
+              is_own: true,
+            },
           ];
+          loads.push(
+            api("/departments")
+              .then(function (j) {
+                if (j.rows && j.rows.length) state.departments = j.rows;
+              })
+              .catch(function () {})
+          );
         }
         return Promise.all(loads);
       })
       .then(function () {
+        loadDeptSelectedFromStorage();
+        fillDeptSelect();
         fillFilterSelects();
         var tab = "me";
         try {
-          var saved = sessionStorage.getItem(TAB_KEY);
-          if (TAB_HINTS[saved]) tab = saved;
+          var qTab = new URLSearchParams(window.location.search).get("tab");
+          if (TAB_HINTS[qTab]) tab = qTab;
+          else {
+            var saved = sessionStorage.getItem(TAB_KEY);
+            if (TAB_HINTS[saved]) tab = saved;
+          }
         } catch (e) {}
-        if (state.access && state.access.is_accounting && !state.access.is_employee) tab = "sheet";
+        if (
+          tab !== "dept" &&
+          tab !== "me" &&
+          state.access &&
+          state.access.is_accounting &&
+          !state.access.is_employee
+        ) {
+          tab = "sheet";
+        }
         setTab(tab);
       })
       .catch(function (e) {

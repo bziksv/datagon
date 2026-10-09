@@ -70,13 +70,13 @@
               <div class="card-header py-2 d-flex flex-wrap justify-content-between align-items-center gap-2">
                 <div class="d-flex flex-wrap align-items-center gap-2">
                   <span>Мой календарь</span>
-                  <strong class="dg-ws-month-title" id="dg-ws-cal-month-title">—</strong>
-                </div>
-                <div class="d-flex flex-wrap align-items-center gap-2">
                   <div class="btn-group btn-group-sm" role="group" aria-label="Смена месяца">
                     <button type="button" class="btn btn-outline-secondary" id="dg-ws-cal-month-prev" title="Предыдущий месяц" data-dg-no-activity="1">‹</button>
                     <button type="button" class="btn btn-outline-secondary" id="dg-ws-cal-month-next" title="Следующий месяц" data-dg-no-activity="1">›</button>
                   </div>
+                  <strong class="dg-ws-month-title" id="dg-ws-cal-month-title">—</strong>
+                </div>
+                <div class="d-flex flex-wrap align-items-center gap-2">
                   <div class="btn-group btn-group-sm" role="group">
                     <button type="button" class="btn btn-outline-primary active" data-dg-ws-cal-mode="mine">Часы</button>
                     <button type="button" class="btn btn-outline-primary" data-dg-ws-cal-mode="free">Свободные даты отдела</button>
@@ -123,18 +123,25 @@
             <div class="main-card mb-3 card">
               <div class="card-header py-2 d-flex flex-wrap justify-content-between align-items-center gap-2">
                 <div class="d-flex flex-wrap align-items-center gap-2">
-                  <span id="dg-ws-dept-title">Отдел · график</span>
-                  <strong class="dg-ws-month-title" id="dg-ws-dept-month-title">—</strong>
+                  <span>График</span>
                   <div class="btn-group btn-group-sm" role="group" aria-label="Смена месяца">
                     <button type="button" class="btn btn-outline-secondary" id="dg-ws-dept-month-prev" title="Предыдущий месяц" data-dg-no-activity="1">‹</button>
                     <button type="button" class="btn btn-outline-secondary" id="dg-ws-dept-month-next" title="Следующий месяц" data-dg-no-activity="1">›</button>
                   </div>
+                  <strong class="dg-ws-month-title" id="dg-ws-dept-month-title">—</strong>
+                  <select
+                    class="form-select form-select-sm dg-ws-dept-select"
+                    id="dg-ws-dept-select"
+                    title="Отдел"
+                    data-dg-no-activity="1"
+                    aria-label="Отдел"
+                  ></select>
                 </div>
-                <span class="small text-muted">О = отпуск · Б = больничный · 1 / ½ = ставка</span>
+                <span class="small text-muted">О = отпуск · Б = больничный · 1 / ½ = ставка · клик — правка (если есть право)</span>
               </div>
               <div class="card-body py-3">
                 <div class="dg-ws-legend mb-2" id="dg-ws-dept-legend"></div>
-                <div class="dg-ws-sheet-wrap" id="dg-ws-dept-sheet-host"></div>
+                <div id="dg-ws-dept-sheet-host"></div>
               </div>
             </div>
 
@@ -190,8 +197,8 @@
                 <div class="d-flex flex-wrap gap-2">
                   <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-ws-btn-export" data-dg-notify-start="Экспорт…">Экспорт CSV</button>
                   <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-ws-btn-prem-sales" title="Принудительно пересчитать из журнала менеджеров (автозагрузка уже при открытии табеля)" data-dg-notify-start="Обновляем премии из продаж…">Обновить из продаж</button>
+                  <button type="button" class="btn btn-sm btn-outline-primary" id="dg-ws-btn-bitcop" title="Подтянуть продуктивные часы из Bitcop для сотрудников с привязкой" data-dg-notify-start="Запрашиваем Bitcop…">Часы из Bitcop</button>
                   <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-ws-btn-dryrun" data-dg-notify-start="Тестовый расчёт…">Пересчёт без применения</button>
-                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-ws-btn-audit" data-dg-notify-start="Журнал…">Журнал</button>
                 </div>
               </div>
               <div class="card-body py-3" id="dg-ws-acc-filters-body">
@@ -214,11 +221,17 @@
                     <label class="form-label mb-1" for="dg-ws-f-dept">Отдел</label>
                     <select class="form-select form-select-sm" id="dg-ws-f-dept"></select>
                   </div>
-                  <div class="col-md-2">
+                  <div class="col-md-3" data-dg-ws-filter-field="month">
                     <label class="form-label mb-1" for="dg-ws-f-month">Месяц</label>
-                    <input type="month" class="form-control form-control-sm" id="dg-ws-f-month" />
+                    <div class="d-flex align-items-center gap-1">
+                      <div class="btn-group btn-group-sm flex-shrink-0" role="group" aria-label="Смена месяца">
+                        <button type="button" class="btn btn-outline-secondary" id="dg-ws-sheet-month-prev" title="Предыдущий месяц" data-dg-no-activity="1">‹</button>
+                        <button type="button" class="btn btn-outline-secondary" id="dg-ws-sheet-month-next" title="Следующий месяц" data-dg-no-activity="1">›</button>
+                      </div>
+                      <input type="month" class="form-control form-control-sm" id="dg-ws-f-month" style="min-width: 0" />
+                    </div>
                   </div>
-                  <div class="col-md-3">
+                  <div class="col-md-2">
                     <button type="button" class="btn btn-sm btn-primary" id="dg-ws-f-apply" data-dg-notify-start="Применяем…">Применить</button>
                     <button type="button" class="btn btn-sm btn-link" id="dg-ws-f-reset">Сбросить</button>
                   </div>
@@ -243,9 +256,14 @@
 
             <div class="main-card mb-0 card">
               <div class="card-header py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
-                <div class="d-flex flex-wrap align-items-center gap-3 flex-grow-1" style="min-width: 0">
+                <div class="d-flex flex-wrap align-items-center gap-2 flex-grow-1" style="min-width: 0">
                   <span class="flex-shrink-0">Сотрудники × даты</span>
-                  <div class="input-group input-group-sm dg-ws-sheet-header-search" style="flex: 0 1 320px; min-width: 180px">
+                  <div class="btn-group btn-group-sm flex-shrink-0" role="group" aria-label="Смена месяца">
+                    <button type="button" class="btn btn-outline-secondary" id="dg-ws-sheet-hdr-month-prev" title="Предыдущий месяц" data-dg-no-activity="1">‹</button>
+                    <button type="button" class="btn btn-outline-secondary" id="dg-ws-sheet-hdr-month-next" title="Следующий месяц" data-dg-no-activity="1">›</button>
+                  </div>
+                  <strong class="dg-ws-month-title flex-shrink-0" id="dg-ws-sheet-month-title">—</strong>
+                  <div class="input-group input-group-sm dg-ws-sheet-header-search" style="flex: 0 1 280px; min-width: 160px">
                     <span class="input-group-text">🔎</span>
                     <input
                       type="search"
@@ -256,11 +274,76 @@
                     />
                   </div>
                 </div>
-                <span class="small text-muted flex-shrink-0">Клик по ячейке — правка</span>
+                <div class="d-flex flex-wrap align-items-center gap-2 flex-shrink-0">
+                  <span class="small text-muted" id="dg-ws-sheet-hint">Клик по ячейке — правка</span>
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-primary"
+                    id="dg-ws-bulk-toggle"
+                    data-dg-notify-start="Режим массовой смены…"
+                    title="Выбрать несколько дней и править разом (отпуск, больничный…)"
+                  >
+                    Массовая смена
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-secondary d-none"
+                    id="dg-ws-bulk-cancel"
+                    data-dg-no-activity="1"
+                  >
+                    Отмена выбора
+                  </button>
+                </div>
               </div>
               <div class="card-body py-3">
+                <div id="dg-ws-bulk-banner" class="alert alert-info py-2 px-3 small mb-2 d-none" role="status">
+                  Выберите дни кликом (Shift+клик — диапазон в строке). Затем снова нажмите
+                  <strong>«Массовая смена»</strong>, чтобы задать тип/ставку для всех выбранных.
+                </div>
                 <div class="dg-ws-legend mb-2" id="dg-ws-sheet-legend"></div>
                 <div class="dg-ws-sheet-wrap" id="dg-ws-sheet-host"></div>
+              </div>
+            </div>
+
+            <div class="main-card mb-0 card mt-3" id="dg-ws-audit-card">
+              <div class="card-header py-2 d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <span class="flex-shrink-0">Журнал изменений</span>
+                <div class="d-flex flex-wrap align-items-center gap-2 flex-grow-1 justify-content-end" style="min-width: 0">
+                  <div class="input-group input-group-sm dg-ws-audit-emp-filter" style="flex: 0 1 260px; min-width: 160px">
+                    <span class="input-group-text">🔎</span>
+                    <input
+                      type="search"
+                      class="form-control"
+                      id="dg-ws-audit-emp"
+                      placeholder="Сотрудник в журнале…"
+                      autocomplete="off"
+                      title="Фильтр журнала по сотруднику (не путать с фильтром табеля)"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-primary"
+                    id="dg-ws-btn-audit-apply"
+                    data-dg-notify-start="Фильтруем журнал…"
+                  >
+                    Применить
+                  </button>
+                  <span class="small text-muted" id="dg-ws-audit-meta">кто правил табель и когда</span>
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-secondary"
+                    id="dg-ws-btn-audit-refresh"
+                    data-dg-notify-start="Обновляем журнал…"
+                    title="Обновить журнал"
+                  >
+                    Обновить
+                  </button>
+                </div>
+              </div>
+              <div class="card-body py-3">
+                <div id="dg-ws-audit-host" class="dg-ws-audit-feed">
+                  <div class="text-muted small">Загрузка…</div>
+                </div>
               </div>
             </div>
           </div>
@@ -399,6 +482,21 @@
               <div class="card-footer d-flex justify-content-end gap-2 bg-white border-top-0">
                 <button type="button" class="btn btn-outline-secondary" data-dg-ws-prem-sales-close="1" data-dg-no-activity="1">Отмена</button>
                 <button type="button" class="btn btn-primary" id="dg-ws-prem-sales-ok" data-dg-notify-start="Записываем премии…">Записать</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-ws-bitcop-overlay" class="dg-ws-overlay" style="display: none" aria-hidden="true" role="dialog" aria-modal="true">
+            <div class="dg-ws-overlay-backdrop" data-dg-ws-bitcop-close="1"></div>
+            <div class="dg-ws-overlay-panel card shadow-lg border-0">
+              <div class="card-header py-2 fw-semibold">Часы из Bitcop</div>
+              <div class="card-body">
+                <p class="mb-2" id="dg-ws-bitcop-confirm-text">Записать продуктивные часы в табель?</p>
+                <div id="dg-ws-bitcop-preview" class="small text-muted"></div>
+              </div>
+              <div class="card-footer d-flex justify-content-end gap-2 bg-white border-top-0">
+                <button type="button" class="btn btn-outline-secondary" data-dg-ws-bitcop-close="1" data-dg-no-activity="1">Отмена</button>
+                <button type="button" class="btn btn-primary" id="dg-ws-bitcop-ok" data-dg-notify-start="Пишем часы из Bitcop…">Записать</button>
               </div>
             </div>
           </div>
