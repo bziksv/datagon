@@ -434,10 +434,10 @@
     padding-bottom: 2.5rem;
   }
 
-  .dg-ws-dept-select {
-    width: auto;
-    min-width: 12rem;
-    max-width: 18rem;
+  .dg-ws-dept-section + .dg-ws-dept-section {
+    margin-top: 1.25rem;
+    padding-top: 1rem;
+    border-top: 1px solid #e9ecef;
   }
   .dg-ws-dept-section-title {
     font-size: 0.85rem;
@@ -1372,13 +1372,6 @@
                     <button type="button" class="btn btn-outline-secondary" id="dg-ws-dept-month-next" title="Следующий месяц" data-dg-no-activity="1">›</button>
                   </div>
                   <strong class="dg-ws-month-title" id="dg-ws-dept-month-title">—</strong>
-                  <select
-                    class="form-select form-select-sm dg-ws-dept-select"
-                    id="dg-ws-dept-select"
-                    title="Отдел"
-                    data-dg-no-activity="1"
-                    aria-label="Отдел"
-                  ></select>
                 </div>
                 <span class="small text-muted">О = отпуск · Б = больничный · 1 / ½ = ставка · клик — правка (если есть право)</span>
               </div>
@@ -1843,12 +1836,11 @@
   "use strict";
 
   var TAB_KEY = "datagon_ws_tab_v1";
-  var DEPT_SEL_KEY = "datagon_ws_dept_selected_v1";
   var API = "/api/work-schedule";
 
   var TAB_HINTS = {
     me: "Личный табель, заработок и заявки на отпуск",
-    dept: "График отдела, правки руководителем, согласование отпусков",
+    dept: "Графики доступных отделов, правки руководителем, согласование отпусков",
     sheet: "Табель бухгалтерии: сотрудники × дни",
   };
 
@@ -1861,13 +1853,11 @@
     pending: { orgId: 0, deptId: 0, month: "", search: "" },
     orgs: [],
     departments: [],
-    /** Выбранный отдел на вкладке «Отдел» */
-    deptSelectedId: 0,
     meMonth: null,
     deptMonth: null,
     /** Производственный календарь текущего месяца (из me/dept/sheet) */
     workCalendar: null,
-    /** Ответ /dept/month (для совместимости с findDeptBundleCell — массив из одного) */
+    /** Ответы /dept/month по всем доступным отделам (отдельные блоки) */
     deptBundles: [],
     sheet: null,
     auditRows: [],
@@ -2602,79 +2592,23 @@
     return state.departments || [];
   }
 
-  function defaultDeptSelectedId() {
-    var list = visibleDeptList();
+  /** Свой отдел первым, остальные по имени. */
+  function visibleDeptIdsOrdered() {
+    var list = visibleDeptList().slice();
     var own =
       state.access && state.access.employee && state.access.employee.department_id
         ? Number(state.access.employee.department_id)
         : 0;
-    if (own && list.some(function (d) { return Number(d.id) === own; })) return own;
-    if (list.length) return Number(list[0].id);
-    return 0;
-  }
-
-  function loadDeptSelectedFromStorage() {
-    var allowed = {};
-    visibleDeptList().forEach(function (d) {
-      allowed[Number(d.id)] = true;
+    list.sort(function (a, b) {
+      var aid = Number(a.id);
+      var bid = Number(b.id);
+      if (own && aid === own) return -1;
+      if (own && bid === own) return 1;
+      return String(a.name || "").localeCompare(String(b.name || ""), "ru");
     });
-    var id = 0;
-    try {
-      var raw = localStorage.getItem(DEPT_SEL_KEY);
-      if (raw) {
-        var parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) {
-          for (var i = 0; i < parsed.length; i++) {
-            var n = Number(parsed[i]);
-            if (n && allowed[n]) {
-              id = n;
-              break;
-            }
-          }
-        } else {
-          var one = Number(parsed);
-          if (one && allowed[one]) id = one;
-        }
-      }
-    } catch (e) {}
-    if (!id) id = defaultDeptSelectedId();
-    state.deptSelectedId = id;
-  }
-
-  function saveDeptSelectedToStorage() {
-    try {
-      localStorage.setItem(DEPT_SEL_KEY, String(state.deptSelectedId || 0));
-    } catch (e) {}
-  }
-
-  function fillDeptSelect() {
-    var sel = document.getElementById("dg-ws-dept-select");
-    if (!sel) return;
-    var list = visibleDeptList();
-    var cur = Number(state.deptSelectedId) || defaultDeptSelectedId();
-    if (cur && !list.some(function (d) { return Number(d.id) === cur; })) {
-      cur = defaultDeptSelectedId();
-    }
-    state.deptSelectedId = cur;
-    sel.innerHTML = list.length
-      ? list
-          .map(function (d) {
-            var id = Number(d.id);
-            return (
-              '<option value="' +
-              id +
-              '"' +
-              (id === cur ? " selected" : "") +
-              ">" +
-              (d.name || "Отдел") +
-              (d.can_edit ? " ✎" : "") +
-              (d.is_own ? " (мой)" : "") +
-              "</option>"
-            );
-          })
-          .join("")
-      : '<option value="">Нет доступных отделов</option>';
-    if (cur) sel.value = String(cur);
+    return list.map(function (d) {
+      return Number(d.id);
+    }).filter(Boolean);
   }
 
   function renderDeptMatrix() {
@@ -2690,7 +2624,7 @@
         ? [state.deptMonth]
         : [];
     if (!bundles.length) {
-      host.innerHTML = '<div class="text-muted">Выберите отдел</div>';
+      host.innerHTML = '<div class="text-muted">Нет доступных отделов</div>';
       return;
     }
     var html = "";
@@ -2761,7 +2695,6 @@
 
   function renderDept() {
     renderDeptMatrix();
-    fillDeptSelect();
     var team = document.getElementById("dg-ws-head-team");
     var teamDate = document.getElementById("dg-ws-head-team-date");
     var bundles = state.deptBundles && state.deptBundles.length
@@ -2814,7 +2747,7 @@
               "</td></tr>"
             );
           })
-          .join("") || '<tr><td colspan="4" class="text-muted">Нет сотрудников в отделе</td></tr>';
+          .join("") || '<tr><td colspan="4" class="text-muted">Нет сотрудников в доступных отделах</td></tr>';
     }
     var stuck = document.getElementById("dg-ws-stuck-shifts");
     if (stuck) {
@@ -3516,13 +3449,8 @@
 
   function loadDept() {
     var month = state.filters.month || defaultMonthStr();
-    if (!state.deptSelectedId) {
-      loadDeptSelectedFromStorage();
-    }
-    var id = Number(state.deptSelectedId) || defaultDeptSelectedId();
-    state.deptSelectedId = id;
-    fillDeptSelect();
-    if (!id) {
+    var ids = visibleDeptIdsOrdered();
+    if (!ids.length) {
       state.deptBundles = [];
       state.deptMonth = null;
       state.stuck = [];
@@ -3531,8 +3459,8 @@
       return Promise.resolve();
     }
 
-    return Promise.all([
-      api(
+    var monthLoads = ids.map(function (id) {
+      return api(
         "/dept/month?month=" + encodeURIComponent(month) + "&department_id=" + encodeURIComponent(id)
       ).catch(function (e) {
         return {
@@ -3545,26 +3473,42 @@
           vacations: [],
           _error: e.message,
         };
-      }),
-      api("/stuck-shifts?department_id=" + encodeURIComponent(id)).catch(function () {
+      });
+    });
+    var stuckLoads = ids.map(function (id) {
+      return api("/stuck-shifts?department_id=" + encodeURIComponent(id)).catch(function () {
         return { rows: [] };
-      }),
+      });
+    });
+
+    return Promise.all([
+      Promise.all(monthLoads),
+      Promise.all(stuckLoads),
       api("/vacations/pending").catch(function () {
         return { rows: [] };
       }),
     ]).then(function (arr) {
-      state.deptBundles = arr[0] ? [arr[0]] : [];
+      state.deptBundles = arr[0] || [];
       state.deptMonth = state.deptBundles[0] || null;
       if (state.deptMonth && state.deptMonth.calendar) state.workCalendar = state.deptMonth.calendar;
-      var stuck = arr[1] && arr[1].rows ? arr[1].rows.slice() : [];
+      var stuck = [];
+      (arr[1] || []).forEach(function (j) {
+        (j.rows || []).forEach(function (r) {
+          stuck.push(r);
+        });
+      });
       state.stuck = stuck;
       var pending = arr[2].rows || [];
+      var idSet = {};
+      ids.forEach(function (x) {
+        idSet[Number(x)] = true;
+      });
       var hasDept = pending.some(function (v) {
         return v.department_id != null;
       });
-      if (hasDept && id) {
+      if (hasDept) {
         pending = pending.filter(function (v) {
-          return Number(v.department_id) === Number(id);
+          return idSet[Number(v.department_id)];
         });
       }
       state.pendingVacations = pending;
@@ -4082,22 +4026,6 @@
         });
       });
     }
-    (function bindDeptSelect() {
-      var sel = document.getElementById("dg-ws-dept-select");
-      if (!sel) return;
-      sel.addEventListener("change", function () {
-        var id = Number(sel.value) || 0;
-        if (!id) return;
-        state.deptSelectedId = id;
-        saveDeptSelectedToStorage();
-        if (window.DatagonNotify && window.DatagonNotify.toast) {
-          window.DatagonNotify.toast({ type: "info", message: "Загружаем отдел…" });
-        }
-        loadDept().catch(function (e) {
-          toast("danger", e.message || "Ошибка загрузки");
-        });
-      });
-    })();
     var bulkToggle = document.getElementById("dg-ws-bulk-toggle");
     if (bulkToggle) {
       bulkToggle.addEventListener("click", function () {
@@ -4655,8 +4583,6 @@
         return Promise.all(loads);
       })
       .then(function () {
-        loadDeptSelectedFromStorage();
-        fillDeptSelect();
         fillFilterSelects();
         var tab = "me";
         try {
