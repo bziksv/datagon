@@ -1,0 +1,204 @@
+<style>
+  .dg-work-confirm-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1200;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .dg-work-confirm-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(20, 24, 32, 0.45);
+  }
+  .dg-work-confirm-panel {
+    position: relative;
+    z-index: 1;
+    background: #fff;
+    border-radius: 0.5rem;
+    padding: 1.25rem 1.5rem;
+    max-width: 420px;
+    width: 92%;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+  }
+  #dg-work-apply.dg-flt-dirty::after {
+    content: " •";
+    font-weight: 700;
+  }
+  .app-main__inner,
+  .main-card,
+  .main-card .card-body {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .dg-work-table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    max-width: 100%;
+  }
+  .dg-work-table-wrap table {
+    width: max-content;
+    min-width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+  .dg-work-table-wrap th,
+  .dg-work-table-wrap td {
+    vertical-align: middle;
+    font-size: 0.875rem;
+    padding: 0.55rem 0.75rem;
+    border-right: 1px solid #eef1f5;
+  }
+  .dg-work-table-wrap th {
+    white-space: normal;
+    line-height: 1.25;
+    min-width: 5.5rem;
+    max-width: 9.5rem;
+    font-weight: 600;
+    background: #f8f9fb;
+  }
+  .dg-work-table-wrap td {
+    white-space: nowrap;
+  }
+  .dg-work-table-wrap td.dg-work-col-name {
+    min-width: 10rem;
+    font-weight: 600;
+  }
+  .dg-work-table-wrap td.dg-work-num {
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.01em;
+  }
+  .dg-work-favicon {
+    width: 16px;
+    height: 16px;
+    vertical-align: middle;
+    display: block;
+  }
+  .dg-work-table-wrap th.dg-work-th-favicon,
+  .dg-work-table-wrap td.dg-work-td-favicon {
+    width: 1.75rem;
+    min-width: 1.75rem !important;
+    max-width: 1.75rem;
+    padding-left: 0.45rem;
+    padding-right: 0.2rem;
+    box-sizing: content-box;
+  }
+  .dg-work-table-wrap td.dg-work-td-copy {
+    white-space: normal;
+    vertical-align: top;
+    min-width: 8rem;
+  }
+  .dg-work-copy {
+    display: block;
+    box-sizing: border-box;
+    border: 1px solid transparent;
+    border-radius: 0.2rem;
+    background: transparent;
+    padding: 0.15rem 0.35rem 0.15rem 0.2rem;
+    margin: 0;
+    width: 11rem;
+    min-width: 6rem;
+    min-height: 1.6em;
+    max-width: 40rem;
+    max-height: 12rem;
+    resize: both;
+    overflow: auto;
+    font: inherit;
+    line-height: 1.3;
+    color: inherit;
+  }
+  .dg-work-copy:hover,
+  .dg-work-copy:focus {
+    background: #f4f4f4;
+    border-color: #d0d5dd;
+    outline: none;
+  }
+  .dg-work-spec {
+    display: inline-block;
+    margin: 0 0 2px 0;
+    padding: 0.15rem 0.4rem;
+    border-radius: 0.25rem;
+    font-size: 0.75rem;
+    line-height: 1.2;
+    color: #fff;
+  }
+  .dg-work-spec--head {
+    background: #d92550;
+  }
+  .dg-work-spec--member {
+    background: #6c757d;
+  }
+  .dg-work-match {
+    display: inline-block;
+    padding: 0.15rem 0.45rem;
+    border-radius: 0.25rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1.2;
+    white-space: nowrap;
+  }
+  .dg-work-match--ok {
+    background: #e6f4ea;
+    color: #137333;
+  }
+  .dg-work-match--archived {
+    background: #fff3cd;
+    color: #856404;
+  }
+  .dg-work-match--none {
+    background: #e9ecef;
+    color: #495057;
+  }
+  .dg-work-row--archive-hint > td {
+    background-color: #fff3cd !important;
+  }
+  .dg-work-row--archive-hint > td:first-child {
+    background-color: #fff3cd !important;
+  }
+  .dg-work-days {
+    text-align: center;
+    font-weight: 600;
+    min-width: 3rem;
+  }
+  th.dg-work-sortable {
+    cursor: pointer;
+    user-select: text;
+    -webkit-user-select: text;
+  }
+  th.dg-work-sortable:hover {
+    background: #eef2f8;
+  }
+  .dg-work-staff-multi {
+    max-height: 120px;
+    overflow: auto;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 0.75rem;
+  }
+  .dg-work-staff-item {
+    display: inline-flex;
+    align-items: center;
+    margin: 0;
+    white-space: nowrap;
+    font-size: 0.875rem;
+  }
+  .dg-work-form-advanced > summary {
+    list-style: none;
+    cursor: pointer;
+  }
+  .dg-work-form-advanced > summary::-webkit-details-marker {
+    display: none;
+  }
+  .dg-work-table-wrap th:first-child,
+  .dg-work-table-wrap td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    background: #fff;
+  }
+  .dg-work-table-wrap th:first-child {
+    background: #f8f9fb;
+    z-index: 3;
+  }
+</style>

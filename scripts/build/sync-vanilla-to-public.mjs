@@ -137,6 +137,13 @@ const publishNames = [
   'ops-sheet.html',
   'work-schedule.html',
   'work-schedule-settings.html',
+  'work-seo-projects.html',
+  'work-seo-passwords.html',
+  'work-dev-passwords.html',
+  'work-context-projects.html',
+  'work-context-passwords.html',
+  'work-services.html',
+  'work-seo-staff.html',
   'sections.html',
   'exports-marketplaces.html',
   'exports-marketplaces-ozon.html',
@@ -172,6 +179,7 @@ const publishNames = [
   'doc-screenshots/settings-sample.html',
   'datagon-vanilla.js',
   'datagon-legal.js',
+  'datagon-work-crud.js',
 ];
 
 for (const name of publishNames) {

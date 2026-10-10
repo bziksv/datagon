@@ -452,6 +452,30 @@
     font-weight: 500;
   }
 
+  /* Табель: разделители по отделам */
+  .dg-ws-sheet tr.dg-ws-sheet-dept-h td {
+    background: #eef2f7;
+    color: #3d4a5c;
+    font-weight: 600;
+    font-size: 0.8rem;
+    text-align: left;
+    padding: 0.4rem 0.65rem;
+    border-top: 2px solid #d5dce6;
+    border-bottom: 1px solid #e0e5ec;
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    letter-spacing: 0.01em;
+  }
+  .dg-ws-sheet tr.dg-ws-sheet-dept-h:first-child td {
+    border-top: none;
+  }
+  .dg-ws-sheet tr.dg-ws-sheet-dept-h .dg-ws-sheet-dept-count {
+    font-weight: 500;
+    color: #6c757d;
+    margin-left: 0.35rem;
+  }
+
   .dg-ws-audit-feed {
     max-height: 28rem;
     overflow-y: auto;
@@ -526,8 +550,29 @@
     */
     .datagon-vanilla-shell:not(.closed-sidebar)
       .vertical-nav-menu
-      ul.dg-vanilla-mp-submenu.metismenu-container.visible,
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon,
     .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon,
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-work-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
       .vertical-nav-menu
       ul.dg-vanilla-parse-submenu.metismenu-container.visible
       > .metismenu-item
@@ -535,10 +580,7 @@
       .metismenu-icon,
     .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
       .vertical-nav-menu
-      ul.dg-vanilla-mp-submenu.metismenu-container.visible,
-    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
-      .vertical-nav-menu
-      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      ul.dg-vanilla-work-submenu.metismenu-container.visible
       > .metismenu-item
       > .metismenu-link
       .metismenu-icon {
@@ -554,6 +596,11 @@
       ul.dg-vanilla-parse-submenu.metismenu-container.visible
       > .metismenu-item
       > .metismenu-link,
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-work-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link,
     .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
       .vertical-nav-menu
       ul.dg-vanilla-mp-submenu.metismenu-container.visible
@@ -562,6 +609,11 @@
     .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
       .vertical-nav-menu
       ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-work-submenu.metismenu-container.visible
       > .metismenu-item
       > .metismenu-link {
       padding-left: 3.4375rem !important;
@@ -580,8 +632,29 @@
     }
     .datagon-vanilla-shell:not(.closed-sidebar)
       .vertical-nav-menu
-      ul.dg-vanilla-mp-submenu.metismenu-container.visible,
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon,
     .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon,
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-work-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
       .vertical-nav-menu
       ul.dg-vanilla-parse-submenu.metismenu-container.visible
       > .metismenu-item
@@ -589,10 +662,7 @@
       .metismenu-icon,
     .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
       .vertical-nav-menu
-      ul.dg-vanilla-mp-submenu.metismenu-container.visible,
-    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
-      .vertical-nav-menu
-      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      ul.dg-vanilla-work-submenu.metismenu-container.visible
       > .metismenu-item
       > .metismenu-link
       .metismenu-icon {
@@ -1035,7 +1105,56 @@
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="manager-sales" href="/manager-sales.html" title="Годовые таблицы менеджеров: оплаты, маржа, премия"><i class="metismenu-icon pe-7s-id"></i>Таблицы менеджеров</a></li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="ops-sheet" href="/ops-sheet.html" title="Операционный лист: оборот, прибыль, премии и оклады по месяцам"><i class="metismenu-icon pe-7s-notebook"></i>Операционный лист</a></li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="work-schedule" href="/work-schedule.html" title="График работы и учёт рабочего времени"><i class="metismenu-icon pe-7s-clock"></i>График работы</a></li>
-                      <li class="metismenu-item"><a class="metismenu-link" data-nav="work-schedule-settings" href="/work-schedule-settings.html" title="Организация, отделы, сотрудники графика"><i class="metismenu-icon pe-7s-config"></i>График · настройки</a></li>
+                      <!-- «График · настройки» скрыт из меню: вход с /work-schedule.html (ссылка) или прямой URL; доступ — матрица work-schedule-settings -->
+                      <!-- <li class="metismenu-item"><a class="metismenu-link" data-nav="work-schedule-settings" href="/work-schedule-settings.html" title="Организация, отделы, сотрудники графика"><i class="metismenu-icon pe-7s-config"></i>График · настройки</a></li> -->
+                      <li class="metismenu-item">
+                        <a
+                          href="#"
+                          class="metismenu-link dg-vanilla-submenu-toggle"
+                          aria-expanded="false"
+                          title="WORK: проекты и пароли SEO/контекст (legacy)"
+                        >
+                          <i class="metismenu-icon pe-7s-portfolio"></i>WORK
+                          <i class="metismenu-state-icon pe-7s-angle-down" aria-hidden="true"></i>
+                        </a>
+                        <ul class="metismenu-container dg-vanilla-work-submenu">
+                          <li class="metismenu-item">
+                            <a class="metismenu-link" data-nav="work-seo-projects" href="/work-seo-projects.html" title="Проекты SEO">
+                              <i class="metismenu-icon pe-7s-search"></i>Проекты SEO
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a class="metismenu-link" data-nav="work-seo-passwords" href="/work-seo-passwords.html" title="Пароли SEO">
+                              <i class="metismenu-icon pe-7s-lock"></i>Пароли SEO
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a class="metismenu-link" data-nav="work-dev-passwords" href="/work-dev-passwords.html" title="Пароли DEV">
+                              <i class="metismenu-icon pe-7s-lock"></i>Пароли DEV
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a class="metismenu-link" data-nav="work-context-projects" href="/work-context-projects.html" title="Проекты контекст">
+                              <i class="metismenu-icon pe-7s-note2"></i>Проекты контекст
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a class="metismenu-link" data-nav="work-context-passwords" href="/work-context-passwords.html" title="Пароли контекст">
+                              <i class="metismenu-icon pe-7s-lock"></i>Пароли контекст
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a class="metismenu-link" data-nav="work-services" href="/work-services.html" title="Сервисы и пароли">
+                              <i class="metismenu-icon pe-7s-key"></i>Сервисы &amp; Пароли
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a class="metismenu-link" data-nav="work-seo-staff" href="/work-seo-staff.html" title="Сотрудники SEO">
+                              <i class="metismenu-icon pe-7s-users"></i>Сотрудники SEO
+                            </a>
+                          </li>
+                        </ul>
+                      </li>
                       <li class="metismenu-item dg-sidebar-nav-divider" aria-hidden="true">
                         <div class="nav-item nav-item-divider"></div>
                       </li>
@@ -2888,6 +3007,23 @@
         "</div>";
       return;
     }
+    var colCount = 6 + dim; /* сотрудник + 4 pay + дни + Σ */
+    var groups = [];
+    var groupMap = {};
+    filtered.forEach(function (e) {
+      var did = e.department_id != null ? Number(e.department_id) : 0;
+      var dname = e.department_name || "Без отдела";
+      var key = did + "\0" + dname;
+      if (!groupMap[key]) {
+        groupMap[key] = { id: did, name: dname, employees: [] };
+        groups.push(groupMap[key]);
+      }
+      groupMap[key].employees.push(e);
+    });
+    groups.sort(function (a, b) {
+      return String(a.name || "").localeCompare(String(b.name || ""), "ru");
+    });
+
     var html =
       '<table class="dg-ws-sheet"><thead><tr><th class="emp">Сотрудник</th>' +
       '<th class="dg-ws-pay-h" title="Накапало / ставка">Оклад</th>' +
@@ -2896,92 +3032,102 @@
       '<th class="dg-ws-pay-h dg-ws-pay-total-h" title="Накапало по графику / плановый итог за полный месяц">Итого</th>';
     for (var d = 1; d <= dim; d++) html += dayColHeaderHtml(pm.y, pm.m, d, sh.calendar || activeMonthCalendar());
     html += "<th>Σ</th></tr></thead><tbody>";
-    filtered.forEach(function (e) {
-      var salAcc = e.salary_accrued != null ? e.salary_accrued : 0;
-      var salRate = e.salary != null ? e.salary : 0;
-      var premAcc = e.premium_accrued != null ? e.premium_accrued : 0;
-      var premFull = e.premium_full != null ? e.premium_full : 0;
-      var premManual = e.premium_manual != null && e.premium_manual !== "";
-      var premSrc = e.premium_source || "";
-      var senAcc = e.seniority_accrued != null ? e.seniority_accrued : 0;
-      var senFull = e.seniority_full != null ? e.seniority_full : 0;
-      var totAcc =
-        e.total_accrued != null ? e.total_accrued : Number(salAcc) + Number(premAcc) + Number(senAcc);
-      var totPlan =
-        e.total_planned != null
-          ? e.total_planned
-          : Number(salRate) +
-            (e.premium_planned != null
-              ? Number(e.premium_planned)
-              : premManual
-                ? Number(e.premium_manual) || 0
-                : Number(premFull) || 0) +
-            Number(senFull);
-      var premSub = premSrc === "sales"
-        ? "из продаж"
-        : premSrc === "manual" || premManual
-          ? "ручная" + (premFull > 0 ? " · правило " + money(premFull) : "")
-          : premFull > 0
-            ? "полная " + money(premFull)
-            : "клик — ввести";
+    groups.forEach(function (g) {
       html +=
-        '<tr><td class="emp">' +
-        (e.full_name || "") +
-        '</td><td class="dg-ws-pay">' +
-        '<span class="dg-ws-pay-main">' +
-        money(salAcc) +
-        '</span><span class="dg-ws-pay-sub">ставка ' +
-        money(salRate) +
-        "</span></td>" +
-        '<td class="dg-ws-pay cell-click dg-ws-pay-prem' +
-        (premSrc === "sales" ? " dg-ws-pay-sales" : premManual ? " dg-ws-pay-manual" : "") +
-        '" data-emp-prem="' +
-        e.id +
-        '" title="Ручная премия за месяц">' +
-        '<span class="dg-ws-pay-main">' +
-        money(premAcc) +
-        '</span><span class="dg-ws-pay-sub">' +
-        premSub +
-        "</span></td>" +
-        '<td class="dg-ws-pay" title="Доплата за стаж">' +
-        '<span class="dg-ws-pay-main">' +
-        (e.seniority_pay_disabled ? "—" : money(senAcc)) +
-        '</span><span class="dg-ws-pay-sub">' +
-        (e.seniority_pay_disabled
-          ? "выкл"
-          : senFull > 0
-            ? "полная " + money(senFull)
-            : "нет стажа") +
-        "</span></td>" +
-        '<td class="dg-ws-pay dg-ws-pay-total" title="Накапало / плановый итог">' +
-        '<span class="dg-ws-pay-main">' +
-        money(totAcc) +
-        '</span><span class="dg-ws-pay-sub">план ' +
-        money(totPlan) +
-        "</span></td>";
-      var sum = 0;
-      for (var day = 1; day <= dim; day++) {
-        var c = (sh.cells[e.id] && sh.cells[e.id][day]) || null;
-        var L = cellLabel(c);
-        if (c) {
-          if (c.type === "vacation" || c.type === "sick") sum += 1;
-          else sum += Number(c.rate) || 0;
-        }
-        var selKey = e.id + ":" + day;
-        var selCls = state.bulkSelected[selKey] ? " dg-ws-bulk-sel" : "";
+        '<tr class="dg-ws-sheet-dept-h"><td colspan="' +
+        colCount +
+        '">' +
+        (g.name || "Отдел") +
+        '<span class="dg-ws-sheet-dept-count">· ' +
+        g.employees.length +
+        "</span></td></tr>";
+      g.employees.forEach(function (e) {
+        var salAcc = e.salary_accrued != null ? e.salary_accrued : 0;
+        var salRate = e.salary != null ? e.salary : 0;
+        var premAcc = e.premium_accrued != null ? e.premium_accrued : 0;
+        var premFull = e.premium_full != null ? e.premium_full : 0;
+        var premManual = e.premium_manual != null && e.premium_manual !== "";
+        var premSrc = e.premium_source || "";
+        var senAcc = e.seniority_accrued != null ? e.seniority_accrued : 0;
+        var senFull = e.seniority_full != null ? e.seniority_full : 0;
+        var totAcc =
+          e.total_accrued != null ? e.total_accrued : Number(salAcc) + Number(premAcc) + Number(senAcc);
+        var totPlan =
+          e.total_planned != null
+            ? e.total_planned
+            : Number(salRate) +
+              (e.premium_planned != null
+                ? Number(e.premium_planned)
+                : premManual
+                  ? Number(e.premium_manual) || 0
+                  : Number(premFull) || 0) +
+              Number(senFull);
+        var premSub = premSrc === "sales"
+          ? "из продаж"
+          : premSrc === "manual" || premManual
+            ? "ручная" + (premFull > 0 ? " · правило " + money(premFull) : "")
+            : premFull > 0
+              ? "полная " + money(premFull)
+              : "клик — ввести";
         html +=
-          '<td class="cell-click ' +
-          L.cls +
-          selCls +
-          '" data-emp="' +
+          '<tr><td class="emp">' +
+          (e.full_name || "") +
+          '</td><td class="dg-ws-pay">' +
+          '<span class="dg-ws-pay-main">' +
+          money(salAcc) +
+          '</span><span class="dg-ws-pay-sub">ставка ' +
+          money(salRate) +
+          "</span></td>" +
+          '<td class="dg-ws-pay cell-click dg-ws-pay-prem' +
+          (premSrc === "sales" ? " dg-ws-pay-sales" : premManual ? " dg-ws-pay-manual" : "") +
+          '" data-emp-prem="' +
           e.id +
-          '" data-day="' +
-          day +
-          '">' +
-          L.label +
-          "</td>";
-      }
-      html += "<td>" + Math.round(sum * 10) / 10 + "</td></tr>";
+          '" title="Ручная премия за месяц">' +
+          '<span class="dg-ws-pay-main">' +
+          money(premAcc) +
+          '</span><span class="dg-ws-pay-sub">' +
+          premSub +
+          "</span></td>" +
+          '<td class="dg-ws-pay" title="Доплата за стаж">' +
+          '<span class="dg-ws-pay-main">' +
+          (e.seniority_pay_disabled ? "—" : money(senAcc)) +
+          '</span><span class="dg-ws-pay-sub">' +
+          (e.seniority_pay_disabled
+            ? "выкл"
+            : senFull > 0
+              ? "полная " + money(senFull)
+              : "нет стажа") +
+          "</span></td>" +
+          '<td class="dg-ws-pay dg-ws-pay-total" title="Накапало / плановый итог">' +
+          '<span class="dg-ws-pay-main">' +
+          money(totAcc) +
+          '</span><span class="dg-ws-pay-sub">план ' +
+          money(totPlan) +
+          "</span></td>";
+        var sum = 0;
+        for (var day = 1; day <= dim; day++) {
+          var c = (sh.cells[e.id] && sh.cells[e.id][day]) || null;
+          var L = cellLabel(c);
+          if (c) {
+            if (c.type === "vacation" || c.type === "sick") sum += 1;
+            else sum += Number(c.rate) || 0;
+          }
+          var selKey = e.id + ":" + day;
+          var selCls = state.bulkSelected[selKey] ? " dg-ws-bulk-sel" : "";
+          html +=
+            '<td class="cell-click ' +
+            L.cls +
+            selCls +
+            '" data-emp="' +
+            e.id +
+            '" data-day="' +
+            day +
+            '">' +
+            L.label +
+            "</td>";
+        }
+        html += "<td>" + Math.round(sum * 10) / 10 + "</td></tr>";
+      });
     });
     html += "</tbody></table>";
     host.innerHTML = html;
@@ -3568,6 +3714,13 @@
 
   function auditActionLabel(a) {
     var act = String(a.action || "");
+    var et = String(a.entity_type || "");
+    if (act === "create" && et === "vacation") return "подал заявку на отпуск";
+    if (act === "create" && et === "employee") return "создал карточку сотрудника";
+    if (act === "create" && et === "department") return "создал отдел";
+    if (act === "create" && et === "organization") return "создал организацию";
+    if (act === "approve" && et === "vacation") return "согласовал отпуск";
+    if (act === "reject" && et === "vacation") return "отклонил отпуск";
     var map = {
       manual_create: "добавил день в табель",
       manual_edit: "изменил день",
@@ -3580,8 +3733,8 @@
       premium_from_sales_batch: "обновление премий из продаж",
       salary_change: "изменил оклад",
       department_move: "перевёл в другой отдел",
-      approve: "согласовал отпуск",
-      reject: "отклонил отпуск",
+      approve: "согласовал",
+      reject: "отклонил",
       create: "создал запись",
       update: "обновил",
       clock_start: "начал смену",
@@ -3589,6 +3742,11 @@
       clock_restart: "продолжил смену",
     };
     return map[act] || act || "действие";
+  }
+
+  function vacationTypeLabel(t) {
+    var m = { annual: "ежегодный", unpaid: "без содержания", sick: "больничный" };
+    return m[String(t || "")] || t || "отпуск";
   }
 
   function auditDotClass(a) {
@@ -3660,7 +3818,29 @@
   function auditDetailText(a) {
     var parts = [];
     var act = String(a.action || "");
+    var et = String(a.entity_type || "");
     var j = parseAuditJson(a.new_value);
+
+    if (et === "vacation" && (act === "create" || act === "approve" || act === "reject")) {
+      var emp = (j && j.employee) || a.subject_name;
+      if (emp) parts.push(emp);
+      var dept = (j && j.department) || a.subject_department_name;
+      if (dept) parts.push("отд. «" + dept + "»");
+      var df = (j && j.date_from) || a.subject_date_from;
+      var dt = (j && j.date_to) || a.subject_date_to;
+      if (df && dt) parts.push(fmtDate(df) + " — " + fmtDate(dt));
+      else if (df) parts.push(fmtDate(df));
+      var days = (j && j.days_count) || a.subject_days_count;
+      if (days != null) parts.push(days + " дн.");
+      var vt = (j && j.type) || a.subject_vacation_type;
+      if (vt) parts.push(vacationTypeLabel(vt));
+      var st = (j && j.status) || a.subject_vacation_status;
+      if (st === "pending") parts.push("ожидает");
+      else if (st === "approved") parts.push("согласовано");
+      else if (st === "rejected") parts.push("отклонено");
+      if (j && j.reject_reason) parts.push(String(j.reject_reason));
+      return parts.join(" · ");
+    }
 
     if (act === "premium_from_sales_auto" || act === "premium_from_sales_batch") {
       if (j && typeof j === "object") {

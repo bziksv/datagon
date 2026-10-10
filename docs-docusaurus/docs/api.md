@@ -99,6 +99,7 @@ description: Справочник REST-эндпоинтов p.datagon.ru (осн
 - `/api/manager-sales` -> `routes/managerSales.js` (Таблицы менеджеров: годовой журнал оплат `dg_manager_sales_rows`)
 - `/api/ops-sheet` -> `routes/opsSheet.js` (Операционный лист: свод + Planfix-заявки `dg_ops_planfix_tasks`)
 - `/api/work-schedule` -> `routes/workSchedule.js` (График работы: `ws_*`, clock, табель, отпуска, payroll, audit, экспорт 1С; см. [work-schedule.md](/docs/work-schedule/))
+- `/api/work` -> `routes/work.js` (WORK: legacy проекты/пароли SEO·контекст·DEV·сервисы + сотрудники SEO; таблицы `work_*`; CRUD `GET|POST|PUT|DELETE /:slug[/:id]`; список: `status`, `q`, `specialist`=`legacy_user_id` (главный или в `work_assignees`); назначение специалистов `assignee_legacy_ids` + `id_glavn_user` → `work_assignees`; `GET /meta/staff`; **видимость как в WORK**: admin/`can_manage_users` — всё; иначе только свои назначения; персонал — только своя строка; создание — только admin; SEO выплаты `GET|PUT /seo-payout-settings`, `POST /seo-payout-recalc`; `POST /seo-staff/rematch`; импорт `npm run import:work-prime`)
 - `GET /api/processes/overview`, `POST /api/sync-all-start`, `POST /api/sync-site-start`, `GET /api/sync-status` -> `server.js`
 
 ## Auth

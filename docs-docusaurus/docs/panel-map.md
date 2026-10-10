@@ -28,7 +28,21 @@ description: Все пункты бокового меню Datagon — URL, кл
 | Таблицы менеджеров | `/manager-sales.html` | `manager-sales` | [Таблицы менеджеров](/docs/manager-sales/) |
 | Операционный лист | `/ops-sheet.html` | `ops-sheet` | [Операционный лист](/docs/ops-sheet/) |
 | График работы | `/work-schedule.html` | `work-schedule` | [График работы](/docs/work-schedule/) |
-| График · настройки | `/work-schedule-settings.html` | `work-schedule-settings` | [График работы](/docs/work-schedule/) |
+| *(не в меню)* График · настройки | `/work-schedule-settings.html` | `work-schedule-settings` | [График работы](/docs/work-schedule/) — вход со страницы графика или прямой URL |
+
+## WORK (подменю)
+
+Данные из legacy `work.prime-ltd.su`. Импорт: `npm run import:work-prime`. API: `/api/work/*` → `routes/work.js`.
+
+| Меню | URL | Ключ |
+|------|-----|------|
+| Проекты SEO | `/work-seo-projects.html` | `work-seo-projects` |
+| Пароли SEO | `/work-seo-passwords.html` | `work-seo-passwords` |
+| Пароли DEV | `/work-dev-passwords.html` | `work-dev-passwords` |
+| Проекты контекст | `/work-context-projects.html` | `work-context-projects` |
+| Пароли контекст | `/work-context-passwords.html` | `work-context-passwords` |
+| Сервисы & Пароли | `/work-services.html` | `work-services` |
+| Сотрудники SEO | `/work-seo-staff.html` | `work-seo-staff` |
 
 ## Сайты и цены
 

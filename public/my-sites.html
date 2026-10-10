@@ -89,8 +89,29 @@
     */
     .datagon-vanilla-shell:not(.closed-sidebar)
       .vertical-nav-menu
-      ul.dg-vanilla-mp-submenu.metismenu-container.visible,
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon,
     .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon,
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-work-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
       .vertical-nav-menu
       ul.dg-vanilla-parse-submenu.metismenu-container.visible
       > .metismenu-item
@@ -98,10 +119,7 @@
       .metismenu-icon,
     .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
       .vertical-nav-menu
-      ul.dg-vanilla-mp-submenu.metismenu-container.visible,
-    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
-      .vertical-nav-menu
-      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      ul.dg-vanilla-work-submenu.metismenu-container.visible
       > .metismenu-item
       > .metismenu-link
       .metismenu-icon {
@@ -117,6 +135,11 @@
       ul.dg-vanilla-parse-submenu.metismenu-container.visible
       > .metismenu-item
       > .metismenu-link,
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-work-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link,
     .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
       .vertical-nav-menu
       ul.dg-vanilla-mp-submenu.metismenu-container.visible
@@ -125,6 +148,11 @@
     .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
       .vertical-nav-menu
       ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-work-submenu.metismenu-container.visible
       > .metismenu-item
       > .metismenu-link {
       padding-left: 3.4375rem !important;
@@ -143,8 +171,29 @@
     }
     .datagon-vanilla-shell:not(.closed-sidebar)
       .vertical-nav-menu
-      ul.dg-vanilla-mp-submenu.metismenu-container.visible,
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon,
     .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon,
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-work-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
       .vertical-nav-menu
       ul.dg-vanilla-parse-submenu.metismenu-container.visible
       > .metismenu-item
@@ -152,10 +201,7 @@
       .metismenu-icon,
     .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
       .vertical-nav-menu
-      ul.dg-vanilla-mp-submenu.metismenu-container.visible,
-    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
-      .vertical-nav-menu
-      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      ul.dg-vanilla-work-submenu.metismenu-container.visible
       > .metismenu-item
       > .metismenu-link
       .metismenu-icon {
@@ -598,7 +644,56 @@
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="manager-sales" href="/manager-sales.html" title="Годовые таблицы менеджеров: оплаты, маржа, премия"><i class="metismenu-icon pe-7s-id"></i>Таблицы менеджеров</a></li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="ops-sheet" href="/ops-sheet.html" title="Операционный лист: оборот, прибыль, премии и оклады по месяцам"><i class="metismenu-icon pe-7s-notebook"></i>Операционный лист</a></li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="work-schedule" href="/work-schedule.html" title="График работы и учёт рабочего времени"><i class="metismenu-icon pe-7s-clock"></i>График работы</a></li>
-                      <li class="metismenu-item"><a class="metismenu-link" data-nav="work-schedule-settings" href="/work-schedule-settings.html" title="Организация, отделы, сотрудники графика"><i class="metismenu-icon pe-7s-config"></i>График · настройки</a></li>
+                      <!-- «График · настройки» скрыт из меню: вход с /work-schedule.html (ссылка) или прямой URL; доступ — матрица work-schedule-settings -->
+                      <!-- <li class="metismenu-item"><a class="metismenu-link" data-nav="work-schedule-settings" href="/work-schedule-settings.html" title="Организация, отделы, сотрудники графика"><i class="metismenu-icon pe-7s-config"></i>График · настройки</a></li> -->
+                      <li class="metismenu-item">
+                        <a
+                          href="#"
+                          class="metismenu-link dg-vanilla-submenu-toggle"
+                          aria-expanded="false"
+                          title="WORK: проекты и пароли SEO/контекст (legacy)"
+                        >
+                          <i class="metismenu-icon pe-7s-portfolio"></i>WORK
+                          <i class="metismenu-state-icon pe-7s-angle-down" aria-hidden="true"></i>
+                        </a>
+                        <ul class="metismenu-container dg-vanilla-work-submenu">
+                          <li class="metismenu-item">
+                            <a class="metismenu-link" data-nav="work-seo-projects" href="/work-seo-projects.html" title="Проекты SEO">
+                              <i class="metismenu-icon pe-7s-search"></i>Проекты SEO
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a class="metismenu-link" data-nav="work-seo-passwords" href="/work-seo-passwords.html" title="Пароли SEO">
+                              <i class="metismenu-icon pe-7s-lock"></i>Пароли SEO
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a class="metismenu-link" data-nav="work-dev-passwords" href="/work-dev-passwords.html" title="Пароли DEV">
+                              <i class="metismenu-icon pe-7s-lock"></i>Пароли DEV
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a class="metismenu-link" data-nav="work-context-projects" href="/work-context-projects.html" title="Проекты контекст">
+                              <i class="metismenu-icon pe-7s-note2"></i>Проекты контекст
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a class="metismenu-link" data-nav="work-context-passwords" href="/work-context-passwords.html" title="Пароли контекст">
+                              <i class="metismenu-icon pe-7s-lock"></i>Пароли контекст
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a class="metismenu-link" data-nav="work-services" href="/work-services.html" title="Сервисы и пароли">
+                              <i class="metismenu-icon pe-7s-key"></i>Сервисы &amp; Пароли
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a class="metismenu-link" data-nav="work-seo-staff" href="/work-seo-staff.html" title="Сотрудники SEO">
+                              <i class="metismenu-icon pe-7s-users"></i>Сотрудники SEO
+                            </a>
+                          </li>
+                        </ul>
+                      </li>
                       <li class="metismenu-item dg-sidebar-nav-divider" aria-hidden="true">
                         <div class="nav-item nav-item-divider"></div>
                       </li>

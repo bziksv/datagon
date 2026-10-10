@@ -214,6 +214,69 @@ function assemble() {
             PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/work-schedule-settings.scripts.html')),
         },
         {
+            out: 'work-seo-projects.html',
+            PAGE_TITLE: 'WORK — Проекты SEO — Датагон',
+            BODY_ATTRS:
+                'class="datagon-vanilla-body" data-dg-active-nav="work-seo-projects" data-dg-work-entity="seo-projects"',
+            EXTRA_HEAD: read(path.join(vanillaDir, 'inners/work-crud.head.html')),
+            MAIN_INNER: read(path.join(vanillaDir, 'inners/work-crud.inner.html')),
+            PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/work-crud.scripts.html')),
+        },
+        {
+            out: 'work-seo-passwords.html',
+            PAGE_TITLE: 'WORK — Пароли SEO — Датагон',
+            BODY_ATTRS:
+                'class="datagon-vanilla-body" data-dg-active-nav="work-seo-passwords" data-dg-work-entity="seo-passwords"',
+            EXTRA_HEAD: read(path.join(vanillaDir, 'inners/work-crud.head.html')),
+            MAIN_INNER: read(path.join(vanillaDir, 'inners/work-crud.inner.html')),
+            PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/work-crud.scripts.html')),
+        },
+        {
+            out: 'work-dev-passwords.html',
+            PAGE_TITLE: 'WORK — Пароли DEV — Датагон',
+            BODY_ATTRS:
+                'class="datagon-vanilla-body" data-dg-active-nav="work-dev-passwords" data-dg-work-entity="dev-passwords"',
+            EXTRA_HEAD: read(path.join(vanillaDir, 'inners/work-crud.head.html')),
+            MAIN_INNER: read(path.join(vanillaDir, 'inners/work-crud.inner.html')),
+            PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/work-crud.scripts.html')),
+        },
+        {
+            out: 'work-context-projects.html',
+            PAGE_TITLE: 'WORK — Проекты контекст — Датагон',
+            BODY_ATTRS:
+                'class="datagon-vanilla-body" data-dg-active-nav="work-context-projects" data-dg-work-entity="context-projects"',
+            EXTRA_HEAD: read(path.join(vanillaDir, 'inners/work-crud.head.html')),
+            MAIN_INNER: read(path.join(vanillaDir, 'inners/work-crud.inner.html')),
+            PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/work-crud.scripts.html')),
+        },
+        {
+            out: 'work-context-passwords.html',
+            PAGE_TITLE: 'WORK — Пароли контекст — Датагон',
+            BODY_ATTRS:
+                'class="datagon-vanilla-body" data-dg-active-nav="work-context-passwords" data-dg-work-entity="context-passwords"',
+            EXTRA_HEAD: read(path.join(vanillaDir, 'inners/work-crud.head.html')),
+            MAIN_INNER: read(path.join(vanillaDir, 'inners/work-crud.inner.html')),
+            PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/work-crud.scripts.html')),
+        },
+        {
+            out: 'work-services.html',
+            PAGE_TITLE: 'WORK — Сервисы & Пароли — Датагон',
+            BODY_ATTRS:
+                'class="datagon-vanilla-body" data-dg-active-nav="work-services" data-dg-work-entity="services"',
+            EXTRA_HEAD: read(path.join(vanillaDir, 'inners/work-crud.head.html')),
+            MAIN_INNER: read(path.join(vanillaDir, 'inners/work-crud.inner.html')),
+            PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/work-crud.scripts.html')),
+        },
+        {
+            out: 'work-seo-staff.html',
+            PAGE_TITLE: 'WORK — Сотрудники SEO — Датагон',
+            BODY_ATTRS:
+                'class="datagon-vanilla-body" data-dg-active-nav="work-seo-staff" data-dg-work-entity="seo-staff"',
+            EXTRA_HEAD: read(path.join(vanillaDir, 'inners/work-crud.head.html')),
+            MAIN_INNER: read(path.join(vanillaDir, 'inners/work-crud.inner.html')),
+            PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/work-crud.scripts.html')),
+        },
+        {
             out: 'ref/index.html',
             PAGE_TITLE: 'Справка (статика) — Датагон',
             BODY_ATTRS: 'class="datagon-vanilla-body"',

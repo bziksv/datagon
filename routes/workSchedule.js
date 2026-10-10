@@ -36,6 +36,11 @@ function isAccounting(actor) {
     return false;
 }
 
+/** Спец. «Бухгалтерия» — видит все отделы на вкладке «Отдел». admin / «Полный доступ» — как руководитель. */
+function isCompanyAccounting(actor) {
+    return String(actor.specialty_name || '') === 'Бухгалтерия';
+}
+
 function clientIp(req) {
     const xf = req.headers['x-forwarded-for'];
     if (xf) return String(xf).split(',')[0].trim().slice(0, 64);
@@ -236,7 +241,7 @@ async function getManageAccess(db, managerDeptId, targetDeptId) {
 }
 
 async function listVisibleDepartments(db, actor) {
-    if (isAccounting(actor)) {
+    if (isCompanyAccounting(actor)) {
         const [rows] = await db.query(
             `SELECT d.*, u.full_name AS head_name
              FROM ws_department d
@@ -1333,7 +1338,7 @@ function createWorkScheduleRouter(db) {
             esql += ' AND e.department_id=?';
             params.push(deptId);
         }
-        esql += ' ORDER BY u.full_name';
+        esql += ' ORDER BY d.name, u.full_name';
         const [emps] = await db.query(esql, params);
         const hasSalesDept = (emps || []).some((e) => isSalesDepartmentName(e.department_name));
         let salesPremiumSync = null;
@@ -2192,7 +2197,8 @@ function createWorkScheduleRouter(db) {
         );
         const deptMeta = deptRows[0] || { id: deptId, name: '', head_user_id: null, schedule_type: '' };
         let canEdit =
-            accounting || (deptMeta.head_user_id != null && Number(deptMeta.head_user_id) === Number(a.id));
+            isCompanyAccounting(a) ||
+            (deptMeta.head_user_id != null && Number(deptMeta.head_user_id) === Number(a.id));
         if (!canEdit && emp) {
             const scope = await getManageAccess(db, emp.department_id, deptId);
             if (scope && scope.can_edit) canEdit = true;
@@ -2356,7 +2362,21 @@ function createWorkScheduleRouter(db) {
              VALUES (?, ?, ?, ?, ?, 'pending')`,
             [emp.id, dateFrom, dateTo, days, b.type || 'annual']
         );
-        await writeAudit(db, req, { entity_type: 'vacation', entity_id: r.insertId, action: 'create' });
+        const vacType = b.type || 'annual';
+        await writeAudit(db, req, {
+            entity_type: 'vacation',
+            entity_id: r.insertId,
+            action: 'create',
+            new_value: JSON.stringify({
+                employee: emp.user_full_name || emp.full_name || '',
+                department: emp.department_name || '',
+                date_from: dateFrom,
+                date_to: dateTo,
+                days_count: days,
+                type: vacType,
+                status: 'pending',
+            }),
+        });
         res.json({ success: true, id: r.insertId, days_count: days });
     });
 
@@ -2445,6 +2465,15 @@ function createWorkScheduleRouter(db) {
             entity_type: 'vacation',
             entity_id: id,
             action: ok ? 'approve' : 'reject',
+            new_value: JSON.stringify({
+                employee_id: v.employee_id,
+                date_from: dateOnlyYmd(v.date_from),
+                date_to: dateOnlyYmd(v.date_to),
+                days_count: v.days_count,
+                type: v.type,
+                status: ok ? 'approved' : 'rejected',
+                reject_reason: ok ? null : String(req.body?.reject_reason || req.body?.comment || '') || null,
+            }),
         });
         res.json({ success: true, status: ok ? 'approved' : 'rejected' });
     });
@@ -2662,9 +2691,14 @@ function createWorkScheduleRouter(db) {
         const params = [];
         let sql = `SELECT a.*, u.full_name, u.username,
                           w.work_date AS subject_work_date,
-                          COALESCE(w.employee_id, pe.id) AS subject_employee_id,
-                          COALESCE(eu.full_name, peu.full_name) AS subject_name,
-                          COALESCE(ed.name, ped.name) AS subject_department_name
+                          COALESCE(w.employee_id, pe.id, ve.id) AS subject_employee_id,
+                          COALESCE(eu.full_name, peu.full_name, vu.full_name) AS subject_name,
+                          COALESCE(ed.name, ped.name, vd.name) AS subject_department_name,
+                          DATE_FORMAT(vv.date_from, '%Y-%m-%d') AS subject_date_from,
+                          DATE_FORMAT(vv.date_to, '%Y-%m-%d') AS subject_date_to,
+                          vv.type AS subject_vacation_type,
+                          vv.status AS subject_vacation_status,
+                          vv.days_count AS subject_days_count
                    FROM ws_audit_log a
                    LEFT JOIN users u ON u.id=a.user_id
                    LEFT JOIN ws_work_log w
@@ -2678,6 +2712,12 @@ function createWorkScheduleRouter(db) {
                     AND pe.id = CAST(SUBSTRING_INDEX(a.entity_id, ':', 1) AS UNSIGNED)
                    LEFT JOIN users peu ON peu.id = pe.user_id
                    LEFT JOIN ws_department ped ON ped.id = pe.department_id
+                   LEFT JOIN ws_vacation_request vv
+                     ON a.entity_type='vacation' AND a.entity_id REGEXP '^[0-9]+$'
+                    AND vv.id = CAST(a.entity_id AS UNSIGNED)
+                   LEFT JOIN ws_employee ve ON ve.id = vv.employee_id
+                   LEFT JOIN users vu ON vu.id = ve.user_id
+                   LEFT JOIN ws_department vd ON vd.id = ve.department_id
                    WHERE 1=1`;
         if (req.query.entity_type) {
             sql += ' AND a.entity_type=?';

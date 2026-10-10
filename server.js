@@ -94,6 +94,8 @@ let appSettings = {
     dg_purchase_overrides_log_retention_days: 180,
     /** Срок хранения строк в `auto_sync_runs` (журнал запусков автосинхронизации на /processes.html). */
     auto_sync_runs_retention_days: 180,
+    /** Срок хранения журнала графика `ws_audit_log` (вкладка «Табель» → журнал изменений). */
+    ws_audit_log_retention_days: 180,
     /** Срок хранения дневных снимков `ms_export.stock` в `dg_product_stock_snapshot` (после синка МС). */
     product_stock_snapshot_retention_days: 365,
     auto_sync_myproducts_enabled: 0,
@@ -441,7 +443,7 @@ async function initDB() {
         await db.query(`CREATE TABLE IF NOT EXISTS app_settings (setting_key VARCHAR(50) PRIMARY KEY, setting_value TEXT)`);
         const defaults = [
             ['default_limit','100'],['parse_batch_size','50'],['page_delay_ms','0'],
-            ['sync_batch_size','500'],['sync_delay_ms','2000'],['sync_mode','always'],['log_retention_days','7'],['results_retention_days','120'],['ms_dimensions_log_retention_days','180'],['dg_purchase_overrides_log_retention_days','180'],['auto_sync_runs_retention_days','180'],['product_stock_snapshot_retention_days','365'],
+            ['sync_batch_size','500'],['sync_delay_ms','2000'],['sync_mode','always'],['log_retention_days','7'],['results_retention_days','120'],['ms_dimensions_log_retention_days','180'],['dg_purchase_overrides_log_retention_days','180'],['auto_sync_runs_retention_days','180'],['ws_audit_log_retention_days','180'],['product_stock_snapshot_retention_days','365'],
             ['ms_sync_page_limit','1000'],['ms_sync_delay_ms','0'],['ms_purchase_order_organization_name','ООО "АЛЬМАМЕД"'],
             ['ms_orders_exclude_owner_names','Новикова И.\nНовикова Ирина'],
             ['ms_orders_sync_days','30'],
@@ -1199,6 +1201,27 @@ async function cleanupPurchaseOverridesLogByRetentionDays(days) {
  * по `app_settings.auto_sync_runs_retention_days` (по умолчанию 180). Удаляются только строки с
  * непустым `finished_at` старше N дней (активные `running` без финиша не трогаем).
  */
+async function cleanupWsAuditLogByRetentionDays(days) {
+    const retentionDays = Number(days) || 180;
+    if (retentionDays <= 0) return 0;
+    try {
+        const [r] = await db.query(
+            `DELETE FROM ws_audit_log
+             WHERE created_at < (NOW() - INTERVAL ? DAY)`,
+            [retentionDays]
+        );
+        const deleted = Number(r?.affectedRows || 0);
+        if (deleted > 0) {
+            console.log(`[WS-AUDIT CLEANUP] Deleted ${deleted} rows older than ${retentionDays} days`);
+        }
+        return deleted;
+    } catch (e) {
+        if (e && e.code === 'ER_NO_SUCH_TABLE') return 0;
+        console.warn('[WS-AUDIT CLEANUP] failed:', e?.message || e);
+        throw e;
+    }
+}
+
 async function cleanupAutoSyncRunsByRetentionDays(days) {
     const retentionDays = Number(days) || 180;
     if (retentionDays <= 0) return 0;
@@ -3308,6 +3331,7 @@ initDB().then(async () => {
     app.use('/api/manager-sales', require('./routes/managerSales')(db));
     app.use('/api/ops-sheet', opsSheetRouterFactory(db, appSettings));
     app.use('/api/work-schedule', require('./routes/workSchedule')(db));
+    app.use('/api/work', require('./routes/work')(db));
     app.use('/api/specialties', require('./routes/specialties')(db));
     app.post('/api/settings/auto-sync-run', async (req, res) => {
         try {
@@ -4001,18 +4025,24 @@ initDB().then(async () => {
     cleanupDimensionsLogByRetentionDays(appSettings.ms_dimensions_log_retention_days).catch(() => {});
     cleanupPurchaseOverridesLogByRetentionDays(appSettings.dg_purchase_overrides_log_retention_days).catch(() => {});
     cleanupAutoSyncRunsByRetentionDays(appSettings.auto_sync_runs_retention_days).catch(() => {});
+    cleanupWsAuditLogByRetentionDays(appSettings.ws_audit_log_retention_days).catch(() => {});
     setInterval(() => {
         cleanupLogsByRetentionDays(appSettings.log_retention_days).catch(() => {});
         cleanupResultsByRetentionDays(appSettings.results_retention_days).catch(() => {});
         cleanupDimensionsLogByRetentionDays(appSettings.ms_dimensions_log_retention_days).catch(() => {});
         cleanupPurchaseOverridesLogByRetentionDays(appSettings.dg_purchase_overrides_log_retention_days).catch(() => {});
         cleanupAutoSyncRunsByRetentionDays(appSettings.auto_sync_runs_retention_days).catch(() => {});
+        cleanupWsAuditLogByRetentionDays(appSettings.ws_audit_log_retention_days).catch(() => {});
     }, 12 * 60 * 60 * 1000);
 
     // График работы: авто-закрытие зависших смен (раз в 15 мин)
     const workScheduleMod = require('./routes/workSchedule');
     workScheduleMod.ensureWorkScheduleSchema(db).catch((e) =>
         console.warn('[work-schedule] schema:', e && e.message ? e.message : e)
+    );
+    const workPrimeMod = require('./routes/work');
+    workPrimeMod.ensureWorkPrimeSchema(db).catch((e) =>
+        console.warn('[work] schema:', e && e.message ? e.message : e)
     );
     setInterval(() => {
         workScheduleMod.processStuckShifts(db).catch((e) =>

@@ -1,0 +1,177 @@
+          <div class="app-page-title">
+            <div class="page-title-wrapper">
+              <div class="page-title-heading">
+                <div class="page-title-icon">
+                  <i class="pe-7s-portfolio icon-gradient bg-happy-itmeo"> </i>
+                </div>
+                <div>
+                  <span id="dg-work-page-title">WORK</span>
+                  <div class="page-title-subheading">Раздел WORK (данные work.prime-ltd.su)</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card" id="dg-work-form-card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+              <div><i class="header-icon pe-7s-note me-2"></i><span id="dg-work-form-title">Форма</span></div>
+              <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-work-cancel">Скрыть</button>
+            </div>
+            <div class="card-body" id="dg-work-form-body" style="display: none">
+              <div class="row g-2" id="dg-work-form-fields"></div>
+              <div class="mt-3">
+                <button type="button" class="btn btn-primary" id="dg-work-save" data-dg-notify-start="Сохраняем…">Сохранить</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card d-none" id="dg-work-summary-card">
+            <div class="card-header">
+              <div class="d-flex align-items-center">
+                <i class="header-icon pe-7s-info me-2"></i>
+                <span>Сводка</span>
+              </div>
+            </div>
+            <div class="card-body small" id="dg-work-summary"></div>
+          </div>
+
+          <div class="main-card mb-3 card d-none" id="dg-work-payout-card">
+            <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+              <div class="d-flex align-items-center">
+                <i class="header-icon pe-7s-cash me-2"></i>
+                <span>Настройка выплат SEO</span>
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-work-payout-toggle">Свернуть</button>
+            </div>
+            <div class="card-body" id="dg-work-payout-body">
+              <p class="text-muted small mb-3">
+                Глобальные пороги как в старом WORK («Настройка выплат»). Если у проекта пороги бонуса/штрафа все 0 — применяются эти значения.
+                Пересчёт пишет <code>summa_zp</code> по budget / освоено / дате «Конец» (без SE Ranking).
+              </p>
+              <div class="row g-2">
+                <div class="col-md-4">
+                  <label class="form-label" for="dg-work-pay-procent-bonus">% освоения для бонуса</label>
+                  <input type="number" class="form-control" id="dg-work-pay-procent-bonus" min="0" step="1" />
+                  <div class="form-text">С какого % освоения платится бонус после срока</div>
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label" for="dg-work-pay-count-day-fine">Дней до штрафа</label>
+                  <input type="number" class="form-control" id="dg-work-pay-count-day-fine" min="0" step="1" />
+                  <div class="form-text">После «Конец» + N дней</div>
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label" for="dg-work-pay-procent-fine">% освоения для штрафа</label>
+                  <input type="number" class="form-control" id="dg-work-pay-procent-fine" min="0" step="1" />
+                  <div class="form-text">Штраф если освоено % ниже порога</div>
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label" for="dg-work-pay-procent-for-fine">% базы для штрафа</label>
+                  <input type="number" class="form-control" id="dg-work-pay-procent-for-fine" min="0" step="1" />
+                  <div class="form-text">(бюджет − освоено) × % / 100</div>
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label" for="dg-work-pay-bonus-add">% бонуса на этапе вывода</label>
+                  <input type="number" class="form-control" id="dg-work-pay-bonus-add" min="0" step="1" />
+                  <div class="form-text">Пока сегодня &lt; даты «Конец»: budget × % / 100</div>
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label" for="dg-work-pay-procent-seo">% от проекта (по умолчанию)</label>
+                  <input type="number" class="form-control" id="dg-work-pay-procent-seo" min="0" step="1" />
+                  <div class="form-text">Если у проекта «Вкл %» или % пустой</div>
+                </div>
+              </div>
+              <div class="mt-3 d-flex flex-wrap gap-2">
+                <button type="button" class="btn btn-primary" id="dg-work-payout-save" data-dg-notify-start="Сохраняем выплаты…">Сохранить</button>
+                <button type="button" class="btn btn-warning" id="dg-work-payout-recalc" data-dg-notify-start="Пересчёт з.п.…">Пересчитать з.п.</button>
+              </div>
+              <div id="dg-work-payout-save-msg" class="alert mt-3 mb-0 d-none" role="status"></div>
+              <div id="dg-work-action-log" class="alert alert-secondary mt-3 mb-0 d-none small" role="status"></div>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+              <div class="d-flex align-items-center">
+                <i class="header-icon pe-7s-filter me-2"></i>
+                <span>Фильтры и действия</span>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="row g-2 align-items-end">
+                <div class="col-md-4">
+                  <label class="form-label" for="dg-work-search">Поиск</label>
+                  <input type="search" class="form-control" id="dg-work-search" placeholder="Название, ФИО…" autocomplete="off" />
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label" for="dg-work-status">Статус</label>
+                  <select class="form-select" id="dg-work-status">
+                    <option value="1" selected>Активные</option>
+                    <option value="0">Архив</option>
+                    <option value="">Все</option>
+                  </select>
+                </div>
+                <div class="col-md-3" id="dg-work-specialist-wrap" data-dg-work-filter-field="specialist">
+                  <label class="form-label" for="dg-work-specialist">Специалист</label>
+                  <select class="form-select" id="dg-work-specialist">
+                    <option value="">Все</option>
+                  </select>
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label" for="dg-work-limit">На странице</label>
+                  <select class="form-select" id="dg-work-limit">
+                    <option value="50">50</option>
+                    <option value="100" selected>100</option>
+                    <option value="200">200</option>
+                  </select>
+                </div>
+              </div>
+              <div class="mt-3 d-flex flex-wrap gap-2">
+                <button type="button" class="btn btn-primary" id="dg-work-apply" data-dg-notify-start="Применяем…">Применить</button>
+                <button type="button" class="btn btn-outline-secondary" id="dg-work-reset" data-dg-notify-start="Сбрасываем…">По умолчанию</button>
+                <button type="button" class="btn btn-success" id="dg-work-add" data-dg-notify-start="Новая запись…">Добавить</button>
+                <button type="button" class="btn btn-outline-info" id="dg-work-rematch" data-dg-notify-start="Сопоставляем…">Сопоставить с Datagon</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+              <div class="d-flex align-items-center gap-3 flex-grow-1" style="min-width:0">
+                <div class="d-flex align-items-center flex-shrink-0">
+                  <i class="header-icon pe-7s-menu me-2"></i>
+                  <span>Список</span>
+                </div>
+                <div class="input-group input-group-sm" style="max-width:320px">
+                  <span class="input-group-text">🔎</span>
+                  <input type="search" class="form-control" id="dg-work-search-mirror" placeholder="Поиск…" autocomplete="off" />
+                </div>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="dg-work-table-wrap">
+                <table class="table table-sm table-hover mb-0">
+                  <thead id="dg-work-thead"></thead>
+                  <tbody id="dg-work-tbody"></tbody>
+                </table>
+              </div>
+              <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-3">
+                <div id="dg-work-page-status" class="text-muted small">—</div>
+                <div class="btn-group">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-work-prev">Назад</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-work-next">Вперёд</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-work-confirm-overlay" class="dg-work-confirm-overlay d-none" role="dialog" aria-modal="true">
+            <div class="dg-work-confirm-backdrop"></div>
+            <div class="dg-work-confirm-panel">
+              <h5 class="mb-2" id="dg-work-confirm-title">В архив?</h5>
+              <p class="text-muted mb-3" id="dg-work-confirm-text">Запись будет скрыта из активных (status=0). Удаление без возможности отмены не выполняется.</p>
+              <div class="d-flex justify-content-end gap-2">
+                <button type="button" class="btn btn-outline-secondary" id="dg-work-confirm-cancel">Отмена</button>
+                <button type="button" class="btn btn-danger" id="dg-work-confirm-ok" data-dg-notify-start="Подтверждаем…">В архив</button>
+              </div>
+            </div>
+          </div>
