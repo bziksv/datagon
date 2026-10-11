@@ -11,6 +11,18 @@
                   </div>
                 </div>
               </div>
+              <div class="page-title-actions">
+                <button
+                  type="button"
+                  class="btn btn-outline-info d-none"
+                  id="dg-npu-tour-start"
+                  data-dg-npu-tour="btn-start"
+                  data-dg-notify-start="Открываем обучение…"
+                  data-dg-tooltip="Интерактивное обучение по вкладке «Обновление товаров»"
+                >
+                  Пройти обучение
+                </button>
+              </div>
             </div>
           </div>
 
@@ -20,6 +32,9 @@
             </li>
             <li class="nav-item">
               <button type="button" class="nav-link" data-dg-np-view="table" data-dg-np-channel="marketplaces" id="dg-np-tab-markets">Размещение на маркеты</button>
+            </li>
+            <li class="nav-item">
+              <button type="button" class="nav-link" data-dg-np-view="updates" id="dg-np-tab-updates" data-dg-npu-tour="tab">Обновление товаров</button>
             </li>
             <li class="nav-item">
               <button type="button" class="nav-link" data-dg-np-view="stats" id="dg-np-tab-stats">Статистика контент-отдела</button>
@@ -123,6 +138,25 @@
                 </button>
               </div>
               <div id="dg-np-action-log" class="alert mt-3 mb-0 d-none" role="status"></div>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card d-none" id="dg-np-placement-kpi-card">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+              <div class="d-flex align-items-center min-width-0">
+                <i class="header-icon pe-7s-graph2 icon-gradient bg-happy-itmeo me-2"> </i>
+                <span>Сводка размещения</span>
+                <span class="text-muted small ms-2 d-none d-md-inline" id="dg-np-placement-kpi-hint">Клик по карточке — фильтр таблицы</span>
+              </div>
+              <div class="d-flex align-items-center gap-2">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-np-placement-kpi-refresh" data-dg-notify-start="Обновляем сводку…">Обновить</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-np-placement-kpi-toggle">Свернуть</button>
+              </div>
+            </div>
+            <div class="card-body" id="dg-np-placement-kpi-body">
+              <div class="small text-muted mb-2" id="dg-np-placement-kpi-active"></div>
+              <div class="row g-2 align-items-stretch" id="dg-np-placement-kpi-row1"></div>
+              <div class="row g-2 align-items-stretch mt-1" id="dg-np-placement-kpi-row2"></div>
             </div>
           </div>
 
@@ -426,6 +460,156 @@
             </div>
           </div>
 
+          <div id="dg-np-updates-panel" class="d-none">
+            <div class="main-card mb-3 card" data-dg-npu-tour="filters-card">
+              <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+                <div class="d-flex align-items-center">
+                  <i class="header-icon pe-7s-refresh icon-gradient bg-happy-fisher me-2"> </i>
+                  <span>Фильтры и действия</span>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-npu-filters-toggle">Свернуть</button>
+              </div>
+              <div class="card-body" id="dg-npu-filters-body">
+                <div class="row g-2 align-items-end">
+                  <div class="col-md-3">
+                    <label class="form-label" for="dg-npu-search">Умный поиск</label>
+                    <input type="search" class="form-control" id="dg-npu-search" placeholder="Код, название, комментарий…" autocomplete="off" data-dg-no-activity="1" />
+                  </div>
+                  <div class="col-md-2">
+                    <label class="form-label" for="dg-npu-status">Статус</label>
+                    <select class="form-select" id="dg-npu-status" data-dg-no-activity="1">
+                      <option value="">Все (кроме удалённых)</option>
+                      <option value="new">Новый</option>
+                      <option value="in_progress">В работе</option>
+                      <option value="done">Обновлено</option>
+                      <option value="cancelled">Отменено</option>
+                      <option value="removed">Удалённые</option>
+                    </select>
+                  </div>
+                  <div class="col-md-2">
+                    <label class="form-label" for="dg-npu-target">Куда</label>
+                    <select class="form-select" id="dg-npu-target" data-dg-no-activity="1">
+                      <option value="">Все</option>
+                      <option value="almamed">Альмамед</option>
+                      <option value="markets">Маркеты</option>
+                      <option value="both">Альмамед + Маркеты</option>
+                    </select>
+                  </div>
+                  <div class="col-md-2">
+                    <label class="form-label" for="dg-npu-type">Тип</label>
+                    <select class="form-select" id="dg-npu-type" data-dg-no-activity="1">
+                      <option value="">Все</option>
+                      <option value="product">Товар</option>
+                      <option value="bundle">Комплект</option>
+                    </select>
+                  </div>
+                  <div class="col-md-2">
+                    <label class="form-label" for="dg-npu-manager">Менеджер</label>
+                    <select class="form-select" id="dg-npu-manager" data-dg-no-activity="1">
+                      <option value="">Все</option>
+                      <option value="unassigned">Без менеджера</option>
+                      <option value="me">Я</option>
+                    </select>
+                  </div>
+                  <div class="col-md-2">
+                    <label class="form-label" for="dg-npu-content">Ответственный</label>
+                    <select class="form-select" id="dg-npu-content" data-dg-no-activity="1">
+                      <option value="">Все</option>
+                      <option value="unassigned">Без ответственного</option>
+                      <option value="me">Я</option>
+                    </select>
+                  </div>
+                  <div class="col-md-2">
+                    <label class="form-label" for="dg-npu-pending-done">Не обновлено</label>
+                    <select class="form-select" id="dg-npu-pending-done" data-dg-no-activity="1">
+                      <option value="">—</option>
+                      <option value="almamed">Альмамед</option>
+                      <option value="ozon">Ozon</option>
+                      <option value="wb">WB</option>
+                      <option value="yandex">Я.Маркет</option>
+                    </select>
+                  </div>
+                  <div class="col-md-1">
+                    <label class="form-label" for="dg-npu-page-size">На странице</label>
+                    <select class="form-select" id="dg-npu-page-size" data-dg-no-activity="1">
+                      <option value="50">50</option>
+                      <option value="100" selected>100</option>
+                      <option value="200">200</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="d-flex flex-wrap gap-2 mt-3" data-dg-npu-tour="actions">
+                  <button type="button" class="btn btn-primary" id="dg-npu-apply" data-dg-notify-start="Применяем фильтры обновлений…">Применить</button>
+                  <button type="button" class="btn btn-outline-secondary" id="dg-npu-reset" data-dg-notify-start="Сбрасываем фильтры…">По умолчанию</button>
+                  <button type="button" class="btn btn-success" id="dg-npu-add" data-dg-npu-tour="add" data-dg-notify-start="Добавление по коду…">Добавить по коду</button>
+                  <button type="button" class="btn btn-outline-success" id="dg-npu-bulk" data-dg-npu-tour="bulk" data-dg-notify-start="Массовое добавление…">Массовое добавление</button>
+                  <button type="button" class="btn btn-outline-primary" id="dg-npu-distribute" data-dg-npu-tour="distribute" data-dg-notify-start="Раздаём по ответственным…">Раздать поровну</button>
+                </div>
+                <div id="dg-npu-action-log" class="alert mt-3 mb-0 d-none" role="status"></div>
+                <p class="small text-muted mt-2 mb-0" data-dg-npu-tour="hint-workflow">
+                  В МС состав с проводками не меняем: архивируем карточку и создаём новую. Здесь фиксируем снимок состава при постановке и целевой состав.
+                  «Куда» — куда планируем обновление. <b>Обновил комплект в МС</b> — галка только у менеджера товара (комплекты). Факт: колонки <b>Обновлено на Альмамед</b> и <b>Обновлено на маркетах</b> (Ozon/WB/Я.М.).
+                </p>
+              </div>
+            </div>
+
+            <div class="main-card mb-3 card" data-dg-npu-tour="table-card" id="dg-npu-table-card">
+              <div class="card-header d-flex justify-content-between gap-2 flex-wrap align-items-center">
+                <div class="d-flex align-items-center gap-3 flex-grow-1" style="min-width: 0">
+                  <div class="d-flex align-items-center flex-shrink-0">
+                    <i class="header-icon pe-7s-refresh-2 icon-gradient bg-happy-itmeo me-2"> </i>
+                    <span>Выгрузка Обновление товаров</span>
+                  </div>
+                  <div class="dg-npu-header-search" style="flex: 0 1 380px; min-width: 220px">
+                    <div class="input-group input-group-sm">
+                      <span class="input-group-text">🔎</span>
+                      <input type="search" class="form-control" id="dg-npu-table-search-mirror" placeholder="Поиск…" autocomplete="off" data-dg-no-activity="1" />
+                    </div>
+                  </div>
+                </div>
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-npu-cols-btn" data-dg-no-activity="1">🧩 Столбцы</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-npu-widths-btn" data-dg-no-activity="1">📏 Ширины</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-npu-table-toggle">Свернуть</button>
+                </div>
+              </div>
+              <div class="card-body" id="dg-npu-table-body">
+                <div class="datagon-columns-toolbox mb-2 d-none" id="dg-npu-toolbox-panels">
+                  <div class="datagon-columns-panel" id="dg-npu-columns-panel"></div>
+                  <div class="datagon-columns-panel" id="dg-npu-widths-panel"></div>
+                </div>
+                <p class="small text-muted mb-2" data-dg-npu-tour="hint-roles">
+                  Статусы: <b>Новый</b> → <b>В работе</b> → <b>Обновлено</b>.
+                  <b>Менеджер товара</b> — как на Альмамед (Менеджер маркетплейсов);
+                  <b>Ответственный</b> — Контент-Менеджер.
+                  <b>Взять в работу</b> — назначить себя ответственным.
+                  <b>В удалённые</b> — как на Альмамед: строка скрывается, смотрите фильтром статуса «Удалённые», оттуда можно восстановить.
+                  Журнал: кнопка <b>лог</b> у кода (вся строка) и при наведении на ячейку (только поле).
+                  Состав комплекта — при добавлении. Комментарии — <b>+</b>.
+                </p>
+                <div class="dg-mp-table-scroll-outer" id="dg-npu-table-scroll-outer" style="overflow-x: auto; overflow-y: visible" data-dg-npu-tour="table">
+                  <div class="table-responsive datagon-my-products-table-wrap" style="overflow: visible !important">
+                    <table class="table table-sm table-hover mb-0 dg-npu-table" id="dg-npu-table" style="width: max-content; min-width: 100%; table-layout: auto">
+                      <thead id="dg-npu-thead"></thead>
+                      <tbody id="dg-npu-tbody">
+                        <tr><td class="text-muted text-center py-4">Откройте вкладку, чтобы загрузить</td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-3">
+                  <div class="d-flex align-items-center gap-2">
+                    <span class="small text-muted" id="dg-npu-page-status">Найдено: 0</span>
+                  </div>
+                  <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-npu-prev" data-dg-notify-start="Предыдущая страница…">Назад</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-npu-next" data-dg-notify-start="Следующая страница…">Вперёд</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div id="dg-np-crm-notify-panel" class="d-none">
             <div class="main-card mb-3 card">
               <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
@@ -583,6 +767,210 @@
               <div class="card-footer d-flex justify-content-end gap-2 flex-wrap bg-white border-top-0">
                 <button type="button" class="btn btn-outline-secondary" id="dg-np-bulk-cancel" data-dg-no-activity="1">Отмена</button>
                 <button type="button" class="btn btn-success" id="dg-np-bulk-submit" data-dg-notify-start="Добавляем товары…">Добавить</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-npu-add-overlay" class="dg-np-confirm-overlay" style="display: none" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="dg-npu-add-title">
+            <div class="dg-np-confirm-backdrop" id="dg-npu-add-backdrop"></div>
+            <div class="dg-np-confirm-panel card shadow-lg border-0" style="max-width: 32rem">
+              <div class="card-header">
+                <div class="fw-semibold" id="dg-npu-add-title">Добавить по коду</div>
+              </div>
+              <div class="card-body">
+                <label class="form-label" for="dg-npu-add-code">Код товара</label>
+                <input type="text" class="form-control" id="dg-npu-add-code" placeholder="5053-komplect-13" autocomplete="off" data-dg-no-activity="1" />
+                <div id="dg-npu-add-preview" class="small mt-2 text-muted">Введите код и нажмите «Проверить».</div>
+                <div class="form-check mt-3">
+                  <input class="form-check-input" type="checkbox" id="dg-npu-add-almamed" data-dg-no-activity="1" />
+                  <label class="form-check-label" for="dg-npu-add-almamed">Альмамед</label>
+                </div>
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" id="dg-npu-add-markets" checked data-dg-no-activity="1" />
+                  <label class="form-check-label" for="dg-npu-add-markets">Маркетплейсы</label>
+                </div>
+              </div>
+              <div class="card-footer d-flex justify-content-end gap-2 flex-wrap bg-white border-top-0">
+                <button type="button" class="btn btn-outline-secondary" id="dg-npu-add-cancel" data-dg-no-activity="1">Отмена</button>
+                <button type="button" class="btn btn-outline-primary" id="dg-npu-add-lookup" data-dg-notify-start="Ищем в МойСклад…">Проверить</button>
+                <button type="button" class="btn btn-success" id="dg-npu-add-ok" data-dg-notify-start="Создаём задачу…">Создать</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-npu-bulk-overlay" class="dg-np-confirm-overlay" style="display: none" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="dg-npu-bulk-title">
+            <div class="dg-np-confirm-backdrop" id="dg-npu-bulk-backdrop"></div>
+            <div class="dg-np-confirm-panel dg-np-bulk-panel card shadow-lg border-0">
+              <div class="card-header d-flex align-items-center justify-content-between gap-2">
+                <div class="fw-semibold" id="dg-npu-bulk-title">Массовое добавление в обновления</div>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-npu-bulk-close" data-dg-no-activity="1" aria-label="Закрыть">Закрыть</button>
+              </div>
+              <div class="card-body">
+                <p class="small text-muted mb-2">Коды через перевод строки или запятую. Не найденные в МС и дубликаты открытых задач попадут в журнал.</p>
+                <label class="form-label" for="dg-npu-bulk-text">Коды</label>
+                <textarea id="dg-npu-bulk-text" class="form-control font-monospace" rows="10" placeholder="5053-komplect-13&#10;12345&#10;67890" data-dg-no-activity="1"></textarea>
+                <div class="form-check mt-3">
+                  <input class="form-check-input" type="checkbox" id="dg-npu-bulk-almamed" data-dg-no-activity="1" />
+                  <label class="form-check-label" for="dg-npu-bulk-almamed">Альмамед</label>
+                </div>
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" id="dg-npu-bulk-markets" checked data-dg-no-activity="1" />
+                  <label class="form-check-label" for="dg-npu-bulk-markets">Маркетплейсы</label>
+                </div>
+              </div>
+              <div class="card-footer d-flex justify-content-end gap-2 flex-wrap bg-white border-top-0">
+                <button type="button" class="btn btn-outline-secondary" id="dg-npu-bulk-cancel" data-dg-no-activity="1">Отмена</button>
+                <button type="button" class="btn btn-success" id="dg-npu-bulk-submit" data-dg-notify-start="Добавляем коды в очередь…">Добавить</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-npu-compose-overlay" class="dg-np-confirm-overlay" style="display: none" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="dg-npu-compose-title">
+            <div class="dg-np-confirm-backdrop" id="dg-npu-compose-backdrop"></div>
+            <div class="dg-np-confirm-panel card shadow-lg border-0 dg-npu-compose-panel">
+              <div class="card-header d-flex align-items-center justify-content-between gap-2">
+                <div class="fw-semibold text-truncate" id="dg-npu-compose-title">Состав комплекта</div>
+                <div class="d-flex align-items-center gap-2 flex-shrink-0">
+                  <button type="button" class="btn btn-sm btn-outline-primary" id="dg-npu-compose-add-line" data-dg-no-activity="1">+ позиция</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-npu-compose-close" data-dg-no-activity="1">Закрыть</button>
+                </div>
+              </div>
+              <div class="card-body dg-npu-compose-body">
+                <div class="table-responsive dg-npu-compose-table-wrap">
+                  <table class="table table-sm table-bordered mb-0" id="dg-npu-compose-table">
+                    <thead>
+                      <tr>
+                        <th style="width:7.5rem">Код</th>
+                        <th>Название</th>
+                        <th style="width:5.5rem" class="text-center">Было</th>
+                        <th style="width:9rem" class="text-center">Станет</th>
+                        <th style="width:3rem"></th>
+                      </tr>
+                    </thead>
+                    <tbody id="dg-npu-compose-tbody"></tbody>
+                  </table>
+                </div>
+                <p class="small text-muted mt-3 mb-0">
+                  Слева — снимок состава на момент постановки в очередь. В МС с проводками состав не правят: архивируем карточку и создаём новую; здесь фиксируем целевой состав для ручной работы. Запись в МС из Датагона не выполняется.
+                </p>
+              </div>
+              <div class="card-footer d-flex justify-content-between gap-2 flex-wrap bg-white border-top-0">
+                <button type="button" class="btn btn-outline-warning" id="dg-npu-compose-reload" data-dg-notify-start="Перезаписываем снимок из МС…">Подтянуть снимок из МС</button>
+                <button type="button" class="btn btn-primary" id="dg-npu-compose-save" data-dg-notify-start="Сохраняем новый состав…">Сохранить новый состав</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-npu-resync-overlay" class="dg-np-confirm-overlay" style="display: none" aria-hidden="true" role="dialog" aria-modal="true">
+            <div class="dg-np-confirm-backdrop" id="dg-npu-resync-backdrop"></div>
+            <div class="dg-np-confirm-panel card shadow-lg border-0" style="max-width: 28rem">
+              <div class="card-header">
+                <div class="fw-semibold">Перезаписать снимок состава?</div>
+              </div>
+              <div class="card-body">
+                <p class="mb-0">Снимок «как было при постановке» будет заменён текущим кэшем МойСклад. Эталон постановки потеряется. Скопировать в «Станет» тоже?</p>
+                <div class="form-check mt-3">
+                  <input class="form-check-input" type="checkbox" id="dg-npu-resync-copy-target" checked data-dg-no-activity="1" />
+                  <label class="form-check-label" for="dg-npu-resync-copy-target">Скопировать в целевой состав</label>
+                </div>
+              </div>
+              <div class="card-footer d-flex justify-content-end gap-2 flex-wrap bg-white border-top-0">
+                <button type="button" class="btn btn-outline-secondary" id="dg-npu-resync-cancel" data-dg-no-activity="1">Отмена</button>
+                <button type="button" class="btn btn-warning" id="dg-npu-resync-ok" data-dg-notify-start="Перезаписываем снимок…">Перезаписать</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-npu-cmt-overlay" class="dg-np-confirm-overlay" style="display: none" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="dg-npu-cmt-title">
+            <div class="dg-np-confirm-backdrop" id="dg-npu-cmt-backdrop"></div>
+            <div class="dg-np-confirm-panel card shadow-lg border-0" style="max-width: 28rem">
+              <div class="card-header">
+                <div class="fw-semibold" id="dg-npu-cmt-title">Новый комментарий</div>
+              </div>
+              <div class="card-body">
+                <p class="mb-2 text-muted small" id="dg-npu-cmt-hint">Новый комментарий появится сверху. Редактировать сможете только свой.</p>
+                <textarea class="form-control" id="dg-npu-cmt-text" rows="4" maxlength="2000" placeholder="Напишите комментарий…" data-dg-no-activity="1"></textarea>
+              </div>
+              <div class="card-footer d-flex justify-content-between gap-2 flex-wrap bg-white border-top-0">
+                <button type="button" class="btn btn-outline-danger d-none" id="dg-npu-cmt-del" data-dg-notify-start="Удаление комментария…">Удалить</button>
+                <div class="d-flex gap-2 ms-auto">
+                  <button type="button" class="btn btn-outline-secondary" id="dg-npu-cmt-cancel" data-dg-no-activity="1">Отмена</button>
+                  <button type="button" class="btn btn-primary" id="dg-npu-cmt-ok" data-dg-notify-start="Сохраняем комментарий…">Сохранить</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-npu-log-overlay" class="dg-np-log-overlay" style="display: none" aria-hidden="true">
+            <div class="dg-np-log-backdrop" id="dg-npu-log-backdrop"></div>
+            <div class="dg-np-log-panel card shadow-lg border-0">
+              <div class="card-header d-flex align-items-center justify-content-between gap-2">
+                <div class="d-flex flex-column" style="min-width: 0">
+                  <div class="fw-semibold" id="dg-npu-log-title">Журнал изменений</div>
+                  <div class="text-muted small" id="dg-npu-log-subtitle"></div>
+                </div>
+                <div class="d-flex align-items-center gap-2 flex-shrink-0">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-npu-log-refresh" data-dg-notify-start="Обновляем журнал…">Обновить</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-npu-log-close" data-dg-no-activity="1">Закрыть</button>
+                </div>
+              </div>
+              <div class="card-body p-0">
+                <div class="dg-np-log-body" id="dg-npu-log-body">
+                  <div class="text-muted small text-center py-4">Загрузка журнала…</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-npu-archive-overlay" class="dg-np-confirm-overlay" style="display: none" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="dg-npu-archive-title">
+            <div class="dg-np-confirm-backdrop" id="dg-npu-archive-backdrop"></div>
+            <div class="dg-np-confirm-panel card shadow-lg border-0">
+              <div class="card-header">
+                <div class="fw-semibold" id="dg-npu-archive-title">В удалённые?</div>
+              </div>
+              <div class="card-body">
+                <p class="mb-0" id="dg-npu-archive-text">Переместить задачу в «Удалённые»?</p>
+              </div>
+              <div class="card-footer d-flex justify-content-end gap-2 flex-wrap bg-white border-top-0">
+                <button type="button" class="btn btn-outline-secondary" id="dg-npu-archive-cancel" data-dg-no-activity="1">Отмена</button>
+                <button type="button" class="btn btn-danger" id="dg-npu-archive-ok" data-dg-notify-start="Переносим в удалённые…">В удалённые</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-npu-cmt-del-overlay" class="dg-np-confirm-overlay" style="display: none" aria-hidden="true" role="dialog" aria-modal="true">
+            <div class="dg-np-confirm-backdrop" id="dg-npu-cmt-del-backdrop"></div>
+            <div class="dg-np-confirm-panel card shadow-lg border-0" style="max-width: 26rem">
+              <div class="card-header">
+                <div class="fw-semibold" id="dg-npu-cmt-del-title">Удалить комментарий?</div>
+              </div>
+              <div class="card-body">
+                <p class="mb-0" id="dg-npu-cmt-del-text">Восстановить нельзя.</p>
+              </div>
+              <div class="card-footer d-flex justify-content-end gap-2 flex-wrap bg-white border-top-0">
+                <button type="button" class="btn btn-outline-secondary" id="dg-npu-cmt-del-cancel" data-dg-no-activity="1">Отмена</button>
+                <button type="button" class="btn btn-danger" id="dg-npu-cmt-del-ok" data-dg-notify-start="Удаляем комментарий…">Удалить</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-npu-tour" class="dg-npu-tour" style="display: none" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="dg-npu-tour-title">
+            <div class="dg-npu-tour-spotlight" id="dg-npu-tour-spotlight" aria-hidden="true">
+              <span class="dg-npu-tour-spot-tip" id="dg-npu-tour-spot-tip">Смотрите сюда</span>
+            </div>
+            <div class="dg-npu-tour-popover card shadow-lg border-0" id="dg-npu-tour-popover">
+              <div class="card-body">
+                <div class="small text-muted mb-1" id="dg-npu-tour-progress">1 / 1</div>
+                <h6 class="mb-2" id="dg-npu-tour-title">Обучение</h6>
+                <p class="mb-2 small" id="dg-npu-tour-text"></p>
+                <div class="dg-npu-tour-preview mb-3" id="dg-npu-tour-preview" aria-hidden="true"></div>
+                <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap">
+                  <button type="button" class="btn btn-sm btn-link text-muted px-0" id="dg-npu-tour-skip" data-dg-no-activity="1">Пропустить</button>
+                  <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-npu-tour-prev" data-dg-no-activity="1">Назад</button>
+                    <button type="button" class="btn btn-sm btn-primary" id="dg-npu-tour-next" data-dg-no-activity="1">Далее</button>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

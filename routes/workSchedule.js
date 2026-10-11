@@ -1606,40 +1606,71 @@ function createWorkScheduleRouter(db) {
     });
 
     async function applySheetCellEdit(dbConn, req, a, { employeeId, workDate, type, rate, hours }) {
+        const typeNorm = String(type || 'work');
+        const rateNum = Number(rate) || 0;
+        const hoursNum = hours != null && hours !== '' ? Number(hours) : 0;
+        const hoursSafe = Number.isFinite(hoursNum) ? hoursNum : 0;
+        /** Пустой день: work + ставка 0 + часы 0 → удаляем строку, а не оставляем «0» в табеле. */
+        const isEmptyDay = typeNorm === 'work' && !(rateNum > 0) && !(hoursSafe > 0);
+
         const [ex] = await dbConn.query(`SELECT * FROM ws_work_log WHERE employee_id=? AND work_date=? LIMIT 1`, [
             employeeId,
             workDate,
         ]);
         let created = false;
+        let cleared = false;
         if (ex.length) {
+            const row = ex[0];
+            if (isEmptyDay) {
+                if (row.check_in && !row.check_out) {
+                    return { created: false, updated: false, cleared: false, skipped_open: true };
+                }
+                await dbConn.query(`DELETE FROM ws_work_log WHERE id=?`, [row.id]);
+                await writeAudit(dbConn, req, {
+                    entity_type: 'work_log',
+                    entity_id: String(row.id),
+                    action: 'manual_clear',
+                    old_value: JSON.stringify({
+                        type: row.type,
+                        rate: row.rate,
+                        hours: row.hours_worked,
+                    }),
+                    new_value: null,
+                });
+                cleared = true;
+                return { created: false, updated: false, cleared };
+            }
             await dbConn.query(
                 `UPDATE ws_work_log SET type=?, rate=?, hours_worked=?, source='manual', edited_by=?, edited_at=?
                  WHERE id=?`,
-                [type, rate, hours, a.id, calc.moscowNowSql(), ex[0].id]
+                [typeNorm, rateNum, hoursSafe, a.id, calc.moscowNowSql(), row.id]
             );
             await writeAudit(dbConn, req, {
                 entity_type: 'work_log',
-                entity_id: String(ex[0].id),
+                entity_id: String(row.id),
                 action: 'manual_edit',
-                old_value: JSON.stringify({ type: ex[0].type, rate: ex[0].rate }),
-                new_value: JSON.stringify({ type, rate, hours }),
+                old_value: JSON.stringify({ type: row.type, rate: row.rate }),
+                new_value: JSON.stringify({ type: typeNorm, rate: rateNum, hours: hoursSafe }),
             });
         } else {
+            if (isEmptyDay) {
+                return { created: false, updated: false, cleared: false };
+            }
             const [ins] = await dbConn.query(
                 `INSERT INTO ws_work_log
                  (employee_id, work_date, type, rate, hours_worked, source, status, edited_by, edited_at)
                  VALUES (?, ?, ?, ?, ?, 'manual', 'ok', ?, ?)`,
-                [employeeId, workDate, type, rate, hours, a.id, calc.moscowNowSql()]
+                [employeeId, workDate, typeNorm, rateNum, hoursSafe, a.id, calc.moscowNowSql()]
             );
             await writeAudit(dbConn, req, {
                 entity_type: 'work_log',
                 entity_id: String(ins.insertId),
                 action: 'manual_create',
-                new_value: JSON.stringify({ type, rate, hours }),
+                new_value: JSON.stringify({ type: typeNorm, rate: rateNum, hours: hoursSafe }),
             });
             created = true;
         }
-        return { created, updated: !created };
+        return { created, updated: !created && !cleared, cleared };
     }
 
     router.patch('/sheet/cell', async (req, res) => {
@@ -1656,9 +1687,16 @@ function createWorkScheduleRouter(db) {
         const type = b.type || 'work';
         const rate = Number(b.rate) || 0;
         const hours = b.hours != null ? Number(b.hours) : null;
-        await applySheetCellEdit(db, req, a, { employeeId, workDate, type, rate, hours });
+        const result = await applySheetCellEdit(db, req, a, { employeeId, workDate, type, rate, hours });
+        if (result && result.skipped_open) {
+            return res.status(409).json({
+                success: false,
+                error: 'Нельзя очистить день с открытой сменой',
+                skipped_open: true,
+            });
+        }
         const payroll = await recalcPayroll(db, employeeId, calc.periodYmFromDate(workDate));
-        res.json({ success: true, payroll });
+        res.json({ success: true, payroll, cleared: !!(result && result.cleared) });
     });
 
     /**
@@ -2776,7 +2814,7 @@ function createWorkScheduleRouter(db) {
         if (scope === 'edits') {
             sql += ` AND (
                 a.action IN (
-                    'manual_edit','manual_create','manual_bulk','manual_restore_full_day',
+                    'manual_edit','manual_create','manual_clear','manual_bulk','manual_restore_full_day',
                     'premium_manual_set','premium_manual_clear','premium_from_sales',
                     'premium_from_sales_auto','premium_from_sales_batch',
                     'salary_change','department_move',

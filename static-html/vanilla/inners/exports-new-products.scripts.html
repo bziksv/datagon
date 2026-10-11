@@ -6,6 +6,7 @@
   var TABLE_KEY = "dg.np.table-card.collapsed.v1";
   var CHANNEL_KEY = "dg.np.channel.v1";
   var HIDE_PLACED_KEY = "dg.np.almamed.hide-placed.v1";
+  var PLACEMENT_KPI_KEY = "dg.np.placement_kpi.collapsed.v1";
 
   var state = {
     channel: "almamed",
@@ -25,6 +26,9 @@
     manager: "",
     /** Альмамед: пресет «Убрать размещенные» — скрыть status=verified (без soft-delete). */
     hide_placed: false,
+    /** KPI-фильтр: wip | stale14 | placement_none | placement_all3 | mp_wip | '' */
+    list_scope: "",
+    placementOverview: null,
     pending: {
       search: "",
       status: "",
@@ -47,6 +51,8 @@
     statsAccess: "full",
     /** Режим матрицы exports-new-products-standing: full | view | hidden */
     standingAccess: "full",
+    /** Режим матрицы exports-new-products-updates */
+    updatesAccess: "full",
   };
 
   var STATUS_OPTS_ALMAMED = [
@@ -1155,17 +1161,387 @@
     }
   }
 
+  function fmtNum(n) {
+    var v = Number(n) || 0;
+    if (window.DatagonFmt && window.DatagonFmt.formatInt) return window.DatagonFmt.formatInt(v);
+    return String(v);
+  }
+
+  function syncPlacementKpiCardVisibility() {
+    var card = el("dg-np-placement-kpi-card");
+    if (!card) return;
+    var show = state.view === "table" && state.channel === "almamed";
+    card.classList.toggle("d-none", !show);
+    if (show && !state.placementOverview) loadPlacementOverview();
+  }
+
+  function syncPlacementKpiActive() {
+    var hint = el("dg-np-placement-kpi-active");
+    var labels = {
+      wip: "Фильтр: вся очередь (WIP)",
+      review: "Фильтр: статус «На проверку»",
+      revision: "Фильтр: статус «На доработке»",
+      stale14: "Фильтр: WIP старше 14 дней",
+      important: "Фильтр: важный приоритет в WIP",
+      mp_wip: "Фильтр: очередь маркетов (WIP)",
+      placement_any: "Фильтр: уже есть хотя бы на одном МП",
+      placement_all3: "Фильтр: на всех трёх МП",
+      placement_none: "Фильтр: ещё ни на одном МП",
+    };
+    var key = state.list_scope;
+    if (state.status === "review") key = "review";
+    else if (state.status === "revision") key = "revision";
+    else if (state.priority === "important" && (state.list_scope === "wip" || !state.list_scope)) {
+      key = "important";
+    }
+    if (hint) {
+      hint.textContent = labels[key] || "";
+      hint.classList.toggle("d-none", !labels[key]);
+    }
+    document.querySelectorAll("#dg-np-placement-kpi-card [data-dg-np-kpi]").forEach(function (node) {
+      node.classList.toggle("is-active", node.getAttribute("data-dg-np-kpi") === key);
+    });
+  }
+
+  function renderPlacementKpiCard(opts) {
+    var o = opts || {};
+    var accent = o.accent ? " is-accent" : "";
+    var warn = o.warn ? " is-warn" : "";
+    var active = o.active ? " is-active" : "";
+    return (
+      '<div class="col-6 col-md">' +
+      '<div class="card border dg-np-place-kpi' +
+      accent +
+      warn +
+      active +
+      '" role="button" tabindex="0" data-dg-np-kpi="' +
+      escAttr(o.key) +
+      '" data-dg-tooltip="' +
+      escAttr(o.tip || "") +
+      '">' +
+      '<div class="card-body">' +
+      '<div class="text-muted small">' +
+      escapeHtml(o.title) +
+      "</div>" +
+      '<div class="h5 mb-0 fw-bold">' +
+      escapeHtml(o.value) +
+      "</div>" +
+      (o.sub ? '<div class="small text-muted mt-1">' + o.sub + "</div>" : "") +
+      "</div></div></div>"
+    );
+  }
+
+  function escAttr(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;")
+      .replace(/"/g, "&quot;")
+      .replace(/</g, "&lt;");
+  }
+
+  function renderPlacementOverview() {
+    var row1 = el("dg-np-placement-kpi-row1");
+    var row2 = el("dg-np-placement-kpi-row2");
+    if (!row1 || !row2) return;
+    var d = state.placementOverview;
+    if (!d || !d.almamed) {
+      row1.innerHTML = '<div class="col-12 text-muted small">Загрузка сводки…</div>';
+      row2.innerHTML = "";
+      return;
+    }
+    var a = d.almamed;
+    var m = d.markets || {};
+    var bs = a.by_status || {};
+    var subWip =
+      "не доб. " +
+      fmtNum(bs.not_added) +
+      " · в раб. " +
+      fmtNum(bs.in_progress) +
+      " · дораб. " +
+      fmtNum(bs.revision) +
+      " · проверка " +
+      fmtNum(bs.review);
+    var activeKey = state.list_scope;
+    if (state.status === "review") activeKey = "review";
+    else if (state.status === "revision") activeKey = "revision";
+    else if (state.priority === "important" && (state.list_scope === "wip" || !state.list_scope)) {
+      activeKey = "important";
+    }
+
+    row1.innerHTML =
+      renderPlacementKpiCard({
+        key: "wip",
+        title: "В очереди",
+        value: fmtNum(a.wip),
+        sub: subWip,
+        tip: "Все статусы WIP на Альмамед. Клик — показать только очередь.",
+        active: activeKey === "wip",
+      }) +
+      renderPlacementKpiCard({
+        key: "review",
+        title: "На проверку",
+        value: fmtNum(bs.review),
+        tip: "Главный затык воронки. Клик — статус «На проверку».",
+        accent: true,
+        active: activeKey === "review",
+      }) +
+      renderPlacementKpiCard({
+        key: "revision",
+        title: "На доработке",
+        value: fmtNum(bs.revision),
+        tip: "Клик — статус «На доработке».",
+        active: activeKey === "revision",
+      }) +
+      renderPlacementKpiCard({
+        key: "stale14",
+        title: ">14 дней",
+        value: fmtNum(a.wip_stale14),
+        tip: "WIP старше 14 дней с даты в таблице.",
+        warn: Number(a.wip_stale14) > 0,
+        active: activeKey === "stale14",
+      }) +
+      renderPlacementKpiCard({
+        key: "important",
+        title: "Важный приоритет",
+        value: fmtNum(a.wip_important),
+        tip: "WIP с приоритетом «Важный».",
+        active: activeKey === "important",
+      });
+
+    var badges =
+      '<div class="dg-np-place-kpi-badges">' +
+      '<span class="badge ' +
+      (m.ozon ? "bg-success" : "bg-secondary") +
+      '">OZON ' +
+      fmtNum(m.ozon) +
+      "</span>" +
+      '<span class="badge ' +
+      (m.wb ? "bg-success" : "bg-secondary") +
+      '">WB ' +
+      fmtNum(m.wb) +
+      "</span>" +
+      '<span class="badge ' +
+      (m.ym ? "bg-success" : "bg-secondary") +
+      '">ЯМ ' +
+      fmtNum(m.ym) +
+      "</span></div>";
+
+    row2.innerHTML =
+      renderPlacementKpiCard({
+        key: "mp_wip",
+        title: "Очередь маркетов",
+        value: fmtNum(m.wip),
+        sub: "из " + fmtNum(m.linked) + " с галкой «Маркеты»",
+        tip: "Открыть вкладку «Размещение на маркеты» с фильтром WIP.",
+        active: activeKey === "mp_wip",
+      }) +
+      '<div class="col-6 col-md">' +
+      '<div class="card border dg-np-place-kpi' +
+      (activeKey === "placement_any" ? " is-active" : "") +
+      '" role="button" tabindex="0" data-dg-np-kpi="placement_any" data-dg-tooltip="Есть хотя бы на одном МП. Клик — вкладка маркеты.">' +
+      '<div class="card-body"><div class="text-muted small">Уже на МП</div>' +
+      badges +
+      "</div></div></div>" +
+      renderPlacementKpiCard({
+        key: "placement_all3",
+        title: "На всех трёх",
+        value: fmtNum(m.all3),
+        tip: "Ozon + WB + Я.М. одновременно.",
+        active: activeKey === "placement_all3",
+      }) +
+      renderPlacementKpiCard({
+        key: "placement_none",
+        title: "Ещё нигде",
+        value: fmtNum(m.none_live),
+        tip: "Галка «Маркеты» есть, карточек на МП нет — главный сигнал.",
+        accent: Number(m.none_live) > 50,
+        active: activeKey === "placement_none",
+      });
+  }
+
+  function loadPlacementOverview() {
+    return fetch("/api/exports/new-products/placement-overview", {
+      credentials: "same-origin",
+      headers: authHeaders(false),
+    })
+      .then(function (r) {
+        return r.json().then(function (j) {
+          if (!r.ok || (j && j.success === false)) {
+            throw new Error((j && j.error) || "HTTP " + r.status);
+          }
+          return j;
+        });
+      })
+      .then(function (j) {
+        state.placementOverview = j;
+        renderPlacementOverview();
+        syncPlacementKpiActive();
+      })
+      .catch(function (e) {
+        var row1 = el("dg-np-placement-kpi-row1");
+        if (row1) {
+          row1.innerHTML =
+            '<div class="col-12 text-danger small">' +
+            escapeHtml(e.message || "Ошибка сводки") +
+            "</div>";
+        }
+      });
+  }
+
+  function clearFormFiltersForKpi() {
+    if (el("dg-np-search")) el("dg-np-search").value = "";
+    if (el("dg-np-f-status")) el("dg-np-f-status").value = "";
+    if (el("dg-np-f-priority")) el("dg-np-f-priority").value = "";
+    if (el("dg-np-f-brand")) el("dg-np-f-brand").value = "";
+    if (el("dg-np-f-responsible")) el("dg-np-f-responsible").value = "";
+    if (el("dg-np-f-manager")) el("dg-np-f-manager").value = "";
+    state.hide_placed = false;
+    persistHidePlaced();
+    syncRemovePlacedBtn();
+  }
+
+  function applyPlacementKpi(key) {
+    var k = String(key || "");
+    var needsMarkets = k === "mp_wip" || k.indexOf("placement_") === 0;
+    clearFormFiltersForKpi();
+    state.list_scope = "";
+    state.status = "";
+    state.priority = "";
+    state.search = "";
+    state.brand = "";
+    state.responsible = "";
+    state.manager = "";
+
+    if (k === "wip") {
+      state.list_scope = "wip";
+    } else if (k === "review") {
+      if (el("dg-np-f-status")) el("dg-np-f-status").value = "review";
+      state.status = "review";
+    } else if (k === "revision") {
+      if (el("dg-np-f-status")) el("dg-np-f-status").value = "revision";
+      state.status = "revision";
+    } else if (k === "stale14") {
+      state.list_scope = "stale14";
+    } else if (k === "important") {
+      if (el("dg-np-f-priority")) el("dg-np-f-priority").value = "important";
+      state.priority = "important";
+      state.list_scope = "wip";
+    } else if (k === "mp_wip") {
+      state.list_scope = "mp_wip";
+    } else if (k === "placement_none" || k === "placement_all3" || k === "placement_any") {
+      state.list_scope = k;
+    } else {
+      return;
+    }
+
+    state._keepListScope = true;
+    state.pending.status = state.status;
+    state.pending.priority = state.priority;
+    state.offset = 0;
+
+    function finishApply() {
+      state._keepListScope = true;
+      commitFilters();
+      if (window.DatagonNotify && window.DatagonNotify.toast) {
+        window.DatagonNotify.toast({ type: "info", message: "Фильтр из сводки применён" });
+      }
+    }
+
+    if (needsMarkets && state.channel !== "marketplaces") {
+      state.channel = "marketplaces";
+      try {
+        localStorage.setItem(CHANNEL_KEY, state.channel);
+      } catch (_) {}
+      loadVisibleColsForChannel();
+      loadWidthsForChannel();
+      state.rows = [];
+      state.loading = true;
+      syncTabUi();
+      syncTabToUrl();
+      renderTable();
+      finishApply();
+      return;
+    }
+    if (!needsMarkets && state.channel !== "almamed") {
+      state.channel = "almamed";
+      try {
+        localStorage.setItem(CHANNEL_KEY, state.channel);
+      } catch (_) {}
+      loadVisibleColsForChannel();
+      loadWidthsForChannel();
+      state.rows = [];
+      state.loading = true;
+      syncTabUi();
+      syncTabToUrl();
+      renderTable();
+      finishApply();
+      return;
+    }
+    finishApply();
+  }
+
+  function bindPlacementKpiUi() {
+    var body = el("dg-np-placement-kpi-body");
+    var toggle = el("dg-np-placement-kpi-toggle");
+    var refresh = el("dg-np-placement-kpi-refresh");
+    try {
+      if (localStorage.getItem(PLACEMENT_KPI_KEY) === "1" && body) {
+        body.style.display = "none";
+        if (toggle) toggle.textContent = "Развернуть";
+      }
+    } catch (_) {}
+    if (toggle && body) {
+      toggle.addEventListener("click", function () {
+        var hide = body.style.display !== "none";
+        body.style.display = hide ? "none" : "";
+        toggle.textContent = hide ? "Развернуть" : "Свернуть";
+        try {
+          localStorage.setItem(PLACEMENT_KPI_KEY, hide ? "1" : "0");
+        } catch (_) {}
+      });
+    }
+    if (refresh) {
+      refresh.addEventListener("click", function () {
+        var run = function () {
+          return loadPlacementOverview();
+        };
+        if (window.DatagonNotify && window.DatagonNotify.busyRun) {
+          window.DatagonNotify.busyRun(refresh, run);
+        } else {
+          run();
+        }
+      });
+    }
+    var card = el("dg-np-placement-kpi-card");
+    if (card) {
+      card.addEventListener("click", function (e) {
+        var t = e.target && e.target.closest ? e.target.closest("[data-dg-np-kpi]") : null;
+        if (!t || t.closest("button")) return;
+        applyPlacementKpi(t.getAttribute("data-dg-np-kpi"));
+      });
+      card.addEventListener("keydown", function (e) {
+        if (e.key !== "Enter" && e.key !== " ") return;
+        var t = e.target && e.target.closest ? e.target.closest("[data-dg-np-kpi]") : null;
+        if (!t) return;
+        e.preventDefault();
+        applyPlacementKpi(t.getAttribute("data-dg-np-kpi"));
+      });
+    }
+  }
+
   function syncTabUi() {
     var isStats = state.view === "stats";
     var isStanding = state.view === "standing";
+    var isUpdates = state.view === "updates";
     var isCrmNotify = state.view === "crm-notify";
-    var isExtra = isStats || isStanding || isCrmNotify;
+    var isExtra = isStats || isStanding || isUpdates || isCrmNotify;
     document.querySelectorAll("#dg-np-tabs .nav-link").forEach(function (btn) {
       var view = btn.getAttribute("data-dg-np-view") || "table";
       if (view === "stats") {
         btn.classList.toggle("active", isStats);
       } else if (view === "standing") {
         btn.classList.toggle("active", isStanding);
+      } else if (view === "updates") {
+        btn.classList.toggle("active", isUpdates);
       } else if (view === "crm-notify") {
         btn.classList.toggle("active", isCrmNotify);
       } else {
@@ -1178,12 +1554,21 @@
     var queuePanel = el("dg-np-queue-panel");
     var statsPanel = el("dg-np-stats-panel");
     var standingPanel = el("dg-np-standing-panel");
+    var updatesPanel = el("dg-np-updates-panel");
     var crmPanel = el("dg-np-crm-notify-panel");
     if (queuePanel) queuePanel.classList.toggle("d-none", isExtra);
     if (statsPanel) statsPanel.classList.toggle("d-none", !isStats);
     if (standingPanel) standingPanel.classList.toggle("d-none", !isStanding);
+    if (updatesPanel) updatesPanel.classList.toggle("d-none", !isUpdates);
     if (crmPanel) crmPanel.classList.toggle("d-none", !isCrmNotify);
-    if (isExtra) return;
+    var tourBtn = el("dg-npu-tour-start");
+    if (tourBtn) tourBtn.classList.toggle("d-none", !isUpdates);
+    if (isExtra) {
+      syncPlacementKpiCardVisibility();
+      return;
+    }
+
+    syncPlacementKpiCardVisibility();
 
     var isMp = state.channel === "marketplaces";
     var title = el("dg-np-table-title");
@@ -1276,8 +1661,12 @@
     state.brand = state.pending.brand;
     state.responsible = state.pending.responsible;
     state.manager = state.pending.manager;
+    // ручное «Применить» с формы сбрасывает KPI-scope, если меняли обычные поля
+    if (!state._keepListScope) state.list_scope = "";
+    state._keepListScope = false;
     state.offset = 0;
     load();
+    syncPlacementKpiActive();
   }
 
   function resetFilters() {
@@ -1287,6 +1676,7 @@
     el("dg-np-f-brand").value = "";
     el("dg-np-f-responsible").value = "";
     el("dg-np-f-manager").value = "";
+    state.list_scope = "";
     if (state.channel === "almamed") {
       state.hide_placed = false;
       persistHidePlaced();
@@ -2686,9 +3076,17 @@
     if (state.brand) p.set("brand", state.brand);
     if (state.responsible) p.set("responsible", state.responsible);
     if (state.manager) p.set("manager", state.manager);
-    if (channelAtStart === "almamed" && state.hide_placed && !state.status) {
+    if (channelAtStart === "almamed" && state.hide_placed && !state.status && !state.list_scope) {
       p.set("exclude_verified", "1");
     }
+    if (state.list_scope === "wip" || state.list_scope === "mp_wip") p.set("wip", "1");
+    if (state.list_scope === "stale14") {
+      p.set("wip", "1");
+      p.set("stale_days", "14");
+    }
+    if (state.list_scope === "placement_none") p.set("placement", "none");
+    if (state.list_scope === "placement_all3") p.set("placement", "all3");
+    if (state.list_scope === "placement_any") p.set("placement", "any");
     return fetch("/api/exports/new-products?" + p.toString(), {
       credentials: "same-origin",
       headers: authHeaders(false),
@@ -3729,12 +4127,33 @@
     return "hidden";
   }
 
+  function resolveUpdatesAccessMode() {
+    try {
+      if (
+        window.localStorage.getItem("isAdmin") === "true" ||
+        window.localStorage.getItem("currentUser") === "admin"
+      ) {
+        return "full";
+      }
+      var raw = window.localStorage.getItem("datagonPageModesV1");
+      var pm = raw ? JSON.parse(raw) : {};
+      var m = pm && pm["exports-new-products-updates"];
+      if (m === "full" || m === "view" || m === "hidden") return m;
+      // back-compat: если матрица ещё без ключа — наследуем доступ родителя «Новые товары»
+      var parent = pm && pm["exports-new-products"];
+      if (parent === "full" || parent === "view") return parent;
+    } catch (_) {}
+    return "hidden";
+  }
+
   function syncStatsTabAccess() {
     state.statsAccess = resolveStatsAccessMode();
     state.standingAccess = resolveStandingAccessMode();
+    state.updatesAccess = resolveUpdatesAccessMode();
     state.crmNotifyAccess = resolveCrmNotifyAccessMode();
     var showStats = state.statsAccess === "full" || state.statsAccess === "view";
     var showStanding = state.standingAccess === "full" || state.standingAccess === "view";
+    var showUpdates = state.updatesAccess === "full" || state.updatesAccess === "view";
     var showCrm = state.crmNotifyAccess === "full" || state.crmNotifyAccess === "view";
     var tabStats = el("dg-np-tab-stats");
     if (tabStats) {
@@ -3750,6 +4169,13 @@
       if (!showStanding) tabStanding.setAttribute("aria-hidden", "true");
       else tabStanding.removeAttribute("aria-hidden");
     }
+    var tabUpdates = el("dg-np-tab-updates");
+    if (tabUpdates) {
+      tabUpdates.classList.toggle("d-none", !showUpdates);
+      tabUpdates.disabled = !showUpdates;
+      if (!showUpdates) tabUpdates.setAttribute("aria-hidden", "true");
+      else tabUpdates.removeAttribute("aria-hidden");
+    }
     var tabCrm = el("dg-np-tab-crm-notify");
     if (tabCrm) {
       tabCrm.classList.toggle("d-none", !showCrm);
@@ -3762,6 +4188,10 @@
       syncTabUi();
       syncTabToUrl();
     } else if (state.view === "standing" && state.standingAccess === "hidden") {
+      state.view = "table";
+      syncTabUi();
+      syncTabToUrl();
+    } else if (state.view === "updates" && state.updatesAccess === "hidden") {
       state.view = "table";
       syncTabUi();
       syncTabToUrl();
@@ -4730,6 +5160,14 @@
     ) {
       return "crm-notify";
     }
+    if (
+      raw === "updates" ||
+      raw === "update" ||
+      raw === "product-updates" ||
+      raw === "obnovlenie"
+    ) {
+      return "updates";
+    }
     if (raw === "marketplaces" || raw === "markets" || raw === "mp") return "marketplaces";
     if (raw === "almamed" || raw === "alma") return "almamed";
     return null;
@@ -4738,6 +5176,7 @@
   function currentTabToken() {
     if (state.view === "stats") return "stats";
     if (state.view === "standing") return "standing";
+    if (state.view === "updates") return "updates";
     if (state.view === "crm-notify") return "crm-notify";
     return state.channel === "marketplaces" ? "marketplaces" : "almamed";
   }
@@ -4782,6 +5221,11 @@
       setView("crm-notify");
       return;
     }
+    if (tab === "updates") {
+      if (state.view === "updates") return;
+      setView("updates");
+      return;
+    }
     if (state.view === "table" && state.channel === tab) return;
     setChannel(tab);
   }
@@ -4821,6 +5265,26 @@
       syncTabUi();
       syncTabToUrl();
       loadStandingStats();
+      return;
+    }
+    if (view === "updates") {
+      syncStatsTabAccess();
+      if (state.updatesAccess === "hidden") {
+        if (window.DatagonNotify && window.DatagonNotify.toast) {
+          window.DatagonNotify.toast({
+            type: "warning",
+            message: "Нет доступа к «Обновление товаров»",
+          });
+        }
+        syncTabToUrl();
+        return;
+      }
+      state.view = "updates";
+      syncTabUi();
+      syncTabToUrl();
+      if (window.DgNpProductUpdates && window.DgNpProductUpdates.activate) {
+        window.DgNpProductUpdates.activate();
+      }
       return;
     }
     if (view === "crm-notify") {
@@ -5040,32 +5504,23 @@
       .then(function (j) {
         logState.total = Number(j.total || 0);
         var rows = j.rows || [];
-        // Мини-«лог» на ячейке фильтрует одно поле. Если по нему пусто —
-        // сразу показываем весь журнал строки (не заставляем кликать по каждому полю).
-        if (!rows.length && logState.field && logState.offset === 0) {
-          var emptyField = logState.fieldLabel || logState.field;
-          logState.fieldFallbackNote =
-            "По полю «" + emptyField + "» изменений нет — показан весь журнал строки.";
-          logState.field = "";
-          logState.fieldLabel = "";
-          syncNpLogTitle();
-          return loadNpLog();
-        }
-        var noteHtml = logState.fieldFallbackNote
-          ? '<div class="alert alert-warning py-2 px-3 mb-0 rounded-0 small">' +
-            escapeHtml(logState.fieldFallbackNote) +
-            ' <button type="button" class="btn btn-link btn-sm p-0 align-baseline dg-np-log-all-fields">Сбросить фильтр</button></div>'
-          : logState.field
-            ? '<div class="alert alert-info py-2 px-3 mb-0 rounded-0 small">Фильтр: <b>' +
-              escapeHtml(logState.fieldLabel || logState.field) +
-              '</b>. <button type="button" class="btn btn-link btn-sm p-0 align-baseline dg-np-log-all-fields">Показать все поля</button></div>'
-            : "";
+        // Мини-«лог» на ячейке — строго одно поле. Пусто по полю ≠ показывать всю строку
+        // (полный журнал — кнопка «лог» в колонке ID).
+        logState.fieldFallbackNote = "";
+        var noteHtml = logState.field
+          ? '<div class="alert alert-info py-2 px-3 mb-0 rounded-0 small">Фильтр: <b>' +
+            escapeHtml(logState.fieldLabel || logState.field) +
+            '</b>. <button type="button" class="btn btn-link btn-sm p-0 align-baseline dg-np-log-all-fields">Показать все поля</button></div>'
+          : "";
         if (!rows.length) {
           body.innerHTML =
             noteHtml +
             '<div class="text-muted small text-center py-4">' +
-            "Журнал пуст: по этой строке ещё не было записанных изменений " +
-            "(кнопка «лог» в колонке ID — полный журнал; мини-«лог» на ячейке — только одно поле)." +
+            (logState.field
+              ? "По полю «" +
+                escapeHtml(logState.fieldLabel || logState.field) +
+                "» изменений пока нет. Полный журнал строки — кнопка «лог» в колонке ID."
+              : "Журнал пуст: по этой строке ещё не было записанных изменений.") +
             "</div>" +
             renderNpLogPager();
           return;
@@ -5523,6 +5978,13 @@
         syncTabToUrl();
         load();
       }
+    } else if (urlTab === "updates") {
+      setView("updates");
+      if (state.view !== "updates") {
+        syncTabUi();
+        syncTabToUrl();
+        load();
+      }
     } else if (urlTab === "marketplaces" || urlTab === "almamed") {
       if (state.channel !== urlTab || state.view !== "table") {
         setChannel(urlTab);
@@ -5555,7 +6017,7 @@
     document.querySelectorAll("#dg-np-tabs .nav-link").forEach(function (btn) {
       btn.addEventListener("click", function () {
         var view = btn.getAttribute("data-dg-np-view") || "table";
-        if (view === "stats" || view === "standing" || view === "crm-notify") {
+        if (view === "stats" || view === "standing" || view === "updates" || view === "crm-notify") {
           setView(view);
           return;
         }
@@ -5585,6 +6047,7 @@
     el("dg-np-reset").addEventListener("click", resetFilters);
     el("dg-np-add").addEventListener("click", addRow);
     bindBulkAddUi();
+    bindPlacementKpiUi();
     el("dg-np-distribute").addEventListener("click", distribute);
     var btnSync = el("dg-np-sync-markets");
     if (btnSync) btnSync.addEventListener("click", syncMarketsQueue);

@@ -1,0 +1,2721 @@
+<script>
+(function () {
+  "use strict";
+
+  var API = "/api/exports/product-updates";
+  var FILTERS_KEY = "datagon_npu_filters_collapsed_v1";
+  var TABLE_KEY = "dg.npu.table-card.collapsed.v1";
+  var COLS_KEY = "dg.npu.visible_cols.v6";
+  var WIDTHS_KEY = "dg.npu.col_widths.v6";
+
+  /** Маркеты — колонка «Обновлено на маркетах»; Альмамед — отдельная колонка перед ней. */
+  var DONE_CHS = [
+    { key: "ozon", label: "Ozon", needs: "markets" },
+    { key: "wb", label: "WB", needs: "markets" },
+    { key: "yandex", label: "Я.М.", needs: "markets" },
+  ];
+
+  var UPD_COLS = [
+    { key: "code", label: "Код", sort: true, defWidth: 140 },
+    { key: "name_snapshot", label: "Название", sort: true, defWidth: 220 },
+    { key: "is_bundle", label: "Тип", sort: true, defWidth: 90 },
+    { key: "product_manager_name", label: "Менеджер\nтовара", sort: true, defWidth: 140 },
+    {
+      key: "ms_bundle_updated",
+      label: "Обновил\nкомплект в МС\n(менеджер)",
+      sort: false,
+      defWidth: 120,
+    },
+    { key: "targets", label: "Куда", sort: false, defWidth: 120 },
+    { key: "status", label: "Статус", sort: true, defWidth: 120 },
+    { key: "done_almamed", label: "Обновлено\nна Альмамед", sort: false, defWidth: 110 },
+    { key: "done", label: "Обновлено\nна маркетах", sort: false, defWidth: 120 },
+    { key: "content_name", label: "Ответственный", sort: true, defWidth: 140 },
+    { key: "composition", label: "Состав", sort: false, defWidth: 130 },
+    { key: "comments", label: "Комментарии", sort: false, defWidth: 220 },
+    { key: "created_at", label: "Дата\nдобавления", sort: true, defWidth: 130 },
+    { key: "actions", label: "Действия", sort: false, defWidth: 140 },
+  ];
+
+  var state = {
+    items: [],
+    total: 0,
+    page: 1,
+    pages: 1,
+    limit: 100,
+    can_write: false,
+    actor_user_id: null,
+    sort: "id",
+    dir: "desc",
+    pending: {
+      search: "",
+      status: "",
+      target: "",
+      type: "",
+      content: "",
+      manager: "",
+      pending_done: "",
+    },
+    applied: {
+      search: "",
+      status: "",
+      target: "",
+      type: "",
+      content: "",
+      manager: "",
+      pending_done: "",
+    },
+    visibleCols: null,
+    colWidths: {},
+    contentUsers: [],
+    managerUsers: [],
+    lookupProduct: null,
+    composeRowId: null,
+    composeRows: [],
+    composeCurrentMap: {},
+    cmtRowId: null,
+    cmtId: null,
+    bound: false,
+  };
+
+  function el(id) {
+    return document.getElementById(id);
+  }
+
+  function esc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function toast(type, message) {
+    if (window.DatagonNotify && window.DatagonNotify.toast) {
+      window.DatagonNotify.toast({ type: type, message: message });
+    }
+  }
+
+  function showOverlay(id, show) {
+    var node = el(id);
+    if (!node) return;
+    node.style.display = show ? "flex" : "none";
+    node.setAttribute("aria-hidden", show ? "false" : "true");
+  }
+
+  function busy(btn, fn) {
+    if (btn && window.DatagonNotify && window.DatagonNotify.busyRun) {
+      return window.DatagonNotify.busyRun(btn, fn);
+    }
+    return fn();
+  }
+
+  function defaultVisible() {
+    return UPD_COLS.map(function (c) {
+      return c.key;
+    });
+  }
+
+  function loadPrefs() {
+    try {
+      var raw = localStorage.getItem(COLS_KEY);
+      var arr = raw ? JSON.parse(raw) : null;
+      state.visibleCols = Array.isArray(arr) && arr.length ? arr : defaultVisible();
+    } catch (_) {
+      state.visibleCols = defaultVisible();
+    }
+    try {
+      var w = localStorage.getItem(WIDTHS_KEY);
+      state.colWidths = w ? JSON.parse(w) || {} : {};
+    } catch (_) {
+      state.colWidths = {};
+    }
+  }
+
+  function saveCols() {
+    try {
+      localStorage.setItem(COLS_KEY, JSON.stringify(state.visibleCols || defaultVisible()));
+    } catch (_) {}
+  }
+
+  function saveWidths() {
+    try {
+      localStorage.setItem(WIDTHS_KEY, JSON.stringify(state.colWidths || {}));
+    } catch (_) {}
+  }
+
+  function visibleCols() {
+    var set = {};
+    (state.visibleCols || defaultVisible()).forEach(function (k) {
+      set[k] = true;
+    });
+    return UPD_COLS.filter(function (c) {
+      return set[c.key];
+    });
+  }
+
+  function bindCollapse(btnId, bodyId, key) {
+    var btn = el(btnId);
+    var body = el(bodyId);
+    if (!btn || !body) return;
+    function apply(collapsed) {
+      body.classList.toggle("d-none", collapsed);
+      btn.textContent = collapsed ? "Развернуть" : "Свернуть";
+      try {
+        localStorage.setItem(key, collapsed ? "1" : "0");
+      } catch (_) {}
+    }
+    var collapsed = false;
+    try {
+      collapsed = localStorage.getItem(key) === "1";
+    } catch (_) {}
+    apply(collapsed);
+    btn.addEventListener("click", function () {
+      apply(!body.classList.contains("d-none"));
+    });
+  }
+
+  function readPendingFromForm() {
+    state.pending.search = (el("dg-npu-search") && el("dg-npu-search").value) || "";
+    state.pending.status = (el("dg-npu-status") && el("dg-npu-status").value) || "";
+    state.pending.target = (el("dg-npu-target") && el("dg-npu-target").value) || "";
+    state.pending.type = (el("dg-npu-type") && el("dg-npu-type").value) || "";
+    state.pending.content = (el("dg-npu-content") && el("dg-npu-content").value) || "";
+    state.pending.manager = (el("dg-npu-manager") && el("dg-npu-manager").value) || "";
+    state.pending.pending_done = (el("dg-npu-pending-done") && el("dg-npu-pending-done").value) || "";
+    var lim = parseInt((el("dg-npu-page-size") && el("dg-npu-page-size").value) || "100", 10);
+    state.limit = lim > 0 ? lim : 100;
+  }
+
+  function writeFormFromApplied() {
+    if (el("dg-npu-search")) el("dg-npu-search").value = state.applied.search || "";
+    if (el("dg-npu-table-search-mirror")) el("dg-npu-table-search-mirror").value = state.applied.search || "";
+    if (el("dg-npu-status")) el("dg-npu-status").value = state.applied.status || "";
+    if (el("dg-npu-target")) el("dg-npu-target").value = state.applied.target || "";
+    if (el("dg-npu-type")) el("dg-npu-type").value = state.applied.type || "";
+    if (el("dg-npu-content")) el("dg-npu-content").value = state.applied.content || "";
+    if (el("dg-npu-manager")) el("dg-npu-manager").value = state.applied.manager || "";
+    if (el("dg-npu-pending-done")) el("dg-npu-pending-done").value = state.applied.pending_done || "";
+  }
+
+  function commitFilters() {
+    readPendingFromForm();
+    state.applied = {
+      search: state.pending.search,
+      status: state.pending.status,
+      target: state.pending.target,
+      type: state.pending.type,
+      content: state.pending.content,
+      manager: state.pending.manager,
+      pending_done: state.pending.pending_done,
+    };
+    state.page = 1;
+    return load();
+  }
+
+  function resetFilters() {
+    state.pending = {
+      search: "",
+      status: "",
+      target: "",
+      type: "",
+      content: "",
+      manager: "",
+      pending_done: "",
+    };
+    state.applied = {
+      search: "",
+      status: "",
+      target: "",
+      type: "",
+      content: "",
+      manager: "",
+      pending_done: "",
+    };
+    writeFormFromApplied();
+    state.page = 1;
+    hideActionLog();
+    return load();
+  }
+
+  function showActionLog(type, html) {
+    var box = el("dg-npu-action-log");
+    if (!box) return;
+    box.classList.remove("d-none", "alert-success", "alert-danger", "alert-warning", "alert-info");
+    box.classList.add("alert-" + (type || "info"));
+    box.innerHTML = html;
+  }
+
+  function hideActionLog() {
+    var box = el("dg-npu-action-log");
+    if (!box) return;
+    box.classList.add("d-none");
+    box.innerHTML = "";
+  }
+
+  function qsList() {
+    var p = new URLSearchParams();
+    p.set("page", String(state.page));
+    p.set("limit", String(state.limit));
+    p.set("sort", state.sort);
+    p.set("dir", state.dir);
+    if (state.applied.search) p.set("search", state.applied.search);
+    if (state.applied.status) p.set("status", state.applied.status);
+    if (state.applied.target) p.set("target", state.applied.target);
+    if (state.applied.type) p.set("type", state.applied.type);
+    if (state.applied.content) p.set("content", state.applied.content);
+    if (state.applied.manager) p.set("manager", state.applied.manager);
+    if (state.applied.pending_done) p.set("pending_done", state.applied.pending_done);
+    return p.toString();
+  }
+
+  function fillPeopleSelect(selId, users, unassignedLabel, keepValue) {
+    var sel = el(selId);
+    if (!sel) return;
+    var cur = keepValue != null ? keepValue : sel.value;
+    var opts =
+      '<option value="">Все</option><option value="unassigned">' +
+      esc(unassignedLabel) +
+      '</option><option value="me">Я</option>';
+    (users || []).forEach(function (u) {
+      opts +=
+        '<option value="' +
+        esc(String(u.id)) +
+        '">' +
+        esc(u.label || u.full_name || u.username) +
+        "</option>";
+    });
+    sel.innerHTML = opts;
+    if (cur) sel.value = cur;
+  }
+
+  function loadContentUsers() {
+    return fetch(API + "/assignees", { credentials: "same-origin" })
+      .then(function (r) {
+        return r.json().then(function (j) {
+          return { ok: r.ok, j: j };
+        });
+      })
+      .then(function (res) {
+        var j = res && res.j;
+        if (!res.ok || !j || !j.success) {
+          // fallback как на вкладке Альмамед — те же специальности
+          return fetch("/api/exports/new-products/assignees", { credentials: "same-origin" })
+            .then(function (r2) {
+              return r2.json();
+            })
+            .then(function (j2) {
+              if (!j2) return;
+              state.contentUsers = j2.responsibles || j2.items || [];
+              state.managerUsers = j2.managers || j2.data || [];
+              fillPeopleSelect("dg-npu-content", state.contentUsers, "Без ответственного");
+              fillPeopleSelect("dg-npu-manager", state.managerUsers, "Без менеджера");
+              if (state.items && state.items.length) renderTable();
+            });
+        }
+        state.contentUsers = j.responsibles || j.items || [];
+        state.managerUsers = j.managers || [];
+        fillPeopleSelect("dg-npu-content", state.contentUsers, "Без ответственного");
+        fillPeopleSelect("dg-npu-manager", state.managerUsers, "Без менеджера");
+        // иначе таблица успевает отрисоваться с пустым <select> («—» без людей)
+        if (state.items && state.items.length) renderTable();
+      })
+      .catch(function () {});
+  }
+
+  function load() {
+    var tbody = el("dg-npu-tbody");
+    if (tbody) {
+      tbody.innerHTML =
+        '<tr><td colspan="20" class="text-muted text-center py-3">Загрузка…</td></tr>';
+    }
+    return fetch(API + "?" + qsList(), { credentials: "same-origin" })
+      .then(function (r) {
+        return r.json().then(function (j) {
+          return { ok: r.ok, status: r.status, j: j };
+        });
+      })
+      .then(function (res) {
+        if (!res.ok || !res.j || !res.j.success) {
+          var err = (res.j && res.j.error) || "HTTP " + res.status;
+          if (tbody) {
+            tbody.innerHTML =
+              '<tr><td colspan="20" class="text-danger text-center py-3">' + esc(err) + "</td></tr>";
+          }
+          toast("danger", err);
+          return;
+        }
+        state.items = res.j.items || [];
+        state.total = Number(res.j.total) || 0;
+        state.page = Number(res.j.page) || 1;
+        state.pages = Number(res.j.pages) || 1;
+        state.limit = Number(res.j.limit) || state.limit;
+        state.can_write = !!res.j.can_write;
+        state.actor_user_id = res.j.actor_user_id != null ? Number(res.j.actor_user_id) : null;
+        syncWriteUi();
+        renderTable();
+        renderPageStatus();
+      })
+      .catch(function (e) {
+        if (tbody) {
+          tbody.innerHTML =
+            '<tr><td colspan="20" class="text-danger text-center py-3">' +
+            esc(e.message || "Ошибка сети") +
+            "</td></tr>";
+        }
+      });
+  }
+
+  function syncWriteUi() {
+    ["dg-npu-add", "dg-npu-bulk", "dg-npu-distribute"].forEach(function (id) {
+      var b = el(id);
+      if (b) b.classList.toggle("d-none", !state.can_write);
+    });
+  }
+
+  function renderPageStatus() {
+    var st = el("dg-npu-page-status");
+    if (!st) return;
+    st.textContent =
+      "Найдено: " +
+      state.total +
+      "; страница " +
+      state.page +
+      "/" +
+      state.pages +
+      "; показано: " +
+      state.items.length;
+  }
+
+  function renderColumnControls() {
+    var panel = el("dg-npu-columns-panel");
+    if (!panel) return;
+    var vis = {};
+    (state.visibleCols || defaultVisible()).forEach(function (k) {
+      vis[k] = true;
+    });
+    panel.innerHTML = UPD_COLS.map(function (c) {
+      return (
+        '<label class="form-check me-3 mb-1">' +
+        '<input class="form-check-input" type="checkbox" data-npu-col="' +
+        esc(c.key) +
+        '"' +
+        (vis[c.key] ? " checked" : "") +
+        " /> " +
+        esc(c.label.replace(/\n/g, " ")) +
+        "</label>"
+      );
+    }).join("");
+  }
+
+  function renderWidthControls() {
+    var panel = el("dg-npu-widths-panel");
+    if (!panel) return;
+    panel.innerHTML = UPD_COLS.map(function (c) {
+      var w = state.colWidths[c.key] || c.defWidth || 120;
+      return (
+        '<div class="d-inline-flex align-items-center gap-1 me-3 mb-1">' +
+        '<span class="small text-muted" style="min-width:7rem">' +
+        esc(c.label.replace(/\n/g, " ")) +
+        "</span>" +
+        '<input type="number" min="60" max="480" class="form-control form-control-sm" style="width:5rem" data-npu-width="' +
+        esc(c.key) +
+        '" value="' +
+        esc(String(w)) +
+        '" data-dg-no-activity="1" />' +
+        "</div>"
+      );
+    }).join("");
+  }
+
+  function syncToolboxWrap() {
+    var wrap = el("dg-npu-toolbox-panels");
+    var cols = el("dg-npu-columns-panel");
+    var widths = el("dg-npu-widths-panel");
+    if (!wrap || !cols || !widths) return;
+    wrap.classList.toggle("d-none", !(cols.classList.contains("open") || widths.classList.contains("open")));
+  }
+
+  function renderCommentsCell(row) {
+    var list = Array.isArray(row.comments) ? row.comments : [];
+    var add = state.can_write
+      ? '<button type="button" class="dg-npu-cmt-add" data-npu-cmt-add="' +
+        row.id +
+        '" title="Добавить комментарий" data-dg-notify-start="Новый комментарий…">+</button>'
+      : "";
+    var items = list
+      .map(function (c) {
+        var own = !!c.can_edit || Number(c.author_user_id) === Number(state.actor_user_id);
+        var edit =
+          own && state.can_write
+            ? '<button type="button" class="dg-npu-cmt-edit" data-npu-cmt-edit="' +
+              esc(String(c.id)) +
+              '" data-npu-cmt-row="' +
+              row.id +
+              '" title="Изменить" data-dg-no-activity="1"><i class="pe-7s-pen" aria-hidden="true"></i></button>'
+            : "";
+        return (
+          '<div class="dg-npu-cmt-item' +
+          (own ? " dg-npu-cmt-own" : "") +
+          '"><span class="dg-npu-cmt-meta">' +
+          esc(c.author_short || c.author_name || "—") +
+          " — " +
+          esc(c.created_at_label || "—") +
+          '</span><div class="dg-npu-cmt-row"><span class="dg-npu-cmt-body">' +
+          esc(c.body || "") +
+          "</span>" +
+          edit +
+          "</div></div>"
+        );
+      })
+      .join("");
+    if (!items && !add) return '<span class="text-muted">—</span>';
+    return '<div class="dg-npu-comments">' + items + add + "</div>";
+  }
+
+  function doneInfo(row, ch) {
+    var d = row.done && row.done[ch];
+    if (d) return d;
+    return {
+      done: Number(row["done_" + ch]) === 1 ? 1 : 0,
+      by_name: "",
+      at_label: "",
+    };
+  }
+
+  function channelEnabled(row, needs) {
+    if (needs === "almamed") return !!row.target_almamed;
+    return !!row.target_markets;
+  }
+
+  function renderDoneChannelCell(row, chKey, label, needs) {
+    var en = channelEnabled(row, needs);
+    var info = doneInfo(row, chKey);
+    var on = !!info.done;
+    return (
+      '<label class="' +
+      (on ? "dg-npu-done-on" : "") +
+      '"' +
+      (info.by_name
+        ? ' title="' + esc("Отметил: " + info.by_name + (info.at_label ? " · " + info.at_label : "")) + '"'
+        : "") +
+      ">" +
+      '<input type="checkbox" class="form-check-input" data-npu-done="' +
+      chKey +
+      '" data-npu-id="' +
+      row.id +
+      '"' +
+      (on ? " checked" : "") +
+      (!en || !state.can_write ? " disabled" : "") +
+      ' data-dg-no-activity="1" />' +
+      esc(label) +
+      "</label>" +
+      (on && info.by_name
+        ? '<span class="dg-npu-done-by" title="' +
+          esc(info.at_label || "") +
+          '">' +
+          esc(info.by_name) +
+          "</span>"
+        : "")
+    );
+  }
+
+  function renderDoneAlmamedCell(row) {
+    if (!row.target_almamed) {
+      return '<span class="text-muted small">—</span>';
+    }
+    return (
+      '<div class="dg-npu-done-stack">' +
+      renderDoneChannelCell(row, "almamed", "Альмамед", "almamed") +
+      "</div>"
+    );
+  }
+
+  function canToggleMsBundleUpdated(row) {
+    if (!state.can_write || !row || !row.is_bundle) return false;
+    var mid = row.product_manager_user_id != null ? Number(row.product_manager_user_id) : null;
+    var aid = state.actor_user_id != null ? Number(state.actor_user_id) : null;
+    return !!(mid && aid && mid === aid);
+  }
+
+  function renderMsBundleUpdatedCell(row) {
+    if (!row.is_bundle) return '<span class="text-muted small">—</span>';
+    var on = !!row.ms_bundle_updated;
+    var can = canToggleMsBundleUpdated(row);
+    var tip = !row.product_manager_user_id
+      ? "Сначала назначьте менеджера товара"
+      : can
+        ? on
+          ? "Отметил: " +
+            (row.ms_bundle_updated_by_name || "менеджер") +
+            (row.ms_bundle_updated_at_label ? " · " + row.ms_bundle_updated_at_label : "")
+          : "Отметить: обновил комплект в МойСклад (только менеджер товара)"
+        : "Только менеджер товара этой строки может менять галочку";
+    return (
+      '<label class="dg-npu-ms-bundle' +
+      (on ? " on" : "") +
+      '" title="' +
+      esc(tip) +
+      '">' +
+      '<span class="dg-npu-ms-bundle-row">' +
+      '<input type="checkbox" class="form-check-input" data-npu-ms-bundle="' +
+      row.id +
+      '"' +
+      (on ? " checked" : "") +
+      (can ? "" : " disabled") +
+      ' data-dg-no-activity="1" />' +
+      '<span class="dg-npu-ms-bundle-lab">Обновлено</span>' +
+      "</span>" +
+      (on && row.ms_bundle_updated_by_name
+        ? '<span class="dg-npu-done-by">' + esc(row.ms_bundle_updated_by_name) + "</span>"
+        : "") +
+      "</label>"
+    );
+  }
+
+  function renderDoneCell(row) {
+    return (
+      '<div class="dg-npu-done-stack">' +
+      DONE_CHS.map(function (ch) {
+        return renderDoneChannelCell(row, ch.key, ch.label, ch.needs);
+      }).join("") +
+      "</div>"
+    );
+  }
+
+  function renderPeopleCell(row, users, userIdKey, nameKey, dataAttr) {
+    var uid = row[userIdKey];
+    var uname = row[nameKey] || "";
+    if (!state.can_write) return esc(uname || "—");
+    var opts = '<option value="">—</option>';
+    (users || []).forEach(function (u) {
+      opts +=
+        '<option value="' +
+        esc(String(u.id)) +
+        '"' +
+        (Number(uid) === Number(u.id) ? " selected" : "") +
+        ">" +
+        esc(u.label || u.full_name || u.username) +
+        "</option>";
+    });
+    if (
+      uid &&
+      !(users || []).some(function (u) {
+        return Number(u.id) === Number(uid);
+      })
+    ) {
+      opts +=
+        '<option value="' +
+        esc(String(uid)) +
+        '" selected>' +
+        esc(uname || uid) +
+        "</option>";
+    }
+    return (
+      '<select class="form-select form-select-sm dg-npu-content-sel" data-' +
+      dataAttr +
+      '="' +
+      row.id +
+      '" data-dg-no-activity="1">' +
+      opts +
+      "</select>"
+    );
+  }
+
+  function renderContentCell(row) {
+    return renderPeopleCell(row, state.contentUsers, "content_user_id", "content_name", "npu-content");
+  }
+
+  function renderManagerCell(row) {
+    return renderPeopleCell(
+      row,
+      state.managerUsers,
+      "product_manager_user_id",
+      "product_manager_name",
+      "npu-manager"
+    );
+  }
+
+  var FIELD_LOG_LABELS_UI = {
+    status: "Статус",
+    targets: "Куда",
+    target_almamed: "Куда: Альмамед",
+    target_markets: "Куда: Маркеты",
+    content_user_id: "Ответственный",
+    product_manager_user_id: "Менеджер товара",
+    ms_bundle_updated: "Обновил комплект в МС (менеджер)",
+    done: "Обновлено на маркетах",
+    done_almamed: "Обновлено на Альмамед",
+    done_ozon: "Обновлено Ozon",
+    done_wb: "Обновлено WB",
+    done_yandex: "Обновлено Я.М.",
+    target_components_json: "Состав",
+  };
+
+  /** opts: { fields?: string[], label?: string } — для чеклистов один «лог» на всю ячейку. */
+  function fieldLogBtn(row, field, opts) {
+    if (!row) return "";
+    opts = opts || {};
+    var fields = Array.isArray(opts.fields)
+      ? opts.fields.map(function (f) {
+          return String(f || "").trim();
+        }).filter(Boolean)
+      : field
+        ? [String(field)]
+        : [];
+    if (!fields.length) return "";
+    var flabel = opts.label || FIELD_LOG_LABELS_UI[field] || FIELD_LOG_LABELS_UI[fields[0]] || fields[0];
+    var single = fields.length === 1 ? fields[0] : "";
+    return (
+      '<button type="button" class="dg-np-field-log-btn" data-npu-log-id="' +
+      row.id +
+      '" data-npu-log-field="' +
+      esc(single) +
+      '" data-npu-log-fields="' +
+      esc(fields.join(",")) +
+      '" data-npu-log-field-label="' +
+      esc(flabel) +
+      '" data-npu-log-label="' +
+      esc(row.code || "#" + row.id) +
+      '" data-dg-no-activity="1" title="Журнал: ' +
+      esc(flabel) +
+      '">лог</button>'
+    );
+  }
+
+  function wrapFieldLog(row, field, innerHtml, opts) {
+    return (
+      '<div class="dg-np-field-cell">' + innerHtml + fieldLogBtn(row, field, opts) + "</div>"
+    );
+  }
+
+  function cellHtml(row, key) {
+    if (key === "code") {
+      return (
+        '<div class="d-flex flex-column align-items-start gap-1">' +
+        '<a href="/product.html?code=' +
+        encodeURIComponent(row.code) +
+        '" target="_blank" rel="noopener">' +
+        esc(row.code) +
+        "</a>" +
+        '<button type="button" class="btn btn-outline-secondary btn-sm dg-np-log-btn dg-npu-row-log" data-npu-log-id="' +
+        row.id +
+        '" data-npu-log-label="' +
+        esc(row.code || "#" + row.id) +
+        '" data-dg-notify-start="Открываем журнал…" title="Журнал изменений строки">лог</button>' +
+        "</div>"
+      );
+    }
+    if (key === "name_snapshot") return esc(row.name_snapshot || "—");
+    if (key === "is_bundle") {
+      return row.is_bundle
+        ? '<span class="dg-npu-badge-bundle">комплект</span>'
+        : '<span class="dg-npu-badge-product">товар</span>';
+    }
+    if (key === "product_manager_name") {
+      return wrapFieldLog(row, "product_manager_user_id", renderManagerCell(row));
+    }
+    if (key === "ms_bundle_updated") {
+      return wrapFieldLog(row, "ms_bundle_updated", renderMsBundleUpdatedCell(row));
+    }
+    if (key === "targets") {
+      return wrapFieldLog(
+        row,
+        "targets",
+        '<div class="dg-npu-targets-stack">' +
+          '<label class="dg-npu-chip' +
+          (row.target_almamed ? " on" : "") +
+          '"><input type="checkbox" class="form-check-input me-1" data-npu-target="almamed" data-npu-id="' +
+          row.id +
+          '"' +
+          (row.target_almamed ? " checked" : "") +
+          (state.can_write ? "" : " disabled") +
+          ' data-dg-no-activity="1" />Альмамед</label>' +
+          '<label class="dg-npu-chip' +
+          (row.target_markets ? " on" : "") +
+          '"><input type="checkbox" class="form-check-input me-1" data-npu-target="markets" data-npu-id="' +
+          row.id +
+          '"' +
+          (row.target_markets ? " checked" : "") +
+          (state.can_write ? "" : " disabled") +
+          ' data-dg-no-activity="1" />Маркеты</label>' +
+          "</div>",
+        { fields: ["target_almamed", "target_markets"], label: "Куда" }
+      );
+    }
+    if (key === "status") {
+      if (row.status === "removed" || row.is_removed) {
+        return wrapFieldLog(row, "status", '<span class="badge bg-secondary">Удалённые</span>');
+      }
+      if (!state.can_write) {
+        return wrapFieldLog(row, "status", esc(row.status_label || row.status));
+      }
+      return wrapFieldLog(
+        row,
+        "status",
+        '<select class="form-select form-select-sm" data-npu-status="' +
+          row.id +
+          '" data-dg-no-activity="1">' +
+          ["new", "in_progress", "done", "cancelled"]
+            .map(function (s) {
+              var lab =
+                s === "new"
+                  ? "Новый"
+                  : s === "in_progress"
+                    ? "В работе"
+                    : s === "done"
+                      ? "Обновлено"
+                      : "Отменено";
+              return (
+                '<option value="' +
+                s +
+                '"' +
+                (row.status === s ? " selected" : "") +
+                ">" +
+                lab +
+                "</option>"
+              );
+            })
+            .join("") +
+          "</select>"
+      );
+    }
+    if (key === "done_almamed") {
+      return wrapFieldLog(row, "done_almamed", renderDoneAlmamedCell(row));
+    }
+    if (key === "done") {
+      return wrapFieldLog(
+        row,
+        "done",
+        '<div class="dg-npu-done-stack">' +
+          DONE_CHS.map(function (ch) {
+            return renderDoneChannelCell(row, ch.key, ch.label, ch.needs);
+          }).join("") +
+          "</div>",
+        { fields: ["done_ozon", "done_wb", "done_yandex"], label: "Обновлено на маркетах" }
+      );
+    }
+    if (key === "content_name") {
+      return wrapFieldLog(row, "content_user_id", renderContentCell(row));
+    }
+    if (key === "composition") {
+      if (!row.is_bundle) return "—";
+      var n = Number(row.components_count) || 0;
+      var btn = state.can_write
+        ? ' <button type="button" class="btn btn-link btn-sm p-0" data-npu-compose="' +
+          row.id +
+          '" data-dg-notify-start="Открываем состав…">Изменить</button>'
+        : "";
+      return wrapFieldLog(row, "target_components_json", esc(String(n)) + " поз." + btn);
+    }
+    if (key === "comments") return renderCommentsCell(row);
+    if (key === "created_at") return esc(row.created_at_label || "—");
+    if (key === "actions") {
+      if (!state.can_write) return "";
+      if (row.status === "removed" || row.is_removed) {
+        return (
+          '<button type="button" class="btn btn-sm btn-outline-success" data-npu-restore="' +
+          row.id +
+          '" data-dg-tooltip="Вернуть в очередь со статусом «В работе»." data-dg-notify-start="Восстанавливаем…">Восстановить</button>'
+        );
+      }
+      return (
+        '<div class="d-flex flex-column gap-1">' +
+        '<button type="button" class="btn btn-sm btn-outline-primary" data-npu-take="' +
+        row.id +
+        '" data-dg-tooltip="Назначить вас ответственным. Если статус «Новый» — станет «В работе»." data-dg-notify-start="Назначаем на вас…">Взять в работу</button>' +
+        '<button type="button" class="btn btn-sm btn-outline-danger" data-npu-archive="' +
+        row.id +
+        '" data-dg-tooltip="В «Удалённые» (фильтр статуса). Товар в МС / на МП не трогаем." data-dg-notify-start="Открываем подтверждение…">В удалённые</button>' +
+        "</div>"
+      );
+    }
+    return esc(row[key] != null ? row[key] : "");
+  }
+
+  function renderTable() {
+    var thead = el("dg-npu-thead");
+    var tbody = el("dg-npu-tbody");
+    if (!thead || !tbody) return;
+    var cols = visibleCols();
+    thead.innerHTML =
+      "<tr>" +
+      cols
+        .map(function (c) {
+          var w = state.colWidths[c.key] || c.defWidth || 120;
+          var sortAttr = c.sort
+            ? ' data-npu-sort="' + esc(c.key) + '" style="cursor:pointer;width:' + w + 'px"'
+            : ' style="width:' + w + 'px"';
+          return "<th" + sortAttr + ">" + esc(c.label) + "</th>";
+        })
+        .join("") +
+      "</tr>";
+    if (!state.items.length) {
+      tbody.innerHTML =
+        '<tr><td colspan="' +
+        cols.length +
+        '" class="text-muted text-center py-4">Нет записей — добавьте товар или смените фильтры</td></tr>';
+      return;
+    }
+    tbody.innerHTML = state.items
+      .map(function (row) {
+        return (
+          '<tr data-npu-row="' +
+          row.id +
+          '">' +
+          cols
+            .map(function (c) {
+              return '<td data-npu-col="' + esc(c.key) + '">' + cellHtml(row, c.key) + "</td>";
+            })
+            .join("") +
+          "</tr>"
+        );
+      })
+      .join("");
+  }
+
+  function patchRow(id, body, btn) {
+    var run = function () {
+      return fetch(API + "/" + id, {
+        method: "PATCH",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body || {}),
+      })
+        .then(function (r) {
+          return r.json().then(function (j) {
+            return { ok: r.ok, j: j };
+          });
+        })
+        .then(function (res) {
+          if (!res.ok || !res.j || !res.j.success) {
+            toast("danger", (res.j && res.j.error) || "Ошибка сохранения");
+            return load();
+          }
+          toast("success", "Сохранено");
+          return load();
+        });
+    };
+    return busy(btn, run);
+  }
+
+  /* —— add / bulk —— */
+  function openAddModal() {
+    state.lookupProduct = null;
+    if (el("dg-npu-add-code")) el("dg-npu-add-code").value = "";
+    if (el("dg-npu-add-preview")) el("dg-npu-add-preview").textContent = "Введите код и нажмите «Проверить».";
+    if (el("dg-npu-add-almamed")) el("dg-npu-add-almamed").checked = false;
+    if (el("dg-npu-add-markets")) el("dg-npu-add-markets").checked = true;
+    showOverlay("dg-npu-add-overlay", true);
+  }
+
+  function lookupCode(btn) {
+    var code = ((el("dg-npu-add-code") && el("dg-npu-add-code").value) || "").trim();
+    if (!code) {
+      toast("warning", "Укажите код");
+      return Promise.resolve();
+    }
+    var run = function () {
+      return fetch(API + "/lookup?code=" + encodeURIComponent(code), { credentials: "same-origin" })
+        .then(function (r) {
+          return r.json().then(function (j) {
+            return { ok: r.ok, j: j };
+          });
+        })
+        .then(function (res) {
+          var box = el("dg-npu-add-preview");
+          if (!res.ok || !res.j || !res.j.success) {
+            state.lookupProduct = null;
+            if (box)
+              box.innerHTML =
+                '<span class="text-danger">' + esc((res.j && res.j.error) || "Не найден") + "</span>";
+            return;
+          }
+          state.lookupProduct = res.j.product;
+          var p = res.j.product;
+          var comps = res.j.components || [];
+          if (box) {
+            box.innerHTML =
+              "<b>" +
+              esc(p.code) +
+              "</b> — " +
+              esc(p.name || "без названия") +
+              " · " +
+              (p.is_bundle
+                ? '<span class="dg-npu-badge-bundle">комплект</span> · позиций (снимок при создании): ' +
+                  comps.length
+                : '<span class="dg-npu-badge-product">товар</span>');
+          }
+        });
+    };
+    return busy(btn, run);
+  }
+
+  function createOne(btn) {
+    var code = ((el("dg-npu-add-code") && el("dg-npu-add-code").value) || "").trim();
+    var alm = !!(el("dg-npu-add-almamed") && el("dg-npu-add-almamed").checked);
+    var mp = !!(el("dg-npu-add-markets") && el("dg-npu-add-markets").checked);
+    if (!code) {
+      toast("warning", "Укажите код");
+      return Promise.resolve();
+    }
+    if (!alm && !mp) {
+      toast("warning", "Выберите Альмамед и/или Маркеты");
+      return Promise.resolve();
+    }
+    var run = function () {
+      return fetch(API, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: code, target_almamed: alm ? 1 : 0, target_markets: mp ? 1 : 0 }),
+      })
+        .then(function (r) {
+          return r.json().then(function (j) {
+            return { ok: r.ok, j: j };
+          });
+        })
+        .then(function (res) {
+          if (!res.ok || !res.j || !res.j.success) {
+            toast("danger", (res.j && res.j.error) || "Не удалось создать");
+            return;
+          }
+          toast("success", "Задача создана (состав зафиксирован)");
+          showOverlay("dg-npu-add-overlay", false);
+          return load();
+        });
+    };
+    return busy(btn, run);
+  }
+
+  function openBulkModal() {
+    if (el("dg-npu-bulk-text")) el("dg-npu-bulk-text").value = "";
+    if (el("dg-npu-bulk-almamed")) el("dg-npu-bulk-almamed").checked = false;
+    if (el("dg-npu-bulk-markets")) el("dg-npu-bulk-markets").checked = true;
+    showOverlay("dg-npu-bulk-overlay", true);
+  }
+
+  function submitBulk(btn) {
+    var text = (el("dg-npu-bulk-text") && el("dg-npu-bulk-text").value) || "";
+    var alm = !!(el("dg-npu-bulk-almamed") && el("dg-npu-bulk-almamed").checked);
+    var mp = !!(el("dg-npu-bulk-markets") && el("dg-npu-bulk-markets").checked);
+    if (!String(text).trim()) {
+      toast("warning", "Вставьте коды");
+      return Promise.resolve();
+    }
+    if (!alm && !mp) {
+      toast("warning", "Выберите канал");
+      return Promise.resolve();
+    }
+    var targets = (alm ? "Альмамед" : "") + (alm && mp ? " + " : "") + (mp ? "Маркеты" : "");
+    showActionLog(
+      "warning",
+      "<div><b>Массовое добавление</b></div><div>Куда: " + esc(targets) + "</div><div>Идёт…</div>"
+    );
+    var t0 = Date.now();
+    var timer = setInterval(function () {
+      showActionLog(
+        "warning",
+        "<div><b>Массовое добавление</b></div><div>Куда: " +
+          esc(targets) +
+          "</div><div>Идёт, прошло " +
+          Math.round((Date.now() - t0) / 1000) +
+          " с…</div>"
+      );
+    }, 1000);
+    var run = function () {
+      return fetch(API + "/bulk", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: text, target_almamed: alm ? 1 : 0, target_markets: mp ? 1 : 0 }),
+      })
+        .then(function (r) {
+          return r.json().then(function (j) {
+            return { ok: r.ok, status: r.status, j: j };
+          });
+        })
+        .then(function (res) {
+          clearInterval(timer);
+          if (!res.ok || !res.j || !res.j.success) {
+            showActionLog(
+              "danger",
+              "<div><b>Ошибка</b></div><div>" +
+                esc((res.j && res.j.error) || "HTTP " + res.status) +
+                "</div>"
+            );
+            return;
+          }
+          var j = res.j;
+          var errHtml = "";
+          if (Array.isArray(j.errors) && j.errors.length) {
+            errHtml =
+              "<ul class='mb-0 mt-1'>" +
+              j.errors
+                .slice(0, 20)
+                .map(function (e) {
+                  return "<li><code>" + esc(e.code) + "</code> — " + esc(e.error) + "</li>";
+                })
+                .join("") +
+              "</ul>";
+          }
+          showActionLog(
+            "success",
+            "<div><b>Итог</b></div><ul class='mb-1'>" +
+              "<li>Всего: " +
+              esc(String(j.total || 0)) +
+              "</li><li>Создано: " +
+              esc(String(j.created || 0)) +
+              "</li><li>Дубликаты: " +
+              esc(String(j.skipped_dup || 0)) +
+              "</li><li>Не найдено: " +
+              esc(String(j.not_found || 0)) +
+              "</li><li>Длительность: " +
+              esc(String(j.duration_sec != null ? j.duration_sec : "—")) +
+              " с</li></ul>" +
+              errHtml
+          );
+          toast("success", "Создано: " + (j.created || 0));
+          showOverlay("dg-npu-bulk-overlay", false);
+          return load();
+        })
+        .catch(function (e) {
+          clearInterval(timer);
+          showActionLog("danger", "<div><b>Ошибка сети</b></div><div>" + esc(e.message || "") + "</div>");
+        });
+    };
+    return busy(btn, run);
+  }
+
+  function distribute(btn) {
+    showActionLog("warning", "<div><b>Раздача по ответственным</b></div><div>Идёт…</div>");
+    var t0 = Date.now();
+    var timer = setInterval(function () {
+      showActionLog(
+        "warning",
+        "<div><b>Раздача</b></div><div>Идёт, прошло " +
+          Math.round((Date.now() - t0) / 1000) +
+          " с…</div>"
+      );
+    }, 1000);
+    var run = function () {
+      return fetch(API + "/distribute", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scope: "unassigned" }),
+      })
+        .then(function (r) {
+          return r.json().then(function (j) {
+            return { ok: r.ok, j: j };
+          });
+        })
+        .then(function (res) {
+          clearInterval(timer);
+          if (!res.ok || !res.j || !res.j.success) {
+            showActionLog(
+              "danger",
+              "<div><b>Ошибка раздачи</b></div><div>" + esc((res.j && res.j.error) || "") + "</div>"
+            );
+            return;
+          }
+          var j = res.j;
+          showActionLog(
+            "success",
+            "<div><b>Итог раздачи</b></div><ul class='mb-0'>" +
+              "<li>" +
+              esc(j.message || "") +
+              "</li>" +
+              "<li>Раздано: " +
+              esc(String(j.assigned || 0)) +
+              " / " +
+              esc(String(j.total || 0)) +
+              "</li>" +
+              "<li>Ответственных: " +
+              esc(String(j.users || 0)) +
+              "</li>" +
+              "<li>Длительность: " +
+              esc(String(j.duration_sec != null ? j.duration_sec : "—")) +
+              " с</li></ul>"
+          );
+          toast("success", j.message || "Раздано");
+          return load();
+        })
+        .catch(function (e) {
+          clearInterval(timer);
+          showActionLog("danger", "<div><b>Ошибка сети</b></div><div>" + esc(e.message || "") + "</div>");
+        });
+    };
+    return busy(btn, run);
+  }
+
+  /* —— composition: unified aligned table —— */
+  function buildComposeRows() {
+    var mapCur = state.composeCurrentMap || {};
+    var mapTgt = {};
+    state.composeRows.forEach(function (r) {
+      var k = String(r.code || "")
+        .trim()
+        .toLowerCase();
+      if (!k && !r._empty) return;
+      if (k) mapTgt[k] = r;
+    });
+    var keys = {};
+    Object.keys(mapCur).forEach(function (k) {
+      keys[k] = true;
+    });
+    Object.keys(mapTgt).forEach(function (k) {
+      keys[k] = true;
+    });
+    var sorted = Object.keys(keys).sort();
+    var empties = state.composeRows.filter(function (r) {
+      return r._empty || !String(r.code || "").trim();
+    });
+    var rows = sorted.map(function (k) {
+      var cur = mapCur[k];
+      var tgt = mapTgt[k];
+      return {
+        code: (tgt && tgt.code) || (cur && cur.code) || k,
+        name: (tgt && tgt.name) || (cur && cur.name) || "",
+        qty_was: cur ? cur.qty : null,
+        qty: tgt ? tgt.qty : null,
+        in_target: !!tgt,
+        in_current: !!cur,
+        _nameMissing: !!(tgt && tgt._nameMissing && !(tgt && tgt.name)),
+      };
+    });
+    empties.forEach(function (e) {
+      rows.push({
+        code: (e && e.code) || "",
+        name: (e && e.name) || "",
+        qty_was: null,
+        qty: e && e.qty != null ? e.qty : 1,
+        in_target: true,
+        in_current: false,
+        _empty: true,
+        _nameMissing: !!(e && e._nameMissing),
+      });
+    });
+    return rows;
+  }
+
+  function renderComposeTable() {
+    var tbody = el("dg-npu-compose-tbody");
+    if (!tbody) return;
+    var rows = buildComposeRows();
+    if (!rows.length) {
+      tbody.innerHTML =
+        '<tr><td colspan="5" class="text-muted text-center py-3">Пусто — добавьте позицию</td></tr>';
+      return;
+    }
+    tbody.innerHTML = rows
+      .map(function (r, idx) {
+        var cls = "";
+        if (r.in_current && !r.in_target) cls = "dg-npu-compose-removed";
+        else if (!r.in_current && r.in_target) cls = "dg-npu-compose-added";
+        else if (
+          r.in_current &&
+          r.in_target &&
+          Number(r.qty_was) !== Number(r.qty)
+        )
+          cls = "dg-npu-compose-changed";
+        var was =
+          r.qty_was != null ? "× " + esc(String(r.qty_was)) : '<span class="text-muted">—</span>';
+        var become =
+          r.in_target || r._empty
+            ? '<input type="number" min="0.001" step="any" class="form-control form-control-sm dg-npu-compose-qty" data-idx="' +
+              idx +
+              '" value="' +
+              esc(String(r.qty != null ? r.qty : 1)) +
+              '" data-dg-no-activity="1" />'
+            : '<span class="text-muted">—</span>';
+        return (
+          '<tr class="' +
+          cls +
+          '" data-compose-idx="' +
+          idx +
+          '">' +
+          "<td>" +
+          (r.in_current && !r._empty
+            ? "<code>" + esc(r.code) + "</code>"
+            : '<input type="text" class="form-control form-control-sm dg-npu-compose-code" data-idx="' +
+              idx +
+              '" value="' +
+              esc(r.code || "") +
+              '" placeholder="код" data-dg-no-activity="1" />') +
+          "</td>" +
+          '<td class="dg-npu-compose-name">' +
+          (r._nameMissing
+            ? '<span class="text-danger small">не найден в МС</span>'
+            : esc(r.name || (r.code ? "…" : ""))) +
+          "</td>" +
+          '<td class="dg-npu-compose-qty-was">' +
+          was +
+          "</td>" +
+          "<td>" +
+          become +
+          "</td>" +
+          "<td>" +
+          (state.can_write
+            ? '<button type="button" class="btn btn-sm btn-outline-danger" data-npu-compose-del="' +
+              idx +
+              '" data-dg-no-activity="1">×</button>'
+            : "") +
+          "</td></tr>"
+        );
+      })
+      .join("");
+    state._composeViewRows = rows;
+  }
+
+  function readComposeFromDom() {
+    var view = state._composeViewRows || buildComposeRows();
+    var next = [];
+    view.forEach(function (r, idx) {
+      var tr = el("dg-npu-compose-tbody") && el("dg-npu-compose-tbody").querySelector('tr[data-compose-idx="' + idx + '"]');
+      if (!tr) return;
+      var codeInp = tr.querySelector("input.dg-npu-compose-code");
+      var qtyInp = tr.querySelector("input.dg-npu-compose-qty");
+      var code = codeInp ? String(codeInp.value || "").trim() : String(r.code || "").trim();
+      if (!code && !r._empty) {
+        // removed from target — skip
+        if (!qtyInp) return;
+      }
+      if (!qtyInp && !r._empty) return;
+      var qty = qtyInp ? Number(qtyInp.value) : Number(r.qty);
+      if (!code) {
+        next.push({ code: "", qty: Number.isFinite(qty) && qty > 0 ? qty : 1, name: "", _empty: true });
+        return;
+      }
+      var name = r.name || "";
+      var cur = state.composeCurrentMap[code.toLowerCase()];
+      if (cur && cur.name && !name) name = cur.name;
+      var prev = (state.composeRows || []).find(function (x) {
+        return (
+          String(x.code || "")
+            .trim()
+            .toLowerCase() === code.toLowerCase()
+        );
+      });
+      if (prev && prev.name && !name) name = prev.name;
+      next.push({
+        code: code,
+        qty: Number.isFinite(qty) && qty > 0 ? qty : 1,
+        name: name,
+        _nameMissing: !!(r._nameMissing || (prev && prev._nameMissing && !name)),
+      });
+    });
+    state.composeRows = next;
+  }
+
+  function openCompose(rowId) {
+    state.composeRowId = rowId;
+    showOverlay("dg-npu-compose-overlay", true);
+    if (el("dg-npu-compose-title")) el("dg-npu-compose-title").textContent = "Состав комплекта…";
+    if (el("dg-npu-compose-tbody"))
+      el("dg-npu-compose-tbody").innerHTML =
+        '<tr><td colspan="5" class="text-muted text-center py-3">Загрузка…</td></tr>';
+    return fetch(API + "/" + rowId + "/composition", { credentials: "same-origin" })
+      .then(function (r) {
+        return r.json().then(function (j) {
+          return { ok: r.ok, j: j };
+        });
+      })
+      .then(function (res) {
+        if (!res.ok || !res.j || !res.j.success) {
+          toast("danger", (res.j && res.j.error) || "Не удалось загрузить состав");
+          showOverlay("dg-npu-compose-overlay", false);
+          return;
+        }
+        var cur = res.j.current || [];
+        var tgt = res.j.target && res.j.target.length ? res.j.target : cur.slice();
+        state.composeCurrentMap = {};
+        cur.forEach(function (c) {
+          state.composeCurrentMap[String(c.code).toLowerCase()] = c;
+        });
+        state.composeRows = tgt.map(function (c) {
+          return { code: c.code, qty: c.qty, name: c.name || "" };
+        });
+        if (el("dg-npu-compose-title")) {
+          el("dg-npu-compose-title").textContent =
+            (res.j.code || "") + (res.j.name ? " · " + res.j.name : "") + " · Комплект";
+        }
+        renderComposeTable();
+      });
+  }
+
+  function applyComposeNameByCode(code, name, missing) {
+    var key = String(code || "")
+      .trim()
+      .toLowerCase();
+    if (!key) return;
+    var hit = false;
+    state.composeRows.forEach(function (row) {
+      if (
+        String(row.code || "")
+          .trim()
+          .toLowerCase() !== key
+      )
+        return;
+      hit = true;
+      row.code = code;
+      row.name = name || "";
+      row._nameMissing = !!missing;
+      delete row._empty;
+    });
+    if (!hit) {
+      state.composeRows.push({
+        code: code,
+        qty: 1,
+        name: name || "",
+        _nameMissing: !!missing,
+      });
+    }
+  }
+
+  function lookupNameForCode(code) {
+    var c = String(code || "").trim();
+    if (!c) return;
+    var reqId = (state._composeLookupSeq = (state._composeLookupSeq || 0) + 1);
+    applyComposeNameByCode(c, "", false);
+    // сразу показать «…», пока идёт lookup
+    renderComposeTable();
+    var nameCell = null;
+    var tbody = el("dg-npu-compose-tbody");
+    if (tbody) {
+      tbody.querySelectorAll("tr[data-compose-idx]").forEach(function (tr) {
+        var inp = tr.querySelector("input.dg-npu-compose-code");
+        if (inp && String(inp.value || "").trim().toLowerCase() === c.toLowerCase()) {
+          nameCell = tr.querySelector(".dg-npu-compose-name");
+        }
+      });
+    }
+    if (nameCell) nameCell.innerHTML = '<span class="text-muted">…</span>';
+    fetch(API + "/lookup?code=" + encodeURIComponent(c), { credentials: "same-origin" })
+      .then(function (r) {
+        return r.json().then(function (j) {
+          return { ok: r.ok, j: j };
+        });
+      })
+      .then(function (res) {
+        if (reqId !== state._composeLookupSeq) return;
+        readComposeFromDom();
+        if (!res.ok || !res.j || !res.j.success || !res.j.product) {
+          applyComposeNameByCode(c, "", true);
+          renderComposeTable();
+          toast("warning", (res.j && res.j.error) || "Код " + c + " не найден в МС");
+          return;
+        }
+        applyComposeNameByCode(res.j.product.code || c, res.j.product.name || "", false);
+        renderComposeTable();
+      })
+      .catch(function () {
+        if (reqId !== state._composeLookupSeq) return;
+        readComposeFromDom();
+        applyComposeNameByCode(c, "", true);
+        renderComposeTable();
+        toast("danger", "Не удалось подтянуть название");
+      });
+  }
+
+  function saveCompose(btn) {
+    if (!state.composeRowId) return Promise.resolve();
+    readComposeFromDom();
+    var components = state.composeRows
+      .filter(function (c) {
+        return c.code;
+      })
+      .map(function (c) {
+        return { code: c.code, qty: c.qty, name: c.name || null };
+      });
+    var run = function () {
+      return fetch(API + "/" + state.composeRowId + "/composition", {
+        method: "PUT",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ components: components }),
+      })
+        .then(function (r) {
+          return r.json().then(function (j) {
+            return { ok: r.ok, j: j };
+          });
+        })
+        .then(function (res) {
+          if (!res.ok || !res.j || !res.j.success) {
+            toast("danger", (res.j && res.j.error) || "Не сохранено");
+            return;
+          }
+          toast("success", "Новый состав сохранён");
+          showOverlay("dg-npu-compose-overlay", false);
+          return load();
+        });
+    };
+    return busy(btn, run);
+  }
+
+  function confirmResync() {
+    showOverlay("dg-npu-resync-overlay", true);
+  }
+
+  function doResync(btn) {
+    if (!state.composeRowId) return Promise.resolve();
+    var copy = !!(el("dg-npu-resync-copy-target") && el("dg-npu-resync-copy-target").checked);
+    var run = function () {
+      return fetch(API + "/" + state.composeRowId + "/composition/resync-current", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ copy_to_target: copy ? 1 : 0 }),
+      })
+        .then(function (r) {
+          return r.json().then(function (j) {
+            return { ok: r.ok, j: j };
+          });
+        })
+        .then(function (res) {
+          if (!res.ok || !res.j || !res.j.success) {
+            toast("danger", (res.j && res.j.error) || "Ошибка");
+            return;
+          }
+          showOverlay("dg-npu-resync-overlay", false);
+          toast("success", "Снимок обновлён из МС");
+          return openCompose(state.composeRowId);
+        });
+    };
+    return busy(btn, run);
+  }
+
+  /* —— comments —— */
+  function openCommentModal(rowId, commentId) {
+    state.cmtRowId = Number(rowId);
+    state.cmtId = commentId != null ? Number(commentId) : null;
+    var row = state.items.find(function (r) {
+      return Number(r.id) === state.cmtRowId;
+    });
+    var existing = null;
+    if (state.cmtId && row) {
+      existing = (row.comments || []).find(function (c) {
+        return Number(c.id) === state.cmtId;
+      });
+    }
+    if (el("dg-npu-cmt-title")) {
+      el("dg-npu-cmt-title").textContent = existing
+        ? "Изменить комментарий · " + ((row && row.code) || "")
+        : "Новый комментарий · " + ((row && row.code) || "");
+    }
+    if (el("dg-npu-cmt-text")) el("dg-npu-cmt-text").value = existing ? existing.body || "" : "";
+    var delBtn = el("dg-npu-cmt-del");
+    if (delBtn) delBtn.classList.toggle("d-none", !existing);
+    showOverlay("dg-npu-cmt-overlay", true);
+  }
+
+  function saveComment(btn) {
+    var body = ((el("dg-npu-cmt-text") && el("dg-npu-cmt-text").value) || "").trim();
+    if (!body) {
+      toast("warning", "Введите текст комментария");
+      return Promise.resolve();
+    }
+    if (!state.cmtRowId) return Promise.resolve();
+    var url = API + "/" + state.cmtRowId + "/comments";
+    var method = "POST";
+    if (state.cmtId) {
+      url += "/" + state.cmtId;
+      method = "PATCH";
+    }
+    var run = function () {
+      return fetch(url, {
+        method: method,
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body: body }),
+      })
+        .then(function (r) {
+          return r.json().then(function (j) {
+            return { ok: r.ok, j: j };
+          });
+        })
+        .then(function (res) {
+          if (!res.ok || !res.j || !res.j.success) {
+            toast("danger", (res.j && res.j.error) || "Ошибка");
+            return;
+          }
+          toast("success", "Комментарий сохранён");
+          showOverlay("dg-npu-cmt-overlay", false);
+          return load();
+        });
+    };
+    return busy(btn, run);
+  }
+
+  function deleteComment(btn) {
+    if (!state.cmtRowId || !state.cmtId) return Promise.resolve();
+    var run = function () {
+      return fetch(API + "/" + state.cmtRowId + "/comments/" + state.cmtId, {
+        method: "DELETE",
+        credentials: "same-origin",
+      })
+        .then(function (r) {
+          return r.json().then(function (j) {
+            return { ok: r.ok, j: j };
+          });
+        })
+        .then(function (res) {
+          if (!res.ok || !res.j || !res.j.success) {
+            toast("danger", (res.j && res.j.error) || "Ошибка удаления");
+            return;
+          }
+          toast("success", "Комментарий удалён");
+          showOverlay("dg-npu-cmt-del-overlay", false);
+          showOverlay("dg-npu-cmt-overlay", false);
+          return load();
+        });
+    };
+    return busy(btn, run);
+  }
+
+  function onTableClick(e) {
+    var t = e.target;
+    if (!t) return;
+    var sortTh = t.closest && t.closest("th[data-npu-sort]");
+    if (sortTh) {
+      var sel = window.getSelection && window.getSelection();
+      if (sel && String(sel.toString() || "").trim()) return;
+      var key = sortTh.getAttribute("data-npu-sort");
+      if (state.sort === key) state.dir = state.dir === "asc" ? "desc" : "asc";
+      else {
+        state.sort = key;
+        state.dir = "asc";
+      }
+      load();
+      return;
+    }
+    var addCmt = t.closest && t.closest("[data-npu-cmt-add]");
+    if (addCmt) {
+      openCommentModal(addCmt.getAttribute("data-npu-cmt-add"), null);
+      return;
+    }
+    var editCmt = t.closest && t.closest("[data-npu-cmt-edit]");
+    if (editCmt) {
+      openCommentModal(editCmt.getAttribute("data-npu-cmt-row"), editCmt.getAttribute("data-npu-cmt-edit"));
+      return;
+    }
+    var compose = t.closest && t.closest("[data-npu-compose]");
+    if (compose) {
+      openCompose(Number(compose.getAttribute("data-npu-compose")));
+      return;
+    }
+    var take = t.closest && t.closest("[data-npu-take]");
+    if (take) {
+      patchRow(Number(take.getAttribute("data-npu-take")), { take: 1 }, take);
+      return;
+    }
+    var restore = t.closest && t.closest("[data-npu-restore]");
+    if (restore) {
+      patchRow(Number(restore.getAttribute("data-npu-restore")), { restore: 1 }, restore);
+      return;
+    }
+    var arch = t.closest && t.closest("[data-npu-archive]");
+    if (arch) {
+      var archId = Number(arch.getAttribute("data-npu-archive"));
+      var archRow = state.items.find(function (r) {
+        return Number(r.id) === archId;
+      });
+      var codeHint = archRow && archRow.code ? String(archRow.code) : "#" + archId;
+      openArchiveConfirm(codeHint, function () {
+        patchRow(archId, { archive: 1 }, arch);
+      });
+    }
+  }
+
+  var archiveConfirmCb = null;
+  function openArchiveConfirm(codeHint, onOk) {
+    archiveConfirmCb = typeof onOk === "function" ? onOk : null;
+    var text = el("dg-npu-archive-text");
+    if (text) {
+      text.textContent =
+        "Переместить задачу " +
+        codeHint +
+        " в «Удалённые»? Потом найдёте фильтром статуса «Удалённые» и сможете восстановить. Товар в МойСклад и на маркетплейсах не трогаем.";
+    }
+    showOverlay("dg-npu-archive-overlay", true);
+  }
+  function closeArchiveConfirm(ok) {
+    showOverlay("dg-npu-archive-overlay", false);
+    var cb = archiveConfirmCb;
+    archiveConfirmCb = null;
+    if (ok && cb) cb();
+  }
+
+  function onTableChange(e) {
+    var t = e.target;
+    if (!t) return;
+    if (t.getAttribute("data-npu-status")) {
+      patchRow(Number(t.getAttribute("data-npu-status")), { status: t.value }, t);
+      return;
+    }
+    if (t.getAttribute("data-npu-content")) {
+      var cid = t.value ? Number(t.value) : null;
+      var opt = t.options[t.selectedIndex];
+      var cname = opt ? opt.textContent : "";
+      patchRow(
+        Number(t.getAttribute("data-npu-content")),
+        { content_user_id: cid, content_name: cid ? cname : null },
+        t
+      );
+      return;
+    }
+    if (t.getAttribute("data-npu-manager")) {
+      var mid = t.value ? Number(t.value) : null;
+      var mopt = t.options[t.selectedIndex];
+      var mname = mopt ? mopt.textContent : "";
+      patchRow(
+        Number(t.getAttribute("data-npu-manager")),
+        { product_manager_user_id: mid, product_manager_name: mid ? mname : null },
+        t
+      );
+      return;
+    }
+    if (t.getAttribute("data-npu-done")) {
+      var body = {};
+      body["done_" + t.getAttribute("data-npu-done")] = t.checked ? 1 : 0;
+      patchRow(Number(t.getAttribute("data-npu-id")), body, t);
+      return;
+    }
+    if (t.getAttribute("data-npu-ms-bundle")) {
+      patchRow(
+        Number(t.getAttribute("data-npu-ms-bundle")),
+        { ms_bundle_updated: t.checked ? 1 : 0 },
+        t
+      );
+      return;
+    }
+    if (t.getAttribute("data-npu-target")) {
+      var id = Number(t.getAttribute("data-npu-id"));
+      var kind = t.getAttribute("data-npu-target");
+      var row = state.items.find(function (r) {
+        return Number(r.id) === id;
+      });
+      if (!row) return;
+      var payload = {
+        target_almamed: kind === "almamed" ? (t.checked ? 1 : 0) : row.target_almamed,
+        target_markets: kind === "markets" ? (t.checked ? 1 : 0) : row.target_markets,
+      };
+      if (!payload.target_almamed && !payload.target_markets) {
+        toast("warning", "Нужен хотя бы один канал");
+        t.checked = !t.checked;
+        return;
+      }
+      patchRow(id, payload, t);
+    }
+  }
+
+  var logState = {
+    updateId: null,
+    label: "",
+    field: "",
+    fields: [],
+    fieldLabel: "",
+    offset: 0,
+    limit: 100,
+    total: 0,
+  };
+
+  function npuLogHasFilter() {
+    return !!(logState.field || (logState.fields && logState.fields.length));
+  }
+
+  function npuLogActionLabel(action) {
+    var map = {
+      set: "Изменение",
+      create: "Создание",
+      take: "Взять в работу",
+      remove: "В удалённые",
+      restore: "Восстановление",
+      composition: "Состав",
+    };
+    return map[action] || action || "set";
+  }
+
+  function closeNpuLog() {
+    showOverlay("dg-npu-log-overlay", false);
+  }
+
+  function openNpuLog(updateId, label, field, fieldLabel, fieldsList) {
+    logState.updateId = updateId;
+    logState.label = label || "#" + updateId;
+    var multi = Array.isArray(fieldsList)
+      ? fieldsList.map(function (f) {
+          return String(f || "").trim();
+        }).filter(Boolean)
+      : [];
+    if (multi.length > 1) {
+      logState.fields = multi;
+      logState.field = "";
+    } else if (multi.length === 1) {
+      logState.fields = [];
+      logState.field = multi[0];
+    } else {
+      logState.fields = [];
+      logState.field = field ? String(field) : "";
+    }
+    logState.fieldLabel = fieldLabel
+      ? String(fieldLabel)
+      : FIELD_LOG_LABELS_UI[logState.field] || logState.field;
+    logState.offset = 0;
+    var titleEl = el("dg-npu-log-title");
+    var subEl = el("dg-npu-log-subtitle");
+    if (titleEl) {
+      titleEl.textContent = npuLogHasFilter()
+        ? "Журнал: " + (logState.fieldLabel || logState.field || "ячейка")
+        : "Журнал изменений";
+    }
+    if (subEl) {
+      subEl.textContent = npuLogHasFilter() ? logState.label + " · поле" : logState.label;
+    }
+    showOverlay("dg-npu-log-overlay", true);
+    loadNpuLog();
+  }
+
+  function renderNpuLogPager() {
+    var pages = Math.max(1, Math.ceil((logState.total || 0) / logState.limit) || 1);
+    var page = Math.floor(logState.offset / logState.limit) + 1;
+    var prevDisabled = logState.offset <= 0 ? " disabled" : "";
+    var nextDisabled = logState.offset + logState.limit >= logState.total ? " disabled" : "";
+    var filterBtn = npuLogHasFilter()
+      ? '<button type="button" class="btn btn-sm btn-outline-secondary dg-npu-log-all-fields">Все поля</button>'
+      : "";
+    return (
+      '<div class="dg-np-log-pager d-flex align-items-center justify-content-between gap-2 px-3 py-2 border-top flex-wrap">' +
+      '<span class="small text-muted">Найдено: ' +
+      logState.total +
+      "; страница " +
+      page +
+      "/" +
+      pages +
+      "</span>" +
+      '<div class="d-flex align-items-center gap-2 flex-wrap">' +
+      filterBtn +
+      '<div class="btn-group">' +
+      '<button type="button" class="btn btn-sm btn-outline-secondary dg-npu-log-prev"' +
+      prevDisabled +
+      ">Назад</button>" +
+      '<button type="button" class="btn btn-sm btn-outline-secondary dg-npu-log-next"' +
+      nextDisabled +
+      ">Вперёд</button>" +
+      "</div></div></div>"
+    );
+  }
+
+  function loadNpuLog() {
+    var body = el("dg-npu-log-body");
+    if (!body || !logState.updateId) return;
+    body.innerHTML = '<div class="text-muted small text-center py-4">Загрузка журнала…</div>';
+    var qs = new URLSearchParams();
+    qs.set("limit", String(logState.limit));
+    qs.set("offset", String(logState.offset));
+    if (logState.fields && logState.fields.length > 1) {
+      qs.set("fields", logState.fields.join(","));
+    } else if (logState.field) {
+      qs.set("field", logState.field);
+    }
+    fetch(API + "/" + logState.updateId + "/log?" + qs.toString(), { credentials: "same-origin" })
+      .then(function (r) {
+        return r.json().then(function (j) {
+          return { ok: r.ok, j: j };
+        });
+      })
+      .then(function (res) {
+        if (!res.ok || !res.j || !res.j.success) {
+          throw new Error((res.j && res.j.error) || "Ошибка журнала");
+        }
+        logState.total = Number(res.j.total || 0);
+        var rows = res.j.rows || [];
+        var noteHtml = npuLogHasFilter()
+          ? '<div class="alert alert-info py-2 px-3 mb-0 rounded-0 small">Фильтр: <b>' +
+            esc(logState.fieldLabel || logState.field) +
+            '</b>. <button type="button" class="btn btn-link btn-sm p-0 align-baseline dg-npu-log-all-fields">Показать все поля</button></div>'
+          : "";
+        if (!rows.length) {
+          body.innerHTML =
+            noteHtml +
+            '<div class="text-muted small text-center py-4">' +
+            (npuLogHasFilter()
+              ? "По «" +
+                esc(logState.fieldLabel || logState.field) +
+                "» изменений пока нет. Полный журнал — кнопка «лог» у кода."
+              : "Журнал пуст: по этой строке ещё не было записанных изменений.") +
+            "</div>" +
+            renderNpuLogPager();
+          return;
+        }
+        var showFieldCol = !logState.field || (logState.fields && logState.fields.length > 1);
+        var html =
+          noteHtml +
+          '<div class="table-responsive"><table class="table table-sm mb-0"><thead><tr>' +
+          "<th>Когда</th><th>Кто</th><th>Действие</th>" +
+          (showFieldCol ? "<th>Поле</th>" : "") +
+          "<th>Было → Стало</th></tr></thead><tbody>";
+        rows.forEach(function (r) {
+          var when = r.changed_at
+            ? String(r.changed_at).replace("T", " ").replace(/\.\d+Z?$/, "").slice(0, 19)
+            : "—";
+          var who = esc(r.changed_by_name || "—");
+          var field = esc(r.field_label || r.field || "—");
+          var oldVal =
+            r.old_value == null
+              ? '<span class="text-muted">∅</span>'
+              : '<span class="dg-np-log-old">' + esc(r.old_value) + "</span>";
+          var newVal =
+            r.new_value == null
+              ? '<span class="text-muted">∅</span>'
+              : '<span class="dg-np-log-new">' + esc(r.new_value) + "</span>";
+          var note =
+            r.note && String(r.note).trim()
+              ? '<div class="small text-muted mt-1">' + esc(r.note) + "</div>"
+              : "";
+          html +=
+            "<tr><td class=\"text-nowrap small\">" +
+            esc(when) +
+            "</td><td>" +
+            who +
+            '</td><td><span class="badge bg-light text-dark border dg-np-log-action">' +
+            esc(npuLogActionLabel(r.action)) +
+            "</span></td>" +
+            (showFieldCol ? "<td>" + field + "</td>" : "") +
+            "<td>" +
+            oldVal +
+            '<span class="dg-np-log-arrow">→</span>' +
+            newVal +
+            note +
+            "</td></tr>";
+        });
+        html += "</tbody></table></div>" + renderNpuLogPager();
+        body.innerHTML = html;
+      })
+      .catch(function (e) {
+        body.innerHTML =
+          '<div class="text-danger small text-center py-4">' + esc(e.message || "Ошибка") + "</div>";
+      });
+  }
+
+  function bindNpuLogUi() {
+    document.addEventListener(
+      "click",
+      function (ev) {
+        var fieldBtn =
+          ev.target && ev.target.closest && ev.target.closest(".dg-np-field-log-btn[data-npu-log-id]");
+        if (fieldBtn) {
+          ev.preventDefault();
+          ev.stopPropagation();
+          var fid = Number(fieldBtn.getAttribute("data-npu-log-id"));
+          var fkey = fieldBtn.getAttribute("data-npu-log-field") || "";
+          var ffields = String(fieldBtn.getAttribute("data-npu-log-fields") || "")
+            .split(",")
+            .map(function (s) {
+              return s.trim();
+            })
+            .filter(Boolean);
+          if (fid > 0 && (fkey || ffields.length)) {
+            openNpuLog(
+              fid,
+              fieldBtn.getAttribute("data-npu-log-label") || "",
+              fkey,
+              fieldBtn.getAttribute("data-npu-log-field-label") || "",
+              ffields
+            );
+          }
+          return;
+        }
+        var rowBtn = ev.target && ev.target.closest && ev.target.closest(".dg-npu-row-log[data-npu-log-id]");
+        if (rowBtn) {
+          ev.preventDefault();
+          ev.stopPropagation();
+          var rid = Number(rowBtn.getAttribute("data-npu-log-id"));
+          if (rid > 0) openNpuLog(rid, rowBtn.getAttribute("data-npu-log-label") || "", "", "");
+          return;
+        }
+        if (ev.target && ev.target.closest && ev.target.closest(".dg-npu-log-prev")) {
+          logState.offset = Math.max(0, logState.offset - logState.limit);
+          loadNpuLog();
+          return;
+        }
+        if (ev.target && ev.target.closest && ev.target.closest(".dg-npu-log-next")) {
+          if (logState.offset + logState.limit < logState.total) {
+            logState.offset += logState.limit;
+            loadNpuLog();
+          }
+          return;
+        }
+        if (ev.target && ev.target.closest && ev.target.closest(".dg-npu-log-all-fields")) {
+          logState.field = "";
+          logState.fields = [];
+          logState.fieldLabel = "";
+          logState.offset = 0;
+          if (el("dg-npu-log-title")) el("dg-npu-log-title").textContent = "Журнал изменений";
+          if (el("dg-npu-log-subtitle")) el("dg-npu-log-subtitle").textContent = logState.label;
+          loadNpuLog();
+        }
+      },
+      true
+    );
+    el("dg-npu-log-close") && el("dg-npu-log-close").addEventListener("click", closeNpuLog);
+    el("dg-npu-log-backdrop") && el("dg-npu-log-backdrop").addEventListener("click", closeNpuLog);
+    el("dg-npu-log-refresh") &&
+      el("dg-npu-log-refresh").addEventListener("click", function () {
+        loadNpuLog();
+      });
+  }
+
+  function bindUi() {
+    if (state.bound) return;
+    state.bound = true;
+    loadPrefs();
+    bindCollapse("dg-npu-filters-toggle", "dg-npu-filters-body", FILTERS_KEY);
+    bindCollapse("dg-npu-table-toggle", "dg-npu-table-body", TABLE_KEY);
+    renderColumnControls();
+    renderWidthControls();
+    bindNpuLogUi();
+
+    var syncing = false;
+    var a = el("dg-npu-search");
+    var b = el("dg-npu-table-search-mirror");
+    if (a && b) {
+      function sync(from, to) {
+        from.addEventListener("input", function () {
+          if (syncing) return;
+          syncing = true;
+          to.value = from.value;
+          syncing = false;
+        });
+      }
+      sync(a, b);
+      sync(b, a);
+      [a, b].forEach(function (inp) {
+        inp.addEventListener("keydown", function (e) {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            commitFilters();
+          }
+          if (e.key === "Escape") {
+            a.value = "";
+            b.value = "";
+            commitFilters();
+          }
+        });
+      });
+    }
+
+    el("dg-npu-apply") && el("dg-npu-apply").addEventListener("click", commitFilters);
+    el("dg-npu-reset") && el("dg-npu-reset").addEventListener("click", resetFilters);
+    el("dg-npu-add") && el("dg-npu-add").addEventListener("click", openAddModal);
+    el("dg-npu-bulk") && el("dg-npu-bulk").addEventListener("click", openBulkModal);
+    el("dg-npu-distribute") &&
+      el("dg-npu-distribute").addEventListener("click", function () {
+        distribute(el("dg-npu-distribute"));
+      });
+    el("dg-npu-prev") &&
+      el("dg-npu-prev").addEventListener("click", function () {
+        if (state.page <= 1) return;
+        state.page -= 1;
+        load();
+      });
+    el("dg-npu-next") &&
+      el("dg-npu-next").addEventListener("click", function () {
+        if (state.page >= state.pages) return;
+        state.page += 1;
+        load();
+      });
+    el("dg-npu-page-size") && el("dg-npu-page-size").addEventListener("change", commitFilters);
+
+    var colsBtn = el("dg-npu-cols-btn");
+    var widthsBtn = el("dg-npu-widths-btn");
+    var colsPanel = el("dg-npu-columns-panel");
+    var widthsPanel = el("dg-npu-widths-panel");
+    if (colsBtn && colsPanel) {
+      colsBtn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        colsPanel.classList.toggle("open");
+        if (widthsPanel) widthsPanel.classList.remove("open");
+        syncToolboxWrap();
+      });
+    }
+    if (widthsBtn && widthsPanel) {
+      widthsBtn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        widthsPanel.classList.toggle("open");
+        if (colsPanel) colsPanel.classList.remove("open");
+        syncToolboxWrap();
+      });
+    }
+    document.addEventListener("click", function (e) {
+      var wrap = el("dg-npu-toolbox-panels");
+      if (!wrap || wrap.classList.contains("d-none")) return;
+      if (
+        wrap.contains(e.target) ||
+        (colsBtn && colsBtn.contains(e.target)) ||
+        (widthsBtn && widthsBtn.contains(e.target))
+      )
+        return;
+      if (colsPanel) colsPanel.classList.remove("open");
+      if (widthsPanel) widthsPanel.classList.remove("open");
+      syncToolboxWrap();
+    });
+    if (colsPanel) {
+      colsPanel.addEventListener("change", function (e) {
+        var inp = e.target;
+        if (!inp || !inp.getAttribute("data-npu-col")) return;
+        var key = inp.getAttribute("data-npu-col");
+        var set = {};
+        (state.visibleCols || defaultVisible()).forEach(function (k) {
+          set[k] = true;
+        });
+        if (inp.checked) set[key] = true;
+        else delete set[key];
+        state.visibleCols = UPD_COLS.map(function (c) {
+          return c.key;
+        }).filter(function (k) {
+          return set[k];
+        });
+        if (!state.visibleCols.length) state.visibleCols = defaultVisible();
+        saveCols();
+        renderTable();
+      });
+    }
+    if (widthsPanel) {
+      widthsPanel.addEventListener("change", function (e) {
+        var inp = e.target;
+        if (!inp || !inp.getAttribute("data-npu-width")) return;
+        var n = parseInt(inp.value, 10);
+        if (!Number.isFinite(n) || n < 60) n = 60;
+        state.colWidths[inp.getAttribute("data-npu-width")] = n;
+        saveWidths();
+        renderTable();
+      });
+    }
+
+    var table = el("dg-npu-table");
+    if (table) {
+      table.addEventListener("click", onTableClick);
+      table.addEventListener("change", onTableChange);
+    }
+
+    el("dg-npu-add-cancel") &&
+      el("dg-npu-add-cancel").addEventListener("click", function () {
+        showOverlay("dg-npu-add-overlay", false);
+      });
+    el("dg-npu-add-backdrop") &&
+      el("dg-npu-add-backdrop").addEventListener("click", function () {
+        showOverlay("dg-npu-add-overlay", false);
+      });
+    el("dg-npu-add-lookup") &&
+      el("dg-npu-add-lookup").addEventListener("click", function () {
+        lookupCode(el("dg-npu-add-lookup"));
+      });
+    el("dg-npu-add-ok") &&
+      el("dg-npu-add-ok").addEventListener("click", function () {
+        createOne(el("dg-npu-add-ok"));
+      });
+
+    ["dg-npu-bulk-cancel", "dg-npu-bulk-close", "dg-npu-bulk-backdrop"].forEach(function (id) {
+      el(id) &&
+        el(id).addEventListener("click", function () {
+          showOverlay("dg-npu-bulk-overlay", false);
+        });
+    });
+    el("dg-npu-bulk-submit") &&
+      el("dg-npu-bulk-submit").addEventListener("click", function () {
+        submitBulk(el("dg-npu-bulk-submit"));
+      });
+
+    el("dg-npu-compose-close") &&
+      el("dg-npu-compose-close").addEventListener("click", function () {
+        showOverlay("dg-npu-compose-overlay", false);
+      });
+    el("dg-npu-compose-backdrop") &&
+      el("dg-npu-compose-backdrop").addEventListener("click", function () {
+        showOverlay("dg-npu-compose-overlay", false);
+      });
+    el("dg-npu-compose-add-line") &&
+      el("dg-npu-compose-add-line").addEventListener("click", function () {
+        readComposeFromDom();
+        state.composeRows.push({ code: "", qty: 1, name: "", _empty: true });
+        renderComposeTable();
+      });
+    var composeTbody = el("dg-npu-compose-tbody");
+    if (composeTbody) {
+      composeTbody.addEventListener("click", function (e) {
+        var btn = e.target && e.target.closest && e.target.closest("[data-npu-compose-del]");
+        if (!btn) return;
+        readComposeFromDom();
+        var idx = Number(btn.getAttribute("data-npu-compose-del"));
+        var view = state._composeViewRows || [];
+        var row = view[idx];
+        if (!row) return;
+        if (row._empty || !row.in_current) {
+          state.composeRows = state.composeRows.filter(function (c, i) {
+            // rebuild by removing matching
+            return true;
+          });
+          // remove from composeRows by code or empty slot
+          if (!row.code) {
+            var emptyIdx = -1;
+            for (var i = 0; i < state.composeRows.length; i++) {
+              if (!state.composeRows[i].code || state.composeRows[i]._empty) {
+                emptyIdx = i;
+                break;
+              }
+            }
+            if (emptyIdx >= 0) state.composeRows.splice(emptyIdx, 1);
+          } else {
+            state.composeRows = state.composeRows.filter(function (c) {
+              return String(c.code).toLowerCase() !== String(row.code).toLowerCase();
+            });
+          }
+        } else {
+          state.composeRows = state.composeRows.filter(function (c) {
+            return String(c.code).toLowerCase() !== String(row.code).toLowerCase();
+          });
+        }
+        renderComposeTable();
+      });
+      composeTbody.addEventListener("change", function (e) {
+        var inp = e.target;
+        if (!inp) return;
+        if (inp.classList.contains("dg-npu-compose-qty")) {
+          readComposeFromDom();
+          renderComposeTable();
+        }
+      });
+      // код → название из МС (blur / Enter); не по change+focusout сразу — иначе двойной запрос
+      composeTbody.addEventListener("focusout", function (e) {
+        var inp = e.target;
+        if (!inp || !inp.classList.contains("dg-npu-compose-code")) return;
+        var code = String(inp.value || "").trim();
+        readComposeFromDom();
+        if (!code) {
+          renderComposeTable();
+          return;
+        }
+        var existing = (state.composeRows || []).find(function (x) {
+          return (
+            String(x.code || "")
+              .trim()
+              .toLowerCase() === code.toLowerCase()
+          );
+        });
+        if (existing && existing.name && !existing._nameMissing) {
+          renderComposeTable();
+          return;
+        }
+        lookupNameForCode(code);
+      });
+      composeTbody.addEventListener("keydown", function (e) {
+        var inp = e.target;
+        if (!inp || !inp.classList.contains("dg-npu-compose-code")) return;
+        if (e.key !== "Enter") return;
+        e.preventDefault();
+        inp.blur();
+      });
+    }
+    el("dg-npu-compose-reload") &&
+      el("dg-npu-compose-reload").addEventListener("click", confirmResync);
+    el("dg-npu-compose-save") &&
+      el("dg-npu-compose-save").addEventListener("click", function () {
+        saveCompose(el("dg-npu-compose-save"));
+      });
+    el("dg-npu-resync-cancel") &&
+      el("dg-npu-resync-cancel").addEventListener("click", function () {
+        showOverlay("dg-npu-resync-overlay", false);
+      });
+    el("dg-npu-resync-backdrop") &&
+      el("dg-npu-resync-backdrop").addEventListener("click", function () {
+        showOverlay("dg-npu-resync-overlay", false);
+      });
+    el("dg-npu-resync-ok") &&
+      el("dg-npu-resync-ok").addEventListener("click", function () {
+        doResync(el("dg-npu-resync-ok"));
+      });
+
+    el("dg-npu-cmt-cancel") &&
+      el("dg-npu-cmt-cancel").addEventListener("click", function () {
+        showOverlay("dg-npu-cmt-overlay", false);
+      });
+    el("dg-npu-cmt-backdrop") &&
+      el("dg-npu-cmt-backdrop").addEventListener("click", function () {
+        showOverlay("dg-npu-cmt-overlay", false);
+      });
+    el("dg-npu-cmt-ok") &&
+      el("dg-npu-cmt-ok").addEventListener("click", function () {
+        saveComment(el("dg-npu-cmt-ok"));
+      });
+    el("dg-npu-cmt-del") &&
+      el("dg-npu-cmt-del").addEventListener("click", function () {
+        showOverlay("dg-npu-cmt-del-overlay", true);
+      });
+    el("dg-npu-cmt-del-cancel") &&
+      el("dg-npu-cmt-del-cancel").addEventListener("click", function () {
+        showOverlay("dg-npu-cmt-del-overlay", false);
+      });
+    el("dg-npu-cmt-del-backdrop") &&
+      el("dg-npu-cmt-del-backdrop").addEventListener("click", function () {
+        showOverlay("dg-npu-cmt-del-overlay", false);
+      });
+    el("dg-npu-cmt-del-ok") &&
+      el("dg-npu-cmt-del-ok").addEventListener("click", function () {
+        deleteComment(el("dg-npu-cmt-del-ok"));
+      });
+
+    el("dg-npu-archive-cancel") &&
+      el("dg-npu-archive-cancel").addEventListener("click", function () {
+        closeArchiveConfirm(false);
+      });
+    el("dg-npu-archive-backdrop") &&
+      el("dg-npu-archive-backdrop").addEventListener("click", function () {
+        closeArchiveConfirm(false);
+      });
+    el("dg-npu-archive-ok") &&
+      el("dg-npu-archive-ok").addEventListener("click", function () {
+        closeArchiveConfirm(true);
+      });
+
+    document.addEventListener("keydown", function (e) {
+      if (e.key !== "Escape") return;
+      if (tourState.open) {
+        stopNpuTour();
+        return;
+      }
+      if (el("dg-npu-archive-overlay") && el("dg-npu-archive-overlay").style.display !== "none") {
+        closeArchiveConfirm(false);
+        return;
+      }
+      if (el("dg-npu-log-overlay") && el("dg-npu-log-overlay").style.display !== "none") {
+        closeNpuLog();
+        return;
+      }
+      [
+        "dg-npu-add-overlay",
+        "dg-npu-bulk-overlay",
+        "dg-npu-compose-overlay",
+        "dg-npu-resync-overlay",
+        "dg-npu-cmt-overlay",
+        "dg-npu-cmt-del-overlay",
+      ].forEach(function (id) {
+        var node = el(id);
+        if (node && node.style.display !== "none") showOverlay(id, false);
+      });
+    });
+  }
+
+  /* —— interactive tour «Обновление товаров» —— */
+  function npuTourMock(cap, bodyHtml) {
+    return (
+      '<div class="dg-npu-tour-mock-cap">' +
+      cap +
+      "</div>" +
+      '<div class="dg-npu-tour-mock-win">' +
+      bodyHtml +
+      "</div>"
+    );
+  }
+
+  var NPU_TOUR_STEPS = [
+    {
+      key: "tab",
+      title: "Эта вкладка",
+      text:
+        "Здесь список товаров, которые нужно обновить на Альмамед и/или маркетплейсах. Соседние вкладки — про новые товары, эта — про правки уже существующих.",
+      preview: npuTourMock(
+        "Как выглядит меню вкладок",
+        '<div class="dg-npu-tour-mock-bd">' +
+          '<div class="dg-npu-tour-mock-tabs">' +
+          '<span class="dg-npu-tour-mock-tab">Альмамед</span>' +
+          '<span class="dg-npu-tour-mock-tab">Размещение на маркеты</span>' +
+          '<span class="dg-npu-tour-mock-tab on">Обновление товаров</span>' +
+          '<span class="dg-npu-tour-mock-tab">Статистика…</span>' +
+          "</div>" +
+          '<div class="text-muted">Синяя полоска снизу = вы здесь.</div>' +
+          "</div>"
+      ),
+    },
+    {
+      key: "filters-card",
+      title: "Фильтры сверху",
+      text:
+        "Ищите по коду и названию, фильтруйте по статусу и людям. Список обновится только после синей кнопки «Применить».",
+      preview: npuTourMock(
+        "Пример блока фильтров",
+        '<div class="dg-npu-tour-mock-bd">' +
+          '<div class="dg-npu-tour-mock-row">' +
+          '<span class="dg-npu-tour-mock-inp" style="flex:1;margin:0">Поиск: 5053…</span>' +
+          '<span class="dg-npu-tour-mock-inp" style="width:7rem;margin:0">Статус: Все</span>' +
+          "</div>" +
+          '<div class="dg-npu-tour-mock-row" style="margin-top:0.4rem">' +
+          '<span class="dg-npu-tour-mock-btn pri">Применить</span>' +
+          '<span class="dg-npu-tour-mock-btn">По умолчанию</span>' +
+          "</div>" +
+          "</div>"
+      ),
+    },
+    {
+      key: "add",
+      title: "Добавить один товар",
+      text:
+        "Нажали «Добавить по коду» — откроется такое окно. Вводите код, жмёте «Проверить», выбираете куда обновлять и добавляете.",
+      preview: npuTourMock(
+        "Окно, которое откроется",
+        '<div class="dg-npu-tour-mock-hd"><span>Добавить по коду</span><span class="text-muted">✕</span></div>' +
+          '<div class="dg-npu-tour-mock-bd">' +
+          '<div class="mb-1">Код товара</div>' +
+          '<div class="dg-npu-tour-mock-inp">5053-KOMPLECT-3</div>' +
+          '<div class="dg-npu-tour-mock-row">' +
+          '<span class="dg-npu-tour-mock-chip">☐ Альмамед</span>' +
+          '<span class="dg-npu-tour-mock-chip">☑ Маркеты</span>' +
+          "</div>" +
+          '<div class="text-muted mt-1">После проверки увидите название и тип (товар / комплект).</div>' +
+          "</div>" +
+          '<div class="dg-npu-tour-mock-ft">' +
+          '<span class="dg-npu-tour-mock-btn">Отмена</span>' +
+          '<span class="dg-npu-tour-mock-btn pri">Добавить</span>' +
+          "</div>"
+      ),
+    },
+    {
+      key: "bulk",
+      title: "Добавить сразу много",
+      text: "Если кодов много — откроется окно со списком. Вставили коды пачкой → добавили. Не нужно кликать по одному.",
+      preview: npuTourMock(
+        "Окно массового добавления",
+        '<div class="dg-npu-tour-mock-hd"><span>Массовое добавление</span><span class="text-muted">✕</span></div>' +
+          '<div class="dg-npu-tour-mock-bd">' +
+          '<div class="dg-npu-tour-mock-inp" style="min-height:4.2rem;white-space:pre-line">1610\n2758\n5053-KOMPLECT-3</div>' +
+          '<div class="text-muted">По одному коду в строке, до 200 штук.</div>' +
+          "</div>" +
+          '<div class="dg-npu-tour-mock-ft">' +
+          '<span class="dg-npu-tour-mock-btn">Отмена</span>' +
+          '<span class="dg-npu-tour-mock-btn ok">Добавить список</span>' +
+          "</div>"
+      ),
+    },
+    {
+      key: "distribute",
+      title: "Раздать работу",
+      text:
+        "Кнопка раздаёт товары без ответственного контент-менеджерам поровну. После нажатия снизу появится зелёный/жёлтый отчёт с цифрами.",
+      preview: npuTourMock(
+        "Как выглядит отчёт после раздачи",
+        '<div class="dg-npu-tour-mock-bd" style="background:#e8f8ef;border-radius:0.3rem">' +
+          "<div><b>Итог раздачи</b></div>" +
+          "<div>· Раздано: 12 / 12</div>" +
+          "<div>· Ответственных: 3</div>" +
+          "<div class=\"text-muted\">· Анне — 4, Ивану — 4, Марии — 4</div>" +
+          "</div>"
+      ),
+    },
+    {
+      key: "hint-workflow",
+      title: "Куда и что уже сделано",
+      text:
+        "«Куда» — куда планируете. Когда выложили — ставите «Обновлено». Галка «Обновлено» у комплекта — только менеджер товара (подтверждает, что в МойСклад состав уже поменял).",
+      preview: npuTourMock(
+        "Как выглядят галочки в строке",
+        '<div class="dg-npu-tour-mock-bd">' +
+          '<table class="dg-npu-tour-mock-table"><thead><tr>' +
+          "<th>Куда</th><th>Обновлено на Альмамед</th><th>Обновлено на маркетах</th><th>Комплект в МС</th>" +
+          "</tr></thead><tbody><tr>" +
+          "<td>☐ Альмамед<br>☑ Маркеты</td>" +
+          "<td class=\"text-muted\">—</td>" +
+          "<td>☐ Ozon<br>☐ WB<br>☐ Я.М.</td>" +
+          "<td>☑ Обновлено</td>" +
+          "</tr></tbody></table>" +
+          "</div>"
+      ),
+    },
+    {
+      key: "hint-roles",
+      title: "Кто за что отвечает",
+      text:
+        "Менеджер товара ведёт позицию. Ответственный из контента делает обновление. Статусы: Новый → В работе → Обновлено. «Взять в работу» — на себя. «В удалённые» — спрятать (можно вернуть фильтром).",
+      preview: npuTourMock(
+        "Кнопки в конце строки",
+        '<div class="dg-npu-tour-mock-bd">' +
+          '<div class="dg-npu-tour-mock-row">' +
+          '<span class="dg-npu-tour-mock-btn pri">Взять в работу</span>' +
+          "</div>" +
+          '<div class="dg-npu-tour-mock-row">' +
+          '<span class="dg-npu-tour-mock-btn" style="border-color:#d92550;color:#d92550">В удалённые</span>' +
+          "</div>" +
+          '<div class="text-muted mt-1">Статус в списке: Новый → В работе → Обновлено</div>' +
+          "</div>"
+      ),
+    },
+    {
+      key: "table",
+      title: "Таблица и состав",
+      text:
+        "В строке: «лог» под кодом (вся история), «Изменить» у состава комплекта, комментарии «+». Навели на ячейку — маленький «лог» только по полю. Окно состава выглядит так ↓",
+      preview: npuTourMock(
+        "Окно состава комплекта",
+        '<div class="dg-npu-tour-mock-hd"><span>5053-KOMPLECT-3 · Комплект</span><span class="dg-npu-tour-mock-btn">+ позиция</span></div>' +
+          '<div class="dg-npu-tour-mock-bd" style="padding:0">' +
+          '<table class="dg-npu-tour-mock-table"><thead><tr><th>Код</th><th>Название</th><th>Было</th><th>Станет</th></tr></thead>' +
+          "<tbody>" +
+          "<tr><td>2736</td><td>Зонд носовой…</td><td>× 2</td><td class=\"dg-npu-tour-mock-hi\">1</td></tr>" +
+          "<tr><td>1610</td><td>Новая позиция…</td><td class=\"text-muted\">—</td><td class=\"dg-npu-tour-mock-hi\">1</td></tr>" +
+          "</tbody></table></div>" +
+          '<div class="dg-npu-tour-mock-ft">' +
+          '<span class="dg-npu-tour-mock-btn warn">Подтянуть снимок из МС</span>' +
+          '<span class="dg-npu-tour-mock-btn pri">Сохранить новый состав</span>' +
+          "</div>"
+      ),
+    },
+    {
+      key: "btn-start",
+      title: "Готово",
+      text: "Обучение можно снова открыть этой же кнопкой. Если что-то забыли — пройдите шаги ещё раз.",
+      preview: npuTourMock(
+        "Кнопка в шапке страницы",
+        '<div class="dg-npu-tour-mock-bd" style="display:flex;justify-content:flex-end">' +
+          '<span class="dg-npu-tour-mock-btn" style="border-color:#16aaff;color:#16aaff">Пройти обучение</span>' +
+          "</div>"
+      ),
+    },
+  ];
+
+  var tourState = { open: false, idx: 0, pad: 10 };
+
+  function tourRoot() {
+    return el("dg-npu-tour");
+  }
+
+  function clearTourActive() {
+    document.querySelectorAll("[data-dg-npu-tour-active]").forEach(function (n) {
+      n.removeAttribute("data-dg-npu-tour-active");
+    });
+  }
+
+  function stopNpuTour() {
+    tourState.open = false;
+    clearTourActive();
+    var root = tourRoot();
+    if (root) {
+      root.style.display = "none";
+      root.setAttribute("aria-hidden", "true");
+    }
+    window.removeEventListener("resize", positionNpuTour);
+    document.removeEventListener("scroll", positionNpuTour, true);
+  }
+
+  function ensureUpdatesTabForTour(done) {
+    var panel = el("dg-np-updates-panel");
+    var tab = el("dg-np-tab-updates");
+    var already =
+      panel && !panel.classList.contains("d-none") && tab && tab.classList.contains("active");
+    if (already) {
+      done();
+      return;
+    }
+    if (tab) tab.click();
+    var tries = 0;
+    var t = setInterval(function () {
+      tries += 1;
+      var p = el("dg-np-updates-panel");
+      if ((p && !p.classList.contains("d-none")) || tries > 20) {
+        clearInterval(t);
+        done();
+      }
+    }, 50);
+  }
+
+  function positionNpuTour() {
+    if (!tourState.open) return;
+    var step = NPU_TOUR_STEPS[tourState.idx];
+    if (!step) return;
+    var spot = el("dg-npu-tour-spotlight");
+    var pop = el("dg-npu-tour-popover");
+    var tip = el("dg-npu-tour-spot-tip");
+    if (!spot || !pop) return;
+    clearTourActive();
+    var target = step.key
+      ? document.querySelector('[data-dg-npu-tour="' + step.key + '"]')
+      : null;
+    // если цель скрыта (другая вкладка) — fallback на вкладку обновлений
+    if (target) {
+      var tr = target.getBoundingClientRect();
+      if (tr.width < 2 || tr.height < 2 || target.closest(".d-none")) {
+        target = document.querySelector('[data-dg-npu-tour="tab"]') || target;
+      }
+    }
+    var pad = tourState.pad;
+    var vw = window.innerWidth;
+    var vh = window.innerHeight;
+    var box;
+    if (target) {
+      try {
+        target.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "auto" });
+      } catch (_) {}
+      target.setAttribute("data-dg-npu-tour-active", "1");
+      var r = target.getBoundingClientRect();
+      var maxH = Math.min(vh * 0.55, Math.max(r.height + pad * 2, 48));
+      box = {
+        top: Math.max(10, r.top - pad),
+        left: Math.max(10, r.left - pad),
+        width: Math.min(vw - 20, Math.max(r.width + pad * 2, 120)),
+        height: Math.min(maxH, r.height + pad * 2),
+      };
+      // не уезжать за низ viewport
+      if (box.top + box.height > vh - 12) {
+        box.top = Math.max(10, vh - 12 - box.height);
+      }
+      spot.classList.remove("is-center");
+      spot.classList.add("is-lit");
+      if (tip) tip.style.display = "block";
+    } else {
+      box = { top: vh * 0.3, left: (vw - 280) / 2, width: 280, height: 40 };
+      spot.classList.add("is-center");
+      spot.classList.remove("is-lit");
+      if (tip) tip.style.display = "none";
+    }
+    spot.style.top = box.top + "px";
+    spot.style.left = box.left + "px";
+    spot.style.width = box.width + "px";
+    spot.style.height = Math.max(box.height, 40) + "px";
+
+    pop.style.visibility = "hidden";
+    pop.style.display = "block";
+    var pw = pop.offsetWidth || 360;
+    var ph = pop.offsetHeight || 200;
+    // подсказка рядом с подсветкой: снизу, иначе сверху, иначе справа
+    var left = box.left;
+    var top = box.top + box.height + 14;
+    if (top + ph > vh - 12) {
+      top = box.top - ph - 14;
+    }
+    if (top < 12) {
+      top = Math.min(vh - ph - 12, Math.max(12, box.top));
+      left = box.left + box.width + 14;
+      if (left + pw > vw - 12) left = Math.max(12, box.left - pw - 14);
+    }
+    if (left + pw > vw - 12) left = Math.max(12, vw - pw - 12);
+    if (left < 12) left = 12;
+    if (top < 12) top = 12;
+    pop.style.left = left + "px";
+    pop.style.top = top + "px";
+    pop.style.visibility = "visible";
+  }
+
+  function renderNpuTourStep() {
+    var step = NPU_TOUR_STEPS[tourState.idx];
+    if (!step) {
+      stopNpuTour();
+      return;
+    }
+    if (el("dg-npu-tour-progress")) {
+      el("dg-npu-tour-progress").textContent = tourState.idx + 1 + " / " + NPU_TOUR_STEPS.length;
+    }
+    if (el("dg-npu-tour-title")) el("dg-npu-tour-title").textContent = step.title || "";
+    if (el("dg-npu-tour-text")) el("dg-npu-tour-text").textContent = step.text || "";
+    var preview = el("dg-npu-tour-preview");
+    if (preview) {
+      preview.innerHTML = step.preview || "";
+      preview.style.display = step.preview ? "block" : "none";
+    }
+    var prev = el("dg-npu-tour-prev");
+    var next = el("dg-npu-tour-next");
+    if (prev) prev.disabled = tourState.idx <= 0;
+    if (next) next.textContent = tourState.idx >= NPU_TOUR_STEPS.length - 1 ? "Готово" : "Далее";
+    // два кадра: после смены превью и scroll
+    requestAnimationFrame(function () {
+      positionNpuTour();
+      setTimeout(positionNpuTour, 220);
+    });
+  }
+
+  function startNpuTour() {
+    ensureUpdatesTabForTour(function () {
+      // развернуть фильтры, если свёрнуты
+      var filtersBody = el("dg-npu-filters-body");
+      var filtersToggle = el("dg-npu-filters-toggle");
+      if (filtersBody && filtersBody.style.display === "none" && filtersToggle) {
+        filtersToggle.click();
+      }
+      var tableBody = el("dg-npu-table-body");
+      var tableToggle = el("dg-npu-table-toggle");
+      if (tableBody && tableBody.style.display === "none" && tableToggle) {
+        tableToggle.click();
+      }
+      tourState.open = true;
+      tourState.idx = 0;
+      var root = tourRoot();
+      if (root) {
+        root.style.display = "block";
+        root.setAttribute("aria-hidden", "false");
+      }
+      window.addEventListener("resize", positionNpuTour);
+      document.addEventListener("scroll", positionNpuTour, true);
+      renderNpuTourStep();
+    });
+  }
+
+  function bindNpuTour() {
+    if (state._tourBound) return;
+    state._tourBound = true;
+    el("dg-npu-tour-start") &&
+      el("dg-npu-tour-start").addEventListener("click", function () {
+        startNpuTour();
+      });
+    el("dg-npu-tour-skip") &&
+      el("dg-npu-tour-skip").addEventListener("click", function () {
+        stopNpuTour();
+      });
+    el("dg-npu-tour-prev") &&
+      el("dg-npu-tour-prev").addEventListener("click", function () {
+        if (tourState.idx <= 0) return;
+        tourState.idx -= 1;
+        renderNpuTourStep();
+      });
+    el("dg-npu-tour-next") &&
+      el("dg-npu-tour-next").addEventListener("click", function () {
+        if (tourState.idx >= NPU_TOUR_STEPS.length - 1) {
+          stopNpuTour();
+          return;
+        }
+        tourState.idx += 1;
+        renderNpuTourStep();
+      });
+    document.addEventListener("keydown", function (e) {
+      if (!tourState.open) return;
+      if (e.key === "Escape") {
+        e.preventDefault();
+        stopNpuTour();
+      } else if (e.key === "ArrowRight" || e.key === "Enter") {
+        e.preventDefault();
+        el("dg-npu-tour-next") && el("dg-npu-tour-next").click();
+      } else if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        el("dg-npu-tour-prev") && el("dg-npu-tour-prev").click();
+      }
+    });
+  }
+
+  window.DgNpProductUpdates = {
+    activate: function () {
+      bindUi();
+      bindNpuTour();
+      writeFormFromApplied();
+      // сначала списки менеджеров/ответственных, потом строки — иначе селекты пустые
+      return loadContentUsers().then(function () {
+        return load();
+      });
+    },
+    load: load,
+    startTour: startNpuTour,
+  };
+
+  // кнопка в шапке страницы доступна и до активации вкладки
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", bindNpuTour);
+  } else {
+    bindNpuTour();
+  }
+})();
+</script>

@@ -84,6 +84,7 @@ description: Справочник REST-эндпоинтов p.datagon.ru (осн
 - `/api/exports/competitors` -> `routes/exportsCompetitors.js` (Маркетплейсы → Конкуренты: список `ms_export` + поиск на Ozon/WB/Я.М.)
 - `/api/exports/dimensions` -> `routes/dimensions.js`
 - `/api/exports/new-products` -> `routes/exportsNewProducts.js`
+- `/api/exports/product-updates` -> `routes/productUpdates.js` (вкладка «Обновление товаров»)
 - `/api/exports/photoshoot` -> `routes/exportsPhotoshoot.js` (Маркетплейсы → Отснять товары)
 - `/api/exports/huckster` -> `routes/exportsHuckster.js`
 - `/api/ms-sales` -> `routes/msSales.js` (Продажи МС: отгрузки `entity/demand` + позиции с привязкой к `ms_export`)
@@ -144,7 +145,7 @@ Body:
 - `PUT /api/specialties/:id/access` — сохранить режимы; body: `{ "modes": { "dashboard": "full", "results": "view", ... } }`.
 
 Записи к не-GET API (кроме путей без привязки к разделу в реестре) для не-admin проверяются по режиму раздела: при `hidden` — 403, при `view` — разрешены только GET/HEAD/OPTIONS.
-Новые страницы из `PAGE_DEFS` автоматически досинхронизируются в `specialty_page_modes` для всех существующих специальностей при старте сервера; для «Полный доступ» ставится `full`, для остальных групп — `hidden` до явного выбора администратора. Запись с `matrixOnly: true` (например **`exports-new-products-stats`** — вкладка «Статистика контент-отдела», **`exports-new-products-standing`** — «Постоянные задачи») появляется в матрице настроек доступа, но не меняет HTML-лист родительского экрана.
+Новые страницы из `PAGE_DEFS` автоматически досинхронизируются в `specialty_page_modes` для всех существующих специальностей при старте сервера; для «Полный доступ» ставится `full`, для остальных групп — `hidden` до явного выбора администратора. Запись с `matrixOnly: true` (например **`exports-new-products-stats`** — вкладка «Статистика контент-отдела», **`exports-new-products-standing`** — «Постоянные задачи», **`exports-new-products-updates`** — «Обновление товаров») появляется в матрице настроек доступа, но не меняет HTML-лист родительского экрана.
 
 ## Settings
 
@@ -1500,7 +1501,9 @@ Body (JSON):
 
 ## Exports / Новые товары
 
-Префикс: `/api/exports/new-products`. Экран: `/exports-new-products.html` (подменю **Маркетплейсы**). Вкладки UI: **Альмамед** (`channel=almamed`), **Маркеты** (`channel=marketplaces`), **Статистика контент-отдела** (`GET /content-stats`), **Постоянные задачи** (`GET /standing-stats`, инфографика), **Настройка уведомлений датагон-crm** (`#crm-notify`). Deep-link вкладок (hash или `?tab=`): `#almamed`, `#marketplaces`, `#stats`, `#standing`, `#crm-notify` (алиасы `#content-stats`, `#infographic`, `#crm`, `?tab=markets`). Таблица `dg_new_products` (создаётся при первом запросе).
+Префикс: `/api/exports/new-products`. Экран: `/exports-new-products.html` (подменю **Маркетплейсы**). Вкладки UI: **Альмамед** (`channel=almamed`), **Маркеты** (`channel=marketplaces`), **Статистика контент-отдела** (`GET /content-stats`), **Постоянные задачи** (`GET /standing-stats`, инфографика), **Обновление товаров** (`/api/exports/product-updates`, `#updates`), **Настройка уведомлений датагон-crm** (`#crm-notify`). Deep-link вкладок (hash или `?tab=`): `#almamed`, `#marketplaces`, `#stats`, `#standing`, `#updates`, `#crm-notify` (алиасы `#content-stats`, `#infographic`, `#product-updates`, `#crm`, `?tab=markets`). Таблица `dg_new_products` (создаётся при первом запросе).
+
+**Сводка размещения (Альмамед):** `GET /api/exports/new-products/placement-overview` — снимок KPI «сейчас» (`almamed.wip` / `by_status` / `wip_stale14` / `wip_important`, `markets.linked|wip|ozon|wb|ym|all3|none_live`). UI: карточка **«Сводка размещения»** над выгрузкой; клик по KPI ставит фильтр списка. Доп. query списка: `wip=1`, `stale_days=14`, `placement=none|all3|any` (для вкладки маркетов — по `placement_ozon/wb/ym`).
 
 **UI / wide-таблица (lock):** плавающая шапка — `#dg-np-float-host` (`position: fixed` клон thead), **не** `translate3d` на живом `#dg-np-thead` (тяжёлая таблица; shop-схема Ozon сюда не копировать). Ширины — только `<colgroup>`, `table-layout: auto`. Контракт: `.cursor/rules/datagon-table-behavior-lock.mdc` (раздел «Новые товары»).
 
@@ -1512,8 +1515,33 @@ Body (JSON):
 |------|----------------|
 | **`exports-new-products-stats`** | Статистика контент-отдела · `GET /content-stats` · CRM `scope=almamed\|marketplaces` |
 | **`exports-new-products-standing`** | Постоянные задачи · `GET /standing-stats` · CRM `scope=infographic` |
+| **`exports-new-products-updates`** | Обновление товаров · `/api/exports/product-updates` · таблицы `dg_product_updates` / `dg_product_update_comments` |
 
-Режимы: `hidden` — вкладка скрыта и соответствующий API запрещён; `view` — просмотр, `PUT` привязок CRM запрещён; `full` — просмотр и правка привязок. Наследуют скрытие родителя `exports-marketplaces`, если у ключа нет явного `view`/`full`. Список/CRUD очереди новых товаров по-прежнему проверяются по **`exports-new-products`**.
+Режимы: `hidden` — вкладка скрыта и соответствующий API запрещён; `view` — просмотр, `PUT` привязок CRM запрещён; `full` — просмотр и правка привязок. Наследуют скрытие родителя `exports-marketplaces`, если у ключа нет явного `view`/`full`. Список/CRUD очереди новых товаров по-прежнему проверяются по **`exports-new-products`**. Для **Обновление товаров**, если ключ матрицы ещё не выставлен, API/UI временно наследуют режим **`exports-new-products`**.
+
+### Exports / Обновление товаров
+
+Префикс: **`/api/exports/product-updates`** (`routes/productUpdates.js`). Вкладка `#updates` на `/exports-new-products.html`.
+
+Очередь задач «обновить карточку» по коду МС: каналы Альмамед / маркеты, статусы `new` → `in_progress` → `done` / `cancelled`, для комплектов — черновик нового состава (`target_components_json`, текущий снимок из `dg_bundle_components`). **v1 не пишет** состав в API МойСклад и не пушит на маркетплейсы. Комментарии «+» — как на manager-sales (только свой править/удалять).
+
+| Метод | Путь | Назначение |
+|-------|------|------------|
+| GET | `/` | Список + фильтры (`search`, `status`, `target`, `type`, `content`/`responsible`, `manager`, `pending_done`, `page`, `limit`, `sort`, `dir`) + `comments[]` + `done{}` |
+| GET | `/meta` | `page_mode`, `can_write`, статусы |
+| GET | `/assignees` | `managers[]` — «Менеджер маркетплейсов»; `responsibles[]` / `items[]` — «Контент-Менеджер» (колонка «Ответственный» / раздача) |
+| GET | `/lookup?code=` | Превью из `ms_export` + состав комплекта |
+| POST | `/` | Одна задача: `{ code, target_almamed, target_markets }`; для комплекта снимок состава в `current_components_json` |
+| POST | `/bulk` | Массово: `{ text\|codes, target_almamed, target_markets }` → счётчики `created` / `skipped_dup` / `not_found` / `errors[]` / `duration_sec` |
+| POST | `/distribute` | Раздача открытых строк без ответственного: `{ scope: 'unassigned'\|'all', user_ids? }` → блоки по Контент-Менеджерам |
+| PATCH | `/:id` | `status`, targets, `take` (ставит ответственного), `content_user_id`, `product_manager_user_id`, `ms_bundle_updated` (только комплект и только если actor = менеджер товара), `done_almamed\|ozon\|wb\|yandex`, `archive` → `status=removed` (как «Удалённые» на Альмамед), `restore` → `in_progress` |
+| GET | `/:id/log` | Журнал изменений строки (`field?` одно поле, или `fields=a,b,c` для чеклист-ячейки; `limit`, `offset`) → `dg_product_updates_log` (как «лог» на Альмамед) |
+| GET | `/:id/composition` | `current` = **снимок на момент постановки**; `live_from_ms` отдельно; `target` |
+| PUT | `/:id/composition` | Сохранить только `target_components_json` (снимок не трогает) |
+| POST | `/:id/composition/resync-current` | Перезаписать снимок из кэша МС (`copy_to_target` опционально) |
+| POST/PATCH/DELETE | `/:id/comments[/:commentId]` | Комментарии |
+
+Поля строки: `product_manager_user_id` / `product_manager_name` (Менеджер товара); `ms_bundle_updated` (+ `_at` / `_by_*`) — «Обновил комплект в МС», только для комплектов, PATCH только если actor = менеджер товара; `content_user_id` / `content_name` (Ответственный); `done.{almamed,ozon,wb,yandex}`; `status` ∈ `new|in_progress|done|cancelled|removed`. Список по умолчанию без `removed` (и без legacy `archived_at`); фильтр `status=removed` — только удалённые. UI: колонка перед «Куда»; **«Обновлено на Альмамед»** / **«Обновлено на маркетах»**; кнопка **«В удалённые»** + восстановление (как на Альмамед). Журнал: кнопка **лог** у кода (вся строка) и мини-**лог** при наведении на ячейку (`GET …/:id/log?field=` или `fields=` для чеклистов «Куда» / «Обновлено на маркетах» — один лог на ячейку). Запись в `dg_product_updates_log` при create / PATCH / составе. Workflow: в МС состав с проводками не правят — архив + новая карточка; в Датагоне фиксируют снимок и целевой состав.
 
 ### Регламент / инструкция МП
 
@@ -1533,7 +1561,7 @@ Body (JSON):
 Query: `channel`, `search`, `status`, `priority`, `brand`, `responsible` (id | `none`), `manager` (id | `none`), `limit` (default 100), `offset`, `sort_by`, `sort_dir`. Без `status` — без `transferred` (Альмамед) / `removed` (маркеты). В ответе: `missing_required`, `incomplete_count`, `required_fields`, поля размещения/габаритов для маркетов, для Альмамед — `sell_on_markets`, `has_kits`; для маркетов — `has_kits`, `kits[]`.
 
 Список **не** делает тяжёлое `enrichMarketsRowsFromMs` (N×SQL + запись в БД/журнал на каждую недозаполненную строку маркетов) — иначе GET «Размещение на маркеты» уходил в десятки секунд. Подтягивание кода/штрихкода/НДС/РУ/цены из МС — при upsert из Альмамед, «Обновить очередь маркетов» и точечных операциях, не на каждом открытии таблицы.
-В каждой строке также **`presence`** (колонка **«Связь»** после ID): `my_products` (SKU в `my_products` после импорта CMS «Мои товары»), `ms` (код/артикул в `ms_export`), `ozon`/`wb`/`ym` + URL из `marketplace_export_rows`, **`huckster`** (код найден хотя бы в одном кабинете снапшота Huckster `sheet_export` / `sheet_export_rrc`, `bridge_row_meta.cabinets ≠ bad`; кэш ~90 с). На вкладке **Альмамед** (часто только артикул `A-…`) бейджи МП/HK резолвятся через **код МС** из `ms_export` (и `offer_id`/`vendor_code`/`shop_sku`), а не только по артикулу строки. На вкладке **Маркеты** — колонка **Huckster** (селект **Добавлено** / **Не добавлено**, поле `huckster` в `dg_new_products`) сразу после «Связь»; менять может только специальность **«Менеджер маркетплейсов»** (также `admin` / `can_manage_users` / «Полный доступ»). API: `PATCH` с `huckster`, иначе `403 HUCKSTER_FORBIDDEN`. Бейдж **HK** в «Связь» — по снапшоту матрицы + ссылка на `/exports-huckster.html?search=<код>`.
+В каждой строке также **`presence`** (колонка **«Связь»** после ID): `my_products` (SKU в `my_products` после импорта CMS «Мои товары»), `ms` (код/артикул в `ms_export`), `ozon`/`wb`/`ym` + URL из `marketplace_export_rows`, **`huckster`** (код найден хотя бы в одном кабинете снапшота Huckster `sheet_export` / `sheet_export_rrc`, `bridge_row_meta.cabinets ≠ bad`; кэш ~90 с). На вкладке **Альмамед** (часто только артикул `A-…`) бейджи МП/HK резолвятся через **код МС** из `ms_export` (и `offer_id`/`vendor_code`/`shop_sku`), а не только по артикулу строки. Сопоставление ключей учитывает варианты **`A-40295` / `А-40295` (лат./кир.) / `40295`** — иначе при латинице в очереди и кириллице в `denorm_article` бейджи МС/Ozon/WB/ЯМ оставались серыми. На вкладке **Маркеты** — колонка **Huckster** (селект **Добавлено** / **Не добавлено**, поле `huckster` в `dg_new_products`) сразу после «Связь»; менять может только специальность **«Менеджер маркетплейсов»** (также `admin` / `can_manage_users` / «Полный доступ»). API: `PATCH` с `huckster`, иначе `403 HUCKSTER_FORBIDDEN`. Бейдж **HK** в «Связь» — по снапшоту матрицы + ссылка на `/exports-huckster.html?search=<код>`.
 
 **`almamed_added_at` («Дата на Альмамед»):** при первой связи строки Альмамед с **`my_products`** (бейдж «Мои» после импорта CMS ~20:40) — проставляется автоматически при `GET` списка (один раз). Связь только с МС (`ms_export`) дату **не** ставит. Также при ручном статусе **«Добавлен»**, если поле ещё пусто. Раньше ошибочно ставилась только при статусе «На проверку».
 

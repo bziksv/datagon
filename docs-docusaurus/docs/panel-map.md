@@ -83,7 +83,7 @@ description: Все пункты бокового меню Datagon — URL, кл
 | Huckster | `/exports-huckster.html` | `exports-huckster` |
 | Габариты | `/exports-dimensions.html` | `exports-dimensions` |
 | Проблемы с товарами | `/exports-marketplaces-issues.html` | `exports-marketplaces-issues` |
-| Новые товары | `/exports-new-products.html` | `exports-new-products` (+ matrixOnly: stats / standing / crm-notify) |
+| Новые товары | `/exports-new-products.html` | `exports-new-products` (+ matrixOnly: stats / standing / updates / crm-notify) |
 | Отснять товары | `/exports-photoshoot.html` | `exports-photoshoot` |
 | Конкуренты | `/exports-marketplaces-competitors.html` | `exports-marketplaces-competitors` |
 | Инструкция | `/exports-marketplaces-reglament.html` | `exports-marketplaces-reglament` |

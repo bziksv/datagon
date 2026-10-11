@@ -196,6 +196,7 @@ description: Подменю Маркетплейсы — Ozon, WB, Я.Марке
 | Размещение на маркеты | `#marketplaces` | то же | `channel=marketplaces`; sync-markets / remove-placed |
 | Статистика контент-отдела | `#stats` | **`exports-new-products-stats`** (`matrixOnly`) | `GET …/content-stats`; CRM links `scope=almamed\|marketplaces` |
 | Постоянные задачи | `#standing` | **`exports-new-products-standing`** | `GET …/standing-stats`; CRM `scope=infographic` |
+| Обновление товаров | `#updates` | **`exports-new-products-updates`** | `/api/exports/product-updates`; состав комплектов; комментарии «+»; кнопка **«Пройти обучение»** в шапке страницы (интерактивный тур по вкладке) |
 | Уведомления датагон-crm | `#crm-notify` | **`exports-new-products-crm-notify`** | `GET/POST …/crm-notify` (`script` v1.0.1 · rev.2) |
 
 `hidden` у вкладки скрывает её и API; `view` — без записи CRM-привязок / notify. Parent `exports-marketplaces` = `hidden` — как у shop (override `view`/`full` у дочернего).
@@ -203,6 +204,7 @@ description: Подменю Маркетплейсы — Ozon, WB, Я.Марке
 ### Очередь (Альмамед / Маркеты)
 
 - Фильтры pending/`Применить`; wide-таблица + комплекты на маркетах.
+- На **Альмамед** — сворачиваемая **«Сводка размещения»** (`GET …/placement-overview`): WIP / на проверку / доработка / >14 дн. / важный; ряд маркетов (очередь, бейджи Ozon/WB/ЯМ, на всех трёх, ещё нигде). Клик по KPI → фильтр (`wip`, `stale_days`, `placement`, статус/приоритет; маркетовые KPI переключают вкладку).
 - Действия: добавить / bulk / раздать ответственных / sync-markets / убрать размещённые — confirm через `#dg-np-confirm-overlay` (+ action-log на тяжёлых).
 - Маркеты: обогащение из кэша МС; live — при `POST /sync-markets-queue`; auto **`np_ms_enrich`** (интервал).
 - CRM-комментарии: auto **`np_crm_notify`**; настройки на вкладке `#crm-notify` ([script-versioning](/docs/script-versioning/)).

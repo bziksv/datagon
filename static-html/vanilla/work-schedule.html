@@ -245,13 +245,19 @@
   }
 
   .dg-ws-sheet-wrap {
+    /* Только горизонтальный скролл — по высоте таблица на весь контент, без внутреннего «сверху вниз» */
     overflow-x: auto;
+    overflow-y: visible;
     max-width: 100%;
+    max-height: none;
     border: 1px solid #eef0f3;
     border-radius: 0.25rem;
+    -webkit-overflow-scrolling: touch;
   }
   .dg-ws-sheet {
-    border-collapse: collapse;
+    /* separate: иначе sticky thead часто ломается в Chromium при collapse */
+    border-collapse: separate;
+    border-spacing: 0;
     width: max-content;
     min-width: 100%;
     font-size: 0.78rem;
@@ -260,11 +266,41 @@
   .dg-ws-sheet th,
   .dg-ws-sheet td {
     border: 1px solid #e6e9ee;
+    border-top-width: 0;
+    border-left-width: 0;
     padding: 0.2rem 0.35rem;
     text-align: center;
     white-space: nowrap;
   }
+  .dg-ws-sheet tr > *:first-child {
+    border-left-width: 1px;
+  }
+  .dg-ws-sheet thead tr > th,
+  .dg-ws-sheet tbody tr:first-child > * {
+    border-top-width: 1px;
+  }
   .dg-ws-sheet th { background: #f4f6f9; }
+  /* Плавающая 1-я строка (названия колонок) при вертикальном скролле табеля */
+  .dg-ws-sheet thead th {
+    position: sticky;
+    top: 0;
+    z-index: 4;
+    background: #f4f6f9;
+    box-shadow: 0 1px 0 #dfe3e8;
+  }
+  .dg-ws-sheet thead th.dg-ws-pay-h {
+    background: #eef2f7;
+  }
+  .dg-ws-sheet thead th.dg-ws-pay-h.dg-ws-pay-total-h {
+    background: #e8eef6;
+  }
+  .dg-ws-sheet thead th.dg-ws-day-h.weekend,
+  .dg-ws-sheet thead th.dg-ws-day-h.nonwork {
+    background: #f1ecf7;
+  }
+  .dg-ws-sheet thead th.dg-ws-day-h.short-day {
+    background: #fff8e8;
+  }
   .dg-ws-sheet th.dg-ws-day-h {
     line-height: 1.15;
     padding: 0.25rem 0.3rem;
@@ -284,11 +320,11 @@
   }
   .dg-ws-sheet th.dg-ws-day-h.weekend .dg-ws-day-wd,
   .dg-ws-sheet th.dg-ws-day-h.nonwork .dg-ws-day-wd {
-    color: #c0392b;
+    color: #6f5a8c;
   }
   .dg-ws-sheet th.dg-ws-day-h.weekend,
   .dg-ws-sheet th.dg-ws-day-h.nonwork {
-    background: #faf2f2;
+    background: #f1ecf7;
   }
   .dg-ws-sheet th.dg-ws-day-h.short-day {
     background: #fff8e8;
@@ -299,11 +335,17 @@
     position: sticky;
     left: 0;
     background: #fff;
-    z-index: 1;
+    z-index: 2;
     min-width: 140px;
     font-weight: 500;
   }
-  .dg-ws-sheet th.emp { z-index: 2; background: #f4f6f9; }
+  /* Угол: и сверху, и слева */
+  .dg-ws-sheet thead th.emp {
+    z-index: 6;
+    background: #f4f6f9;
+    left: 0;
+    top: 0;
+  }
   .dg-ws-sheet th.dg-ws-pay-h.dg-ws-pay-total-h,
   .dg-ws-sheet td.dg-ws-pay-total {
     min-width: 7.5rem;
@@ -389,6 +431,27 @@
   .dg-ws-sheet .c-0 { background: #fafafa; color: #adb5bd; }
   .dg-ws-sheet .c-v { background: #e3f2fd; }
   .dg-ws-sheet .c-s { background: #fce4ec; }
+  /* Сб/вс и выходные РФ — мягкий лиловый (не пересекается с зелёным/жёлтым/синим/розовым статусов) */
+  .dg-ws-sheet td.dg-ws-we {
+    background-color: #f1ecf7;
+    box-shadow: inset 0 0 0 999px rgba(105, 80, 140, 0.06);
+  }
+  .dg-ws-sheet td.dg-ws-we.c-0 {
+    background-color: #ebe4f4;
+    color: #9a8eb0;
+  }
+  .dg-ws-sheet td.dg-ws-we.c-1 {
+    background-color: #e2ebe6;
+  }
+  .dg-ws-sheet td.dg-ws-we.c-05 {
+    background-color: #f3ecd9;
+  }
+  .dg-ws-sheet td.dg-ws-we.c-v {
+    background-color: #e4e8f4;
+  }
+  .dg-ws-sheet td.dg-ws-we.c-s {
+    background-color: #f3e6ef;
+  }
   /* Открытый таймер: мягкое светло-зелёное мигание */
   @keyframes dg-ws-open-pulse {
     0%, 100% { background-color: #c8f0d0; box-shadow: inset 0 0 0 1px rgba(40, 167, 69, 0.35); }
@@ -681,8 +744,8 @@
       line-height: 1;
       flex-shrink: 0;
     }
-    /* Разделитель после блока «админ» (Дашборд…Настройки) перед рабочими экранами.
-       В теме ArchitectUI линия задана только для .nav-item.nav-item-divider (оба класса). */
+    /* Разделители сайдбара — как в ArchitectUI (.nav-item.nav-item-divider):
+       на всю ширину колонки, без бокового inset (иначе линии «короче» текста и выглядят криво). */
     .dg-sidebar-nav-divider {
       list-style: none;
       pointer-events: none;
@@ -696,16 +759,12 @@
       display: block;
       background: #dee2e6;
       height: 1px;
-      margin: 0.55rem 1rem;
+      margin: 0.5rem 0;
       overflow: hidden;
       border: 0;
       padding: 0;
-    }
-    .datagon-vanilla-shell.closed-sidebar .app-sidebar:not(:hover)
-      .dg-sidebar-nav-divider
-      .nav-item-divider {
-      margin-left: 0.55rem;
-      margin-right: 0.55rem;
+      width: 100%;
+      box-sizing: border-box;
     }
     .datagon-vanilla-shell .app-footer .app-footer__inner {
       display: flex;
@@ -1167,9 +1226,6 @@
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="moysklad" href="/moysklad.html"><i class="metismenu-icon pe-7s-shopbag"></i>Мой Склад (товары)</a></li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="ms-orders" href="/ms-orders.html" title="Заказы покупателей entity/customerorder из МойСклад (30 дней)"><i class="metismenu-icon pe-7s-note2"></i>Заказы в МС</a></li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="ms-sales" href="/ms-sales.html" title="Продажи МС: отгрузки entity/demand, позиции с привязкой к товарам ms_export"><i class="metismenu-icon pe-7s-cash"></i>Продажи МС</a></li>
-                      <li class="metismenu-item dg-sidebar-nav-divider" aria-hidden="true">
-                        <div class="nav-item nav-item-divider"></div>
-                      </li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="medmarket" href="/medmarket.html" title="Стыковка кода МС с кодом товара для Медмаркета"><i class="metismenu-icon pe-7s-id"></i>Медмаркет</a></li>
                       <li class="metismenu-item dg-sidebar-nav-divider" aria-hidden="true">
                         <div class="nav-item nav-item-divider"></div>
@@ -1795,9 +1851,12 @@
                   </select>
                 </div>
               </div>
-              <div class="card-footer d-flex justify-content-end gap-2 bg-white border-top-0">
-                <button type="button" class="btn btn-outline-secondary" id="dg-ws-cell-cancel" data-dg-no-activity="1">Отмена</button>
-                <button type="button" class="btn btn-primary" id="dg-ws-cell-save" data-dg-notify-start="Сохраняем…">Сохранить</button>
+              <div class="card-footer d-flex justify-content-between flex-wrap gap-2 bg-white border-top-0">
+                <button type="button" class="btn btn-outline-danger" id="dg-ws-cell-clear" data-dg-notify-start="Очищаем день…">Очистить день</button>
+                <div class="d-flex gap-2 ms-auto">
+                  <button type="button" class="btn btn-outline-secondary" id="dg-ws-cell-cancel" data-dg-no-activity="1">Отмена</button>
+                  <button type="button" class="btn btn-primary" id="dg-ws-cell-save" data-dg-notify-start="Сохраняем…">Сохранить</button>
+                </div>
               </div>
             </div>
           </div>
@@ -2108,14 +2167,22 @@
     return state.workCalendar || null;
   }
 
+  /** Нерабочий день колонки: праздник/выходной из календаря РФ, иначе сб–вс. */
+  function dayIsNonWorkCol(y, m, day, cal) {
+    var wd = new Date(y, m - 1, day).getDay();
+    var weekend = wd === 0 || wd === 6;
+    var map = cal || activeMonthCalendar();
+    var nonWork = calendarNonWorkSet(map);
+    return !!(nonWork[day] || (!map && weekend));
+  }
+
   /** Шапка колонки дня: «9» + «пт»; нерабочие по производственному календарю / сб–вс. */
   function dayColHeaderHtml(y, m, day, cal) {
     var wd = new Date(y, m - 1, day).getDay();
     var weekend = wd === 0 || wd === 6;
     var map = cal || activeMonthCalendar();
-    var nonWork = calendarNonWorkSet(map);
     var short = calendarShortSet(map);
-    var isNonWork = nonWork[day] || (!map && weekend);
+    var isNonWork = dayIsNonWorkCol(y, m, day, map);
     var isShort = !!short[day];
     var tip = day + " · " + WD_SHORT[wd];
     if (map && map.days && map.days[day] && map.days[day].holiday_name) {
@@ -2204,8 +2271,15 @@
     state.pending.month = next;
     syncMonthUi();
     if (opts && opts.reload === false) return;
-    if (state.tab === "me") loadMe();
-    else if (state.tab === "dept") loadDept();
+    if (state.tab === "me") {
+      var meP = loadMe();
+      // Режим «свободные даты» берёт занятость из отдела — обновляем вместе с месяцем.
+      if (state.calMode === "free") {
+        Promise.all([meP, loadDept()]).then(function () {
+          renderCalendar();
+        });
+      }
+    } else if (state.tab === "dept") loadDept();
     else if (state.tab === "sheet") loadSheet();
   }
 
@@ -2259,7 +2333,7 @@
       '<span><i class="swatch" style="background:#ffc107"></i> 0,5</span>' +
       '<span><i class="swatch" style="background:#e3f2fd"></i> отпуск</span>' +
       '<span><i class="swatch" style="background:#fce4ec"></i> больничный</span>' +
-      '<span><i class="swatch" style="background:#fff0f0;border:1px solid #e0a0a0"></i> выходной (календарь РФ)</span>' +
+      '<span><i class="swatch" style="background:#f1ecf7;border:1px solid #c9bdd9"></i> сб / вс / выходной</span>' +
       '<span><i class="swatch dg-ws-swatch-open"></i> на работе (таймер)</span>' +
       (withBusy
         ? '<span><i class="swatch" style="background:#ffebee"></i> занято в отделе</span>'
@@ -2464,14 +2538,27 @@
       .join("");
   }
 
+  /** Парсинг YYYY-MM-DD без сдвига TZ (mysql DATE / ISO). */
+  function parseVacYmd(v) {
+    if (v == null || v === "") return null;
+    if (Object.prototype.toString.call(v) === "[object Date]" && !isNaN(v.getTime())) {
+      return new Date(v.getFullYear(), v.getMonth(), v.getDate());
+    }
+    var s = String(v);
+    var m = s.match(/(\d{4})-(\d{2})-(\d{2})/);
+    if (!m) return null;
+    return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  }
+
   function busyDaysFromVacations(vacations, monthStr) {
     var pm = parseMonthValue(monthStr);
     var dim = daysInMonth(pm.y, pm.m);
     var set = {};
     (vacations || []).forEach(function (v) {
       if (v.status !== "approved" && v.status !== "pending") return;
-      var cur = new Date(v.date_from);
-      var end = new Date(v.date_to);
+      var cur = parseVacYmd(v.date_from);
+      var end = parseVacYmd(v.date_to);
+      if (!cur || !end) return;
       while (cur <= end) {
         if (cur.getFullYear() === pm.y && cur.getMonth() + 1 === pm.m) {
           set[cur.getDate()] = true;
@@ -2482,6 +2569,78 @@
     var out = [];
     for (var d = 1; d <= dim; d++) if (set[d]) out.push(d);
     return out;
+  }
+
+  /** Свой отдел для «свободных дат» (не чужой bundle админа). */
+  function ownDeptMonthBundle() {
+    var ownDeptId =
+      state.access && state.access.employee && state.access.employee.department_id
+        ? Number(state.access.employee.department_id)
+        : 0;
+    var bundles = state.deptBundles || [];
+    if (ownDeptId) {
+      for (var i = 0; i < bundles.length; i++) {
+        if (Number(bundles[i].department_id) === ownDeptId) return bundles[i];
+      }
+    }
+    return state.deptMonth || bundles[0] || null;
+  }
+
+  /**
+   * Занятые дни отдела: заявки pending/approved + дни type=vacation в табеле
+   * (ручная отметка без заявки — как у Глеба).
+   */
+  function busyDaysForFreeCalendar(monthStr) {
+    var dm = ownDeptMonthBundle();
+    var set = {};
+    busyDaysFromVacations((dm && dm.vacations) || [], monthStr).forEach(function (d) {
+      set[d] = true;
+    });
+    var cells = (dm && dm.cells) || {};
+    Object.keys(cells).forEach(function (empId) {
+      var byDay = cells[empId] || {};
+      Object.keys(byDay).forEach(function (dayKey) {
+        var c = byDay[dayKey];
+        if (c && c.type === "vacation") set[Number(dayKey)] = true;
+      });
+    });
+    var pm = parseMonthValue(monthStr);
+    var dim = daysInMonth(pm.y, pm.m);
+    var out = [];
+    for (var d = 1; d <= dim; d++) if (set[d]) out.push(d);
+    return out;
+  }
+
+  /** Кто в отпуске в день (для title в режиме «свободные даты»). */
+  function busyNamesForDay(day, monthStr) {
+    var dm = ownDeptMonthBundle();
+    if (!dm) return [];
+    var names = {};
+    var pm = parseMonthValue(monthStr);
+    var ymd =
+      pm.y +
+      "-" +
+      (pm.m < 10 ? "0" + pm.m : pm.m) +
+      "-" +
+      (day < 10 ? "0" + day : day);
+    (dm.vacations || []).forEach(function (v) {
+      if (v.status !== "approved" && v.status !== "pending") return;
+      if (String(v.date_from) <= ymd && String(v.date_to) >= ymd && v.full_name) {
+        names[v.full_name] = true;
+      }
+    });
+    var empById = {};
+    (dm.employees || []).forEach(function (e) {
+      empById[Number(e.id)] = e.full_name || "Сотрудник #" + e.id;
+    });
+    var cells = dm.cells || {};
+    Object.keys(cells).forEach(function (empId) {
+      var c = cells[empId] && cells[empId][day];
+      if (c && c.type === "vacation") {
+        names[empById[Number(empId)] || "Сотрудник #" + empId] = true;
+      }
+    });
+    return Object.keys(names);
   }
 
   function renderCalendar() {
@@ -2514,10 +2673,7 @@
     var firstWd = new Date(pm.y, pm.m - 1, 1).getDay();
     var startPad = (firstWd + 6) % 7;
     var cells = (state.meMonth && state.meMonth.cells) || {};
-    var busy = busyDaysFromVacations(
-      (state.deptMonth && state.deptMonth.vacations) || [],
-      monthStr
-    );
+    var busy = state.calMode === "free" ? busyDaysForFreeCalendar(monthStr) : [];
     var hoursMonth = 0;
     var daysWorked = 0;
     Object.keys(cells).forEach(function (k) {
@@ -2604,9 +2760,17 @@
         }
         body = '<div class="day-num">' + d + "</div>" + hoursLabel;
       } else {
-        body = '<div class="day-num">' + d + "</div>" + (busy.indexOf(d) >= 0 ? "занято" : "свободно");
+        var isBusy = busy.indexOf(d) >= 0;
+        body = '<div class="day-num">' + d + "</div>" + (isBusy ? "занято" : "свободно");
+        if (isBusy) {
+          var who = busyNamesForDay(d, monthStr);
+          if (who.length) {
+            dayTip = (dayTip ? dayTip + " · " : "") + "В отпуске: " + who.join(", ");
+          }
+        }
       }
-      var titleAttr = dayTip || (state.calMode === "mine" ? "Открыть детали дня" : "");
+      var titleAttr =
+        dayTip || (state.calMode === "mine" ? "Открыть детали дня" : "");
       html +=
         '<div class="' +
         cls.join(" ") +
@@ -2708,7 +2872,7 @@
   }
 
   function cellLabel(c) {
-    if (!c) return { cls: "c-0", label: "" };
+    if (!c) return { cls: "", label: "" };
     var cls;
     var label;
     if (c.type === "vacation") {
@@ -2723,11 +2887,18 @@
     } else if (Number(c.rate) === 0.5) {
       cls = "c-05";
       label = "½";
-    } else {
+    } else if (c.open) {
       cls = "c-0";
-      label = c.open ? "▶" : "0";
+      label = "▶";
+    } else if (Number(c.hours) > 0) {
+      cls = "c-0";
+      label = "·";
+    } else {
+      /* work/0/0 — пустая ячейка (строка-заглушка или после снятия отпуска) */
+      cls = "";
+      label = "";
     }
-    if (c.open) cls += " c-open";
+    if (c.open) cls += (cls ? " " : "") + "c-open";
     return { cls: cls, label: label };
   }
 
@@ -2801,10 +2972,13 @@
           for (var day = 1; day <= dim; day++) {
             var c = (dm.cells[e.id] && dm.cells[e.id][day]) || null;
             var L = cellLabel(c);
+            var weCls = dayIsNonWorkCol(pm.y, pm.m, day, dm.calendar || activeMonthCalendar())
+              ? " dg-ws-we"
+              : "";
             var click = canEdit
               ? ' cell-click" data-emp="' + e.id + '" data-day="' + day + '" data-dept="' + (dm.department_id || "") + '"'
               : '"';
-            html += '<td class="' + L.cls + click + ">" + L.label + "</td>";
+            html += '<td class="' + L.cls + weCls + click + ">" + L.label + "</td>";
           }
           html += "</tr>";
         });
@@ -3105,6 +3279,7 @@
           money(totPlan) +
           "</span></td>";
         var sum = 0;
+        var sheetCal = sh.calendar || activeMonthCalendar();
         for (var day = 1; day <= dim; day++) {
           var c = (sh.cells[e.id] && sh.cells[e.id][day]) || null;
           var L = cellLabel(c);
@@ -3114,9 +3289,11 @@
           }
           var selKey = e.id + ":" + day;
           var selCls = state.bulkSelected[selKey] ? " dg-ws-bulk-sel" : "";
+          var weCls = dayIsNonWorkCol(pm.y, pm.m, day, sheetCal) ? " dg-ws-we" : "";
           html +=
             '<td class="cell-click ' +
             L.cls +
+            weCls +
             selCls +
             '" data-emp="' +
             e.id +
@@ -3581,10 +3758,23 @@
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
-      }).then(function () {
-        toast("success", "Ячейка сохранена");
+      }).then(function (j) {
+        var cleared =
+          body.type === "work" && !(Number(body.rate) > 0) && !(Number(body.hours) > 0);
+        if (j && j.skipped_open) {
+          toast("warning", "Нельзя очистить день с открытой сменой — сначала завершите таймер");
+          return;
+        }
+        toast("success", cleared ? "День очищен" : "Ячейка сохранена");
         if (editSource === "sheet") {
-          showActionLog("Правка: emp=" + body.employee_id + ", " + workDate + ", rate=" + body.rate);
+          showActionLog(
+            (cleared ? "Очистка" : "Правка") +
+              ": emp=" +
+              body.employee_id +
+              ", " +
+              workDate +
+              (cleared ? "" : ", rate=" + body.rate)
+          );
         }
         showCellOverlay(false);
         state.editCell = null;
@@ -3724,6 +3914,7 @@
     var map = {
       manual_create: "добавил день в табель",
       manual_edit: "изменил день",
+      manual_clear: "очистил день в табеле",
       manual_bulk: "массовая правка дней",
       manual_restore_full_day: "восстановил полный день",
       premium_manual_set: "задал премию вручную",
@@ -4048,7 +4239,7 @@
         document.querySelectorAll("[data-dg-ws-cal-mode]").forEach(function (b) {
           b.classList.toggle("active", b === btn);
         });
-        if (state.calMode === "free" && !state.deptMonth) {
+        if (state.calMode === "free") {
           loadDept().then(renderCalendar);
         } else renderCalendar();
       });
@@ -4257,6 +4448,18 @@
     }
     var saveBtn = document.getElementById("dg-ws-cell-save");
     if (saveBtn) saveBtn.addEventListener("click", saveCellModal);
+    var clearBtn = document.getElementById("dg-ws-cell-clear");
+    if (clearBtn) {
+      clearBtn.addEventListener("click", function () {
+        var rate = document.getElementById("dg-ws-cell-rate");
+        var hours = document.getElementById("dg-ws-cell-hours");
+        var type = document.getElementById("dg-ws-cell-type");
+        if (type) type.value = "work";
+        if (rate) rate.value = "0";
+        if (hours) hours.value = "0";
+        saveCellModal();
+      });
+    }
     ["dg-ws-cell-cancel", "dg-ws-cell-close", "dg-ws-cell-backdrop"].forEach(function (id) {
       var el = document.getElementById(id);
       if (el)

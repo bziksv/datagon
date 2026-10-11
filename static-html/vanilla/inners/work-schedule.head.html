@@ -222,13 +222,19 @@
   }
 
   .dg-ws-sheet-wrap {
+    /* Только горизонтальный скролл — по высоте таблица на весь контент, без внутреннего «сверху вниз» */
     overflow-x: auto;
+    overflow-y: visible;
     max-width: 100%;
+    max-height: none;
     border: 1px solid #eef0f3;
     border-radius: 0.25rem;
+    -webkit-overflow-scrolling: touch;
   }
   .dg-ws-sheet {
-    border-collapse: collapse;
+    /* separate: иначе sticky thead часто ломается в Chromium при collapse */
+    border-collapse: separate;
+    border-spacing: 0;
     width: max-content;
     min-width: 100%;
     font-size: 0.78rem;
@@ -237,11 +243,41 @@
   .dg-ws-sheet th,
   .dg-ws-sheet td {
     border: 1px solid #e6e9ee;
+    border-top-width: 0;
+    border-left-width: 0;
     padding: 0.2rem 0.35rem;
     text-align: center;
     white-space: nowrap;
   }
+  .dg-ws-sheet tr > *:first-child {
+    border-left-width: 1px;
+  }
+  .dg-ws-sheet thead tr > th,
+  .dg-ws-sheet tbody tr:first-child > * {
+    border-top-width: 1px;
+  }
   .dg-ws-sheet th { background: #f4f6f9; }
+  /* Плавающая 1-я строка (названия колонок) при вертикальном скролле табеля */
+  .dg-ws-sheet thead th {
+    position: sticky;
+    top: 0;
+    z-index: 4;
+    background: #f4f6f9;
+    box-shadow: 0 1px 0 #dfe3e8;
+  }
+  .dg-ws-sheet thead th.dg-ws-pay-h {
+    background: #eef2f7;
+  }
+  .dg-ws-sheet thead th.dg-ws-pay-h.dg-ws-pay-total-h {
+    background: #e8eef6;
+  }
+  .dg-ws-sheet thead th.dg-ws-day-h.weekend,
+  .dg-ws-sheet thead th.dg-ws-day-h.nonwork {
+    background: #f1ecf7;
+  }
+  .dg-ws-sheet thead th.dg-ws-day-h.short-day {
+    background: #fff8e8;
+  }
   .dg-ws-sheet th.dg-ws-day-h {
     line-height: 1.15;
     padding: 0.25rem 0.3rem;
@@ -261,11 +297,11 @@
   }
   .dg-ws-sheet th.dg-ws-day-h.weekend .dg-ws-day-wd,
   .dg-ws-sheet th.dg-ws-day-h.nonwork .dg-ws-day-wd {
-    color: #c0392b;
+    color: #6f5a8c;
   }
   .dg-ws-sheet th.dg-ws-day-h.weekend,
   .dg-ws-sheet th.dg-ws-day-h.nonwork {
-    background: #faf2f2;
+    background: #f1ecf7;
   }
   .dg-ws-sheet th.dg-ws-day-h.short-day {
     background: #fff8e8;
@@ -276,11 +312,17 @@
     position: sticky;
     left: 0;
     background: #fff;
-    z-index: 1;
+    z-index: 2;
     min-width: 140px;
     font-weight: 500;
   }
-  .dg-ws-sheet th.emp { z-index: 2; background: #f4f6f9; }
+  /* Угол: и сверху, и слева */
+  .dg-ws-sheet thead th.emp {
+    z-index: 6;
+    background: #f4f6f9;
+    left: 0;
+    top: 0;
+  }
   .dg-ws-sheet th.dg-ws-pay-h.dg-ws-pay-total-h,
   .dg-ws-sheet td.dg-ws-pay-total {
     min-width: 7.5rem;
@@ -366,6 +408,27 @@
   .dg-ws-sheet .c-0 { background: #fafafa; color: #adb5bd; }
   .dg-ws-sheet .c-v { background: #e3f2fd; }
   .dg-ws-sheet .c-s { background: #fce4ec; }
+  /* Сб/вс и выходные РФ — мягкий лиловый (не пересекается с зелёным/жёлтым/синим/розовым статусов) */
+  .dg-ws-sheet td.dg-ws-we {
+    background-color: #f1ecf7;
+    box-shadow: inset 0 0 0 999px rgba(105, 80, 140, 0.06);
+  }
+  .dg-ws-sheet td.dg-ws-we.c-0 {
+    background-color: #ebe4f4;
+    color: #9a8eb0;
+  }
+  .dg-ws-sheet td.dg-ws-we.c-1 {
+    background-color: #e2ebe6;
+  }
+  .dg-ws-sheet td.dg-ws-we.c-05 {
+    background-color: #f3ecd9;
+  }
+  .dg-ws-sheet td.dg-ws-we.c-v {
+    background-color: #e4e8f4;
+  }
+  .dg-ws-sheet td.dg-ws-we.c-s {
+    background-color: #f3e6ef;
+  }
   /* Открытый таймер: мягкое светло-зелёное мигание */
   @keyframes dg-ws-open-pulse {
     0%, 100% { background-color: #c8f0d0; box-shadow: inset 0 0 0 1px rgba(40, 167, 69, 0.35); }

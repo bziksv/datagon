@@ -693,6 +693,112 @@ module.exports = function exportsNewProductsRouterFactory(db, config, appSetting
     });
 
     /**
+     * Сводка размещения для полосы KPI на вкладке Альмамед (снимок «сейчас»).
+     * Без периода: воронка WIP + покрытие маркетплейсов для строк с sell_on_markets.
+     */
+    router.get('/placement-overview', async (req, res) => {
+        try {
+            await ensureSchema(db);
+            const WIP = `status IN ('new','not_added','in_progress','revision','review')`;
+            const [[a]] = await db.query(
+                `SELECT
+                    COUNT(*) AS total,
+                    SUM(${WIP}) AS wip,
+                    SUM(status = 'new') AS st_new,
+                    SUM(status = 'not_added') AS st_not_added,
+                    SUM(status = 'in_progress') AS st_in_progress,
+                    SUM(status = 'revision') AS st_revision,
+                    SUM(status = 'review') AS st_review,
+                    SUM(status = 'verified') AS st_verified,
+                    SUM(status = 'added') AS st_added,
+                    SUM(${WIP} AND DATEDIFF(CURDATE(), DATE(created_at)) > 14) AS wip_stale14,
+                    SUM(${WIP} AND priority = 'important') AS wip_important,
+                    SUM(COALESCE(sell_on_markets, 0) = 1) AS markets_flag,
+                    SUM(COALESCE(has_kits, 0) = 1) AS kits_flag
+                   FROM dg_new_products
+                  WHERE channel = 'almamed' AND status <> 'removed'`
+            );
+            const [[mp]] = await db.query(
+                `SELECT
+                    COUNT(*) AS linked,
+                    SUM(m.status IN ('new','not_added','in_progress','revision','review')) AS mp_wip,
+                    SUM(m.status = 'added') AS mp_added,
+                    SUM(COALESCE(m.placement_ozon, 0) = 1) AS ozon,
+                    SUM(COALESCE(m.placement_wb, 0) = 1) AS wb,
+                    SUM(COALESCE(m.placement_ym, 0) = 1) AS ym,
+                    SUM(
+                      COALESCE(m.placement_ozon, 0) = 1
+                      AND COALESCE(m.placement_wb, 0) = 1
+                      AND COALESCE(m.placement_ym, 0) = 1
+                    ) AS all3,
+                    SUM(
+                      COALESCE(m.placement_ozon, 0) = 0
+                      AND COALESCE(m.placement_wb, 0) = 0
+                      AND COALESCE(m.placement_ym, 0) = 0
+                    ) AS none_live
+                   FROM dg_new_products a
+                   INNER JOIN dg_new_products m
+                     ON m.source_almamed_id = a.id
+                    AND m.channel = 'marketplaces'
+                    AND m.status <> 'removed'
+                  WHERE a.channel = 'almamed'
+                    AND a.status <> 'removed'
+                    AND COALESCE(a.sell_on_markets, 0) = 1`
+            );
+            const [[orphan]] = await db.query(
+                `SELECT COUNT(*) AS c
+                   FROM dg_new_products a
+                  WHERE a.channel = 'almamed'
+                    AND a.status <> 'removed'
+                    AND COALESCE(a.sell_on_markets, 0) = 1
+                    AND NOT EXISTS (
+                      SELECT 1 FROM dg_new_products m
+                       WHERE m.source_almamed_id = a.id
+                         AND m.channel = 'marketplaces'
+                         AND m.status <> 'removed'
+                    )`
+            );
+            const n = (v) => Number(v) || 0;
+            res.json({
+                success: true,
+                channel: 'almamed',
+                generated_at: new Date().toISOString(),
+                almamed: {
+                    total: n(a && a.total),
+                    wip: n(a && a.wip),
+                    by_status: {
+                        new: n(a && a.st_new),
+                        not_added: n(a && a.st_not_added),
+                        in_progress: n(a && a.st_in_progress),
+                        revision: n(a && a.st_revision),
+                        review: n(a && a.st_review),
+                        verified: n(a && a.st_verified),
+                        added: n(a && a.st_added),
+                    },
+                    wip_stale14: n(a && a.wip_stale14),
+                    wip_important: n(a && a.wip_important),
+                    markets_flag: n(a && a.markets_flag),
+                    kits_flag: n(a && a.kits_flag),
+                },
+                markets: {
+                    linked: n(mp && mp.linked),
+                    wip: n(mp && mp.mp_wip),
+                    added: n(mp && mp.mp_added),
+                    ozon: n(mp && mp.ozon),
+                    wb: n(mp && mp.wb),
+                    ym: n(mp && mp.ym),
+                    all3: n(mp && mp.all3),
+                    none_live: n(mp && mp.none_live),
+                    flag_without_row: n(orphan && orphan.c),
+                },
+            });
+        } catch (e) {
+            console.error('[new-products] placement-overview', e);
+            res.status(500).json({ success: false, error: e.message || 'Ошибка сводки' });
+        }
+    });
+
+    /**
      * KPI контент-отдела: добавления/день, время до размещения, доработки.
      * Query: from, to (YYYY-MM-DD), channel=all|almamed|marketplaces.
      */
@@ -1291,6 +1397,12 @@ module.exports = function exportsNewProductsRouterFactory(db, config, appSetting
                 (String(req.query.exclude_verified || '') === '1' ||
                     String(req.query.hide_placed || '') === '1' ||
                     String(req.query.hide_placed || '').toLowerCase() === 'yes');
+            const wipOnly = String(req.query.wip || '') === '1';
+            let staleDays = parseInt(req.query.stale_days, 10);
+            if (!Number.isFinite(staleDays) || staleDays < 1) staleDays = 0;
+            const placement = String(req.query.placement || '')
+                .trim()
+                .toLowerCase();
 
             let limit = parseInt(req.query.limit, 10);
             if (!Number.isFinite(limit) || limit < 1) limit = 100;
@@ -1304,6 +1416,7 @@ module.exports = function exportsNewProductsRouterFactory(db, config, appSetting
 
             const where = ['channel = ?'];
             const params = [channel];
+            const WIP_SQL = `status IN ('new','not_added','in_progress','revision','review')`;
 
             if (status && STATUSES.has(status)) {
                 where.push('status = ?');
@@ -1318,6 +1431,26 @@ module.exports = function exportsNewProductsRouterFactory(db, config, appSetting
                 if (excludeVerified) {
                     where.push("status <> 'verified'");
                 }
+            }
+            if ((wipOnly || staleDays > 0) && !(status && STATUSES.has(status))) {
+                where.push(WIP_SQL);
+            }
+            if (staleDays > 0) {
+                where.push('DATEDIFF(CURDATE(), DATE(created_at)) > ?');
+                params.push(staleDays);
+            }
+            if (placement === 'none') {
+                where.push(
+                    'COALESCE(placement_ozon,0)=0 AND COALESCE(placement_wb,0)=0 AND COALESCE(placement_ym,0)=0'
+                );
+            } else if (placement === 'all3') {
+                where.push(
+                    'COALESCE(placement_ozon,0)=1 AND COALESCE(placement_wb,0)=1 AND COALESCE(placement_ym,0)=1'
+                );
+            } else if (placement === 'any') {
+                where.push(
+                    '(COALESCE(placement_ozon,0)=1 OR COALESCE(placement_wb,0)=1 OR COALESCE(placement_ym,0)=1)'
+                );
             }
             if (priority && PRIORITIES.has(priority)) {
                 where.push('priority = ?');
@@ -1415,6 +1548,9 @@ module.exports = function exportsNewProductsRouterFactory(db, config, appSetting
                     responsible,
                     manager,
                     exclude_verified: excludeVerified ? '1' : '0',
+                    wip: wipOnly ? '1' : '0',
+                    stale_days: staleDays > 0 ? String(staleDays) : '',
+                    placement: placement === 'none' || placement === 'all3' || placement === 'any' ? placement : '',
                 },
                 sort_by: sortBy,
                 sort_dir: sortDesc ? 'desc' : 'asc',

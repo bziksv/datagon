@@ -434,7 +434,9 @@ function assemble() {
             BODY_ATTRS: 'class="datagon-vanilla-body" data-dg-active-nav="exports-new-products"',
             EXTRA_HEAD: read(path.join(vanillaDir, 'inners/exports-new-products.head.html')),
             MAIN_INNER: read(path.join(vanillaDir, 'inners/exports-new-products.inner.html')),
-            PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/exports-new-products.scripts.html')),
+            PAGE_SCRIPTS:
+                read(path.join(vanillaDir, 'inners/exports-new-products.scripts.html')) +
+                read(path.join(vanillaDir, 'inners/exports-new-products-updates.scripts.html')),
         },
         {
             out: 'exports-photoshoot.html',
