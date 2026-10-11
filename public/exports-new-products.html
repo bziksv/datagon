@@ -1476,27 +1476,62 @@
       line-height: 1;
       flex-shrink: 0;
     }
-    /* Разделители сайдбара — как в ArchitectUI (.nav-item.nav-item-divider):
-       на всю ширину колонки, без бокового inset (иначе линии «короче» текста и выглядят криво). */
-    .dg-sidebar-nav-divider {
-      list-style: none;
-      pointer-events: none;
-      margin: 0;
-      padding: 0;
-      height: auto !important;
-      min-height: 0;
-    }
-    .dg-sidebar-nav-divider .nav-item-divider,
-    .dg-sidebar-nav-divider.nav-item-divider {
-      display: block;
-      background: #dee2e6;
-      height: 1px;
-      margin: 0.5rem 0;
-      overflow: hidden;
-      border: 0;
-      padding: 0;
+    /*
+      Сайдбар: flex min-width:auto + overflow-y:auto раздували .app-sidebar__inner /
+      .custom-scrollbar до ~297px при колонке 280px — линии разделителей рисовались
+      за правым краем белой панели. Жёстко держим цепочку в ширине колонки.
+    */
+    .datagon-vanilla-shell .app-sidebar > .d-flex.flex-column,
+    .datagon-vanilla-shell .app-sidebar .dg-sidebar-nav-wrap,
+    .datagon-vanilla-shell .app-sidebar .app-sidebar__inner {
+      min-width: 0;
+      max-width: 100%;
       width: 100%;
       box-sizing: border-box;
+    }
+    .datagon-vanilla-shell .app-sidebar .dg-sidebar-nav-wrap {
+      overflow-x: hidden;
+      /* тема даёт z-index:15 — при сбое ширины слой мог торчать поверх контента */
+      z-index: auto;
+    }
+    /*
+      Разделители: сам li — полоска (как ArchitectUI .nav-item-divider),
+      inset 0.5rem по бокам как у ссылок. Внутренний .nav-item-divider скрыт —
+      в flex-меню пустой 1px-div нестабильно рисуется.
+    */
+    .vertical-nav-menu .metismenu-item.dg-sidebar-nav-divider {
+      list-style: none;
+      pointer-events: none;
+      display: block !important;
+      margin: 0.5rem 0.5rem !important;
+      padding: 0 !important;
+      /* как ArchitectUI .nav-item-divider: тонкая 1px */
+      height: 1px !important;
+      min-height: 1px !important;
+      max-height: 1px !important;
+      line-height: 0 !important;
+      overflow: hidden !important;
+      flex: 0 0 auto !important;
+      border: 0 !important;
+      background: #dee2e6 !important;
+      box-shadow: none !important;
+    }
+    .vertical-nav-menu .metismenu-item.dg-sidebar-nav-divider .nav-item-divider {
+      display: none !important;
+    }
+    /*
+      Свёрнутый сайдбар: чёрточка по центру иконок (у темы icon ~x=50 в колонке 80px,
+      а не геометрический центр контента с padding 24px — auto-margin давал сдвиг влево).
+    */
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:not(:hover)
+      .vertical-nav-menu
+      .metismenu-item.dg-sidebar-nav-divider {
+      width: 1.25rem !important;
+      max-width: 1.25rem !important;
+      margin-left: 1rem !important;
+      margin-right: auto !important;
+      margin-top: 0.45rem !important;
+      margin-bottom: 0.45rem !important;
     }
     .datagon-vanilla-shell .app-footer .app-footer__inner {
       display: flex;
