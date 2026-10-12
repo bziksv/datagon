@@ -12,6 +12,7 @@ const {
 } = require('../lib/managerSalesMonthBonus');
 const bitcop = require('../lib/datagonBitcopClient');
 const rfCalendar = require('../lib/datagonWorkCalendarRf');
+const empComp = require('../lib/datagonWorkScheduleComp');
 
 let schemaReady = false;
 
@@ -327,15 +328,21 @@ async function recalcPayroll(db, employeeId, periodYm) {
     const to = `${periodYm}-${String(dim).padStart(2, '0')}`;
 
     const [logs] = await db.query(
-        `SELECT rate, type, hours_worked FROM ws_work_log
+        `SELECT DATE_FORMAT(work_date, '%Y-%m-%d') AS work_ymd, rate, type, hours_worked, hours_bitcop
+         FROM ws_work_log
          WHERE employee_id = ? AND work_date BETWEEN ? AND ?`,
         [employeeId, from, to]
     );
-    let worked = 0;
-    for (const L of logs) {
-        if (L.type === 'work') worked += Number(L.rate) || 0;
-        else if (L.type === 'vacation' || L.type === 'sick' || L.type === 'business_trip') worked += 1;
-    }
+    const comps = await empComp.loadCompensationOverlapping(db, employeeId, from, to);
+    const dept = { premium_rule_json: emp.dept_premium_rule_json };
+    const payBits = empComp.computePayFromLogs(logs, comps, emp, dept, normDays);
+    const payType = calc.normalizePayType(
+        empComp.pickCompOnDate(comps, from, emp)?.pay_type || emp.pay_type
+    );
+    const salary = Number(empComp.pickCompOnDate(comps, from, emp)?.salary) || Number(emp.salary) || 0;
+    const worked = payBits.worked_days;
+    const hoursWorked = payBits.hours_worked;
+    const base = payBits.base;
 
     const [sicks] = await db.query(
         `SELECT official, amount, date_from, date_to FROM ws_sick_leave
@@ -347,12 +354,12 @@ async function recalcPayroll(db, employeeId, periodYm) {
         sickPay += Number(s.amount) || 0;
     }
 
-    const [comps] = await db.query(
+    const [vcomps] = await db.query(
         `SELECT amount FROM ws_vacation_compensation WHERE employee_id = ? AND DATE_FORMAT(created_at, '%Y-%m') = ?`,
         [employeeId, periodYm]
     );
     let vacationCompensation = 0;
-    for (const c of comps) vacationCompensation += Number(c.amount) || 0;
+    for (const c of vcomps) vacationCompensation += Number(c.amount) || 0;
 
     const [abs] = await db.query(
         `SELECT type, paid, amount FROM ws_absence
@@ -366,16 +373,13 @@ async function recalcPayroll(db, employeeId, periodYm) {
         else if (a.paid) dayoffPay += Number(a.amount) || 0;
     }
 
-    const salary = Number(emp.salary) || 0;
-    const base = calc.prorateByWorkedDays(salary, worked, normDays);
     const senDisabled = Number(emp.seniority_pay_disabled) === 1;
     const senParams = calc.resolveSeniorityParams(emp, emp);
     const seniorityFull = senDisabled
         ? 0
         : calc.seniorityBonus(emp.hire_date, `${periodYm}-28`, senParams);
     const seniority = calc.prorateByWorkedDays(seniorityFull, worked, normDays);
-    const premiumRule = calc.resolvePremiumRule(emp, emp);
-    const premiumFromRule = calc.computePremium(premiumRule, { workedDays: worked, normDays });
+    const premiumFromRule = payBits.premium_from_rule;
     const [prevPay] = await db.query(
         `SELECT premium_manual, premium_source FROM ws_payroll_entry WHERE employee_id=? AND period_ym=? LIMIT 1`,
         [employeeId, periodYm]
@@ -431,10 +435,12 @@ async function recalcPayroll(db, employeeId, periodYm) {
     return {
         employee_id: employeeId,
         period_ym: periodYm,
-        /** Полный месячный оклад (ставка в карточке), не пропорциональный. */
+        pay_type: payType,
+        /** Оклад (месяц) или ставка ₽/ч при pay_type=hourly. */
         salary_rate: salary,
-        /** Накапало по отработанным ставкам: salary × worked/norm. */
+        /** salary: salary × worked/norm; hourly: hours × ставка. */
         base_salary: base,
+        hours_worked: hoursWorked,
         premium,
         premium_from_rule: premiumFromRule,
         premium_manual: premiumManual,
@@ -634,6 +640,334 @@ async function syncSalesPremiums(db, req, opts) {
     };
 }
 
+/**
+ * Продуктивные часы Bitcop → ws_work_log.
+ * opts: date_from/date_to | days | period_ym; only_hourly; dry_run; force;
+ * organization_id; department_id; employee_id; actorId; req (для audit).
+ */
+async function runBitcopHoursSync(db, opts = {}) {
+    const t0 = Date.now();
+    const dryRun = !!opts.dry_run;
+    const force = !!opts.force;
+    const orgId = opts.organization_id ? Number(opts.organization_id) : null;
+    const deptId = opts.department_id ? Number(opts.department_id) : null;
+    const onlyEmp = opts.employee_id ? Number(opts.employee_id) : null;
+    const onlyHourly =
+        opts.pay_type === 'hourly' || opts.only_hourly === true || opts.only_hourly === 1;
+    const actorId = opts.actorId != null ? opts.actorId : null;
+    const auditReq = opts.req || { user: actorId ? { id: actorId } : null, headers: {}, socket: {} };
+
+    let dateFrom = calc.toYmd(opts.date_from);
+    let dateTo = calc.toYmd(opts.date_to);
+    let rangeMode = 'custom';
+    if (dateFrom && dateTo) {
+        if (dateFrom > dateTo) {
+            const err = new Error('date_from > date_to');
+            err.status = 400;
+            throw err;
+        }
+        rangeMode = 'dates';
+    } else if (opts.period_ym != null && String(opts.period_ym).trim() !== '') {
+        const periodYm = String(opts.period_ym).trim();
+        if (!/^\d{4}-\d{2}$/.test(periodYm)) {
+            const err = new Error('period_ym required (YYYY-MM)');
+            err.status = 400;
+            throw err;
+        }
+        const dim = calc.daysInMonthYm(periodYm);
+        dateFrom = `${periodYm}-01`;
+        dateTo = `${periodYm}-${String(dim).padStart(2, '0')}`;
+        rangeMode = 'month';
+    } else {
+        const days = opts.days != null ? Number(opts.days) : 7;
+        const r = calc.lastNDaysRangeMoscow(days);
+        dateFrom = r.date_from;
+        dateTo = r.date_to;
+        rangeMode = 'last_n_days';
+    }
+    const daysList = calc.eachYmdInclusive(dateFrom, dateTo);
+    if (!daysList.length) {
+        const err = new Error('empty date range');
+        err.status = 400;
+        throw err;
+    }
+    if (daysList.length > 93) {
+        const err = new Error('max 93 days per sync');
+        err.status = 400;
+        throw err;
+    }
+
+    let esql = `SELECT e.id, e.bitcop_employee_id, e.salary, e.pay_type, e.hire_date,
+                       e.personal_schedule_type, e.personal_work_hours_per_day,
+                       e.personal_rate_full_hours, e.personal_rate_half_hours,
+                       u.full_name, d.schedule_type, d.norm_hours, d.rate_full_hours, d.rate_half_hours
+                FROM ws_employee e
+                JOIN users u ON u.id=e.user_id
+                JOIN ws_department d ON d.id=e.department_id
+                WHERE e.bitcop_employee_id IS NOT NULL AND e.bitcop_employee_id > 0
+                  AND (e.fire_date IS NULL OR e.fire_date >= ?)`;
+    const params = [dateFrom];
+    if (onlyHourly) esql += " AND e.pay_type='hourly'";
+    if (orgId) {
+        esql += ' AND e.organization_id=?';
+        params.push(orgId);
+    }
+    if (deptId) {
+        esql += ' AND e.department_id=?';
+        params.push(deptId);
+    }
+    if (onlyEmp) {
+        esql += ' AND e.id=?';
+        params.push(onlyEmp);
+    }
+    const [emps] = await db.query(esql, params);
+    if (!(emps || []).length) {
+        return {
+            success: true,
+            dry_run: dryRun,
+            date_from: dateFrom,
+            date_to: dateTo,
+            range_mode: rangeMode,
+            metric: 'productiveTime',
+            total: 0,
+            updated: 0,
+            created: 0,
+            skipped: 0,
+            days: daysList.length,
+            employees: 0,
+            days_touched: 0,
+            failed: 0,
+            errors: [],
+            message: onlyHourly
+                ? 'Нет сотрудников с оплатой «по часам» и привязкой Bitcop'
+                : 'Нет сотрудников с привязкой Bitcop',
+            duration_sec: Math.round((Date.now() - t0) / 1000),
+        };
+    }
+
+    const metric = 'productiveTime';
+    const bitcopIds = [...new Set(emps.map((e) => Number(e.bitcop_employee_id)).filter((n) => n > 0))];
+    let updated = 0;
+    let created = 0;
+    let skipped = 0;
+    let daysTouched = 0;
+    const errors = [];
+    const payrollKeys = new Map();
+    const PROTECTED = new Set(['vacation', 'sick', 'dayoff', 'business_trip']);
+
+    for (const ymd of daysList) {
+        const range = bitcop.dayRangeBitcop(ymd);
+        let prodMap = new Map();
+        try {
+            // eslint-disable-next-line no-await-in-loop
+            prodMap = await bitcop.fetchProductivityMap(db, {
+                begin: range.begin,
+                end: range.end,
+                employeeIds: bitcopIds,
+            });
+        } catch (err) {
+            errors.push({ work_date: ymd, error: (err && err.message) || String(err) });
+            if (errors.length >= 20) break;
+            continue;
+        }
+
+        for (const e of emps) {
+            const bid = Number(e.bitcop_employee_id);
+            const row = prodMap.get(bid);
+            const sec = bitcop.pickMetricSeconds(row, metric);
+            const hours = bitcop.secondsToHours(sec);
+            if (hours <= 0) {
+                skipped += 1;
+                continue;
+            }
+            const thr = calc.resolveEmployeeThresholds(e, e);
+            const payType = calc.normalizePayType(e.pay_type);
+            /** Почасовым ставка дня не нужна — платим по hours_bitcop; иначе пороги дают ложные «½». */
+            const rate = payType === 'hourly' ? 0 : calc.rateFromHours(hours, thr);
+            // eslint-disable-next-line no-await-in-loop
+            const [ex] = await db.query(
+                `SELECT id, type, rate, hours_worked, hours_bitcop, source, check_in, check_out, segments_json
+                 FROM ws_work_log
+                 WHERE employee_id=? AND work_date=? LIMIT 1`,
+                [e.id, ymd]
+            );
+            if (ex.length && PROTECTED.has(String(ex[0].type)) && !force) {
+                skipped += 1;
+                continue;
+            }
+            const row0 = ex[0] || null;
+            const src0 = row0 ? String(row0.source || '') : '';
+            const hasSeg =
+                row0 &&
+                row0.segments_json != null &&
+                String(row0.segments_json) !== '' &&
+                String(row0.segments_json) !== 'null' &&
+                String(row0.segments_json) !== '[]';
+            /** Не затираем таймер/ручную правку — только дополняем hours_bitcop. */
+            const lockTimer =
+                !!row0 &&
+                !force &&
+                (row0.check_in != null ||
+                    row0.check_out != null ||
+                    hasSeg ||
+                    src0 === 'clock' ||
+                    src0 === 'manual' ||
+                    (Number(row0.hours_worked) > 0 && src0 !== 'bitcop' && src0 !== ''));
+            const sameBit =
+                row0 &&
+                Math.abs(Number(row0.hours_bitcop || 0) - hours) < 0.005 &&
+                (lockTimer ||
+                    (src0 === 'bitcop' &&
+                        Math.abs(Number(row0.rate || 0) - rate) < 0.005 &&
+                        (payType === 'hourly'
+                            ? row0.hours_worked == null || Number(row0.hours_worked) === 0
+                            : Math.abs(Number(row0.hours_worked || 0) - hours) < 0.005)));
+            if (sameBit) {
+                skipped += 1;
+                continue;
+            }
+            daysTouched += 1;
+            if (dryRun) {
+                if (ex.length) updated += 1;
+                else created += 1;
+                continue;
+            }
+            try {
+                if (ex.length) {
+                    if (lockTimer) {
+                        // eslint-disable-next-line no-await-in-loop
+                        await db.query(
+                            `UPDATE ws_work_log SET hours_bitcop=?, edited_by=?, edited_at=? WHERE id=?`,
+                            [hours, actorId, calc.moscowNowSql(), row0.id]
+                        );
+                    } else if (payType === 'hourly') {
+                        // eslint-disable-next-line no-await-in-loop
+                        await db.query(
+                            `UPDATE ws_work_log SET type='work', rate=0, hours_worked=NULL, hours_bitcop=?, source='bitcop',
+                             edited_by=?, edited_at=?, status='ok'
+                             WHERE id=?`,
+                            [hours, actorId, calc.moscowNowSql(), row0.id]
+                        );
+                    } else {
+                        // eslint-disable-next-line no-await-in-loop
+                        await db.query(
+                            `UPDATE ws_work_log SET type='work', rate=?, hours_worked=?, hours_bitcop=?, source='bitcop',
+                             edited_by=?, edited_at=?, status='ok'
+                             WHERE id=?`,
+                            [rate, hours, hours, actorId, calc.moscowNowSql(), row0.id]
+                        );
+                    }
+                    updated += 1;
+                } else if (payType === 'hourly') {
+                    // eslint-disable-next-line no-await-in-loop
+                    await db.query(
+                        `INSERT INTO ws_work_log
+                         (employee_id, work_date, type, rate, hours_worked, hours_bitcop, source, status, edited_by, edited_at)
+                         VALUES (?, ?, 'work', 0, NULL, ?, 'bitcop', 'ok', ?, ?)`,
+                        [e.id, ymd, hours, actorId, calc.moscowNowSql()]
+                    );
+                    created += 1;
+                } else {
+                    // eslint-disable-next-line no-await-in-loop
+                    await db.query(
+                        `INSERT INTO ws_work_log
+                         (employee_id, work_date, type, rate, hours_worked, hours_bitcop, source, status, edited_by, edited_at)
+                         VALUES (?, ?, 'work', ?, ?, ?, 'bitcop', 'ok', ?, ?)`,
+                        [e.id, ymd, rate, hours, hours, actorId, calc.moscowNowSql()]
+                    );
+                    created += 1;
+                }
+                const ym = ymd.slice(0, 7);
+                if (!payrollKeys.has(e.id)) payrollKeys.set(e.id, new Set());
+                payrollKeys.get(e.id).add(ym);
+            } catch (err) {
+                errors.push({
+                    employee_id: e.id,
+                    work_date: ymd,
+                    error: (err && err.message) || String(err),
+                });
+                if (errors.length >= 20) break;
+            }
+        }
+        if (errors.length >= 20) break;
+    }
+
+    if (!dryRun) {
+        for (const [empId, yms] of payrollKeys) {
+            for (const ym of yms) {
+                try {
+                    // eslint-disable-next-line no-await-in-loop
+                    await recalcPayroll(db, empId, ym);
+                } catch (err) {
+                    /* ignore */
+                }
+            }
+        }
+        try {
+            await writeAudit(db, auditReq, {
+                entity_type: 'work_log',
+                entity_id: `${dateFrom}_${dateTo}`,
+                action: 'bitcop_sync_hours',
+                new_value: JSON.stringify({
+                    updated,
+                    created,
+                    skipped,
+                    metric,
+                    date_from: dateFrom,
+                    date_to: dateTo,
+                    range_mode: rangeMode,
+                    employees: emps.length,
+                    failed: errors.length,
+                }),
+            });
+        } catch (err) {
+            /* audit optional for scheduler */
+        }
+    }
+
+    return {
+        success: errors.length === 0,
+        dry_run: dryRun,
+        date_from: dateFrom,
+        date_to: dateTo,
+        range_mode: rangeMode,
+        days: daysList.length,
+        metric,
+        employees: emps.length,
+        days_touched: daysTouched,
+        created,
+        updated,
+        skipped,
+        failed: errors.length,
+        errors,
+        duration_sec: Math.round((Date.now() - t0) / 1000),
+        message: dryRun
+            ? `Пробный прогон Bitcop ${dateFrom}…${dateTo}: к записи ${created + updated}, пропуск ${skipped}`
+            : `Bitcop ${dateFrom}…${dateTo}: создано ${created}, обновлено ${updated}, пропуск ${skipped}`,
+    };
+}
+
+/** Автосинк / «Запустить сейчас»: последние N дней, по умолчанию только pay_type=hourly. */
+async function triggerBitcopHoursSyncFromSettings(db, appSettings, opts = {}) {
+    const days = Math.max(
+        1,
+        Math.min(93, Number((appSettings && appSettings.auto_sync_bitcop_hours_days) || 7))
+    );
+    const onlyHourly =
+        Number((appSettings && appSettings.auto_sync_bitcop_hours_only_hourly) ?? 1) !== 0;
+    if (typeof opts.onProgress === 'function') {
+        opts.onProgress({
+            message: `Bitcop: продуктивные часы, ${days} дн.${onlyHourly ? ', только «по часам»' : ''}…`,
+        });
+    }
+    return runBitcopHoursSync(db, {
+        days,
+        only_hourly: onlyHourly,
+        dry_run: false,
+        actorId: null,
+    });
+}
+
 function createWorkScheduleRouter(db) {
     const router = express.Router();
 
@@ -779,9 +1113,33 @@ function createWorkScheduleRouter(db) {
     router.get('/departments', async (req, res) => {
         const a = actorOf(req);
         // Отделы общие для всех орг.; query organization_id игнорируется (back-compat).
-        // Сотрудник/рук: свой + headed + manage_scope; бухгалтерия — все (+ manage_scopes в карточке).
+        // Справочник для настроек / фильтров: accounting (admin, «Полный доступ», «Бухгалтерия») — все.
+        // Вкладка «Отдел» на табеле по-прежнему через /access → listVisibleDepartments (там уже Бухгалтерия = все).
+        if (isAccounting(a)) {
+            const [rows] = await db.query(
+                `SELECT d.*, u.full_name AS head_name
+                 FROM ws_department d
+                 LEFT JOIN users u ON u.id = d.head_user_id
+                 ORDER BY d.name`
+            );
+            const scopeMap = await loadManageScopesByManager(
+                db,
+                (rows || []).map((r) => Number(r.id))
+            );
+            return res.json({
+                success: true,
+                rows: (rows || []).map((d) => ({
+                    ...d,
+                    manage_scopes: scopeMap.get(Number(d.id)) || [],
+                    can_edit: true,
+                    is_own: false,
+                    is_headed: Number(d.head_user_id) === Number(a.id),
+                    via_manage: false,
+                })),
+            });
+        }
         const rows = await listVisibleDepartments(db, a);
-        if (!rows.length && !isAccounting(a)) {
+        if (!rows.length) {
             return res.status(403).json({ success: false, error: 'forbidden' });
         }
         res.json({ success: true, rows });
@@ -921,12 +1279,13 @@ function createWorkScheduleRouter(db) {
         const userId = Number(b.user_id);
         if (!userId) return res.status(400).json({ success: false, error: 'user_id required' });
         try {
+            const payType = calc.normalizePayType(b.pay_type);
             const [r] = await db.query(
                 `INSERT INTO ws_employee
-                 (user_id, organization_id, department_id, position, hire_date, fire_date, salary, grade,
+                 (user_id, organization_id, department_id, position, hire_date, fire_date, salary, pay_type, grade,
                   official_employment, personal_work_hours_per_day, personal_rate_full_hours, personal_rate_half_hours,
                   personal_sick_leave_rate, personal_schedule_type, personal_premium_rule_json)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
                     userId,
                     Number(b.organization_id),
@@ -935,6 +1294,7 @@ function createWorkScheduleRouter(db) {
                     dateOnlyYmd(b.hire_date),
                     dateOnlyYmd(b.fire_date),
                     Number(b.salary) || 0,
+                    payType,
                     b.grade || null,
                     b.official_employment ? 1 : 0,
                     b.personal_work_hours_per_day !== '' && b.personal_work_hours_per_day != null
@@ -954,6 +1314,23 @@ function createWorkScheduleRouter(db) {
                 ]
             );
             const newSalary = Number(b.salary) || 0;
+            let premJson = null;
+            try {
+                const raw = normalizePremiumRuleBody(b.personal_premium_rule_json, { allowInherit: true });
+                premJson = raw ? JSON.parse(raw) : null;
+            } catch (e) {
+                premJson = null;
+            }
+            await empComp.insertCompensation(db, {
+                employeeId: r.insertId,
+                date_from: dateOnlyYmd(b.hire_date) || calc.moscowYmd(),
+                date_to: null,
+                pay_type: payType,
+                salary: newSalary,
+                premium_rule_json: premJson,
+                note: 'create',
+                actorId: actorOf(req).id || null,
+            });
             await writeAudit(db, req, {
                 entity_type: 'employee',
                 entity_id: r.insertId,
@@ -976,18 +1353,23 @@ function createWorkScheduleRouter(db) {
         const id = Number(req.params.id);
         const b = req.body || {};
         const nullIfEmpty = (v) => (v === '' || v == null ? null : Number(v));
-        const [prevRows] = await db.query(`SELECT salary FROM ws_employee WHERE id=? LIMIT 1`, [id]);
+        const [prevRows] = await db.query(
+            `SELECT salary, pay_type, personal_premium_rule_json FROM ws_employee WHERE id=? LIMIT 1`,
+            [id]
+        );
         if (!prevRows.length) return res.status(404).json({ success: false, error: 'not found' });
         const oldSalary = Number(prevRows[0].salary) || 0;
+        const oldPayType = calc.normalizePayType(prevRows[0].pay_type);
         const newSalary = Number(b.salary) || 0;
         const bitcopId =
             b.bitcop_employee_id === '' || b.bitcop_employee_id == null
                 ? null
                 : Number(b.bitcop_employee_id);
         const seniorityOff = b.seniority_pay_disabled === true || b.seniority_pay_disabled === 1 || b.seniority_pay_disabled === '1';
+        const payType = calc.normalizePayType(b.pay_type);
         await db.query(
             `UPDATE ws_employee SET
-             organization_id=?, department_id=?, position=?, hire_date=?, fire_date=?, salary=?, grade=?,
+             organization_id=?, department_id=?, position=?, hire_date=?, fire_date=?, salary=?, pay_type=?, grade=?,
              official_employment=?, personal_work_hours_per_day=?, personal_rate_full_hours=?,
              personal_rate_half_hours=?, personal_sick_leave_rate=?, personal_schedule_type=?,
              personal_premium_rule_json=?, bitcop_employee_id=?, seniority_pay_disabled=?
@@ -999,6 +1381,7 @@ function createWorkScheduleRouter(db) {
                 dateOnlyYmd(b.hire_date),
                 dateOnlyYmd(b.fire_date),
                 newSalary,
+                payType,
                 b.grade || null,
                 b.official_employment ? 1 : 0,
                 nullIfEmpty(b.personal_work_hours_per_day),
@@ -1013,17 +1396,182 @@ function createWorkScheduleRouter(db) {
             ]
         );
         await writeAudit(db, req, { entity_type: 'employee', entity_id: id, action: 'update' });
-        if (oldSalary !== newSalary) {
+        const newPremRaw = normalizePremiumRuleBody(b.personal_premium_rule_json, {
+            allowInherit: true,
+        });
+        const oldPremRaw =
+            prevRows[0].personal_premium_rule_json == null
+                ? null
+                : typeof prevRows[0].personal_premium_rule_json === 'string'
+                  ? prevRows[0].personal_premium_rule_json
+                  : JSON.stringify(prevRows[0].personal_premium_rule_json);
+        const premActuallyChanged = String(newPremRaw || '') !== String(oldPremRaw || '');
+        const payTermsChanged =
+            oldSalary !== newSalary || oldPayType !== payType || premActuallyChanged;
+        if (payTermsChanged) {
+            const compFrom = calc.toYmd(b.comp_from) || calc.moscowYmd();
+            let premJson = null;
+            if (newPremRaw) {
+                try {
+                    premJson = JSON.parse(newPremRaw);
+                } catch (e) {
+                    premJson = null;
+                }
+            }
+            try {
+                await empComp.applyCompensationChange(db, {
+                    employeeId: id,
+                    date_from: compFrom,
+                    pay_type: payType,
+                    salary: newSalary,
+                    premium_rule_json: premJson,
+                    note: b.comp_note || 'смена в карточке',
+                    actorId: actorOf(req).id || null,
+                });
+            } catch (e) {
+                return res.status(e.status || 500).json({
+                    success: false,
+                    error: (e && e.message) || String(e),
+                });
+            }
+            if (oldSalary !== newSalary) {
+                await writeAudit(db, req, {
+                    entity_type: 'employee',
+                    entity_id: id,
+                    action: 'salary_change',
+                    field_name: 'salary',
+                    old_value: String(oldSalary),
+                    new_value: String(newSalary),
+                });
+            }
             await writeAudit(db, req, {
-                entity_type: 'employee',
+                entity_type: 'employee_comp',
                 entity_id: id,
-                action: 'salary_change',
-                field_name: 'salary',
-                old_value: String(oldSalary),
-                new_value: String(newSalary),
+                action: 'period_apply',
+                new_value: JSON.stringify({
+                    date_from: compFrom,
+                    pay_type: payType,
+                    salary: newSalary,
+                }),
             });
         }
         res.json({ success: true });
+    });
+
+    /** Периоды оклада/ставки/премии (с–по). */
+    router.get('/employees/:id/compensation', async (req, res) => {
+        if (!isAccounting(actorOf(req))) return res.status(403).json({ success: false, error: 'forbidden' });
+        const id = Number(req.params.id);
+        if (!id) return res.status(400).json({ success: false, error: 'id required' });
+        await ensureSchema(db);
+        const rows = await empComp.listCompensation(db, id);
+        res.json({ success: true, rows });
+    });
+
+    router.post('/employees/:id/compensation', async (req, res) => {
+        if (!isAccounting(actorOf(req))) return res.status(403).json({ success: false, error: 'forbidden' });
+        const id = Number(req.params.id);
+        const b = req.body || {};
+        await ensureSchema(db);
+        try {
+            let prem = b.premium_rule_json;
+            if (prem !== undefined && prem !== null && typeof prem === 'string') {
+                try {
+                    prem = JSON.parse(prem);
+                } catch (e) {
+                    prem = null;
+                }
+            }
+            if (b.replace_from_date || b.close_previous) {
+                const applied = await empComp.applyCompensationChange(db, {
+                    employeeId: id,
+                    date_from: b.date_from || calc.moscowYmd(),
+                    pay_type: b.pay_type,
+                    salary: b.salary,
+                    premium_rule_json: prem,
+                    note: b.note || null,
+                    actorId: actorOf(req).id || null,
+                });
+                await writeAudit(db, req, {
+                    entity_type: 'employee_comp',
+                    entity_id: id,
+                    action: 'period_apply',
+                    new_value: JSON.stringify(applied),
+                });
+                return res.json({ success: true, ...applied });
+            }
+            const newId = await empComp.insertCompensation(db, {
+                employeeId: id,
+                date_from: b.date_from,
+                date_to: b.date_to,
+                pay_type: b.pay_type,
+                salary: b.salary,
+                premium_rule_json: prem,
+                note: b.note || null,
+                actorId: actorOf(req).id || null,
+            });
+            await writeAudit(db, req, {
+                entity_type: 'employee_comp',
+                entity_id: newId,
+                action: 'create',
+                new_value: JSON.stringify(b),
+            });
+            res.json({ success: true, id: newId });
+        } catch (e) {
+            res.status(e.status || 500).json({ success: false, error: (e && e.message) || String(e) });
+        }
+    });
+
+    router.put('/compensation/:id', async (req, res) => {
+        if (!isAccounting(actorOf(req))) return res.status(403).json({ success: false, error: 'forbidden' });
+        const cid = Number(req.params.id);
+        const b = req.body || {};
+        await ensureSchema(db);
+        try {
+            let prem = b.premium_rule_json;
+            if (prem !== undefined && prem !== null && typeof prem === 'string') {
+                try {
+                    prem = JSON.parse(prem);
+                } catch (e) {
+                    prem = null;
+                }
+            }
+            await empComp.updateCompensation(db, cid, {
+                date_from: b.date_from,
+                date_to: b.date_to,
+                pay_type: b.pay_type,
+                salary: b.salary,
+                premium_rule_json: prem,
+                note: b.note,
+            });
+            await writeAudit(db, req, {
+                entity_type: 'employee_comp',
+                entity_id: cid,
+                action: 'update',
+                new_value: JSON.stringify(b),
+            });
+            res.json({ success: true });
+        } catch (e) {
+            res.status(e.status || 500).json({ success: false, error: (e && e.message) || String(e) });
+        }
+    });
+
+    router.delete('/compensation/:id', async (req, res) => {
+        if (!isAccounting(actorOf(req))) return res.status(403).json({ success: false, error: 'forbidden' });
+        const cid = Number(req.params.id);
+        await ensureSchema(db);
+        try {
+            const empId = await empComp.deleteCompensation(db, cid);
+            await writeAudit(db, req, {
+                entity_type: 'employee_comp',
+                entity_id: cid,
+                action: 'delete',
+                old_value: String(empId),
+            });
+            res.json({ success: true });
+        } catch (e) {
+            res.status(e.status || 500).json({ success: false, error: (e && e.message) || String(e) });
+        }
     });
 
     /** История изменений оклада: бухгалтерия — любой сотрудник; сотрудник — только свой. */
@@ -1039,7 +1587,7 @@ function createWorkScheduleRouter(db) {
             }
         }
         const [empRows] = await db.query(
-            `SELECT e.id, e.salary, u.full_name, u.username
+            `SELECT e.id, e.salary, e.pay_type, u.full_name, u.username
              FROM ws_employee e JOIN users u ON u.id=e.user_id WHERE e.id=? LIMIT 1`,
             [id]
         );
@@ -1054,13 +1602,16 @@ function createWorkScheduleRouter(db) {
              LIMIT 200`,
             [String(id)]
         );
+        const periods = await empComp.listCompensation(db, id);
         res.json({
             success: true,
             employee: {
                 id: empRows[0].id,
                 full_name: empRows[0].full_name || empRows[0].username,
                 salary: Number(empRows[0].salary) || 0,
+                pay_type: calc.normalizePayType(empRows[0].pay_type),
             },
+            periods,
             rows: rows || [],
         });
     });
@@ -1317,7 +1868,7 @@ function createWorkScheduleRouter(db) {
         const from = `${ym}-01`;
         const to = `${ym}-${String(dim).padStart(2, '0')}`;
 
-        let esql = `SELECT e.id, e.salary, e.department_id, e.hire_date, e.personal_premium_rule_json,
+        let esql = `SELECT e.id, e.salary, e.pay_type, e.department_id, e.hire_date, e.personal_premium_rule_json,
                            e.personal_seniority_base, e.personal_seniority_step, e.personal_seniority_period_months,
                            e.personal_schedule_type, e.personal_work_hours_per_day,
                            e.personal_rate_full_hours, e.personal_rate_half_hours,
@@ -1359,8 +1910,8 @@ function createWorkScheduleRouter(db) {
         let logs = [];
         if (ids.length) {
             const [L] = await db.query(
-                `SELECT employee_id, DATE_FORMAT(work_date, '%Y-%m-%d') AS work_ymd, type, rate, hours_worked, status,
-                        check_in, check_out
+                `SELECT employee_id, DATE_FORMAT(work_date, '%Y-%m-%d') AS work_ymd, type, rate, hours_worked,
+                        hours_bitcop, status, check_in, check_out, source
                  FROM ws_work_log WHERE employee_id IN (?) AND work_date BETWEEN ? AND ?`,
                 [ids, from, to]
             );
@@ -1372,10 +1923,23 @@ function createWorkScheduleRouter(db) {
             if (!byEmp[key]) byEmp[key] = {};
             const day = Number(String(L.work_ymd || calc.toYmd(L.work_date) || '').slice(8, 10));
             if (!day) continue;
+            const src = String(L.source || '');
+            const bitH = L.hours_bitcop != null ? Number(L.hours_bitcop) : 0;
+            /** При source=bitcop hours_worked — это заполнение Bitcop’ом пустого дня, не таймер. */
+            const clockH =
+                src === 'bitcop'
+                    ? 0
+                    : L.hours_worked != null
+                      ? Number(L.hours_worked)
+                      : 0;
+            const displayH = clockH > 0 ? clockH : bitH > 0 ? bitH : null;
             byEmp[key][day] = {
                 type: L.type,
                 rate: Number(L.rate),
-                hours: L.hours_worked != null ? Number(L.hours_worked) : null,
+                hours: displayH,
+                hours_clock: clockH > 0 ? clockH : null,
+                hours_bitcop: bitH > 0 ? bitH : null,
+                source: L.source || null,
                 status: L.status,
                 open: !!(L.check_in && !L.check_out),
             };
@@ -1389,20 +1953,37 @@ function createWorkScheduleRouter(db) {
             );
             for (const p of pr) payrollByEmp[p.employee_id] = p;
         }
+        const compsByEmp = {};
+        if (ids.length) {
+            const [crows] = await db.query(
+                `SELECT id, employee_id,
+                        DATE_FORMAT(date_from, '%Y-%m-%d') AS date_from,
+                        DATE_FORMAT(date_to, '%Y-%m-%d') AS date_to,
+                        pay_type, salary, premium_rule_json, note
+                 FROM ws_employee_comp
+                 WHERE employee_id IN (?)
+                   AND date_from <= ?
+                   AND (date_to IS NULL OR date_to >= ?)`,
+                [ids, to, from]
+            );
+            for (const r of crows || []) {
+                const eid = Number(r.employee_id);
+                if (!compsByEmp[eid]) compsByEmp[eid] = [];
+                compsByEmp[eid].push(empComp.normalizeRow(r));
+            }
+        }
+        const logsByEmp = {};
+        for (const L of logs) {
+            const eid = Number(L.employee_id);
+            if (!logsByEmp[eid]) logsByEmp[eid] = [];
+            logsByEmp[eid].push(L);
+        }
         const normCache = {};
         let mandays = 0;
         let fot = 0;
         const employeesOut = [];
         for (const e of emps) {
-            let days = 0;
             const map = byEmp[e.id] || {};
-            for (let d = 1; d <= dim; d++) {
-                const c = map[d];
-                if (!c) continue;
-                if (c.type === 'work') days += Number(c.rate) || 0;
-                else if (c.type === 'vacation' || c.type === 'sick') days += 1;
-            }
-            mandays += days;
             const thr = calc.resolveEmployeeThresholds(e, e);
             const st = thr.scheduleType || e.schedule_type || '5/2';
             if (normCache[st] == null) {
@@ -1410,14 +1991,36 @@ function createWorkScheduleRouter(db) {
                 normCache[st] = await calc.monthNormDays(db, ym, st);
             }
             const normDays = Number(normCache[st]) || 21;
-            const salaryRate = Number(e.salary) || 0;
-            const premiumRule = calc.resolvePremiumRule(e, e);
+            const comps = compsByEmp[e.id] || [];
+            const onFirst = empComp.pickCompOnDate(comps, from, e);
+            const payType = calc.normalizePayType(onFirst && onFirst.pay_type);
+            const salaryRate = Number(onFirst && onFirst.salary) || Number(e.salary) || 0;
+            const premiumRule = calc.resolvePremiumRule(
+                {
+                    personal_premium_rule_json:
+                        onFirst && onFirst.premium_rule_json != null
+                            ? onFirst.premium_rule_json
+                            : e.personal_premium_rule_json,
+                },
+                { premium_rule_json: e.dept_premium_rule_json }
+            );
             const premiumFull =
                 premiumRule.kind === 'fixed' || premiumRule.kind === 'fixed_full'
                     ? Number(premiumRule.amount) || 0
                     : 0;
             const stored = payrollByEmp[e.id];
-            const premiumFromRule = calc.computePremium(premiumRule, { workedDays: days, normDays });
+            const livePay = empComp.computePayFromLogs(
+                logsByEmp[e.id] || [],
+                comps,
+                e,
+                { premium_rule_json: e.dept_premium_rule_json },
+                normDays
+            );
+            // Оклад/дни — всегда live по логам (type=work); stored только для ручной премии.
+            const days = livePay.worked_days;
+            const hoursSum = livePay.hours_worked;
+            mandays += days;
+            const premiumFromRule = livePay.premium_from_rule;
             const premiumManual =
                 stored && stored.premium_manual != null && stored.premium_manual !== ''
                     ? Number(stored.premium_manual)
@@ -1426,15 +2029,11 @@ function createWorkScheduleRouter(db) {
                 stored && stored.premium_source != null && String(stored.premium_source).trim()
                     ? String(stored.premium_source).trim()
                     : null;
-            const baseAccrued = stored
-                ? Number(stored.base_salary) || 0
-                : calc.prorateByWorkedDays(salaryRate, days, normDays);
+            const baseAccrued = livePay.base;
             const premiumAccrued =
                 premiumManual != null && Number.isFinite(premiumManual)
                     ? premiumManual
-                    : stored
-                      ? Number(stored.premium) || 0
-                      : premiumFromRule;
+                    : premiumFromRule;
             const senDisabled = Number(e.seniority_pay_disabled) === 1;
             const senParams = calc.resolveSeniorityParams(e, e);
             const seniorityFull = senDisabled
@@ -1442,9 +2041,7 @@ function createWorkScheduleRouter(db) {
                 : calc.seniorityBonus(e.hire_date, `${ym}-28`, senParams);
             const seniorityAccrued = senDisabled
                 ? 0
-                : stored
-                  ? Number(stored.seniority_bonus) || 0
-                  : calc.prorateByWorkedDays(seniorityFull, days, normDays);
+                : calc.prorateByWorkedDays(seniorityFull, days, normDays);
             /** Премия «к которой можно выйти» за полный месяц (не доля дней). */
             const premiumPlanned =
                 premiumManual != null && Number.isFinite(premiumManual)
@@ -1454,14 +2051,19 @@ function createWorkScheduleRouter(db) {
                       : 0;
             const totalAccrued =
                 Math.round((baseAccrued + premiumAccrued + seniorityAccrued) * 100) / 100;
+            /** Для hourly «плановый» = уже накапало (нет фиксированного месячного оклада). */
             const totalPlanned =
-                Math.round((salaryRate + premiumPlanned + seniorityFull) * 100) / 100;
+                payType === 'hourly'
+                    ? totalAccrued
+                    : Math.round((salaryRate + premiumPlanned + seniorityFull) * 100) / 100;
             fot += totalAccrued;
             employeesOut.push({
                 id: e.id,
                 full_name: e.full_name,
                 department_id: e.department_id,
                 department_name: e.department_name,
+                pay_type: payType,
+                hours_worked: hoursSum,
                 salary: salaryRate,
                 salary_accrued: baseAccrued,
                 premium_kind: premiumRule.kind || 'stub',
@@ -1477,8 +2079,8 @@ function createWorkScheduleRouter(db) {
                 bitcop_employee_id: e.bitcop_employee_id != null ? Number(e.bitcop_employee_id) : null,
                 total_accrued: totalAccrued,
                 total_planned: totalPlanned,
-                worked_days: stored ? Number(stored.worked_days) : days,
-                norm_days: stored ? Number(stored.norm_days) : normDays,
+                worked_days: days,
+                norm_days: normDays,
             });
         }
         const calendar = await rfCalendar.getMonthCalendarMap(db, ym);
@@ -1876,213 +2478,34 @@ function createWorkScheduleRouter(db) {
     });
 
     /**
-     * Подтянуть продуктивные (или выбранные) часы из Bitcop в ws_work_log за месяц.
-     * body: { period_ym, dry_run?, force?, organization_id?, department_id?, employee_id? }
-     * Не затирает vacation/sick/dayoff (без force).
+     * Продуктивные часы Bitcop → ws_work_log.
+     * Период: date_from+date_to | days (дефолт 7) | period_ym. Метрика productiveTime.
      */
     router.post('/bitcop/sync-hours', async (req, res) => {
         const a = actorOf(req);
         if (!isAccounting(a)) return res.status(403).json({ success: false, error: 'forbidden' });
-        const t0 = Date.now();
         const b = req.body || {};
-        const periodYm = String(b.period_ym || calc.moscowYmd().slice(0, 7));
-        if (!/^\d{4}-\d{2}$/.test(periodYm)) {
-            return res.status(400).json({ success: false, error: 'period_ym required (YYYY-MM)' });
-        }
-        const dryRun = !!b.dry_run;
-        const force = !!b.force;
-        const orgId = b.organization_id ? Number(b.organization_id) : null;
-        const deptId = b.department_id ? Number(b.department_id) : null;
-        const onlyEmp = b.employee_id ? Number(b.employee_id) : null;
-
-        let esql = `SELECT e.id, e.bitcop_employee_id, e.salary, e.hire_date,
-                           e.personal_schedule_type, e.personal_work_hours_per_day,
-                           e.personal_rate_full_hours, e.personal_rate_half_hours,
-                           u.full_name, d.schedule_type, d.norm_hours, d.rate_full_hours, d.rate_half_hours
-                    FROM ws_employee e
-                    JOIN users u ON u.id=e.user_id
-                    JOIN ws_department d ON d.id=e.department_id
-                    WHERE e.bitcop_employee_id IS NOT NULL AND e.bitcop_employee_id > 0
-                      AND (e.fire_date IS NULL OR e.fire_date >= ?)`;
-        const params = [`${periodYm}-01`];
-        if (orgId) {
-            esql += ' AND e.organization_id=?';
-            params.push(orgId);
-        }
-        if (deptId) {
-            esql += ' AND e.department_id=?';
-            params.push(deptId);
-        }
-        if (onlyEmp) {
-            esql += ' AND e.id=?';
-            params.push(onlyEmp);
-        }
-        const [emps] = await db.query(esql, params);
-        if (!(emps || []).length) {
-            return res.json({
-                success: true,
-                dry_run: dryRun,
-                period_ym: periodYm,
-                total: 0,
-                updated: 0,
-                created: 0,
-                skipped: 0,
-                days: 0,
-                message: 'Нет сотрудников с привязкой Bitcop',
-                duration_sec: Math.round((Date.now() - t0) / 1000),
+        try {
+            const result = await runBitcopHoursSync(db, {
+                date_from: b.date_from,
+                date_to: b.date_to,
+                days: b.days,
+                period_ym: b.period_ym,
+                dry_run: b.dry_run,
+                force: b.force,
+                organization_id: b.organization_id,
+                department_id: b.department_id,
+                employee_id: b.employee_id,
+                only_hourly: b.only_hourly,
+                pay_type: b.pay_type,
+                actorId: a.id || null,
+                req,
             });
+            res.json(result);
+        } catch (e) {
+            const status = e && e.status ? e.status : 500;
+            res.status(status).json({ success: false, error: (e && e.message) || String(e) });
         }
-
-        const cfg = await bitcop.loadBitcopSettings(db);
-        const metric = cfg.metric;
-        const dim = calc.daysInMonthYm(periodYm);
-        const bitcopIds = [...new Set(emps.map((e) => Number(e.bitcop_employee_id)).filter((n) => n > 0))];
-        let updated = 0;
-        let created = 0;
-        let skipped = 0;
-        let daysTouched = 0;
-        const errors = [];
-        const payrollIds = new Set();
-        const PROTECTED = new Set(['vacation', 'sick', 'dayoff', 'business_trip']);
-
-        for (let day = 1; day <= dim; day++) {
-            const ymd = `${periodYm}-${String(day).padStart(2, '0')}`;
-            const range = bitcop.dayRangeBitcop(ymd);
-            let prodMap = new Map();
-            let actMap = new Map();
-            try {
-                if (metric === 'productiveTime') {
-                    // eslint-disable-next-line no-await-in-loop
-                    prodMap = await bitcop.fetchProductivityMap(db, {
-                        begin: range.begin,
-                        end: range.end,
-                        employeeIds: bitcopIds,
-                    });
-                } else {
-                    // eslint-disable-next-line no-await-in-loop
-                    actMap = await bitcop.fetchActivityMap(db, {
-                        begin: range.begin,
-                        end: range.end,
-                        employeeIds: bitcopIds,
-                    });
-                }
-            } catch (err) {
-                errors.push({ work_date: ymd, error: (err && err.message) || String(err) });
-                if (errors.length >= 20) break;
-                continue;
-            }
-
-            for (const e of emps) {
-                const bid = Number(e.bitcop_employee_id);
-                const row = metric === 'productiveTime' ? prodMap.get(bid) : actMap.get(bid);
-                const sec = bitcop.pickMetricSeconds(row, metric);
-                const hours = bitcop.secondsToHours(sec);
-                if (hours <= 0) {
-                    skipped += 1;
-                    continue;
-                }
-                const thr = calc.resolveEmployeeThresholds(e, e);
-                const rate = calc.rateFromHours(hours, thr);
-                // eslint-disable-next-line no-await-in-loop
-                const [ex] = await db.query(
-                    `SELECT id, type, rate, hours_worked, source FROM ws_work_log
-                     WHERE employee_id=? AND work_date=? LIMIT 1`,
-                    [e.id, ymd]
-                );
-                if (ex.length && PROTECTED.has(String(ex[0].type)) && !force) {
-                    skipped += 1;
-                    continue;
-                }
-                if (
-                    ex.length &&
-                    String(ex[0].type) === 'work' &&
-                    Math.abs(Number(ex[0].hours_worked) - hours) < 0.005 &&
-                    Math.abs(Number(ex[0].rate) - rate) < 0.005 &&
-                    String(ex[0].source) === 'bitcop'
-                ) {
-                    skipped += 1;
-                    continue;
-                }
-                daysTouched += 1;
-                if (dryRun) {
-                    if (ex.length) updated += 1;
-                    else created += 1;
-                    continue;
-                }
-                try {
-                    if (ex.length) {
-                        // eslint-disable-next-line no-await-in-loop
-                        await db.query(
-                            `UPDATE ws_work_log SET type='work', rate=?, hours_worked=?, source='bitcop',
-                             edited_by=?, edited_at=?, status='ok'
-                             WHERE id=?`,
-                            [rate, hours, a.id, calc.moscowNowSql(), ex[0].id]
-                        );
-                        updated += 1;
-                    } else {
-                        // eslint-disable-next-line no-await-in-loop
-                        await db.query(
-                            `INSERT INTO ws_work_log
-                             (employee_id, work_date, type, rate, hours_worked, source, status, edited_by, edited_at)
-                             VALUES (?, ?, 'work', ?, ?, 'bitcop', 'ok', ?, ?)`,
-                            [e.id, ymd, rate, hours, a.id, calc.moscowNowSql()]
-                        );
-                        created += 1;
-                    }
-                    payrollIds.add(e.id);
-                } catch (err) {
-                    errors.push({
-                        employee_id: e.id,
-                        work_date: ymd,
-                        error: (err && err.message) || String(err),
-                    });
-                    if (errors.length >= 20) break;
-                }
-            }
-            if (errors.length >= 20) break;
-        }
-
-        if (!dryRun) {
-            for (const empId of payrollIds) {
-                try {
-                    // eslint-disable-next-line no-await-in-loop
-                    await recalcPayroll(db, empId, periodYm);
-                } catch (err) {
-                    /* ignore */
-                }
-            }
-            await writeAudit(db, req, {
-                entity_type: 'work_log',
-                entity_id: periodYm,
-                action: 'bitcop_sync_hours',
-                new_value: JSON.stringify({
-                    updated,
-                    created,
-                    skipped,
-                    metric,
-                    employees: emps.length,
-                    failed: errors.length,
-                }),
-            });
-        }
-
-        res.json({
-            success: errors.length === 0,
-            dry_run: dryRun,
-            period_ym: periodYm,
-            metric,
-            employees: emps.length,
-            days_touched: daysTouched,
-            created,
-            updated,
-            skipped,
-            failed: errors.length,
-            errors,
-            duration_sec: Math.round((Date.now() - t0) / 1000),
-            message: dryRun
-                ? `Пробный прогон Bitcop: к записи ${created + updated}, пропуск ${skipped}`
-                : `Bitcop: создано ${created}, обновлено ${updated}, пропуск ${skipped}`,
-        });
     });
 
     router.get('/me/month', async (req, res) => {
@@ -2259,7 +2682,7 @@ function createWorkScheduleRouter(db) {
         if (ids.length) {
             const [logs] = await db.query(
                 `SELECT employee_id, DATE_FORMAT(work_date, '%Y-%m-%d') AS work_ymd, type, rate, hours_worked,
-                        check_in, check_out, segments_json,
+                        hours_bitcop, source, check_in, check_out, segments_json,
                         DATE_FORMAT(check_in, '%Y-%m-%d %H:%i:%s') AS check_in_sql,
                         DATE_FORMAT(check_out, '%Y-%m-%d %H:%i:%s') AS check_out_sql
                  FROM ws_work_log
@@ -2271,14 +2694,20 @@ function createWorkScheduleRouter(db) {
                 const day = Number(String(L.work_ymd || calc.toYmd(L.work_date) || '').slice(8, 10));
                 if (!day) continue;
                 const segs = calc.parseSegments(L.segments_json);
-                let hours = Number(L.hours_worked) || 0;
-                if (segs.length) hours = Math.max(hours, calc.hoursFromSegments(segs));
+                const src = String(L.source || '');
+                const bitH = L.hours_bitcop != null ? Number(L.hours_bitcop) : 0;
+                let clockH = src === 'bitcop' ? 0 : Number(L.hours_worked) || 0;
+                if (segs.length) clockH = Math.max(clockH, calc.hoursFromSegments(segs));
                 const open = !!(L.check_in && !L.check_out);
-                if (open) hours += calc.hoursBetween(L.check_in, nowSql);
+                if (open) clockH += calc.hoursBetween(L.check_in, nowSql);
+                const displayH = clockH > 0 ? clockH : bitH;
                 byEmp[L.employee_id][day] = {
                     type: L.type,
                     rate: Number(L.rate),
-                    hours: Math.round(hours * 10000) / 10000,
+                    hours: Math.round(displayH * 10000) / 10000,
+                    hours_clock: clockH > 0 ? Math.round(clockH * 10000) / 10000 : null,
+                    hours_bitcop: bitH > 0 ? bitH : null,
+                    source: L.source || null,
                     open,
                     closed: !!L.check_out,
                     check_in: L.check_in_sql || null,
@@ -2310,7 +2739,7 @@ function createWorkScheduleRouter(db) {
                 }
             }
         }
-        const STATUS_ORDER = { working: 0, finished: 1, vacation: 2, sick: 3, not_started: 4 };
+        const STATUS_ORDER = { working: 0, finished: 1, vacation: 2, sick: 3, dayoff: 4, not_started: 5 };
         const today = todayInMonth
             ? emps
                   .map((e) => {
@@ -2319,7 +2748,8 @@ function createWorkScheduleRouter(db) {
                       if (onSickToday.has(Number(e.id)) || (c && c.type === 'sick')) work_status = 'sick';
                       else if (onVacationToday.has(Number(e.id)) || (c && c.type === 'vacation')) {
                           work_status = 'vacation';
-                      } else if (c && c.open) work_status = 'working';
+                      } else if (c && c.type === 'dayoff') work_status = 'dayoff';
+                      else if (c && c.open) work_status = 'working';
                       else if (c && (c.closed || Number(c.hours) > 0 || Number(c.rate) > 0)) {
                           work_status = 'finished';
                       }
@@ -3054,3 +3484,5 @@ async function processStuckShifts(db) {
 module.exports = createWorkScheduleRouter;
 module.exports.processStuckShifts = processStuckShifts;
 module.exports.ensureWorkScheduleSchema = ensureWorkScheduleSchema;
+module.exports.runBitcopHoursSync = runBitcopHoursSync;
+module.exports.triggerBitcopHoursSyncFromSettings = triggerBitcopHoursSyncFromSettings;

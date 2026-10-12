@@ -291,26 +291,54 @@
   function renderLegend(el, withBusy) {
     if (!el) return;
     el.innerHTML =
-      '<span><i class="swatch" style="background:#28a745"></i> полный</span>' +
+      '<span><i class="swatch" style="background:#28a745"></i> полный / часы</span>' +
       '<span><i class="swatch" style="background:#ffc107"></i> 0,5</span>' +
       '<span><i class="swatch" style="background:#e3f2fd"></i> отпуск</span>' +
       '<span><i class="swatch" style="background:#fce4ec"></i> больничный</span>' +
+      '<span><i class="swatch" style="background:#fff3e0"></i> отгул</span>' +
+      '<span>в ячейке — <b>Ч:ММ</b> (напр. 4:23); у «по часам» — Bitcop</span>' +
       '<span><i class="swatch" style="background:#f1ecf7;border:1px solid #c9bdd9"></i> сб / вс / выходной</span>' +
       '<span><i class="swatch dg-ws-swatch-open"></i> на работе (таймер)</span>' +
+
       (withBusy
         ? '<span><i class="swatch" style="background:#ffebee"></i> занято в отделе</span>'
         : "");
   }
 
-  /** Длительность из дробных часов → ЧЧ:ММ (час = 60 мин). */
+  /** Длительность из дробных часов → Ч:ММ (4:23), час = 60 мин. */
   function fmtHours(h) {
     var n = Number(h);
-    if (!Number.isFinite(n) || n <= 0) return "00:00";
+    if (!Number.isFinite(n) || n <= 0) return "0:00";
     var totalMin = Math.round(n * 60);
     if (totalMin < 1) return "<1 мин";
     var hh = Math.floor(totalMin / 60);
     var mm = totalMin % 60;
-    return (hh < 10 ? "0" : "") + hh + ":" + (mm < 10 ? "0" : "") + mm;
+    return hh + ":" + (mm < 10 ? "0" : "") + mm;
+  }
+
+  /** В ячейке табеля то же Ч:ММ (понятно, не 4,9). */
+  function fmtSheetHours(h) {
+    var n = Number(h);
+    if (!Number.isFinite(n) || n <= 0) return "";
+    return fmtHours(n);
+  }
+
+  /** Что рисуем в ячейке: у «по часам»优先тет Bitcop (им платят). */
+  function cellDisplayHours(c, preferBitcop) {
+    if (!c) return 0;
+    var bitH = Number(c.hours_bitcop) || 0;
+    var clockH = Number(c.hours_clock) || 0;
+    var hours = Number(c.hours) || 0;
+    if (preferBitcop && bitH > 0) return bitH;
+    if (clockH > 0) return clockH;
+    if (bitH > 0) return bitH;
+    return hours > 0 ? hours : 0;
+  }
+
+  function fmtHourlyRate(n) {
+    var v = Math.round((Number(n) || 0) * 100) / 100;
+    var s = String(v).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+    return s + " ₽/ч";
   }
 
   function renderEarnings() {
@@ -676,6 +704,7 @@
       var hasHours = Number(cell.hours) > 0 || cell.open || cell.closed || cell.logged;
       if (cell.type === "vacation") cls.push("type-vacation");
       else if (cell.type === "sick") cls.push("type-sick");
+      else if (cell.type === "dayoff") cls.push("type-dayoff");
       else if (Number(cell.rate) === 1) cls.push("rate-1");
       else if (Number(cell.rate) === 0.5) cls.push("rate-05");
       else if (hasHours) cls.push("has-hours");
@@ -700,6 +729,7 @@
         var hoursLabel = "";
         if (cell.type === "vacation") hoursLabel = '<span class="dg-ws-cal-hours">отпуск</span>';
         else if (cell.type === "sick") hoursLabel = '<span class="dg-ws-cal-hours">больн.</span>';
+        else if (cell.type === "dayoff") hoursLabel = '<span class="dg-ws-cal-hours">отгул</span>';
         else if (hasHours) {
           if (cell.open) {
             hoursLabel =
@@ -833,35 +863,69 @@
       });
   }
 
-  function cellLabel(c) {
+  function cellLabel(c, opts) {
+    opts = opts || {};
     if (!c) return { cls: "", label: "" };
+    var preferBit = !!opts.preferBitcop;
     var cls;
     var label;
+    var dispH = cellDisplayHours(c, preferBit);
+    var fromBit = preferBit && Number(c.hours_bitcop) > 0;
     if (c.type === "vacation") {
       cls = "c-v";
       label = "О";
     } else if (c.type === "sick") {
       cls = "c-s";
       label = "Б";
+    } else if (c.type === "dayoff") {
+      cls = "c-d";
+      label = "Отг.";
+    } else if (c.open) {
+      cls = "c-0";
+      label = dispH > 0 ? fmtSheetHours(dispH) + "▶" : "▶";
+    } else if (dispH > 0) {
+      /* Ч:ММ — Bitcop у «по часам», иначе таймер/ручные; цвет: часы → c-h */
+      if (fromBit) cls = "c-h";
+      else if (Number(c.rate) === 1) cls = "c-1";
+      else if (Number(c.rate) === 0.5) cls = "c-05";
+      else cls = "c-h";
+      label = fmtSheetHours(dispH);
     } else if (Number(c.rate) === 1) {
       cls = "c-1";
       label = "1";
     } else if (Number(c.rate) === 0.5) {
       cls = "c-05";
       label = "½";
-    } else if (c.open) {
-      cls = "c-0";
-      label = "▶";
-    } else if (Number(c.hours) > 0) {
-      cls = "c-0";
-      label = "·";
     } else {
-      /* work/0/0 — пустая ячейка (строка-заглушка или после снятия отпуска) */
+      /* work/0/0 — пустая ячейка */
       cls = "";
       label = "";
     }
     if (c.open) cls += (cls ? " " : "") + "c-open";
     return { cls: cls, label: label };
+  }
+
+  /** Подсказка: Таймер и Bitcop отдельно, время Ч:ММ. */
+  function cellHoverAttrs(c, opts) {
+    opts = opts || {};
+    if (!c) return "";
+    var parts = [];
+    var clockH = Number(c.hours_clock) > 0 ? Number(c.hours_clock) : 0;
+    var bitH = Number(c.hours_bitcop) > 0 ? Number(c.hours_bitcop) : 0;
+    var hours = Number(c.hours) > 0 ? Number(c.hours) : 0;
+    if (c.type === "vacation") parts.push("отпуск");
+    else if (c.type === "sick") parts.push("больничный");
+    else if (c.type === "dayoff") parts.push("отгул");
+    if (bitH > 0) parts.push("Bitcop (продуктивные): " + fmtHours(bitH));
+    if (clockH > 0) parts.push("Таймер: " + fmtHours(clockH));
+    else if (hours > 0 && !bitH) parts.push("Часы: " + fmtHours(hours));
+    if (!opts.preferBitcop && c.rate != null && Number(c.rate) > 0 && !bitH) {
+      parts.push("ставка " + c.rate);
+    }
+    if (c.open) parts.push("смена открыта");
+    if (!parts.length) return "";
+    var tip = parts.join(" · ").replace(/"/g, "&quot;");
+    return ' data-dg-tooltip="' + tip + '"';
   }
 
   function visibleDeptList() {
@@ -930,17 +994,19 @@
           '">Нет сотрудников</td></tr>';
       } else {
         emps.forEach(function (e) {
+          var preferBit = String(e.pay_type || "") === "hourly";
           html += '<tr><td class="emp">' + (e.full_name || "") + "</td>";
           for (var day = 1; day <= dim; day++) {
             var c = (dm.cells[e.id] && dm.cells[e.id][day]) || null;
-            var L = cellLabel(c);
+            var L = cellLabel(c, { preferBitcop: preferBit });
             var weCls = dayIsNonWorkCol(pm.y, pm.m, day, dm.calendar || activeMonthCalendar())
               ? " dg-ws-we"
               : "";
+            var tip = cellHoverAttrs(c, { preferBitcop: preferBit });
             var click = canEdit
               ? ' cell-click" data-emp="' + e.id + '" data-day="' + day + '" data-dept="' + (dm.department_id || "") + '"'
               : '"';
-            html += '<td class="' + L.cls + weCls + click + ">" + L.label + "</td>";
+            html += '<td class="' + L.cls + weCls + click + tip + ">" + L.label + "</td>";
           }
           html += "</tr>";
         });
@@ -972,6 +1038,7 @@
     if (st === "finished") return '<span class="badge bg-secondary">закончил</span>';
     if (st === "vacation") return '<span class="badge bg-info text-dark">отпуск</span>';
     if (st === "sick") return '<span class="badge bg-warning text-dark">больничный</span>';
+    if (st === "dayoff") return '<span class="badge bg-secondary">отгул</span>';
     return '<span class="text-muted">не начинал</span>';
   }
 
@@ -1003,6 +1070,7 @@
             var work_status = "not_started";
             if (c.type === "sick") work_status = "sick";
             else if (c.type === "vacation") work_status = "vacation";
+            else if (c.type === "dayoff") work_status = "dayoff";
             else if (c.open) work_status = "working";
             else if (c.closed || Number(c.hours) > 0 || Number(c.rate) > 0) work_status = "finished";
             rows.push({
@@ -1162,12 +1230,12 @@
 
     var html =
       '<table class="dg-ws-sheet"><thead><tr><th class="emp">Сотрудник</th>' +
-      '<th class="dg-ws-pay-h" title="Накапало / ставка">Оклад</th>' +
+      '<th class="dg-ws-pay-h" title="Накапало / оклад или ₽·ч">Оклад</th>' +
       '<th class="dg-ws-pay-h" title="Клик — ручная премия за месяц">Премия</th>' +
       '<th class="dg-ws-pay-h" title="Накапало / полная за месяц">За стаж</th>' +
       '<th class="dg-ws-pay-h dg-ws-pay-total-h" title="Накапало по графику / плановый итог за полный месяц">Итого</th>';
     for (var d = 1; d <= dim; d++) html += dayColHeaderHtml(pm.y, pm.m, d, sh.calendar || activeMonthCalendar());
-    html += "<th>Σ</th></tr></thead><tbody>";
+    html += '<th title="Σ ставок или часов">Σ</th></tr></thead><tbody>';
     groups.forEach(function (g) {
       html +=
         '<tr class="dg-ws-sheet-dept-h"><td colspan="' +
@@ -1178,6 +1246,8 @@
         g.employees.length +
         "</span></td></tr>";
       g.employees.forEach(function (e) {
+        var payHourly = String(e.pay_type || "") === "hourly";
+        var hasBitcop = e.bitcop_employee_id != null && Number(e.bitcop_employee_id) > 0;
         var salAcc = e.salary_accrued != null ? e.salary_accrued : 0;
         var salRate = e.salary != null ? e.salary : 0;
         var premAcc = e.premium_accrued != null ? e.premium_accrued : 0;
@@ -1191,13 +1261,15 @@
         var totPlan =
           e.total_planned != null
             ? e.total_planned
-            : Number(salRate) +
-              (e.premium_planned != null
-                ? Number(e.premium_planned)
-                : premManual
-                  ? Number(e.premium_manual) || 0
-                  : Number(premFull) || 0) +
-              Number(senFull);
+            : payHourly
+              ? totAcc
+              : Number(salRate) +
+                (e.premium_planned != null
+                  ? Number(e.premium_planned)
+                  : premManual
+                    ? Number(e.premium_manual) || 0
+                    : Number(premFull) || 0) +
+                Number(senFull);
         var premSub = premSrc === "sales"
           ? "из продаж"
           : premSrc === "manual" || premManual
@@ -1205,14 +1277,19 @@
             : premFull > 0
               ? "полная " + money(premFull)
               : "клик — ввести";
+        var rateSub = payHourly ? fmtHourlyRate(salRate) : "ставка " + money(salRate);
+        var nameExtra = hasBitcop
+          ? ' <span class="dg-ws-bitcop-mark" title="Привязан к Bitcop">B</span>'
+          : "";
         html +=
           '<tr><td class="emp">' +
           (e.full_name || "") +
+          nameExtra +
           '</td><td class="dg-ws-pay">' +
           '<span class="dg-ws-pay-main">' +
           money(salAcc) +
-          '</span><span class="dg-ws-pay-sub">ставка ' +
-          money(salRate) +
+          '</span><span class="dg-ws-pay-sub">' +
+          rateSub +
           "</span></td>" +
           '<td class="dg-ws-pay cell-click dg-ws-pay-prem' +
           (premSrc === "sales" ? " dg-ws-pay-sales" : premManual ? " dg-ws-pay-manual" : "") +
@@ -1237,23 +1314,24 @@
           '<td class="dg-ws-pay dg-ws-pay-total" title="Накапало / плановый итог">' +
           '<span class="dg-ws-pay-main">' +
           money(totAcc) +
-          '</span><span class="dg-ws-pay-sub">план ' +
-          money(totPlan) +
+          '</span><span class="dg-ws-pay-sub">' +
+          (payHourly ? "по часам" : "план " + money(totPlan)) +
           "</span></td>";
-        var sum = 0;
+        var sumRates = 0;
+        var sumHours = 0;
         var sheetCal = sh.calendar || activeMonthCalendar();
         for (var day = 1; day <= dim; day++) {
           var c = (sh.cells[e.id] && sh.cells[e.id][day]) || null;
-          var L = cellLabel(c);
-          if (c) {
-            if (c.type === "vacation" || c.type === "sick") sum += 1;
-            else sum += Number(c.rate) || 0;
+          var L = cellLabel(c, { preferBitcop: payHourly });
+          if (c && c.type === "work") {
+            sumRates += Number(c.rate) || 0;
+            sumHours += cellDisplayHours(c, payHourly);
           }
           var selKey = e.id + ":" + day;
           var selCls = state.bulkSelected[selKey] ? " dg-ws-bulk-sel" : "";
           var weCls = dayIsNonWorkCol(pm.y, pm.m, day, sheetCal) ? " dg-ws-we" : "";
           html +=
-            '<td class="cell-click ' +
+            "<td class=\"cell-click " +
             L.cls +
             weCls +
             selCls +
@@ -1261,11 +1339,21 @@
             e.id +
             '" data-day="' +
             day +
-            '">' +
+            '"' +
+            cellHoverAttrs(c, { preferBitcop: payHourly }) +
+            ">" +
             L.label +
             "</td>";
         }
-        html += "<td>" + Math.round(sum * 10) / 10 + "</td></tr>";
+        var sumLabel = payHourly || hasBitcop
+          ? fmtSheetHours(sumHours)
+          : String(Math.round(sumRates * 10) / 10);
+        html +=
+          '<td title="' +
+          (payHourly || hasBitcop ? "сумма Ч:ММ (Bitcop / часы)" : "сумма ставок") +
+          '">' +
+          sumLabel +
+          "</td></tr>";
       });
     });
     html += "</tbody></table>";
@@ -1400,7 +1488,7 @@
     if (type) type.value = c.type || "vacation";
     if (rate) {
       var r = c.rate != null ? c.rate : type && type.value !== "work" ? 1 : 0;
-      if (type && (type.value === "vacation" || type.value === "sick")) r = 1;
+      if (type && (type.value === "vacation" || type.value === "sick" || type.value === "dayoff")) r = 1;
       rate.value = String(r);
     }
     if (hours) hours.value = String(c.hours != null ? c.hours : 0);
@@ -2644,15 +2732,61 @@
       el.setAttribute("aria-hidden", show ? "false" : "true");
     }
 
+    function bitcopDefaultRange() {
+      var to = new Date();
+      var from = new Date(to.getTime());
+      from.setDate(from.getDate() - 6);
+      var ymd = function (d) {
+        var y = d.getFullYear();
+        var m = d.getMonth() + 1;
+        var day = d.getDate();
+        return y + "-" + (m < 10 ? "0" : "") + m + "-" + (day < 10 ? "0" : "") + day;
+      };
+      return { from: ymd(from), to: ymd(to) };
+    }
+
+    function fillBitcopDateDefaults() {
+      var r = bitcopDefaultRange();
+      var fromEl = document.getElementById("dg-ws-bitcop-from");
+      var toEl = document.getElementById("dg-ws-bitcop-to");
+      if (fromEl && !fromEl.value) fromEl.value = r.from;
+      if (toEl && !toEl.value) toEl.value = r.to;
+    }
+
+    function bitcopSyncBody(dryRun) {
+      fillBitcopDateDefaults();
+      var fromEl = document.getElementById("dg-ws-bitcop-from");
+      var toEl = document.getElementById("dg-ws-bitcop-to");
+      var onlyH = document.getElementById("dg-ws-bitcop-only-hourly");
+      var body = {
+        date_from: (fromEl && fromEl.value) || "",
+        date_to: (toEl && toEl.value) || "",
+        dry_run: dryRun ? 1 : 0,
+        only_hourly: onlyH && onlyH.checked ? 1 : 0,
+      };
+      if (!body.date_from || !body.date_to) {
+        body.days = 7;
+        delete body.date_from;
+        delete body.date_to;
+      }
+      if (state.filters.orgId) body.organization_id = state.filters.orgId;
+      if (state.filters.deptId) body.department_id = state.filters.deptId;
+      return body;
+    }
+
     function formatBitcopLog(j, title) {
+      var range =
+        j.date_from && j.date_to
+          ? j.date_from + " … " + j.date_to
+          : formatMonthRu(j.period_ym || state.filters.month);
       return (
         (title || "Bitcop") +
-        " · метрика «" +
-        (j.metric || "") +
-        "» · " +
-        formatMonthRu(j.period_ym || state.filters.month) +
-        "<br>Сотрудников с привязкой: " +
+        " · продуктивные · " +
+        range +
+        "<br>Сотрудников: " +
         (j.employees != null ? j.employees : "—") +
+        "; дней в периоде: " +
+        (j.days != null ? j.days : "—") +
         "; создано: " +
         (j.created != null ? j.created : "—") +
         "; обновлено: " +
@@ -2681,79 +2815,81 @@
       );
     }
 
+    function runBitcopSync(dryRun, btn) {
+      var body = bitcopSyncBody(dryRun);
+      var label = dryRun ? "Пробный прогон Bitcop" : "Запись Bitcop";
+      showActionLog(label + "…");
+      var run = function () {
+        return api("/bitcop/sync-hours", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        }).then(function (j) {
+          state._bitcopPreview = j;
+          showActionLog(formatBitcopLog(j, dryRun ? "Пробный прогон Bitcop" : "Записано из Bitcop"));
+          var tx = document.getElementById("dg-ws-bitcop-confirm-text");
+          if (tx) {
+            tx.textContent =
+              (dryRun ? "К записи: " : "Записано: ") +
+              ((j.created || 0) + (j.updated || 0)) +
+              " яч., пропуск " +
+              (j.skipped || 0) +
+              " · " +
+              (j.date_from || "") +
+              " … " +
+              (j.date_to || "") +
+              ". Отпуск/больничный/отгул не затираются.";
+          }
+          var prev = document.getElementById("dg-ws-bitcop-preview");
+          if (prev) prev.textContent = j.message || "";
+          if (dryRun) {
+            toast("success", "Пробный прогон Bitcop готов");
+          } else {
+            showBitcopOverlay(false);
+            toast(j.failed ? "warning" : "success", j.message || "Часы записаны");
+            return loadSheet();
+          }
+        });
+      };
+      if (window.DatagonNotify && window.DatagonNotify.busyRun && btn) {
+        window.DatagonNotify.busyRun(btn, run);
+      } else {
+        run().catch(function (e) {
+          toast("danger", e.message);
+          showActionLog("Bitcop ошибка: " + e.message);
+        });
+      }
+    }
+
     var bitcopBtn = document.getElementById("dg-ws-btn-bitcop");
     if (bitcopBtn) {
       bitcopBtn.addEventListener("click", function () {
-        var month = state.filters.month || defaultMonthStr();
-        var body = { period_ym: month, dry_run: 1 };
-        if (state.filters.orgId) body.organization_id = state.filters.orgId;
-        if (state.filters.deptId) body.department_id = state.filters.deptId;
-        showActionLog("Bitcop: пробный прогон за " + formatMonthRu(month) + "…");
-        var run = function () {
-          return api("/bitcop/sync-hours", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(body),
-          }).then(function (j) {
-            state._bitcopPreview = j;
-            showActionLog(formatBitcopLog(j, "Пробный прогон Bitcop"));
-            var tx = document.getElementById("dg-ws-bitcop-confirm-text");
-            if (tx) {
-              tx.textContent =
-                "Записать часы из Bitcop за " +
-                formatMonthRu(month) +
-                " (метрика «" +
-                (j.metric || "productiveTime") +
-                "»). К записи: " +
-                ((j.created || 0) + (j.updated || 0)) +
-                " яч., пропуск " +
-                (j.skipped || 0) +
-                ". Отпуск/больничный не затираются.";
-            }
-            var prev = document.getElementById("dg-ws-bitcop-preview");
-            if (prev) {
-              prev.textContent = j.message || "";
-            }
-            showBitcopOverlay(true);
-            toast("success", "Пробный прогон Bitcop готов");
-          });
-        };
-        if (window.DatagonNotify && window.DatagonNotify.busyRun) {
-          window.DatagonNotify.busyRun(bitcopBtn, run);
-        } else {
-          run().catch(function (e) {
-            toast("danger", e.message);
-            showActionLog("Bitcop ошибка: " + e.message);
-          });
+        var fromEl = document.getElementById("dg-ws-bitcop-from");
+        var toEl = document.getElementById("dg-ws-bitcop-to");
+        var r = bitcopDefaultRange();
+        if (fromEl) fromEl.value = r.from;
+        if (toEl) toEl.value = r.to;
+        var tx = document.getElementById("dg-ws-bitcop-confirm-text");
+        if (tx) {
+          tx.textContent =
+            "По умолчанию 7 дней. Bitcop дополняет hours_bitcop; таймер/ручные не затираются. Hover на ячейке — «Табель» / «Bitcop».";
         }
+        var prev = document.getElementById("dg-ws-bitcop-preview");
+        if (prev) prev.textContent = "";
+        showBitcopOverlay(true);
+        toast("info", "Укажите период Bitcop (по умолчанию 7 дней)");
+      });
+    }
+    var bitcopPreviewBtn = document.getElementById("dg-ws-bitcop-preview-btn");
+    if (bitcopPreviewBtn) {
+      bitcopPreviewBtn.addEventListener("click", function () {
+        runBitcopSync(true, bitcopPreviewBtn);
       });
     }
     var bitcopOk = document.getElementById("dg-ws-bitcop-ok");
     if (bitcopOk) {
       bitcopOk.addEventListener("click", function () {
-        var month = state.filters.month || defaultMonthStr();
-        var body = { period_ym: month, dry_run: 0 };
-        if (state.filters.orgId) body.organization_id = state.filters.orgId;
-        if (state.filters.deptId) body.department_id = state.filters.deptId;
-        var run = function () {
-          return api("/bitcop/sync-hours", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(body),
-          }).then(function (j) {
-            showBitcopOverlay(false);
-            showActionLog(formatBitcopLog(j, "Записано из Bitcop"));
-            toast(j.failed ? "warning" : "success", j.message || "Часы записаны");
-            return loadSheet();
-          });
-        };
-        if (window.DatagonNotify && window.DatagonNotify.busyRun) {
-          window.DatagonNotify.busyRun(bitcopOk, run);
-        } else {
-          run().catch(function (e) {
-            toast("danger", e.message);
-          });
-        }
+        runBitcopSync(false, bitcopOk);
       });
     }
     document.querySelectorAll("[data-dg-ws-bitcop-close]").forEach(function (el) {

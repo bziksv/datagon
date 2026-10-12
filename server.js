@@ -120,6 +120,11 @@ let appSettings = {
     auto_sync_ops_planfix_enabled: 1,
     auto_sync_ops_planfix_time: '20:00',
     auto_sync_ops_planfix_weekdays: '',
+    auto_sync_bitcop_hours_enabled: 1,
+    auto_sync_bitcop_hours_time: '21:00',
+    auto_sync_bitcop_hours_days: 7,
+    auto_sync_bitcop_hours_only_hourly: 1,
+    auto_sync_bitcop_hours_weekdays: '',
     auto_sync_moysklad_enabled: 0,
     auto_sync_moysklad_time: '04:00',
     auto_sync_ms_orders_enabled: 0,
@@ -276,6 +281,7 @@ const myProductsRouterFactory = require('./routes/myproducts');
 const networkPricesRouterFactory = require('./routes/networkPrices');
 const financeRouterFactory = require('./routes/finance');
 const opsSheetRouterFactory = require('./routes/opsSheet');
+const workScheduleMod = require('./routes/workSchedule');
 /** Whitelist для POST /api/settings/auto-sync-run (фиксируется при старте процесса). */
 const AUTO_SYNC_ALLOWED_TASK_KEYS = new Set([
     ...getAutoSyncTaskKeys(),
@@ -464,6 +470,11 @@ async function initDB() {
             ['auto_sync_ops_planfix_enabled','1'],
             ['auto_sync_ops_planfix_time','20:00'],
             ['auto_sync_ops_planfix_weekdays',''],
+            ['auto_sync_bitcop_hours_enabled','1'],
+            ['auto_sync_bitcop_hours_time','21:00'],
+            ['auto_sync_bitcop_hours_days','7'],
+            ['auto_sync_bitcop_hours_only_hourly','1'],
+            ['auto_sync_bitcop_hours_weekdays',''],
             ['auto_sync_moysklad_enabled','0'],['auto_sync_moysklad_time','04:00'],
             ['auto_sync_ms_orders_enabled','0'],['auto_sync_ms_orders_time','08:00'],['auto_sync_ms_orders_weekdays',''],
             ['discover_max_sitemaps','200'],['discover_max_urls','50000'],
@@ -2772,6 +2783,35 @@ async function processAutoSyncQueue() {
                 }
                 await finishAutoSyncRun('ops_planfix', statusPf, messagePf);
                 console.log(`[AUTO SYNC] Queue done: ops_planfix — ${statusPf}`);
+            } else if (task === 'bitcop_hours') {
+                console.log('[AUTO SYNC] Queue start: bitcop_hours');
+                await startAutoSyncRun('bitcop_hours', triggerType);
+                let statusBc = 'failed';
+                let messageBc = 'Ошибка синка часов Bitcop';
+                try {
+                    if (typeof workScheduleMod.triggerBitcopHoursSyncFromSettings !== 'function') {
+                        throw new Error('triggerBitcopHoursSyncFromSettings недоступен');
+                    }
+                    await touchAutoSyncRunMessage('bitcop_hours', 'Bitcop: старт…').catch(() => {});
+                    const result = await workScheduleMod.triggerBitcopHoursSyncFromSettings(
+                        db,
+                        appSettings,
+                        {
+                            onProgress: (p) => {
+                                touchAutoSyncRunMessage(
+                                    'bitcop_hours',
+                                    String((p && p.message) || 'Bitcop…').slice(0, 480)
+                                ).catch(() => {});
+                            },
+                        }
+                    );
+                    messageBc = String((result && result.message) || 'Готово').slice(0, 480);
+                    statusBc = result && result.success === false ? 'failed' : 'completed';
+                } catch (e) {
+                    messageBc = ('Ошибка Bitcop: ' + (e && e.message ? e.message : e)).slice(0, 480);
+                }
+                await finishAutoSyncRun('bitcop_hours', statusBc, messageBc);
+                console.log(`[AUTO SYNC] Queue done: bitcop_hours — ${statusBc}`);
             } else if (task === 'mssales') {
                 console.log('[AUTO SYNC] Queue start: mssales');
                 await startAutoSyncRun('mssales', triggerType);
@@ -3167,6 +3207,12 @@ function startAutoSyncScheduler() {
                     enabled: Number(appSettings.auto_sync_ops_planfix_enabled || 0) === 1,
                     time: String(appSettings.auto_sync_ops_planfix_time || '20:00').slice(0, 5),
                     weekdays: parseAutoSyncWeekdaysMon17(appSettings.auto_sync_ops_planfix_weekdays)
+                },
+                {
+                    type: 'bitcop_hours',
+                    enabled: Number(appSettings.auto_sync_bitcop_hours_enabled || 0) === 1,
+                    time: String(appSettings.auto_sync_bitcop_hours_time || '21:00').slice(0, 5),
+                    weekdays: parseAutoSyncWeekdaysMon17(appSettings.auto_sync_bitcop_hours_weekdays)
                 }
             ];
             for (const t of tasks) {

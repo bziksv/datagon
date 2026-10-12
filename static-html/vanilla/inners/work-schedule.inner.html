@@ -130,7 +130,7 @@
                   </div>
                   <strong class="dg-ws-month-title" id="dg-ws-dept-month-title">—</strong>
                 </div>
-                <span class="small text-muted">О = отпуск · Б = больничный · 1 / ½ = ставка · клик — правка (если есть право)</span>
+                <span class="small text-muted">О = отпуск · Б = больничный · Отг. · число = часы · 1 / ½ = ставка · B = Bitcop · клик — правка</span>
               </div>
               <div class="card-body py-3">
                 <div class="dg-ws-legend mb-2" id="dg-ws-dept-legend"></div>
@@ -487,11 +487,29 @@
             <div class="dg-ws-overlay-panel card shadow-lg border-0">
               <div class="card-header py-2 fw-semibold">Часы из Bitcop</div>
               <div class="card-body">
-                <p class="mb-2" id="dg-ws-bitcop-confirm-text">Записать продуктивные часы в табель?</p>
+                <p class="mb-2 small text-muted">Только <strong>продуктивные</strong> часы. По умолчанию — последние 7 дней (Москва).</p>
+                <div class="row g-2 mb-3">
+                  <div class="col-6">
+                    <label class="form-label mb-1" for="dg-ws-bitcop-from">С</label>
+                    <input type="date" class="form-control form-control-sm" id="dg-ws-bitcop-from" />
+                  </div>
+                  <div class="col-6">
+                    <label class="form-label mb-1" for="dg-ws-bitcop-to">По</label>
+                    <input type="date" class="form-control form-control-sm" id="dg-ws-bitcop-to" />
+                  </div>
+                  <div class="col-12">
+                    <div class="form-check">
+                      <input class="form-check-input" type="checkbox" id="dg-ws-bitcop-only-hourly" checked />
+                      <label class="form-check-label" for="dg-ws-bitcop-only-hourly">Только сотрудники «по часам»</label>
+                    </div>
+                  </div>
+                </div>
+                <p class="mb-2" id="dg-ws-bitcop-confirm-text">Дописать продуктивные часы Bitcop (таймер/ручные не затираются; hover на ячейке)?</p>
                 <div id="dg-ws-bitcop-preview" class="small text-muted"></div>
               </div>
-              <div class="card-footer d-flex justify-content-end gap-2 bg-white border-top-0">
+              <div class="card-footer d-flex justify-content-end gap-2 bg-white border-top-0 flex-wrap">
                 <button type="button" class="btn btn-outline-secondary" data-dg-ws-bitcop-close="1" data-dg-no-activity="1">Отмена</button>
+                <button type="button" class="btn btn-outline-primary" id="dg-ws-bitcop-preview-btn" data-dg-notify-start="Пробный прогон Bitcop…">Пробный прогон</button>
                 <button type="button" class="btn btn-primary" id="dg-ws-bitcop-ok" data-dg-notify-start="Пишем часы из Bitcop…">Записать</button>
               </div>
             </div>

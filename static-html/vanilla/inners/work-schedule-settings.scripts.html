@@ -290,6 +290,24 @@
       });
   }
 
+  function bitcopPersonById(id) {
+    var n = Number(id);
+    if (!n) return null;
+    return (state.bitcopPeople || []).find(function (p) {
+      return Number(p.id) === n;
+    }) || null;
+  }
+
+  function bitcopLabel(e) {
+    var id = e && e.bitcop_employee_id != null && e.bitcop_employee_id !== ""
+      ? Number(e.bitcop_employee_id)
+      : 0;
+    if (!id) return "";
+    var p = bitcopPersonById(id);
+    if (p) return String(p.full_name || p.email || "#" + id);
+    return "#" + id;
+  }
+
   function fillBitcopSelect(selectedId) {
     var sel = document.getElementById("dg-ws-set-emp-bitcop");
     if (!sel) return;
@@ -518,6 +536,8 @@
         var sb = seniorityBonusAmount(e);
         return sb == null ? -1 : sb;
       }
+      case "pay_type":
+        return String(e.pay_type || "salary") === "hourly" ? 1 : 0;
       case "salary":
         return Number(e.salary) || 0;
       case "schedule":
@@ -528,6 +548,8 @@
         return e.personal_sick_leave_rate != null ? Number(e.personal_sick_leave_rate) : -1;
       case "premium":
         return formatPremLabel(effectiveEmpPrem(e)).toLowerCase();
+      case "bitcop":
+        return bitcopLabel(e).toLowerCase() || (e.bitcop_employee_id ? String(e.bitcop_employee_id) : "");
       case "overrides":
         return hasOverrides(e) ? 1 : 0;
       default:
@@ -600,6 +622,12 @@
     if (e.personal_work_hours_per_day != null) parts.push(String(e.personal_work_hours_per_day));
     if (e.personal_sick_leave_rate != null) parts.push(String(e.personal_sick_leave_rate));
     parts.push(formatPremLabel(effectiveEmpPrem(e)));
+    var bc = bitcopLabel(e);
+    if (bc) {
+      parts.push(bc);
+      parts.push("bitcop");
+      if (e.bitcop_employee_id) parts.push(String(e.bitcop_employee_id));
+    }
     if (hasOverrides(e)) parts.push("есть переопределения override");
     return parts.join(" ").toLowerCase().replace(/\s+/g, " ");
   }
@@ -659,7 +687,7 @@
         ? "Нет сотрудников в выбранной организации фильтра"
         : "Нет сотрудников — «Привязать пользователя»";
       if (q) emptyHint = "Ничего не найдено по запросу «" + q + "»";
-      tb.innerHTML = '<tr><td colspan="13" class="text-muted p-3">' + emptyHint + "</td></tr>";
+      tb.innerHTML = '<tr><td colspan="15" class="text-muted p-3">' + emptyHint + "</td></tr>";
       return;
     }
     tb.innerHTML = list
@@ -671,6 +699,19 @@
         if (e.personal_premium_rule_json != null && e.personal_premium_rule_json !== "") {
           premLbl = '<strong>' + premLbl + "</strong>";
         }
+        var bc = bitcopLabel(e);
+        var bcCell = bc
+          ? '<span title="Bitcop id ' +
+            Number(e.bitcop_employee_id) +
+            '">' +
+            bc +
+            "</span>"
+          : '<span class="text-muted">—</span>';
+        var payHourly = String(e.pay_type || "salary") === "hourly";
+        var payLbl = payHourly
+          ? '<span class="badge bg-info text-dark">по часам</span>'
+          : '<span class="text-muted">оклад</span>';
+        var salTitle = payHourly ? "Ставка ₽/час" : "Оклад";
         return (
           "<tr><td>" +
           (e.full_name || e.username || "") +
@@ -684,10 +725,15 @@
           fmtSeniority(e.hire_date) +
           "</td><td>" +
           fmtSeniorityBonus(e) +
+          "</td><td>" +
+          payLbl +
           '</td><td><button type="button" class="btn btn-link btn-sm p-0 text-decoration-underline dg-ws-salary-link" data-dg-ws-set-salary-hist="' +
           e.id +
-          '" data-dg-notify-start="Загружаем историю оклада…" title="История изменений оклада">' +
+          '" data-dg-notify-start="Загружаем историю оклада…" title="' +
+          salTitle +
+          '">' +
           money(e.salary) +
+          (payHourly ? '<span class="text-muted">/ч</span>' : "") +
           "</button></td><td>" +
           (e.personal_schedule_type || "—") +
           "</td><td>" +
@@ -696,6 +742,8 @@
           (e.personal_sick_leave_rate != null ? e.personal_sick_leave_rate : "—") +
           "</td><td>" +
           premLbl +
+          "</td><td>" +
+          bcCell +
           "</td><td>" +
           ov +
           '</td><td class="text-end">' +
@@ -755,28 +803,92 @@
     }
   }
 
+  function formatPremShort(raw) {
+    var r = parsePremRule(raw);
+    if (!r || r.kind === "stub" || !r.kind) return "—";
+    if (r.kind === "fixed_full") return "фикс " + money(r.amount);
+    if (r.kind === "fixed") return "по дням " + money(r.amount);
+    return r.kind;
+  }
+
+  function renderCompPeriods(periods) {
+    var tb = document.getElementById("dg-ws-set-comp-tbody");
+    if (!tb) return;
+    var rows = periods || [];
+    if (!rows.length) {
+      tb.innerHTML = '<tr><td colspan="6" class="text-muted">Нет периодов</td></tr>';
+      return;
+    }
+    tb.innerHTML = rows
+      .map(function (p) {
+        var pay = String(p.pay_type || "") === "hourly" ? "по часам" : "оклад";
+        return (
+          "<tr><td>" +
+          (p.date_from || "—") +
+          "</td><td>" +
+          (p.date_to || "∞") +
+          "</td><td>" +
+          pay +
+          "</td><td>" +
+          money(p.salary) +
+          (String(p.pay_type) === "hourly" ? " ₽/ч" : "") +
+          "</td><td>" +
+          formatPremShort(p.premium_rule_json) +
+          '</td><td class="text-nowrap">' +
+          '<button type="button" class="btn btn-link btn-sm p-0 text-danger dg-ws-comp-del" data-id="' +
+          p.id +
+          '" data-dg-notify-start="Удаляем период…">удалить</button>' +
+          "</td></tr>"
+        );
+      })
+      .join("");
+  }
+
   function openSalaryHistory(empId) {
     var id = Number(empId);
     if (!id) return;
     var title = document.getElementById("dg-ws-set-salary-hist-title");
     var meta = document.getElementById("dg-ws-set-salary-hist-meta");
     var tb = document.getElementById("dg-ws-set-salary-hist-tbody");
-    if (title) title.textContent = "История оклада";
+    var hid = document.getElementById("dg-ws-set-comp-emp-id");
+    if (hid) hid.value = String(id);
+    if (title) title.textContent = "Периоды оплаты";
     if (meta) meta.textContent = "Загрузка…";
     if (tb) tb.innerHTML = '<tr><td colspan="4" class="text-muted">Загрузка…</td></tr>';
+    renderCompPeriods([]);
     showOverlay("salary-hist", true);
     api("/employees/" + id + "/salary-history")
       .then(function (j) {
         var emp = j.employee || {};
-        if (title) title.textContent = "История оклада · " + (emp.full_name || "#" + id);
+        if (title) title.textContent = "Периоды оплаты · " + (emp.full_name || "#" + id);
         if (meta) {
-          meta.textContent = "Текущий оклад: " + money(emp.salary) + " · кто менял и когда";
+          meta.textContent =
+            "Сейчас: " +
+            (String(emp.pay_type) === "hourly" ? "по часам " : "оклад ") +
+            money(emp.salary) +
+            (String(emp.pay_type) === "hourly" ? " ₽/ч" : "") +
+            " · расчёт ФОТ берёт период на дату дня";
         }
+        var fromEl = document.getElementById("dg-ws-set-comp-from");
+        var payEl = document.getElementById("dg-ws-set-comp-pay");
+        var salEl = document.getElementById("dg-ws-set-comp-salary");
+        if (fromEl && !fromEl.value) {
+          var d = new Date();
+          fromEl.value =
+            d.getFullYear() +
+            "-" +
+            String(d.getMonth() + 1).padStart(2, "0") +
+            "-" +
+            String(d.getDate()).padStart(2, "0");
+        }
+        if (payEl) payEl.value = String(emp.pay_type || "salary") === "hourly" ? "hourly" : "salary";
+        if (salEl) salEl.value = emp.salary != null ? String(emp.salary) : "";
+        renderCompPeriods(j.periods || []);
         var rows = j.rows || [];
         if (!tb) return;
         if (!rows.length) {
           tb.innerHTML =
-            '<tr><td colspan="4" class="text-muted">Пока нет записей — изменения оклада появятся здесь после сохранения</td></tr>';
+            '<tr><td colspan="4" class="text-muted">Журнал смен пуст — появятся после сохранения</td></tr>';
           return;
         }
         tb.innerHTML = rows
@@ -801,7 +913,61 @@
       .catch(function (e) {
         if (meta) meta.textContent = e.message || "Ошибка загрузки";
         if (tb) tb.innerHTML = '<tr><td colspan="4" class="text-danger">' + (e.message || "Ошибка") + "</td></tr>";
-        toast("danger", e.message || "Не удалось загрузить историю оклада");
+        toast("danger", e.message || "Не удалось загрузить периоды оплаты");
+      });
+  }
+
+  function addCompensationPeriod() {
+    var id = Number((document.getElementById("dg-ws-set-comp-emp-id") || {}).value);
+    if (!id) return;
+    var fromEl = document.getElementById("dg-ws-set-comp-from");
+    var payEl = document.getElementById("dg-ws-set-comp-pay");
+    var salEl = document.getElementById("dg-ws-set-comp-salary");
+    var body = {
+      date_from: (fromEl && fromEl.value) || "",
+      pay_type: payEl && payEl.value === "hourly" ? "hourly" : "salary",
+      salary: Number(String((salEl && salEl.value) || "").replace(/\s/g, "")) || 0,
+      replace_from_date: 1,
+      note: "из периодов",
+    };
+    if (!body.date_from) {
+      toast("warning", "Укажите дату «С»");
+      return;
+    }
+    var btn = document.getElementById("dg-ws-set-comp-add");
+    var run = function () {
+      return api("/employees/" + id + "/compensation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }).then(function () {
+        toast("success", "Период оплаты сохранён");
+        openSalaryHistory(id);
+        return loadAll();
+      });
+    };
+    if (window.DatagonNotify && window.DatagonNotify.busyRun) window.DatagonNotify.busyRun(btn, run);
+    else
+      run().catch(function (e) {
+        toast("danger", e.message);
+      });
+  }
+
+  function deleteCompensationPeriod(cid) {
+    var id = Number(cid);
+    if (!id) return;
+    var empId = Number((document.getElementById("dg-ws-set-comp-emp-id") || {}).value);
+    var run = function () {
+      return api("/compensation/" + id, { method: "DELETE" }).then(function () {
+        toast("success", "Период удалён");
+        if (empId) openSalaryHistory(empId);
+        return loadAll();
+      });
+    };
+    if (window.DatagonNotify && window.DatagonNotify.busyRun) window.DatagonNotify.busyRun(null, run);
+    else
+      run().catch(function (e) {
+        toast("danger", e.message);
       });
   }
 
@@ -976,8 +1142,9 @@
 
   function saveDept() {
     var id = Number(document.getElementById("dg-ws-set-dept-id").value);
+    var name = String(document.getElementById("dg-ws-set-dept-name").value || "").trim();
     var body = {
-      name: document.getElementById("dg-ws-set-dept-name").value,
+      name: name,
       schedule_type: document.getElementById("dg-ws-set-dept-sched").value,
       norm_hours: Number(document.getElementById("dg-ws-set-dept-norm").value) || 8,
       rate_full_hours: Number(document.getElementById("dg-ws-set-dept-t1").value) || 7,
@@ -986,6 +1153,10 @@
       premium_rule_json: readPremFromForm("dg-ws-set-dept-prem-kind", "dg-ws-set-dept-prem-amount", false),
       manage_scopes: readDeptManageScopes(),
     };
+    if (!name) {
+      toast("warning", "Укажите название отдела");
+      return;
+    }
     var btn = document.getElementById("dg-ws-set-dept-save");
     var run = function () {
       var req = id
@@ -999,17 +1170,34 @@
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(body),
           });
-      return req.then(function () {
-        showOverlay("dept", false);
-        toast("success", id ? "Отдел сохранён" : "Отдел создан");
-        return loadAll();
-      });
+      return req
+        .then(function () {
+          showOverlay("dept", false);
+          toast("success", id ? "Отдел сохранён" : "Отдел создан");
+          return loadAll();
+        })
+        .catch(function (e) {
+          var msg = (e && e.message) || "Ошибка сохранения";
+          if (/уже есть/i.test(msg) && name) {
+            var existing = (state.departmentsAll || []).find(function (d) {
+              return String(d.name || "").toLowerCase() === name.toLowerCase();
+            });
+            if (existing) {
+              toast("warning", "Отдел «" + name + "» уже есть — открываю карточку");
+              openDept(existing.id);
+              return;
+            }
+            msg = "Отдел «" + name + "» уже есть в справочнике. Обновите страницу и откройте его из списка.";
+          }
+          toast("danger", msg);
+          throw e;
+        });
     };
-    if (window.DatagonNotify && window.DatagonNotify.busyRun) window.DatagonNotify.busyRun(btn, run);
-    else
-      run().catch(function (e) {
-        toast("danger", e.message);
-      });
+    if (window.DatagonNotify && window.DatagonNotify.busyRun) {
+      window.DatagonNotify.busyRun(btn, run).catch(function () {});
+    } else {
+      run().catch(function () {});
+    }
   }
 
   function fillDeptSelect(sel, _orgId, selectedId) {
@@ -1117,6 +1305,14 @@
       });
   }
 
+  function syncEmpPayTypeLabel() {
+    var sel = document.getElementById("dg-ws-set-emp-pay-type");
+    var lab = document.getElementById("dg-ws-set-emp-salary-label");
+    if (!lab) return;
+    var hourly = sel && sel.value === "hourly";
+    lab.textContent = hourly ? "Ставка, ₽/час" : "Оклад";
+  }
+
   function openEmp(id) {
     var e = state.employees.find(function (x) {
       return Number(x.id) === Number(id);
@@ -1131,7 +1327,20 @@
     fillOrgSelect(document.getElementById("dg-ws-set-emp-edit-org"), e.organization_id);
     fillDeptSelect(document.getElementById("dg-ws-set-emp-edit-dept"), e.organization_id, e.department_id);
     document.getElementById("dg-ws-set-emp-edit-hire").value = toDateInput(e.hire_date);
+    var paySel = document.getElementById("dg-ws-set-emp-pay-type");
+    if (paySel) paySel.value = String(e.pay_type || "salary") === "hourly" ? "hourly" : "salary";
+    syncEmpPayTypeLabel();
     document.getElementById("dg-ws-set-emp-salary").value = String(e.salary || 0);
+    var compFrom = document.getElementById("dg-ws-set-emp-comp-from");
+    if (compFrom) {
+      var d = new Date();
+      compFrom.value =
+        d.getFullYear() +
+        "-" +
+        String(d.getMonth() + 1).padStart(2, "0") +
+        "-" +
+        String(d.getDate()).padStart(2, "0");
+    }
     document.getElementById("dg-ws-set-emp-sched").value = e.personal_schedule_type || "";
     document.getElementById("dg-ws-set-emp-norm").value =
       e.personal_work_hours_per_day != null ? String(e.personal_work_hours_per_day) : "";
@@ -1174,12 +1383,15 @@
     }
     var bitcopSel = document.getElementById("dg-ws-set-emp-bitcop");
     var noSen = document.getElementById("dg-ws-set-emp-no-seniority");
+    var paySel = document.getElementById("dg-ws-set-emp-pay-type");
+    var compFrom = document.getElementById("dg-ws-set-emp-comp-from");
     var body = {
       organization_id: Number(document.getElementById("dg-ws-set-emp-edit-org").value) || e.organization_id,
       department_id: Number(document.getElementById("dg-ws-set-emp-edit-dept").value) || e.department_id,
       position: e.position,
       hire_date: hire,
       fire_date: e.fire_date,
+      pay_type: paySel && paySel.value === "hourly" ? "hourly" : "salary",
       salary: Number(String(document.getElementById("dg-ws-set-emp-salary").value).replace(/\s/g, "")) || 0,
       grade: e.grade,
       official_employment: e.official_employment,
@@ -1195,6 +1407,7 @@
       ),
       bitcop_employee_id: bitcopSel && bitcopSel.value ? Number(bitcopSel.value) : null,
       seniority_pay_disabled: !!(noSen && noSen.checked),
+      comp_from: (compFrom && compFrom.value) || undefined,
     };
     var btn = document.getElementById("dg-ws-set-emp-save");
     var run = function () {
@@ -1486,7 +1699,14 @@
         applyLoaded(arr);
         loadBitcopConfig();
         loadCalendarStatus();
-        return ensureGroupsAsDepartments();
+        return loadBitcopPeople()
+          .then(function () {
+            renderEmps();
+            return ensureGroupsAsDepartments();
+          })
+          .catch(function () {
+            return ensureGroupsAsDepartments();
+          });
       })
       .catch(function (e) {
         toast("danger", e.message || "Нет доступа к настройкам");
@@ -1566,6 +1786,10 @@
         syncPremAmountWrap("dg-ws-set-emp-prem-kind", "dg-ws-set-emp-prem-amount-wrap");
       });
     }
+    var empPayType = document.getElementById("dg-ws-set-emp-pay-type");
+    if (empPayType) {
+      empPayType.addEventListener("change", syncEmpPayTypeLabel);
+    }
 
     var deptTb = document.getElementById("dg-ws-set-dept-tbody");
     if (deptTb) {
@@ -1619,6 +1843,16 @@
         var btn = ev.target.closest("[data-dg-ws-set-edit-emp]");
         if (!btn) return;
         openEmp(Number(btn.getAttribute("data-dg-ws-set-edit-emp")));
+      });
+    }
+    var compAdd = document.getElementById("dg-ws-set-comp-add");
+    if (compAdd) compAdd.addEventListener("click", addCompensationPeriod);
+    var compTb = document.getElementById("dg-ws-set-comp-tbody");
+    if (compTb) {
+      compTb.addEventListener("click", function (ev) {
+        var btn = ev.target.closest(".dg-ws-comp-del");
+        if (!btn) return;
+        deleteCompensationPeriod(btn.getAttribute("data-id"));
       });
     }
     var salaryHistBtn = document.getElementById("dg-ws-set-emp-salary-hist");

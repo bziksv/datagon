@@ -1975,6 +1975,53 @@
                   </div>
                 </div>
 
+                <div class="col-12 dg-as-task" id="dg-set-as-bitcop-hours" data-as-task="bitcop_hours" data-as-worker="2" data-as-category="external" data-as-en-id="dg-set-auto_bitcop_hours_en" data-as-time-id="dg-set-auto_bitcop_hours_time" data-as-weekdays-prefix="dg-set-auto_bitcop_hours_wd">
+                  <div class="dg-as-task-card dg-as-cat-external">
+                    <div class="dg-as-task-head">
+                      <span class="dg-as-cat-pill dg-as-cat-pill-dynamic"></span>
+                      <span class="dg-as-worker-badge is-w2" title="Отдельный процесс parser-autosync-w2">Воркер 2</span>
+                      <span class="dg-as-next-badge dg-as-next-badge-dynamic"></span>
+                    </div>
+                    <label class="form-label">График: часы из Bitcop</label>
+                    <div class="d-flex gap-2 align-items-center flex-wrap">
+                      <input type="checkbox" id="dg-set-auto_bitcop_hours_en" />
+                      <span>Включить</span>
+                      <input type="time" class="form-control" id="dg-set-auto_bitcop_hours_time" style="max-width:140px" />
+                      <label for="dg-set-auto_bitcop_hours_days" class="form-label mb-0 ms-2">Период:</label>
+                      <select class="form-select" id="dg-set-auto_bitcop_hours_days" style="max-width:110px">
+                        <option value="3">3 дн.</option>
+                        <option value="7" selected>7 дн.</option>
+                        <option value="14">14 дн.</option>
+                        <option value="31">31 дн.</option>
+                      </select>
+                      <label class="form-check mb-0 ms-1">
+                        <input type="checkbox" class="form-check-input" id="dg-set-auto_bitcop_hours_only_hourly" checked />
+                        <span class="form-check-label small">только «по часам»</span>
+                      </label>
+                      <button type="button" class="btn btn-outline-primary btn-sm" id="dg-set-auto_bitcop_hours_run" data-dg-activity-label="Запустить синк часов Bitcop" data-dg-notify-start="Ставим в очередь синк Bitcop…">
+                        Запустить сейчас
+                      </button>
+                      <button type="button" class="btn btn-outline-secondary btn-sm dg-set-as-log-btn" data-dg-notify-start="Открываем журнал запусков…" data-dg-tooltip="Журнал запусков этой задачи за выбранный день (МСК)">Лог</button>
+                    </div>
+                    <div class="mt-2 small">
+                      <span class="text-muted me-2">Дни (МСК):</span>
+                      <label class="form-check form-check-inline mb-0 small"><input type="checkbox" class="form-check-input" id="dg-set-auto_bitcop_hours_wd_1" /> пн</label>
+                      <label class="form-check form-check-inline mb-0 small"><input type="checkbox" class="form-check-input" id="dg-set-auto_bitcop_hours_wd_2" /> вт</label>
+                      <label class="form-check form-check-inline mb-0 small"><input type="checkbox" class="form-check-input" id="dg-set-auto_bitcop_hours_wd_3" /> ср</label>
+                      <label class="form-check form-check-inline mb-0 small"><input type="checkbox" class="form-check-input" id="dg-set-auto_bitcop_hours_wd_4" /> чт</label>
+                      <label class="form-check form-check-inline mb-0 small"><input type="checkbox" class="form-check-input" id="dg-set-auto_bitcop_hours_wd_5" /> пт</label>
+                      <label class="form-check form-check-inline mb-0 small"><input type="checkbox" class="form-check-input" id="dg-set-auto_bitcop_hours_wd_6" /> сб</label>
+                      <label class="form-check form-check-inline mb-0 small"><input type="checkbox" class="form-check-input" id="dg-set-auto_bitcop_hours_wd_7" /> вс</label>
+                    </div>
+                    <p class="small text-muted mb-0 mt-1">
+                      Тянет <strong>продуктивные</strong> часы в табель (<code>ws_work_log</code>). API Bitcop — на
+                      <a href="/work-schedule-settings.html">настройках графика</a>; тип оплаты «по часам» — в карточке сотрудника.
+                      По умолчанию <strong>21:00</strong> МСК, окно 7 дней. Журнал —
+                      <a href="/processes.html">processes</a> (<code>bitcop_hours</code>). <strong>Воркер 2</strong>.
+                    </p>
+                  </div>
+                </div>
+
                 <div class="col-12 dg-as-task" id="dg-set-as-finance-tochka" data-as-task="finance_tochka" data-as-worker="2" data-as-category="external" data-as-en-id="dg-set-auto_finance_tochka_en" data-as-time-id="dg-set-auto_finance_tochka_time" data-as-weekdays-prefix="dg-set-auto_finance_tochka_wd">
                   <div class="dg-as-task-card dg-as-cat-external">
                     <div class="dg-as-task-head">
@@ -3047,6 +3094,11 @@
         auto_sync_ops_planfix_enabled: 1,
         auto_sync_ops_planfix_time: "20:00",
         auto_sync_ops_planfix_weekdays: "",
+        auto_sync_bitcop_hours_enabled: 1,
+        auto_sync_bitcop_hours_time: "21:00",
+        auto_sync_bitcop_hours_days: 7,
+        auto_sync_bitcop_hours_only_hourly: 1,
+        auto_sync_bitcop_hours_weekdays: "",
         ms_dimensions_log_retention_days: 180,
         dg_purchase_overrides_log_retention_days: 180,
         auto_sync_runs_retention_days: 180,
@@ -4084,6 +4136,13 @@
         if (opsPlanfixEn) opsPlanfixEn.checked = Number(merged.auto_sync_ops_planfix_enabled) === 1;
         set("dg-set-auto_ops_planfix_time", merged.auto_sync_ops_planfix_time || "20:00");
         applyAutoSyncWeekdayChecks("dg-set-auto_ops_planfix_wd", merged.auto_sync_ops_planfix_weekdays);
+        var bitcopHoursEn = document.getElementById("dg-set-auto_bitcop_hours_en");
+        if (bitcopHoursEn) bitcopHoursEn.checked = Number(merged.auto_sync_bitcop_hours_enabled) === 1;
+        set("dg-set-auto_bitcop_hours_time", merged.auto_sync_bitcop_hours_time || "21:00");
+        set("dg-set-auto_bitcop_hours_days", merged.auto_sync_bitcop_hours_days != null ? String(merged.auto_sync_bitcop_hours_days) : "7");
+        var bitcopOnlyH = document.getElementById("dg-set-auto_bitcop_hours_only_hourly");
+        if (bitcopOnlyH) bitcopOnlyH.checked = Number(merged.auto_sync_bitcop_hours_only_hourly ?? 1) === 1;
+        applyAutoSyncWeekdayChecks("dg-set-auto_bitcop_hours_wd", merged.auto_sync_bitcop_hours_weekdays);
         document.getElementById("dg-set-auto_ms_en").checked = Number(merged.auto_sync_moysklad_enabled) === 1;
         set("dg-set-auto_ms_time", merged.auto_sync_moysklad_time || "04:00");
         var msOrdersAutoEn = document.getElementById("dg-set-auto_ms_orders_en");
@@ -5284,6 +5343,15 @@
             : false,
           auto_sync_ops_planfix_time: getStr("dg-set-auto_ops_planfix_time") || "20:00",
           auto_sync_ops_planfix_weekdays: collectAutoSyncWeekdayCsv("dg-set-auto_ops_planfix_wd"),
+          auto_sync_bitcop_hours_enabled: document.getElementById("dg-set-auto_bitcop_hours_en")
+            ? document.getElementById("dg-set-auto_bitcop_hours_en").checked
+            : false,
+          auto_sync_bitcop_hours_time: getStr("dg-set-auto_bitcop_hours_time") || "21:00",
+          auto_sync_bitcop_hours_days: getStr("dg-set-auto_bitcop_hours_days") || "7",
+          auto_sync_bitcop_hours_only_hourly: document.getElementById("dg-set-auto_bitcop_hours_only_hourly")
+            ? document.getElementById("dg-set-auto_bitcop_hours_only_hourly").checked
+            : true,
+          auto_sync_bitcop_hours_weekdays: collectAutoSyncWeekdayCsv("dg-set-auto_bitcop_hours_wd"),
           auto_sync_moysklad_enabled: document.getElementById("dg-set-auto_ms_en").checked,
           auto_sync_moysklad_time: getStr("dg-set-auto_ms_time") || "04:00",
           auto_sync_ms_orders_enabled: document.getElementById("dg-set-auto_ms_orders_en")
@@ -6911,6 +6979,12 @@
       if (opsPlanfixRunBtn) {
         opsPlanfixRunBtn.addEventListener("click", function () {
           runAutoSyncNow("ops_planfix", "Операционный лист: Planfix", "dg-set-auto_ops_planfix_run");
+        });
+      }
+      var bitcopHoursRunBtn = document.getElementById("dg-set-auto_bitcop_hours_run");
+      if (bitcopHoursRunBtn) {
+        bitcopHoursRunBtn.addEventListener("click", function () {
+          runAutoSyncNow("bitcop_hours", "График: часы из Bitcop", "dg-set-auto_bitcop_hours_run");
         });
       }
       if (document.getElementById("dg-set-auto_price_comp_live")) {

@@ -124,6 +124,11 @@
         auto_sync_ops_planfix_enabled: 1,
         auto_sync_ops_planfix_time: "20:00",
         auto_sync_ops_planfix_weekdays: "",
+        auto_sync_bitcop_hours_enabled: 1,
+        auto_sync_bitcop_hours_time: "21:00",
+        auto_sync_bitcop_hours_days: 7,
+        auto_sync_bitcop_hours_only_hourly: 1,
+        auto_sync_bitcop_hours_weekdays: "",
         ms_dimensions_log_retention_days: 180,
         dg_purchase_overrides_log_retention_days: 180,
         auto_sync_runs_retention_days: 180,
@@ -1161,6 +1166,13 @@
         if (opsPlanfixEn) opsPlanfixEn.checked = Number(merged.auto_sync_ops_planfix_enabled) === 1;
         set("dg-set-auto_ops_planfix_time", merged.auto_sync_ops_planfix_time || "20:00");
         applyAutoSyncWeekdayChecks("dg-set-auto_ops_planfix_wd", merged.auto_sync_ops_planfix_weekdays);
+        var bitcopHoursEn = document.getElementById("dg-set-auto_bitcop_hours_en");
+        if (bitcopHoursEn) bitcopHoursEn.checked = Number(merged.auto_sync_bitcop_hours_enabled) === 1;
+        set("dg-set-auto_bitcop_hours_time", merged.auto_sync_bitcop_hours_time || "21:00");
+        set("dg-set-auto_bitcop_hours_days", merged.auto_sync_bitcop_hours_days != null ? String(merged.auto_sync_bitcop_hours_days) : "7");
+        var bitcopOnlyH = document.getElementById("dg-set-auto_bitcop_hours_only_hourly");
+        if (bitcopOnlyH) bitcopOnlyH.checked = Number(merged.auto_sync_bitcop_hours_only_hourly ?? 1) === 1;
+        applyAutoSyncWeekdayChecks("dg-set-auto_bitcop_hours_wd", merged.auto_sync_bitcop_hours_weekdays);
         document.getElementById("dg-set-auto_ms_en").checked = Number(merged.auto_sync_moysklad_enabled) === 1;
         set("dg-set-auto_ms_time", merged.auto_sync_moysklad_time || "04:00");
         var msOrdersAutoEn = document.getElementById("dg-set-auto_ms_orders_en");
@@ -2361,6 +2373,15 @@
             : false,
           auto_sync_ops_planfix_time: getStr("dg-set-auto_ops_planfix_time") || "20:00",
           auto_sync_ops_planfix_weekdays: collectAutoSyncWeekdayCsv("dg-set-auto_ops_planfix_wd"),
+          auto_sync_bitcop_hours_enabled: document.getElementById("dg-set-auto_bitcop_hours_en")
+            ? document.getElementById("dg-set-auto_bitcop_hours_en").checked
+            : false,
+          auto_sync_bitcop_hours_time: getStr("dg-set-auto_bitcop_hours_time") || "21:00",
+          auto_sync_bitcop_hours_days: getStr("dg-set-auto_bitcop_hours_days") || "7",
+          auto_sync_bitcop_hours_only_hourly: document.getElementById("dg-set-auto_bitcop_hours_only_hourly")
+            ? document.getElementById("dg-set-auto_bitcop_hours_only_hourly").checked
+            : true,
+          auto_sync_bitcop_hours_weekdays: collectAutoSyncWeekdayCsv("dg-set-auto_bitcop_hours_wd"),
           auto_sync_moysklad_enabled: document.getElementById("dg-set-auto_ms_en").checked,
           auto_sync_moysklad_time: getStr("dg-set-auto_ms_time") || "04:00",
           auto_sync_ms_orders_enabled: document.getElementById("dg-set-auto_ms_orders_en")
@@ -3988,6 +4009,12 @@
       if (opsPlanfixRunBtn) {
         opsPlanfixRunBtn.addEventListener("click", function () {
           runAutoSyncNow("ops_planfix", "Операционный лист: Planfix", "dg-set-auto_ops_planfix_run");
+        });
+      }
+      var bitcopHoursRunBtn = document.getElementById("dg-set-auto_bitcop_hours_run");
+      if (bitcopHoursRunBtn) {
+        bitcopHoursRunBtn.addEventListener("click", function () {
+          runAutoSyncNow("bitcop_hours", "График: часы из Bitcop", "dg-set-auto_bitcop_hours_run");
         });
       }
       if (document.getElementById("dg-set-auto_price_comp_live")) {

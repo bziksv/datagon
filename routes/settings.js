@@ -166,6 +166,7 @@ module.exports = (db, appSettings) => {
             auto_sync_network_prices_enabled, auto_sync_network_prices_time, auto_sync_network_prices_weekdays,
             auto_sync_finance_tochka_enabled, auto_sync_finance_tochka_time, auto_sync_finance_tochka_days, auto_sync_finance_tochka_weekdays,
             auto_sync_ops_planfix_enabled, auto_sync_ops_planfix_time, auto_sync_ops_planfix_weekdays,
+            auto_sync_bitcop_hours_enabled, auto_sync_bitcop_hours_time, auto_sync_bitcop_hours_days, auto_sync_bitcop_hours_only_hourly, auto_sync_bitcop_hours_weekdays,
             auto_sync_moysklad_enabled, auto_sync_moysklad_time,
             auto_sync_ms_orders_enabled, auto_sync_ms_orders_time, auto_sync_ms_orders_weekdays,
             auto_sync_marketplaces_enabled, auto_sync_marketplaces_time,
@@ -306,6 +307,28 @@ module.exports = (db, appSettings) => {
                 queries.push([
                     'auto_sync_ops_planfix_weekdays',
                     normalizeAutoSyncWeekdaysCsv(auto_sync_ops_planfix_weekdays),
+                ]);
+            }
+            if (auto_sync_bitcop_hours_enabled !== undefined) {
+                queries.push(['auto_sync_bitcop_hours_enabled', auto_sync_bitcop_hours_enabled ? 1 : 0]);
+            }
+            if (auto_sync_bitcop_hours_time !== undefined) {
+                queries.push(['auto_sync_bitcop_hours_time', auto_sync_bitcop_hours_time || '21:00']);
+            }
+            if (auto_sync_bitcop_hours_days !== undefined) {
+                const d = Math.max(1, Math.min(93, parseInt(String(auto_sync_bitcop_hours_days), 10) || 7));
+                queries.push(['auto_sync_bitcop_hours_days', d]);
+            }
+            if (auto_sync_bitcop_hours_only_hourly !== undefined) {
+                queries.push([
+                    'auto_sync_bitcop_hours_only_hourly',
+                    auto_sync_bitcop_hours_only_hourly ? 1 : 0,
+                ]);
+            }
+            if (auto_sync_bitcop_hours_weekdays !== undefined) {
+                queries.push([
+                    'auto_sync_bitcop_hours_weekdays',
+                    normalizeAutoSyncWeekdaysCsv(auto_sync_bitcop_hours_weekdays),
                 ]);
             }
             if (auto_sync_moysklad_enabled !== undefined) queries.push(['auto_sync_moysklad_enabled', auto_sync_moysklad_enabled ? 1 : 0]);
@@ -642,6 +665,24 @@ module.exports = (db, appSettings) => {
             }
             if(auto_sync_ops_planfix_weekdays !== undefined) {
                 appSettings.auto_sync_ops_planfix_weekdays = normalizeAutoSyncWeekdaysCsv(auto_sync_ops_planfix_weekdays);
+            }
+            if(auto_sync_bitcop_hours_enabled !== undefined) {
+                appSettings.auto_sync_bitcop_hours_enabled = auto_sync_bitcop_hours_enabled ? 1 : 0;
+            }
+            if(auto_sync_bitcop_hours_time !== undefined) {
+                appSettings.auto_sync_bitcop_hours_time = auto_sync_bitcop_hours_time || '21:00';
+            }
+            if(auto_sync_bitcop_hours_days !== undefined) {
+                appSettings.auto_sync_bitcop_hours_days = Math.max(
+                    1,
+                    Math.min(93, parseInt(String(auto_sync_bitcop_hours_days), 10) || 7)
+                );
+            }
+            if(auto_sync_bitcop_hours_only_hourly !== undefined) {
+                appSettings.auto_sync_bitcop_hours_only_hourly = auto_sync_bitcop_hours_only_hourly ? 1 : 0;
+            }
+            if(auto_sync_bitcop_hours_weekdays !== undefined) {
+                appSettings.auto_sync_bitcop_hours_weekdays = normalizeAutoSyncWeekdaysCsv(auto_sync_bitcop_hours_weekdays);
             }
             if(auto_sync_moysklad_enabled !== undefined) appSettings.auto_sync_moysklad_enabled = auto_sync_moysklad_enabled ? 1 : 0;
             if(auto_sync_moysklad_time !== undefined) appSettings.auto_sync_moysklad_time = auto_sync_moysklad_time || '04:00';

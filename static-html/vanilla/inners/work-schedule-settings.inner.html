@@ -234,11 +234,13 @@
                       <th class="dg-ws-set-sortable" data-dg-ws-set-emp-sort="hire" scope="col">Дата приёма</th>
                       <th class="dg-ws-set-sortable" data-dg-ws-set-emp-sort="seniority" scope="col">Стаж</th>
                       <th class="dg-ws-set-sortable" data-dg-ws-set-emp-sort="seniority_bonus" scope="col">За стаж</th>
-                      <th class="dg-ws-set-sortable" data-dg-ws-set-emp-sort="salary" scope="col">Оклад</th>
+                      <th class="dg-ws-set-sortable" data-dg-ws-set-emp-sort="pay_type" scope="col">Оплата</th>
+                      <th class="dg-ws-set-sortable" data-dg-ws-set-emp-sort="salary" scope="col">Оклад / ₽·ч</th>
                       <th class="dg-ws-set-sortable" data-dg-ws-set-emp-sort="schedule" scope="col">График (личн.)</th>
                       <th class="dg-ws-set-sortable" data-dg-ws-set-emp-sort="norm" scope="col">Норма дня</th>
                       <th class="dg-ws-set-sortable" data-dg-ws-set-emp-sort="sick" scope="col">Больничный ₽</th>
                       <th class="dg-ws-set-sortable" data-dg-ws-set-emp-sort="premium" scope="col">Премия</th>
+                      <th class="dg-ws-set-sortable" data-dg-ws-set-emp-sort="bitcop" scope="col" title="Привязка к сотруднику Bitcop">Bitcop</th>
                       <th class="dg-ws-set-sortable" data-dg-ws-set-emp-sort="overrides" scope="col">Переопред.</th>
                       <th scope="col"></th>
                     </tr>
@@ -379,11 +381,24 @@
                     <input type="date" class="form-control" id="dg-ws-set-emp-edit-hire" />
                   </div>
                   <div class="col-md-4">
-                    <label class="form-label" for="dg-ws-set-emp-salary">Оклад</label>
+                    <label class="form-label" for="dg-ws-set-emp-pay-type">Тип оплаты</label>
+                    <select class="form-select" id="dg-ws-set-emp-pay-type">
+                      <option value="salary">Оклад</option>
+                      <option value="hourly">По часам (Bitcop)</option>
+                    </select>
+                    <div class="form-text">По часам: ставка ₽/ч × продуктивные часы из Bitcop.</div>
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label" for="dg-ws-set-emp-salary" id="dg-ws-set-emp-salary-label">Оклад / ставка</label>
                     <div class="input-group">
                       <input type="text" class="form-control" id="dg-ws-set-emp-salary" />
-                      <button type="button" class="btn btn-outline-secondary" id="dg-ws-set-emp-salary-hist" title="История изменений оклада" data-dg-notify-start="Загружаем историю оклада…">История</button>
+                      <button type="button" class="btn btn-outline-secondary" id="dg-ws-set-emp-salary-hist" title="Периоды оплаты (с–по)" data-dg-notify-start="Загружаем периоды оплаты…">Периоды</button>
                     </div>
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label" for="dg-ws-set-emp-comp-from">Ставка действует с</label>
+                    <input type="date" class="form-control" id="dg-ws-set-emp-comp-from" />
+                    <div class="form-text">При смене оклада/типа/премии — новый период с этой даты; старый закрывается днём раньше.</div>
                   </div>
                   <div class="col-md-4">
                     <label class="form-label" for="dg-ws-set-emp-sched">График (личный)</label>
@@ -468,11 +483,51 @@
             <div class="dg-ws-set-overlay-backdrop" data-dg-ws-set-close="salary-hist"></div>
             <div class="dg-ws-set-overlay-panel card shadow-lg border-0 wide">
               <div class="card-header d-flex justify-content-between align-items-center">
-                <div class="fw-semibold" id="dg-ws-set-salary-hist-title">История оклада</div>
+                <div class="fw-semibold" id="dg-ws-set-salary-hist-title">Периоды оплаты</div>
                 <button type="button" class="btn-close" data-dg-ws-set-close="salary-hist" aria-label="Закрыть" data-dg-no-activity="1"></button>
               </div>
               <div class="card-body">
+                <input type="hidden" id="dg-ws-set-comp-emp-id" />
                 <p class="small text-muted mb-2" id="dg-ws-set-salary-hist-meta"></p>
+                <div class="table-responsive mb-3">
+                  <table class="table table-sm table-bordered mb-0">
+                    <thead>
+                      <tr>
+                        <th>С</th>
+                        <th>По</th>
+                        <th>Тип</th>
+                        <th>Оклад / ₽/ч</th>
+                        <th>Премия</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody id="dg-ws-set-comp-tbody"></tbody>
+                  </table>
+                </div>
+                <div class="border rounded p-2 mb-3 bg-light">
+                  <div class="fw-semibold small mb-2">Новый период (закроет предыдущий открытый)</div>
+                  <div class="row g-2 align-items-end">
+                    <div class="col-md-3">
+                      <label class="form-label mb-0" for="dg-ws-set-comp-from">С</label>
+                      <input type="date" class="form-control form-control-sm" id="dg-ws-set-comp-from" />
+                    </div>
+                    <div class="col-md-3">
+                      <label class="form-label mb-0" for="dg-ws-set-comp-pay">Тип</label>
+                      <select class="form-select form-select-sm" id="dg-ws-set-comp-pay">
+                        <option value="salary">Оклад</option>
+                        <option value="hourly">По часам</option>
+                      </select>
+                    </div>
+                    <div class="col-md-3">
+                      <label class="form-label mb-0" for="dg-ws-set-comp-salary">Сумма</label>
+                      <input type="text" class="form-control form-control-sm" id="dg-ws-set-comp-salary" inputmode="decimal" />
+                    </div>
+                    <div class="col-md-3">
+                      <button type="button" class="btn btn-sm btn-primary w-100" id="dg-ws-set-comp-add" data-dg-notify-start="Добавляем период оплаты…">Добавить период</button>
+                    </div>
+                  </div>
+                </div>
+                <div class="fw-semibold small mb-1">Журнал смен оклада</div>
                 <div class="table-responsive">
                   <table class="table table-sm table-bordered mb-0">
                     <thead>
