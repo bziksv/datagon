@@ -2637,18 +2637,24 @@
     var id = Number(cid);
     if (!id) return;
     var empId = Number((document.getElementById("dg-ws-set-comp-emp-id") || {}).value);
+    var btn = document.querySelector('.dg-ws-comp-del[data-id="' + id + '"]');
     var run = function () {
-      return api("/compensation/" + id, { method: "DELETE" }).then(function () {
-        toast("success", "Период удалён");
-        if (empId) openSalaryHistory(empId);
-        return loadAll();
-      });
+      return api("/compensation/" + id, { method: "DELETE" })
+        .then(function () {
+          toast("success", "Период удалён");
+          if (empId) openSalaryHistory(empId);
+          return loadAll();
+        })
+        .catch(function (e) {
+          toast("danger", (e && e.message) || "Не удалось удалить период");
+          throw e;
+        });
     };
-    if (window.DatagonNotify && window.DatagonNotify.busyRun) window.DatagonNotify.busyRun(null, run);
-    else
-      run().catch(function (e) {
-        toast("danger", e.message);
-      });
+    if (window.DatagonNotify && window.DatagonNotify.busyRun && btn) {
+      window.DatagonNotify.busyRun(btn, run).catch(function () {});
+    } else {
+      run().catch(function () {});
+    }
   }
 
   /** Только карточка организации (поля / сохранить / удалить). Список сотрудников не трогает. */

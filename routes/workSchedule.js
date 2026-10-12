@@ -1622,7 +1622,7 @@ function createWorkScheduleRouter(db) {
             }
         }
         const [empRows] = await db.query(
-            `SELECT e.id, e.salary, e.pay_type, u.full_name, u.username
+            `SELECT e.id, e.salary, e.pay_type, e.personal_premium_rule_json, u.full_name, u.username
              FROM ws_employee e JOIN users u ON u.id=e.user_id WHERE e.id=? LIMIT 1`,
             [id]
         );
@@ -1645,6 +1645,7 @@ function createWorkScheduleRouter(db) {
                 full_name: empRows[0].full_name || empRows[0].username,
                 salary: Number(empRows[0].salary) || 0,
                 pay_type: calc.normalizePayType(empRows[0].pay_type),
+                personal_premium_rule_json: empRows[0].personal_premium_rule_json,
             },
             periods,
             rows: rows || [],
