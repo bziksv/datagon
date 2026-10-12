@@ -1500,7 +1500,7 @@
                   </table>
                 </div>
                 <div class="border rounded p-2 mb-3 bg-light">
-                  <div class="fw-semibold small mb-2">Новый период (закроет предыдущий открытый)</div>
+                  <div class="fw-semibold small mb-2">Новый период (оклад + премия; закроет предыдущий открытый)</div>
                   <div class="row g-2 align-items-end">
                     <div class="col-md-3">
                       <label class="form-label mb-0" for="dg-ws-set-comp-from">С</label>
@@ -1514,13 +1514,27 @@
                       </select>
                     </div>
                     <div class="col-md-3">
-                      <label class="form-label mb-0" for="dg-ws-set-comp-salary">Сумма</label>
+                      <label class="form-label mb-0" for="dg-ws-set-comp-salary">Оклад / ₽/ч</label>
                       <input type="text" class="form-control form-control-sm" id="dg-ws-set-comp-salary" inputmode="decimal" />
+                    </div>
+                    <div class="col-md-3">
+                      <label class="form-label mb-0" for="dg-ws-set-comp-prem-kind">Премия</label>
+                      <select class="form-select form-select-sm" id="dg-ws-set-comp-prem-kind">
+                        <option value="">— из отдела —</option>
+                        <option value="stub">Нет</option>
+                        <option value="fixed">Фикс по дням, ₽</option>
+                        <option value="fixed_full">Фикс целиком, ₽</option>
+                      </select>
+                    </div>
+                    <div class="col-md-3" id="dg-ws-set-comp-prem-amount-wrap">
+                      <label class="form-label mb-0" for="dg-ws-set-comp-prem-amount">Сумма премии, ₽</label>
+                      <input type="text" class="form-control form-control-sm" id="dg-ws-set-comp-prem-amount" inputmode="decimal" placeholder="0" />
                     </div>
                     <div class="col-md-3">
                       <button type="button" class="btn btn-sm btn-primary w-100" id="dg-ws-set-comp-add" data-dg-notify-start="Добавляем период оплаты…">Добавить период</button>
                     </div>
                   </div>
+                  <div class="form-text mt-1 mb-0">Премия тоже версионируется по датам — смена не переписывает прошлые дни.</div>
                 </div>
                 <div class="fw-semibold small mb-1">Журнал смен оклада</div>
                 <div class="table-responsive">
@@ -2519,7 +2533,9 @@
             (String(emp.pay_type) === "hourly" ? "по часам " : "оклад ") +
             money(emp.salary) +
             (String(emp.pay_type) === "hourly" ? " ₽/ч" : "") +
-            " · расчёт ФОТ берёт период на дату дня";
+            " · премия " +
+            formatPremShort(emp.personal_premium_rule_json) +
+            " · расчёт ФОТ: оклад и премия из периода на дату дня";
         }
         var fromEl = document.getElementById("dg-ws-set-comp-from");
         var payEl = document.getElementById("dg-ws-set-comp-pay");
@@ -2535,6 +2551,13 @@
         }
         if (payEl) payEl.value = String(emp.pay_type || "salary") === "hourly" ? "hourly" : "salary";
         if (salEl) salEl.value = emp.salary != null ? String(emp.salary) : "";
+        fillPremForm(
+          "dg-ws-set-comp-prem-kind",
+          "dg-ws-set-comp-prem-amount",
+          "dg-ws-set-comp-prem-amount-wrap",
+          emp.personal_premium_rule_json,
+          true
+        );
         renderCompPeriods(j.periods || []);
         var rows = j.rows || [];
         if (!tb) return;
@@ -2579,6 +2602,11 @@
       date_from: (fromEl && fromEl.value) || "",
       pay_type: payEl && payEl.value === "hourly" ? "hourly" : "salary",
       salary: Number(String((salEl && salEl.value) || "").replace(/\s/g, "")) || 0,
+      premium_rule_json: readPremFromForm(
+        "dg-ws-set-comp-prem-kind",
+        "dg-ws-set-comp-prem-amount",
+        true
+      ),
       replace_from_date: 1,
       note: "из периодов",
     };
@@ -3436,6 +3464,12 @@
     if (empPremKind) {
       empPremKind.addEventListener("change", function () {
         syncPremAmountWrap("dg-ws-set-emp-prem-kind", "dg-ws-set-emp-prem-amount-wrap");
+      });
+    }
+    var compPremKind = document.getElementById("dg-ws-set-comp-prem-kind");
+    if (compPremKind) {
+      compPremKind.addEventListener("change", function () {
+        syncPremAmountWrap("dg-ws-set-comp-prem-kind", "dg-ws-set-comp-prem-amount-wrap");
       });
     }
     var empPayType = document.getElementById("dg-ws-set-emp-pay-type");

@@ -1418,6 +1418,14 @@ function createWorkScheduleRouter(db) {
                     premJson = null;
                 }
             }
+            let prevPremJson = null;
+            if (oldPremRaw) {
+                try {
+                    prevPremJson = JSON.parse(oldPremRaw);
+                } catch (e) {
+                    prevPremJson = null;
+                }
+            }
             try {
                 await empComp.applyCompensationChange(db, {
                     employeeId: id,
@@ -1425,6 +1433,7 @@ function createWorkScheduleRouter(db) {
                     pay_type: payType,
                     salary: newSalary,
                     premium_rule_json: premJson,
+                    previous_premium_rule_json: prevPremJson,
                     note: b.comp_note || 'смена в карточке',
                     actorId: actorOf(req).id || null,
                 });
@@ -1444,6 +1453,16 @@ function createWorkScheduleRouter(db) {
                     new_value: String(newSalary),
                 });
             }
+            if (premActuallyChanged) {
+                await writeAudit(db, req, {
+                    entity_type: 'employee',
+                    entity_id: id,
+                    action: 'premium_change',
+                    field_name: 'personal_premium_rule_json',
+                    old_value: oldPremRaw || '',
+                    new_value: newPremRaw || '',
+                });
+            }
             await writeAudit(db, req, {
                 entity_type: 'employee_comp',
                 entity_id: id,
@@ -1452,6 +1471,7 @@ function createWorkScheduleRouter(db) {
                     date_from: compFrom,
                     pay_type: payType,
                     salary: newSalary,
+                    premium_rule_json: premJson,
                 }),
             });
         }
@@ -1474,21 +1494,36 @@ function createWorkScheduleRouter(db) {
         const b = req.body || {};
         await ensureSchema(db);
         try {
-            let prem = b.premium_rule_json;
-            if (prem !== undefined && prem !== null && typeof prem === 'string') {
+            const premRaw = normalizePremiumRuleBody(b.premium_rule_json, { allowInherit: true });
+            let prem = null;
+            if (premRaw) {
                 try {
-                    prem = JSON.parse(prem);
+                    prem = JSON.parse(premRaw);
                 } catch (e) {
                     prem = null;
                 }
             }
             if (b.replace_from_date || b.close_previous) {
+                const [prevEmp] = await db.query(
+                    `SELECT personal_premium_rule_json FROM ws_employee WHERE id=? LIMIT 1`,
+                    [id]
+                );
+                let prevPrem = null;
+                if (prevEmp[0] && prevEmp[0].personal_premium_rule_json != null) {
+                    const raw = prevEmp[0].personal_premium_rule_json;
+                    try {
+                        prevPrem = typeof raw === 'string' ? JSON.parse(raw) : raw;
+                    } catch (e) {
+                        prevPrem = null;
+                    }
+                }
                 const applied = await empComp.applyCompensationChange(db, {
                     employeeId: id,
                     date_from: b.date_from || calc.moscowYmd(),
                     pay_type: b.pay_type,
                     salary: b.salary,
                     premium_rule_json: prem,
+                    previous_premium_rule_json: prevPrem,
                     note: b.note || null,
                     actorId: actorOf(req).id || null,
                 });

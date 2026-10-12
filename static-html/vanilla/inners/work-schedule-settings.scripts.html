@@ -867,7 +867,9 @@
             (String(emp.pay_type) === "hourly" ? "по часам " : "оклад ") +
             money(emp.salary) +
             (String(emp.pay_type) === "hourly" ? " ₽/ч" : "") +
-            " · расчёт ФОТ берёт период на дату дня";
+            " · премия " +
+            formatPremShort(emp.personal_premium_rule_json) +
+            " · расчёт ФОТ: оклад и премия из периода на дату дня";
         }
         var fromEl = document.getElementById("dg-ws-set-comp-from");
         var payEl = document.getElementById("dg-ws-set-comp-pay");
@@ -883,6 +885,13 @@
         }
         if (payEl) payEl.value = String(emp.pay_type || "salary") === "hourly" ? "hourly" : "salary";
         if (salEl) salEl.value = emp.salary != null ? String(emp.salary) : "";
+        fillPremForm(
+          "dg-ws-set-comp-prem-kind",
+          "dg-ws-set-comp-prem-amount",
+          "dg-ws-set-comp-prem-amount-wrap",
+          emp.personal_premium_rule_json,
+          true
+        );
         renderCompPeriods(j.periods || []);
         var rows = j.rows || [];
         if (!tb) return;
@@ -927,6 +936,11 @@
       date_from: (fromEl && fromEl.value) || "",
       pay_type: payEl && payEl.value === "hourly" ? "hourly" : "salary",
       salary: Number(String((salEl && salEl.value) || "").replace(/\s/g, "")) || 0,
+      premium_rule_json: readPremFromForm(
+        "dg-ws-set-comp-prem-kind",
+        "dg-ws-set-comp-prem-amount",
+        true
+      ),
       replace_from_date: 1,
       note: "из периодов",
     };
@@ -1784,6 +1798,12 @@
     if (empPremKind) {
       empPremKind.addEventListener("change", function () {
         syncPremAmountWrap("dg-ws-set-emp-prem-kind", "dg-ws-set-emp-prem-amount-wrap");
+      });
+    }
+    var compPremKind = document.getElementById("dg-ws-set-comp-prem-kind");
+    if (compPremKind) {
+      compPremKind.addEventListener("change", function () {
+        syncPremAmountWrap("dg-ws-set-comp-prem-kind", "dg-ws-set-comp-prem-amount-wrap");
       });
     }
     var empPayType = document.getElementById("dg-ws-set-emp-pay-type");
