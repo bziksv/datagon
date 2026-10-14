@@ -2350,7 +2350,11 @@
   var TABLE_COLLAPSE_KEY = "dg.manager-sales.table-card.collapsed.v1";
   var COLS_KEY = "dg.msl.colvisible.v2";
   var WIDTHS_KEY = "dg.msl.colwidths.v1";
+  var SORT_KEY = "dg.msl.sort.v1";
   var PAGE_SLUG = "manager-sales";
+  /** Сортировка из URL при открытии — приоритетнее localStorage, потом пишем в prefs менеджера. */
+  var sortFromUrl = false;
+  var sortPrefsBootstrapped = false;
 
   var FIELD_GROUPS = [
     { title: "Основные", keys: ["search", "year", "month", "status", "limit"] },
@@ -2643,15 +2647,54 @@
     return Number.isFinite(n) ? n : raw;
   }
 
-  function userColsKey() {
+  function currentUserKey() {
     var u = "guest";
-    try { u = String(localStorage.getItem("currentUser") || "guest"); } catch (e) {}
-    return COLS_KEY + ":" + u;
+    try {
+      u = String(localStorage.getItem("currentUser") || "guest");
+    } catch (e) {}
+    return u;
+  }
+  function userColsKey() {
+    return COLS_KEY + ":" + currentUserKey();
   }
   function userWidthKey() {
-    var u = "guest";
-    try { u = String(localStorage.getItem("currentUser") || "guest"); } catch (e) {}
-    return WIDTHS_KEY + ":" + u;
+    return WIDTHS_KEY + ":" + currentUserKey();
+  }
+  function sortPrefsKey(managerId) {
+    var mid =
+      managerId != null && String(managerId).trim() !== ""
+        ? String(managerId)
+        : "all";
+    return SORT_KEY + ":" + currentUserKey() + ":" + mid;
+  }
+  function allowedSortKeys() {
+    var set = {};
+    MSALES_COLS.forEach(function (c) {
+      var k = c[0];
+      if (k && k !== "_del" && k !== "_hand" && k !== "comments") set[k] = 1;
+    });
+    return set;
+  }
+  function persistSortPrefs() {
+    try {
+      localStorage.setItem(
+        sortPrefsKey(state.manager_user_id),
+        JSON.stringify({ sort_by: state.sort_by, sort_dir: state.sort_dir })
+      );
+    } catch (e) {}
+  }
+  /** Своя сортировка на каждого менеджера (и на «все») + на текущего пользователя панели. */
+  function loadSortForManager(managerId) {
+    var allowed = allowedSortKeys();
+    var nextBy = "row_no";
+    var nextDir = "asc";
+    try {
+      var raw = JSON.parse(localStorage.getItem(sortPrefsKey(managerId)) || "null");
+      if (raw && allowed[String(raw.sort_by)]) nextBy = String(raw.sort_by);
+      if (raw && (raw.sort_dir === "asc" || raw.sort_dir === "desc")) nextDir = raw.sort_dir;
+    } catch (e) {}
+    state.sort_by = nextBy;
+    state.sort_dir = nextDir;
   }
 
   function loadVisible() {
@@ -2804,6 +2847,7 @@
 
   function commitFilters() {
     readPendingFromForm();
+    var prevManager = state.manager_user_id;
     state.year = state.pending.year;
     state.month = state.pending.month || "";
     state.manager_user_id = state.pending.manager_user_id;
@@ -2817,6 +2861,16 @@
     state.ship_group_id = state.pending.ship_group_id || "";
     state.limit = state.pending.limit;
     state.offset = 0;
+    if (sortFromUrl) {
+      persistSortPrefs();
+      sortFromUrl = false;
+    } else if (
+      !sortPrefsBootstrapped ||
+      String(prevManager) !== String(state.manager_user_id)
+    ) {
+      loadSortForManager(state.manager_user_id);
+    }
+    sortPrefsBootstrapped = true;
     syncTableOwnerTitle();
     persistFilters();
     syncDirty();
@@ -2943,9 +2997,15 @@
     var lim = Number(p.get("limit"));
     if (Number.isFinite(lim) && lim > 0) state.pending.limit = lim;
     var sb = p.get("sort_by");
-    if (sb && sb !== "_del" && sb !== "_hand") state.sort_by = sb;
+    if (sb && sb !== "_del" && sb !== "_hand" && sb !== "comments") {
+      state.sort_by = sb;
+      sortFromUrl = true;
+    }
     var sd = p.get("sort_dir");
-    if (sd === "asc" || sd === "desc") state.sort_dir = sd;
+    if (sd === "asc" || sd === "desc") {
+      state.sort_dir = sd;
+      if (sb) sortFromUrl = true;
+    }
     var page = Number(p.get("page"));
     var off = Number(p.get("offset"));
     if (Number.isFinite(page) && page > 1) {
@@ -5494,6 +5554,7 @@
         state.sort_by = key;
         state.sort_dir = "asc";
       }
+      persistSortPrefs();
       load();
     });
   }
