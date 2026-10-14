@@ -2937,6 +2937,7 @@ async function processAutoSyncQueue() {
             } else if (task === 'np_ms_enrich') {
                 console.log('[AUTO SYNC] Queue start: np_ms_enrich');
                 await startAutoSyncRun('np_ms_enrich', triggerType);
+                await touchAutoSyncRunMessage('np_ms_enrich', 'Кэш МС: старт дозаполнения…').catch(() => {});
                 let statusNp = 'completed';
                 let messageNp = '';
                 try {
@@ -2944,20 +2945,33 @@ async function processAutoSyncQueue() {
                     if (typeof marketsMod.backfillMarketsMsFieldsFromCache !== 'function') {
                         throw new Error('backfillMarketsMsFieldsFromCache недоступен');
                     }
-                    const r = await marketsMod.backfillMarketsMsFieldsFromCache(db, { limit: 3000 });
+                    const r = await marketsMod.backfillMarketsMsFieldsFromCache(db, {
+                        limit: 3000,
+                        onProgress: (msg) => touchAutoSyncRunMessage('np_ms_enrich', msg),
+                    });
                     messageNp = (
-                        'Поля МС (кэш): сканировано ' +
+                        'Поля МС (кэш): скан ' +
                         (r.scanned || 0) +
-                        ', обновлено ' +
+                        ', строк обновлено ' +
                         (r.updated || 0) +
-                        ', без совпадения в МС ' +
+                        ', miss ' +
                         (r.missed || 0) +
+                        '; СС·ДС +' +
+                        (r.filled_ss_ds || 0) +
+                        ' (пусто было ' +
+                        (r.empty_ss_ds_need || 0) +
+                        ', в кэше МС нет ссылки ' +
+                        (r.ss_ds_absent_in_ms || 0) +
+                        '); РУ +' +
+                        (r.filled_ru || 0) +
+                        ', НДС +' +
+                        (r.filled_vat || 0) +
+                        ', штрих +' +
+                        (r.filled_barcode || 0) +
                         '; комплекты: скан ' +
                         (r.kits_scanned || 0) +
-                        ', обновлено ' +
-                        (r.kits_updated || 0) +
-                        ', miss ' +
-                        (r.kits_missed || 0)
+                        ', +' +
+                        (r.kits_updated || 0)
                     ).slice(0, 480);
                 } catch (e) {
                     statusNp = 'failed';
