@@ -318,6 +318,39 @@ async function canEditEmployeeTimesheet(db, actor, employeeId) {
     return !!(scope && scope.can_edit);
 }
 
+/** ЧЧ:ММ из SQL datetime / Date для hover таймера на табеле. */
+function hmFromSql(v) {
+    if (v == null || v === '') return '';
+    const s = String(v);
+    const m = s.match(/(\d{2}):(\d{2})/);
+    return m ? `${m[1]}:${m[2]}` : '';
+}
+
+/**
+ * Интервалы внутреннего таймера за день: закрытые сегменты + открытая смена.
+ * [{ in: '09:01', out: '18:05'|null }]
+ */
+function buildClockSpansForCell(L) {
+    if (!L || String(L.source || '') === 'bitcop') return [];
+    const spans = [];
+    const segs = calc.sanitizeSegments(L.segments_json);
+    for (const s of segs) {
+        const inn = hmFromSql(s.in);
+        const out = hmFromSql(s.out);
+        if (inn) spans.push({ in: inn, out: out || null });
+    }
+    const open = !!(L.check_in && !L.check_out);
+    if (open) {
+        const inn = hmFromSql(L.check_in_sql || L.check_in);
+        if (inn) spans.push({ in: inn, out: null });
+    } else if (!spans.length) {
+        const inn = hmFromSql(L.check_in_sql || L.check_in);
+        const out = hmFromSql(L.check_out_sql || L.check_out);
+        if (inn) spans.push({ in: inn, out: out || null });
+    }
+    return spans;
+}
+
 async function recalcPayroll(db, employeeId, periodYm) {
     const emp = await getEmployeeById(db, employeeId);
     if (!emp) return null;
@@ -1947,7 +1980,9 @@ function createWorkScheduleRouter(db) {
         if (ids.length) {
             const [L] = await db.query(
                 `SELECT employee_id, DATE_FORMAT(work_date, '%Y-%m-%d') AS work_ymd, type, rate, hours_worked,
-                        hours_bitcop, status, check_in, check_out, source
+                        hours_bitcop, status, check_in, check_out, source, segments_json,
+                        DATE_FORMAT(check_in, '%Y-%m-%d %H:%i:%s') AS check_in_sql,
+                        DATE_FORMAT(check_out, '%Y-%m-%d %H:%i:%s') AS check_out_sql
                  FROM ws_work_log WHERE employee_id IN (?) AND work_date BETWEEN ? AND ?`,
                 [ids, from, to]
             );
@@ -1969,6 +2004,8 @@ function createWorkScheduleRouter(db) {
                       ? Number(L.hours_worked)
                       : 0;
             const displayH = clockH > 0 ? clockH : bitH > 0 ? bitH : null;
+            const open = !!(L.check_in && !L.check_out);
+            const clockSpans = buildClockSpansForCell(L);
             byEmp[key][day] = {
                 type: L.type,
                 rate: Number(L.rate),
@@ -1977,7 +2014,14 @@ function createWorkScheduleRouter(db) {
                 hours_bitcop: bitH > 0 ? bitH : null,
                 source: L.source || null,
                 status: L.status,
-                open: !!(L.check_in && !L.check_out),
+                open,
+                check_in: clockSpans.length ? clockSpans[0].in : null,
+                check_out: (() => {
+                    if (open) return null;
+                    const last = clockSpans.length ? clockSpans[clockSpans.length - 1] : null;
+                    return last && last.out ? last.out : null;
+                })(),
+                clock_spans: clockSpans.length ? clockSpans : null,
             };
         }
         const payrollByEmp = {};
@@ -2737,6 +2781,7 @@ function createWorkScheduleRouter(db) {
                 const open = !!(L.check_in && !L.check_out);
                 if (open) clockH += calc.hoursBetween(L.check_in, nowSql);
                 const displayH = clockH > 0 ? clockH : bitH;
+                const clockSpans = buildClockSpansForCell(L);
                 byEmp[L.employee_id][day] = {
                     type: L.type,
                     rate: Number(L.rate),
@@ -2746,8 +2791,15 @@ function createWorkScheduleRouter(db) {
                     source: L.source || null,
                     open,
                     closed: !!L.check_out,
-                    check_in: L.check_in_sql || null,
-                    check_out: L.check_out_sql || null,
+                    check_in: clockSpans.length
+                        ? clockSpans[0].in
+                        : hmFromSql(L.check_in_sql) || null,
+                    check_out: open
+                        ? null
+                        : clockSpans.length && clockSpans[clockSpans.length - 1].out
+                          ? clockSpans[clockSpans.length - 1].out
+                          : hmFromSql(L.check_out_sql) || null,
+                    clock_spans: clockSpans.length ? clockSpans : null,
                 };
             }
         }

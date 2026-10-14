@@ -905,7 +905,20 @@
     return { cls: cls, label: label };
   }
 
-  /** Подсказка: Таймер и Bitcop отдельно, время Ч:ММ. */
+  /** Интервалы внутреннего таймера → «09:01–18:05» / «09:01–…». */
+  function fmtClockSpans(spans) {
+    if (!spans || !spans.length) return "";
+    return spans
+      .map(function (s) {
+        var inn = s && s.in ? String(s.in) : "";
+        if (!inn) return "";
+        return s.out ? inn + "–" + String(s.out) : inn + "–…";
+      })
+      .filter(Boolean)
+      .join(", ");
+  }
+
+  /** Подсказка: Таймер (открытие/закрытие) и Bitcop отдельно. */
   function cellHoverAttrs(c, opts) {
     opts = opts || {};
     if (!c) return "";
@@ -917,12 +930,32 @@
     else if (c.type === "sick") parts.push("больничный");
     else if (c.type === "dayoff") parts.push("отгул");
     if (bitH > 0) parts.push("Bitcop (продуктивные): " + fmtHours(bitH));
-    if (clockH > 0) parts.push("Таймер: " + fmtHours(clockH));
-    else if (hours > 0 && !bitH) parts.push("Часы: " + fmtHours(hours));
+    var spanTxt = fmtClockSpans(c.clock_spans);
+    if (!spanTxt && (c.check_in || c.check_out || c.open)) {
+      var inn = c.check_in ? String(c.check_in).slice(0, 5) : "";
+      if (inn && inn.indexOf(":") < 0 && String(c.check_in).length >= 16) {
+        inn = String(c.check_in).slice(11, 16);
+      }
+      var out = c.check_out
+        ? String(c.check_out).length >= 16
+          ? String(c.check_out).slice(11, 16)
+          : String(c.check_out).slice(0, 5)
+        : c.open
+          ? "…"
+          : "";
+      if (inn) spanTxt = out ? inn + "–" + out : inn + (c.open ? "–…" : "");
+    }
+    if (spanTxt) {
+      parts.push("Таймер: " + spanTxt + (clockH > 0 ? " (" + fmtHours(clockH) + ")" : ""));
+    } else if (clockH > 0) {
+      parts.push("Таймер: " + fmtHours(clockH));
+    } else if (hours > 0 && !bitH) {
+      parts.push("Часы: " + fmtHours(hours));
+    }
     if (!opts.preferBitcop && c.rate != null && Number(c.rate) > 0 && !bitH) {
       parts.push("ставка " + c.rate);
     }
-    if (c.open) parts.push("смена открыта");
+    if (c.open && !spanTxt) parts.push("смена открыта");
     if (!parts.length) return "";
     var tip = parts.join(" · ").replace(/"/g, "&quot;");
     return ' data-dg-tooltip="' + tip + '"';
