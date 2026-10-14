@@ -1612,7 +1612,7 @@ Query: `channel`, `search`, `status`, `priority`, `brand`, `responsible` (id | `
 
 ### POST `/api/exports/new-products/sync-markets-queue`
 
-Поставить в **фон** обновление очереди маркетов из Альмамед (`added` / legacy `transferred` / `sell_on_markets=1` / `has_kits=1`) + МС + снапшоты МП (раньше HTTP ждал весь прогон → браузер рвал с `499` / `Failed to fetch`). Ответ сразу: `queued`, `already_running`, `active`. Итог — в `GET /sync-markets-queue-status` (`done`, `result.{from_almamed,updated,skipped_all_mp,kits_*}`, `duration_sec`, `error`). В начале/конце прогона — дозаполнение комплектов (кэш + live по коду).
+Поставить в **фон** обновление очереди маркетов: upsert из Альмамед + **то же лёгкое** дозаполнение пустых полей МС из кэша, что `np_ms_enrich` на settings (без live API на каждую строку) + пакетный refresh размещения Ozon/WB/ЯМ. Раньше кнопка для каждой строки ходила в enrich/live → часы и `Failed to fetch`. Ответ сразу: `queued`, `already_running`, `active`. Итог — `GET /sync-markets-queue-status` (`done`, `result`, `duration_sec`, `error`).
 
 ### GET `/api/exports/new-products/sync-markets-queue-status`
 
