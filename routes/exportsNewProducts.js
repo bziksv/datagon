@@ -2713,21 +2713,124 @@ module.exports = function exportsNewProductsRouterFactory(db, config, appSetting
         }
     });
 
-    /** Обновить очередь «Размещение на маркеты» из transferred Альмамед + МС + снапшоты МП. */
-    router.post('/sync-markets-queue', async (req, res) => {
-        const t0 = Date.now();
+    /**
+     * Фоновый прогон «Обновить очередь маркетов» — HTTP больше не ждёт 10–20 мин
+     * (иначе браузер/nginx рвут с 499 / Failed to fetch).
+     */
+    const marketsQueueSyncJob = {
+        active: false,
+        done: false,
+        error: null,
+        message: '',
+        started_at: null,
+        finished_at: null,
+        result: null,
+        duration_sec: null,
+    };
+
+    function marketsQueueSyncSnapshot() {
+        const startedMs = marketsQueueSyncJob.started_at
+            ? Date.parse(marketsQueueSyncJob.started_at)
+            : null;
+        const elapsed_sec =
+            marketsQueueSyncJob.active && Number.isFinite(startedMs)
+                ? Math.max(0, Math.round((Date.now() - startedMs) / 1000))
+                : marketsQueueSyncJob.duration_sec;
+        return {
+            success: true,
+            active: marketsQueueSyncJob.active,
+            done: marketsQueueSyncJob.done,
+            error: marketsQueueSyncJob.error,
+            message: marketsQueueSyncJob.message || '',
+            started_at: marketsQueueSyncJob.started_at,
+            finished_at: marketsQueueSyncJob.finished_at,
+            elapsed_sec: elapsed_sec != null ? elapsed_sec : null,
+            duration_sec: marketsQueueSyncJob.duration_sec,
+            result: marketsQueueSyncJob.result,
+        };
+    }
+
+    async function runMarketsQueueSyncJob() {
+        const t0 = marketsQueueSyncJob.started_at
+            ? Date.parse(marketsQueueSyncJob.started_at) || Date.now()
+            : Date.now();
+        marketsQueueSyncJob.active = true;
+        marketsQueueSyncJob.done = false;
+        marketsQueueSyncJob.error = null;
+        if (!marketsQueueSyncJob.started_at) {
+            marketsQueueSyncJob.started_at = new Date().toISOString();
+        }
+        marketsQueueSyncJob.message = 'Обновление очереди маркетов…';
         try {
             await ensureSchema(db);
             const result = await markets.refreshMarketsQueue(db);
             crmNotify.scheduleInstant(db);
-            res.json({
-                success: true,
-                ...result,
-                duration_sec: Math.round((Date.now() - t0) / 1000),
-            });
+            marketsQueueSyncJob.result = result;
+            marketsQueueSyncJob.message = 'Готово';
+            marketsQueueSyncJob.done = true;
+            marketsQueueSyncJob.duration_sec = Math.round((Date.now() - t0) / 1000);
+            marketsQueueSyncJob.finished_at = new Date().toISOString();
+            console.log(
+                '[new-products] sync-markets-queue done',
+                marketsQueueSyncJob.duration_sec + 's',
+                result
+            );
         } catch (e) {
             console.error('[new-products] sync-markets-queue', e);
-            res.status(500).json({ error: e.message || 'Ошибка обновления очереди маркетов' });
+            marketsQueueSyncJob.error = (e && e.message) || 'Ошибка обновления очереди маркетов';
+            marketsQueueSyncJob.message = marketsQueueSyncJob.error;
+            marketsQueueSyncJob.done = true;
+            marketsQueueSyncJob.duration_sec = Math.round((Date.now() - t0) / 1000);
+            marketsQueueSyncJob.finished_at = new Date().toISOString();
+        } finally {
+            marketsQueueSyncJob.active = false;
+        }
+    }
+
+    router.get('/sync-markets-queue-status', async (req, res) => {
+        res.json(marketsQueueSyncSnapshot());
+    });
+
+    /** Поставить в фон обновление очереди маркетов. Ответ сразу; статус — GET …/sync-markets-queue-status. */
+    router.post('/sync-markets-queue', async (req, res) => {
+        try {
+            if (marketsQueueSyncJob.active) {
+                return res.json({
+                    ...marketsQueueSyncSnapshot(),
+                    queued: false,
+                    already_running: true,
+                });
+            }
+            // Сразу active — иначе между ответом POST и setImmediate статус «пустой».
+            marketsQueueSyncJob.active = true;
+            marketsQueueSyncJob.done = false;
+            marketsQueueSyncJob.error = null;
+            marketsQueueSyncJob.result = null;
+            marketsQueueSyncJob.duration_sec = null;
+            marketsQueueSyncJob.finished_at = null;
+            marketsQueueSyncJob.started_at = new Date().toISOString();
+            marketsQueueSyncJob.message = 'В очереди…';
+            setImmediate(() => {
+                runMarketsQueueSyncJob().catch((e) => {
+                    console.error('[new-products] sync-markets-queue bg', e);
+                    marketsQueueSyncJob.active = false;
+                    marketsQueueSyncJob.done = true;
+                    marketsQueueSyncJob.error = (e && e.message) || 'bg fail';
+                    marketsQueueSyncJob.finished_at = new Date().toISOString();
+                });
+            });
+            res.json({
+                success: true,
+                queued: true,
+                already_running: false,
+                message: 'Поставлено в фон',
+                active: true,
+                done: false,
+                started_at: marketsQueueSyncJob.started_at,
+            });
+        } catch (e) {
+            console.error('[new-products] sync-markets-queue queue', e);
+            res.status(500).json({ error: e.message || 'Ошибка постановки обновления очереди' });
         }
     });
 

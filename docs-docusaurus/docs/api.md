@@ -1612,7 +1612,11 @@ Query: `channel`, `search`, `status`, `priority`, `brand`, `responsible` (id | `
 
 ### POST `/api/exports/new-products/sync-markets-queue`
 
-Обновить очередь маркетов из Альмамед (`added` / legacy `transferred` / `sell_on_markets=1` / `has_kits=1`) + МС + снапшоты МП. Сначала (и повторно в конце) дозаполняет штрихкод/НДС у комплектов из кэша МС и live-поиска по коду. Ответ: `from_almamed`, `updated`, `skipped_all_mp`, `kits_updated`, `kits_scanned`, `kits_missed`, `duration_sec`.
+Поставить в **фон** обновление очереди маркетов из Альмамед (`added` / legacy `transferred` / `sell_on_markets=1` / `has_kits=1`) + МС + снапшоты МП (раньше HTTP ждал весь прогон → браузер рвал с `499` / `Failed to fetch`). Ответ сразу: `queued`, `already_running`, `active`. Итог — в `GET /sync-markets-queue-status` (`done`, `result.{from_almamed,updated,skipped_all_mp,kits_*}`, `duration_sec`, `error`). В начале/конце прогона — дозаполнение комплектов (кэш + live по коду).
+
+### GET `/api/exports/new-products/sync-markets-queue-status`
+
+Статус фонового `sync-markets-queue`: `active`, `done`, `message`, `elapsed_sec`, `duration_sec`, `result`, `error`.
 
 ### POST `/api/exports/new-products/remove-placed`
 
