@@ -6044,18 +6044,15 @@
     tr.appendChild(makeEnumSelect(row, "photo", PHOTO_OPTS, "—"));
     tr.appendChild(makePlacementDatesCell(row));
 
+    // НДС / РУ / СС·ДС — пустое только «—», без подписи «не заполнено» (СС·ДС и так не в required).
     tr.appendChild(
       makeCopyCell(row.vat, {
-        missKey: "vat",
-        missMap: missMap,
         row: row,
         field: "vat",
       })
     );
     tr.appendChild(
       makeCopyCell(row.ru_url, {
-        missKey: "ru_url",
-        missMap: missMap,
         row: row,
         field: "ru_url",
         href: row.ru_url || "",
@@ -6064,7 +6061,6 @@
     );
     tr.appendChild(
       makeCopyCell(row.ss_ds_url, {
-        missMap: missMap,
         row: row,
         field: "ss_ds_url",
         href: row.ss_ds_url || "",
