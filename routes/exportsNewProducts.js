@@ -2154,6 +2154,16 @@ module.exports = function exportsNewProductsRouterFactory(db, config, appSetting
             const mapped = mapRow(row);
             if (channel === 'marketplaces') {
                 await markets.attachKitsToMapped(db, [mapped]);
+            } else if (channel === 'almamed') {
+                // Чтобы сразу появилась ссылка «Марк #N» после галочки.
+                await markets.attachCrossChannelLinks(db, [mapped]);
+            }
+            if (
+                marketsSync &&
+                marketsSync.channel_num == null &&
+                mapped.markets_channel_num != null
+            ) {
+                marketsSync.channel_num = mapped.markets_channel_num;
             }
             crmNotify.scheduleInstant(db);
             res.json({

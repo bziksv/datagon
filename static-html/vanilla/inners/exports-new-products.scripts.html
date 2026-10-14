@@ -2451,12 +2451,22 @@
                 });
               }
             } else if (ms && (ms.created || ms.updated)) {
+              var mkNum =
+                ms.channel_num != null
+                  ? ms.channel_num
+                  : j.data && j.data.markets_channel_num != null
+                    ? j.data.markets_channel_num
+                    : null;
               if (window.DatagonNotify && window.DatagonNotify.toast) {
                 window.DatagonNotify.toast({
                   type: "success",
-                  message: ms.created ? "Добавлено в «Размещение на маркеты»" : "Обновлено в «Размещение на маркеты»",
+                  message:
+                    (ms.created ? "В маркетах: " : "Обновлено в маркетах: ") +
+                    (mkNum != null ? "Марк #" + mkNum + ". " : "") +
+                    "Кликни «Марк #…» у ID — в общем списке может быть не на 1-й странице.",
                 });
               }
+              load();
             }
           }
         })
@@ -5496,6 +5506,7 @@
 
     function finish() {
       if (o.focusChannelNum != null && Number.isFinite(Number(o.focusChannelNum))) {
+        // Номер вкладки (channel_num), не PK. Сбрасываем KPI-scope — иначе «Ещё нигде» и т.п. прячут строку.
         var q = "id:" + Number(o.focusChannelNum);
         if (el("dg-np-search")) el("dg-np-search").value = q;
         if (el("dg-np-f-status")) el("dg-np-f-status").value = "";
@@ -5503,6 +5514,8 @@
         if (el("dg-np-f-brand")) el("dg-np-f-brand").value = "";
         if (el("dg-np-f-responsible")) el("dg-np-f-responsible").value = "";
         if (el("dg-np-f-manager")) el("dg-np-f-manager").value = "";
+        state.list_scope = "";
+        state.hide_placed = false;
         try {
           var filtersBody = el("dg-np-filters-body");
           var filtersToggle = el("dg-np-filters-toggle");
