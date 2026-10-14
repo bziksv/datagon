@@ -113,6 +113,7 @@ const FIELD_LOG_LABELS = {
     weight_kg: 'Вес, кг',
     vat: 'НДС',
     ru_url: 'Ссылка на РУ',
+    ss_ds_url: 'СС, ДС товара ссылка',
     placement_ozon: 'Размещение Ozon',
     placement_wb: 'Размещение WB',
     placement_ym: 'Размещение ЯМ',
@@ -536,6 +537,7 @@ function mapRow(r) {
         weight_kg: r.weight_kg != null ? Number(r.weight_kg) : null,
         vat: r.vat || '',
         ru_url: r.ru_url || '',
+        ss_ds_url: r.ss_ds_url || '',
         placement_ozon: Number(r.placement_ozon) === 1,
         placement_wb: Number(r.placement_wb) === 1,
         placement_ym: Number(r.placement_ym) === 1,
@@ -1485,10 +1487,24 @@ module.exports = function exportsNewProductsRouterFactory(db, config, appSetting
                     params.push(idNum, idNum);
                 } else {
                     where.push(
-                        `(title LIKE ? OR article LIKE ? OR brand LIKE ? OR supplier_url LIKE ? OR comment LIKE ? OR COALESCE(manager_comment,'') LIKE ? OR product_manager_name LIKE ? OR responsible_name LIKE ? OR COALESCE(product_code,'') LIKE ? OR COALESCE(barcode,'') LIKE ? OR COALESCE(ru_url,'') LIKE ? OR CAST(COALESCE(channel_num, id) AS CHAR) LIKE ?)`
+                        `(title LIKE ? OR article LIKE ? OR brand LIKE ? OR supplier_url LIKE ? OR comment LIKE ? OR COALESCE(manager_comment,'') LIKE ? OR product_manager_name LIKE ? OR responsible_name LIKE ? OR COALESCE(product_code,'') LIKE ? OR COALESCE(barcode,'') LIKE ? OR COALESCE(ru_url,'') LIKE ? OR COALESCE(ss_ds_url,'') LIKE ? OR CAST(COALESCE(channel_num, id) AS CHAR) LIKE ?)`
                     );
                     const like = `%${search}%`;
-                    params.push(like, like, like, like, like, like, like, like, like, like, like, like);
+                    params.push(
+                        like,
+                        like,
+                        like,
+                        like,
+                        like,
+                        like,
+                        like,
+                        like,
+                        like,
+                        like,
+                        like,
+                        like,
+                        like
+                    );
                 }
             }
 
@@ -1596,6 +1612,7 @@ module.exports = function exportsNewProductsRouterFactory(db, config, appSetting
                 weight_kg: markets.parseNum(body.weight_kg),
                 vat: clip(body.vat, 64) || null,
                 ru_url: clip(body.ru_url, 2048) || null,
+                ss_ds_url: clip(body.ss_ds_url, 2048) || null,
                 comment: comment || null,
                 placement_ozon: 0,
                 placement_wb: 0,
@@ -1620,8 +1637,8 @@ module.exports = function exportsNewProductsRouterFactory(db, config, appSetting
                     responsible_user_id, responsible_name, article, title, price_almamed,
                     supplier_url, brand, priority, status, comment, almamed_added_at, almamed_url,
                     product_code, barcode, price_markets, dimensions_text, length_cm, width_cm, height_cm, weight_kg,
-                    vat, ru_url, created_by_user_id
-                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                    vat, ru_url, ss_ds_url, created_by_user_id
+                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
                     channel,
                     channelNum,
@@ -1649,6 +1666,7 @@ module.exports = function exportsNewProductsRouterFactory(db, config, appSetting
                     draft.weight_kg,
                     draft.vat,
                     draft.ru_url,
+                    draft.ss_ds_url,
                     actor && actor.id != null ? Number(actor.id) : null,
                 ]
             );
@@ -1890,6 +1908,7 @@ module.exports = function exportsNewProductsRouterFactory(db, config, appSetting
             if ('weight_kg' in body) fields.weight_kg = markets.parseNum(body.weight_kg);
             if ('vat' in body) fields.vat = clip(body.vat, 64) || null;
             if ('ru_url' in body) fields.ru_url = clip(body.ru_url, 2048) || null;
+            if ('ss_ds_url' in body) fields.ss_ds_url = clip(body.ss_ds_url, 2048) || null;
             if ('infographic' in body && channel === 'marketplaces') {
                 if (body.infographic == null || body.infographic === '') {
                     fields.infographic = null;
@@ -2000,6 +2019,7 @@ module.exports = function exportsNewProductsRouterFactory(db, config, appSetting
                 weight_kg: 'weight_kg' in fields ? fields.weight_kg : cur.weight_kg,
                 vat: 'vat' in fields ? fields.vat : cur.vat,
                 ru_url: 'ru_url' in fields ? fields.ru_url : cur.ru_url,
+                ss_ds_url: 'ss_ds_url' in fields ? fields.ss_ds_url : cur.ss_ds_url,
                 placement_ozon: cur.placement_ozon,
                 placement_wb: cur.placement_wb,
                 placement_ym: cur.placement_ym,
@@ -2194,6 +2214,7 @@ module.exports = function exportsNewProductsRouterFactory(db, config, appSetting
             }
             const mapped = markets.mapKitRow(kit);
             mapped.ru_url = String(parent.ru_url || '').trim();
+            mapped.ss_ds_url = String(parent.ss_ds_url || '').trim();
             try {
                 await insertProductLog(db, {
                     productId: parentId,
@@ -2331,11 +2352,12 @@ module.exports = function exportsNewProductsRouterFactory(db, config, appSetting
                 }
             }
             const [[parent]] = await db.query(
-                'SELECT ru_url FROM dg_new_products WHERE id = ? LIMIT 1',
+                'SELECT ru_url, ss_ds_url FROM dg_new_products WHERE id = ? LIMIT 1',
                 [parentId]
             );
             const mapped = markets.mapKitRow(updated);
             mapped.ru_url = String((parent && parent.ru_url) || '').trim();
+            mapped.ss_ds_url = String((parent && parent.ss_ds_url) || '').trim();
             res.json({ success: true, data: mapped });
         } catch (e) {
             console.error('[new-products] PATCH kit', e);
