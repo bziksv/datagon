@@ -2949,6 +2949,10 @@ async function processAutoSyncQueue() {
                         limit: 3000,
                         onProgress: (msg) => touchAutoSyncRunMessage('np_ms_enrich', msg),
                     });
+                    const durSec =
+                        r.duration_ms != null
+                            ? Math.round(Number(r.duration_ms) / 1000)
+                            : null;
                     messageNp = (
                         'Поля МС (кэш): скан ' +
                         (r.scanned || 0) +
@@ -2956,6 +2960,7 @@ async function processAutoSyncQueue() {
                         (r.updated || 0) +
                         ', miss ' +
                         (r.missed || 0) +
+                        (durSec != null ? ', ' + durSec + ' с' : '') +
                         '; СС·ДС +' +
                         (r.filled_ss_ds || 0) +
                         ' (пусто было ' +
