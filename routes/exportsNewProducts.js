@@ -1481,7 +1481,10 @@ module.exports = function exportsNewProductsRouterFactory(db, config, appSetting
                 }
             }
             if (search) {
-                const rawSearch = String(search).trim();
+                const rawSearch = String(search || '')
+                    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+                    .replace(/\u00a0/g, ' ')
+                    .trim();
                 const idOnly = /^id:\s*\d+$/i.test(rawSearch);
                 const idNum = parseInt(rawSearch.replace(/^id:\s*/i, '').trim(), 10);
                 // Только «id:123» — строго по channel_num/id. Чистый «40642» — ещё артикул/код

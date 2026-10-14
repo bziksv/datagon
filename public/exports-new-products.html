@@ -4959,6 +4959,21 @@
     state.pending.manager = String((el("dg-np-f-manager") || {}).value || "");
   }
 
+  function syncApplyDirty() {
+    var btn = el("dg-np-apply");
+    if (!btn) return;
+    readPendingFromForm();
+    var dirty =
+      state.pending.search !== state.search ||
+      state.pending.status !== state.status ||
+      state.pending.priority !== state.priority ||
+      state.pending.brand !== state.brand ||
+      state.pending.responsible !== state.responsible ||
+      state.pending.manager !== state.manager;
+    btn.classList.toggle("dg-flt-dirty", dirty);
+    btn.textContent = dirty ? "Применить •" : "Применить";
+  }
+
   function commitFilters() {
     readPendingFromForm();
     state.search = state.pending.search;
@@ -4971,7 +4986,23 @@
     if (!state._keepListScope) state.list_scope = "";
     state._keepListScope = false;
     state.offset = 0;
-    load();
+    syncApplyDirty();
+    load().then(function () {
+      if (
+        state.search &&
+        state.total === 0 &&
+        window.DatagonNotify &&
+        window.DatagonNotify.toast
+      ) {
+        window.DatagonNotify.toast({
+          type: "warning",
+          message:
+            "По «" +
+            state.search +
+            "» ничего нет на этой вкладке. Проверь вкладку / сбрось фильтры («По умолчанию»).",
+        });
+      }
+    });
     syncPlacementKpiActive();
   }
 
@@ -9541,6 +9572,14 @@
     resumeMarketsQueueSyncIfRunning();
     var btnRemove = el("dg-np-remove-placed");
     if (btnRemove) btnRemove.addEventListener("click", removePlaced);
+    ["dg-np-search", "dg-np-f-status", "dg-np-f-priority", "dg-np-f-brand", "dg-np-f-responsible", "dg-np-f-manager"].forEach(
+      function (id) {
+        var node = el(id);
+        if (!node) return;
+        node.addEventListener("input", syncApplyDirty);
+        node.addEventListener("change", syncApplyDirty);
+      }
+    );
     el("dg-np-search").addEventListener("keydown", function (e) {
       if (e.key === "Enter") {
         e.preventDefault();
@@ -9551,6 +9590,7 @@
         commitFilters();
       }
     });
+    syncApplyDirty();
     el("dg-np-page-size").addEventListener("change", function () {
       state.limit = parseInt(el("dg-np-page-size").value, 10) || 100;
       state.offset = 0;
