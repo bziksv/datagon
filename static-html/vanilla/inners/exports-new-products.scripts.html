@@ -3361,119 +3361,167 @@
     });
   }
 
-  function syncMarketsQueue() {
-    var t0 = Date.now();
-    var tick = null;
-    var poll = null;
-    var filtersLine = "Канал: <b>Размещение на маркеты</b>";
+  /** UI-наблюдение за фоновым sync-markets-queue (переживает reload страницы). */
+  var marketsQueueSyncUi = {
+    tick: null,
+    poll: null,
+    lastSec: 0,
+    watching: false,
+  };
+  var MARKETS_QUEUE_FILTERS_LINE = "Канал: <b>Размещение на маркеты</b>";
+
+  function stopMarketsQueueSyncWatch() {
+    if (marketsQueueSyncUi.tick) clearInterval(marketsQueueSyncUi.tick);
+    if (marketsQueueSyncUi.poll) clearInterval(marketsQueueSyncUi.poll);
+    marketsQueueSyncUi.tick = null;
+    marketsQueueSyncUi.poll = null;
+    marketsQueueSyncUi.watching = false;
     var btn = el("dg-np-sync-markets");
+    if (btn) btn.disabled = false;
+  }
 
-    function stopTimers() {
-      if (tick) clearInterval(tick);
-      tick = null;
-      if (poll) clearInterval(poll);
-      poll = null;
-      if (btn) btn.disabled = false;
-    }
+  function showMarketsQueueRunning(sec, msg) {
+    marketsQueueSyncUi.lastSec = sec != null ? Number(sec) || 0 : marketsQueueSyncUi.lastSec;
+    showLog(
+      "warning",
+      "Обновление очереди маркетов…<br>" +
+        MARKETS_QUEUE_FILTERS_LINE +
+        "<br>" +
+        (msg || "Фоновая задача на сервере (можно перезагрузить страницу — отсчёт подхватится)") +
+        "<br>" +
+        '<span id="dg-np-sync-tick">идёт, прошло ' +
+        marketsQueueSyncUi.lastSec +
+        " с…</span>"
+    );
+  }
 
-    function showRunning(sec, msg) {
+  function showMarketsQueueDone(j) {
+    stopMarketsQueueSyncWatch();
+    var r = (j && j.result) || j || {};
+    if (j && j.error) {
       showLog(
-        "warning",
-        "Обновление очереди маркетов…<br>" +
-          filtersLine +
+        "danger",
+        "Ошибка обновления очереди: " +
+          j.error +
           "<br>" +
-          (msg || "Фоновая задача на сервере (можно закрыть вкладку — доработает)") +
-          "<br>" +
-          '<span id="dg-np-sync-tick">идёт, прошло ' +
-          (sec != null ? sec : 0) +
-          " с…</span>"
+          MARKETS_QUEUE_FILTERS_LINE +
+          (j.duration_sec != null ? "<br>Длительность: <b>" + j.duration_sec + "</b> с" : "")
       );
+      return;
     }
+    var sec = j && j.duration_sec != null ? j.duration_sec : marketsQueueSyncUi.lastSec;
+    showLog(
+      "success",
+      "Итог обновления очереди маркетов<br>" +
+        MARKETS_QUEUE_FILTERS_LINE +
+        "<br>Новых из Альмамед: <b>" +
+        (r.from_almamed || 0) +
+        "</b>; обновлено строк: <b>" +
+        (r.updated || 0) +
+        "</b>; уже на всех МП (пропуск): <b>" +
+        (r.skipped_all_mp || 0) +
+        "</b>; комплекты: обновлено <b>" +
+        (r.kits_updated || 0) +
+        "</b> / скан <b>" +
+        (r.kits_scanned || 0) +
+        "</b>; длительность: <b>" +
+        sec +
+        "</b> с"
+    );
+    load();
+  }
 
-    function showDone(j) {
-      stopTimers();
-      var r = (j && j.result) || j || {};
-      if (j && j.error) {
-        showLog(
-          "danger",
-          "Ошибка обновления очереди: " +
-            j.error +
-            "<br>" +
-            filtersLine +
-            (j.duration_sec != null ? "<br>Длительность: <b>" + j.duration_sec + "</b> с" : "")
-        );
-        return;
-      }
-      var sec = j && j.duration_sec != null ? j.duration_sec : Math.round((Date.now() - t0) / 1000);
-      showLog(
-        "success",
-        "Итог обновления очереди маркетов<br>" +
-          filtersLine +
-          "<br>Новых из Альмамед: <b>" +
-          (r.from_almamed || 0) +
-          "</b>; обновлено строк: <b>" +
-          (r.updated || 0) +
-          "</b>; уже на всех МП (пропуск): <b>" +
-          (r.skipped_all_mp || 0) +
-          "</b>; комплекты: обновлено <b>" +
-          (r.kits_updated || 0) +
-          "</b> / скан <b>" +
-          (r.kits_scanned || 0) +
-          "</b>; длительность: <b>" +
-          sec +
-          "</b> с"
-      );
-      load();
-    }
-
-    function pollStatus() {
-      return fetch("/api/exports/new-products/sync-markets-queue-status", {
-        method: "GET",
-        credentials: "same-origin",
-        headers: authHeaders(false),
-      })
-        .then(function (r) {
-          return r.json().then(function (j) {
-            if (!r.ok) throw new Error((j && j.error) || "HTTP " + r.status);
-            return j;
-          });
-        })
-        .then(function (j) {
-          var sec =
-            j.elapsed_sec != null
-              ? j.elapsed_sec
-              : j.duration_sec != null
-                ? j.duration_sec
-                : Math.round((Date.now() - t0) / 1000);
-          if (j.active) {
-            showRunning(sec, j.message || "");
-            return;
-          }
-          if (j.done) {
-            showDone(j);
-            return;
-          }
-          // Ещё не стартовала / уже сброшена — ждём следующий poll
-          showRunning(sec, j.message || "Ожидание запуска…");
-        })
-        .catch(function (e) {
-          // Один сбой опроса не роняем весь прогон — покажем и продолжим
-          var elTick = el("dg-np-sync-tick");
-          if (elTick) {
-            elTick.textContent =
-              "идёт… (опрос статуса: " + (e.message || "err") + ")";
-          }
+  function pollMarketsQueueStatus() {
+    return fetch("/api/exports/new-products/sync-markets-queue-status", {
+      method: "GET",
+      credentials: "same-origin",
+      headers: authHeaders(false),
+    })
+      .then(function (r) {
+        return r.json().then(function (j) {
+          if (!r.ok) throw new Error((j && j.error) || "HTTP " + r.status);
+          return j;
         });
-    }
+      })
+      .then(function (j) {
+        var sec =
+          j.elapsed_sec != null
+            ? j.elapsed_sec
+            : j.duration_sec != null
+              ? j.duration_sec
+              : marketsQueueSyncUi.lastSec;
+        if (j.active) {
+          showMarketsQueueRunning(sec, j.message || "");
+          return j;
+        }
+        if (j.done) {
+          showMarketsQueueDone(j);
+          return j;
+        }
+        // Нет активной задачи — останавливаем watch (после reload без синка).
+        stopMarketsQueueSyncWatch();
+        return j;
+      })
+      .catch(function (e) {
+        var elTick = el("dg-np-sync-tick");
+        if (elTick) {
+          elTick.textContent = "идёт… (опрос статуса: " + (e.message || "err") + ")";
+        }
+      });
+  }
 
-    showRunning(0, "Ставим в фон…");
+  function startMarketsQueueSyncWatch(opts) {
+    var o = opts || {};
+    if (marketsQueueSyncUi.watching && !o.force) return;
+    stopMarketsQueueSyncWatch();
+    marketsQueueSyncUi.watching = true;
+    var btn = el("dg-np-sync-markets");
     if (btn) btn.disabled = true;
-    tick = setInterval(function () {
+    if (o.sec != null) marketsQueueSyncUi.lastSec = Number(o.sec) || 0;
+    showMarketsQueueRunning(
+      marketsQueueSyncUi.lastSec,
+      o.message || "Фоновая задача на сервере…"
+    );
+    marketsQueueSyncUi.tick = setInterval(function () {
       var elTick = el("dg-np-sync-tick");
-      if (elTick && elTick.textContent.indexOf("опрос") < 0) {
-        elTick.textContent = "идёт, прошло " + Math.round((Date.now() - t0) / 1000) + " с…";
-      }
+      if (!elTick) return;
+      if (elTick.textContent.indexOf("опрос") >= 0) return;
+      // Пока ждём ответ status — тикаем локально от последнего server elapsed.
+      marketsQueueSyncUi.lastSec = (marketsQueueSyncUi.lastSec || 0) + 1;
+      elTick.textContent = "идёт, прошло " + marketsQueueSyncUi.lastSec + " с…";
     }, 1000);
+    pollMarketsQueueStatus();
+    marketsQueueSyncUi.poll = setInterval(pollMarketsQueueStatus, 2500);
+  }
+
+  /** После F5 / открытия страницы — подхватить уже идущий на сервере прогон. */
+  function resumeMarketsQueueSyncIfRunning() {
+    fetch("/api/exports/new-products/sync-markets-queue-status", {
+      method: "GET",
+      credentials: "same-origin",
+      headers: authHeaders(false),
+    })
+      .then(function (r) {
+        return r.json().then(function (j) {
+          if (!r.ok) return null;
+          return j;
+        });
+      })
+      .then(function (j) {
+        if (!j || !j.active) return;
+        startMarketsQueueSyncWatch({
+          force: true,
+          sec: j.elapsed_sec || 0,
+          message: "Снова подключились к фоновой задаче…",
+        });
+      })
+      .catch(function () {});
+  }
+
+  function syncMarketsQueue() {
+    var btn = el("dg-np-sync-markets");
+    showMarketsQueueRunning(0, "Ставим в фон…");
+    if (btn) btn.disabled = true;
 
     var run = function () {
       return fetch("/api/exports/new-products/sync-markets-queue", {
@@ -3489,30 +3537,30 @@
           });
         })
         .then(function (j) {
-          // Старый синхронный ответ (до выкладки фона) — сразу итог
           if (j && j.from_almamed != null && j.queued == null && !j.active) {
-            showDone({ done: true, result: j, duration_sec: j.duration_sec });
+            showMarketsQueueDone({ done: true, result: j, duration_sec: j.duration_sec });
             return;
           }
-          showRunning(
-            0,
-            j.already_running
+          startMarketsQueueSyncWatch({
+            force: true,
+            sec: j.elapsed_sec || 0,
+            message: j.already_running
               ? "Уже идёт на сервере — подключаемся к статусу…"
-              : "В фоне на сервере…"
-          );
-          pollStatus();
-          poll = setInterval(pollStatus, 2500);
+              : "В фоне на сервере…",
+          });
         })
         .catch(function (e) {
-          stopTimers();
+          stopMarketsQueueSyncWatch();
           showLog(
             "danger",
-            "Ошибка обновления очереди: " + (e.message || "unknown") + "<br>" + filtersLine
+            "Ошибка обновления очереди: " +
+              (e.message || "unknown") +
+              "<br>" +
+              MARKETS_QUEUE_FILTERS_LINE
           );
         });
     };
     if (window.DatagonNotify && window.DatagonNotify.busyRun) {
-      // busyRun только на короткий POST постановки; дальше кнопка сама disabled до done
       window.DatagonNotify.busyRun(btn, function () {
         return run().then(function () {
           if (btn) btn.disabled = true;
@@ -6169,6 +6217,7 @@
     el("dg-np-distribute").addEventListener("click", distribute);
     var btnSync = el("dg-np-sync-markets");
     if (btnSync) btnSync.addEventListener("click", syncMarketsQueue);
+    resumeMarketsQueueSyncIfRunning();
     var btnRemove = el("dg-np-remove-placed");
     if (btnRemove) btnRemove.addEventListener("click", removePlaced);
     el("dg-np-search").addEventListener("keydown", function (e) {
