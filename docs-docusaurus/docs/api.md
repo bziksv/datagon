@@ -1555,7 +1555,7 @@ Body (JSON):
 
 **Размещение на маркеты:** строки из Альмамед со статусом `added` (и legacy `transferred`) или с флагами **`sell_on_markets=1`** / **`has_kits=1`** через `POST /sync-markets-queue` и при каждом `PATCH` Альмамед-строки с этими флагами. Аналогичные поля (менеджер, ответственный, приоритет, артикул/код, название, цена, `has_kits`) копируются/обновляются в строку `channel=marketplaces` (`source_almamed_id`). На один `source_almamed_id` — **не больше одной** активной строки маркетов (`UNIQUE` + транзакция `FOR UPDATE` при upsert; гонка галочек «Маркеты»/«Комплект» больше не плодит дубли). **ID разные:** Альмамед и маркеты — отдельные строки одной таблицы (`dg_new_products`); у каждой вкладки своя нумерация `channel_num` (1, 2, 3…), не общий auto-increment. В UI колонка ID показывает `channel_num`; связь `← Альм. #N` / `→ Марк. #N` тоже по номерам вкладки (`source_almamed_id` / `markets_product_id` — внутренние PK). Из МС (по **коду** или **артикулу**, когда товар уже есть в `ms_export`) подтягиваются **код МС**, **штрихкод** (`payload.barcodes`), **НДС** (`ms_export.vat` / `effectiveVat` / атрибут «НДС на товаре…»; `0` → «без НДС»), **ссылка на РУ** (атрибут **«РУ ссылка на файл»** и родственные). Поля габаритов (`length_cm` / `width_cm` / `height_cm` / `weight_kg`) в БД остаются, но **в UI вкладки «Размещение на маркеты» не показываются и не обязательны**. На **`GET` списка** обогащение идёт только из **кэша БД** (без live API МС — иначе каждый refresh тормозит страницу при пустых НДС/РУ). Live `GET` карточки МС — при `POST /sync-markets-queue` (лимит). Результат пишется в `ms_entity_details` и пустые поля `dg_new_products` + журнал `source=ms_enrich`. Размещение Ozon/WB/ЯМ — live-бейджи в колонке «Связь» по `marketplace_export_rows.external_id` (= код МС). Обязательные: приоритет, код, артикул, название для маркетов, штрихкод, цена на маркеты, НДС, ссылка на РУ. Пустые → `new`; все заполнены → `not_added`; на всех трёх МП → `added`. Комментарий → `revision`; очистка комментария → снова `added` (если на всех МП) или `new`/`not_added`. Ручные: `not_cooperate`, `in_bundle`. Кнопка **«Убрать размещенные»** → `POST /remove-placed` (status `added` → `removed`).
 
-**Комплекты:** колонка Альмамед **«Комплект»** (`has_kits`). На маркетах при `has_kits=1` — кнопка **«+ Комплект»**; комплекты — вложенные строки. У комплекта редактируются: код, название, цена, статус, комментарий. **Не редактируются:** артикул, штрихкод, НДС (только просмотр). **Ссылка на РУ** у комплекта всегда с родительского товара в Датагоне (`parent.ru_url`), не из МС и не отдельным полем комплекта. Менеджер/дата/приоритет/ответственный — как у товара. API: `POST/PATCH/DELETE /api/exports/new-products/:id/kits[/:kitId]`.
+**Комплекты:** колонка Альмамед **«Комплект»** (`has_kits`). На маркетах при `has_kits=1` — кнопка **«+ Комплект»**; комплекты — вложенные строки. У комплекта редактируются: код, название, цена, статус, комментарий. **Не редактируются вручную:** артикул, штрихкод, НДС — подтягиваются из МойСклад по `product_code` комплекта (кэш `ms_export`/`ms_entity_details`, при необходимости live `GET /entity/bundle|{product}/{uuid}`). При `POST …/kits` и при смене кода в `PATCH …/kits/:kitId` сервер вызывает `enrichAndPersistKitFromMs`; массово — `np_ms_enrich` / `refreshMarketsQueue` (`backfillKitsMsFieldsFromCache`). **Ссылка на РУ** у комплекта всегда с родительского товара (`parent.ru_url`). API: `POST/PATCH/DELETE /api/exports/new-products/:id/kits[/:kitId]`.
 
 ### GET `/api/exports/new-products`
 
@@ -1584,11 +1584,11 @@ Query: `channel`, `search`, `status`, `priority`, `brand`, `responsible` (id | `
 
 ### POST `/api/exports/new-products/:id/kits`
 
-Добавить комплект к строке маркетов (`has_kits` обязателен). Body: `{ title? }`. Ответ: `{ success, data: { id, parent_product_id, title, sort_order } }`.
+Добавить комплект к строке маркетов (`has_kits` обязателен). Body: `{ title?, product_code? }`. После insert — обогащение штрихкода/НДС/артикула из МС по коду. Ответ: `{ success, data }` (в т.ч. `barcode`, `vat`).
 
 ### PATCH `/api/exports/new-products/:id/kits/:kitId`
 
-Обновить название комплекта. Body: `{ title }`.
+Обновить комплект. Body: `{ title?, product_code?, price_markets?, status?, comment?, … }`. Поля `article`/`barcode`/`vat` с клиента не пишутся; при смене `product_code` или пустых barcode/vat сервер перечитывает их из МС (force при смене кода).
 
 ### DELETE `/api/exports/new-products/:id/kits/:kitId`
 
@@ -2304,7 +2304,10 @@ Preflight матча «Менеджер по продажам» ↔ Planfix `/us
 | PUT/DELETE | `/compensation/:id` | accounting; правка / удаление периода (нельзя удалить единственный) |
 | DELETE | `/organizations/:id` | accounting (409, если есть сотрудники) |
 | POST | `/departments/import-specialties` | accounting; отделы из `specialties` в **общий** справочник (без привязки к орг.; без «Полный доступ»), без дублей имён |
-| GET/POST | `/clock/status`, `/clock/start`, `/clock/stop` | сотрудник; `segments_json` append-only (+ `ip_in`/`ip_out`); `stop` сначала пишет часы/сегменты (payroll ошибка → `payroll_error`, часы уже в БД); повторный `start` → `resumed` + накопление |
+| GET/POST | `/clock/status`, `/clock/start`, `/clock/stop` | сотрудник; `segments_json` append-only (+ `ip_in`/`ip_out`); `stop` сначала пишет часы/сегменты (payroll ошибка → `payroll_error`, часы уже в БД); повторный `start` → `resumed` + накопление; при `crm_user_id` зеркалит CRM (`crm_sync` / `crm_sync_error`, смену Datagon не откатывает) |
+| POST | `/clock/sync-from-crm` | **без сессии**; header `X-Datagon-Clock-Sync: <DATAGON_CLOCK_SYNC_SECRET>`; body `{ crm_user_id, action: "start"\|"stop", in_time?, out_time? }` (UTC SQL из CRM). Выравнивает `ws_work_log`; конфликт стартов — более ранний UTC |
+| GET | `/crm/users` | accounting; staff CRM (`id`, `full_name`, …) для select привязки |
+| POST | `/crm/link-backfill` | accounting; однозначные ФИО → `ws_employee.crm_user_id` |
 | GET | `/me/day?date=YYYY-MM-DD` | сотрудник; детали дня: сегменты старт/стоп, часы, IP, открытый сегмент |
 | GET | `/stuck-shifts?department_id=` | head / accounting; без `department_id` у head — свой отдел, у accounting — все; с параметром — только выбранный отдел |
 | GET | `/me/month`, `/dept/month` | employee / head / accounting; `dept/month?department_id=` — свой / headed / manage_scope; `can_edit` — head, accounting или scope с `can_edit=1`; в `payroll` — `salary_rate` + `base_salary`, `seniority_full` + `seniority_bonus` |

@@ -241,6 +241,7 @@
                       <th class="dg-ws-set-sortable" data-dg-ws-set-emp-sort="sick" scope="col">Больничный ₽</th>
                       <th class="dg-ws-set-sortable" data-dg-ws-set-emp-sort="premium" scope="col">Премия</th>
                       <th class="dg-ws-set-sortable" data-dg-ws-set-emp-sort="bitcop" scope="col" title="Привязка к сотруднику Bitcop">Bitcop</th>
+                      <th class="dg-ws-set-sortable" data-dg-ws-set-emp-sort="crm" scope="col" title="Привязка к сотруднику CRM Prime">CRM</th>
                       <th class="dg-ws-set-sortable" data-dg-ws-set-emp-sort="overrides" scope="col">Переопред.</th>
                       <th scope="col"></th>
                     </tr>
@@ -439,12 +440,41 @@
                     <label class="form-label" for="dg-ws-set-emp-prem-amount">Сумма, ₽</label>
                     <input type="text" class="form-control" id="dg-ws-set-emp-prem-amount" inputmode="decimal" placeholder="0" />
                   </div>
-                  <div class="col-md-8">
-                    <label class="form-label" for="dg-ws-set-emp-bitcop">Сотрудник в Bitcop</label>
-                    <select class="form-select" id="dg-ws-set-emp-bitcop">
-                      <option value="">— не привязан —</option>
-                    </select>
+                  <div class="col-md-6">
+                    <label class="form-label" for="dg-ws-set-emp-bitcop-search">Сотрудник в Bitcop</label>
+                    <div class="dg-ws-set-search-select position-relative" id="dg-ws-set-emp-bitcop-wrap">
+                      <input type="hidden" id="dg-ws-set-emp-bitcop" value="" />
+                      <input
+                        type="search"
+                        class="form-control"
+                        id="dg-ws-set-emp-bitcop-search"
+                        placeholder="Поиск по ФИО / email…"
+                        autocomplete="off"
+                        aria-autocomplete="list"
+                        aria-controls="dg-ws-set-emp-bitcop-menu"
+                        aria-expanded="false"
+                      />
+                      <div class="dg-ws-set-search-select-menu" id="dg-ws-set-emp-bitcop-menu" role="listbox"></div>
+                    </div>
                     <div class="form-text">Список из Bitcop API (нужен сохранённый токен). Часы подтягиваются кнопкой на табеле.</div>
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label" for="dg-ws-set-emp-crm-search">Сотрудник в CRM</label>
+                    <div class="dg-ws-set-search-select position-relative" id="dg-ws-set-emp-crm-wrap">
+                      <input type="hidden" id="dg-ws-set-emp-crm" value="" />
+                      <input
+                        type="search"
+                        class="form-control"
+                        id="dg-ws-set-emp-crm-search"
+                        placeholder="Поиск по ФИО / email…"
+                        autocomplete="off"
+                        aria-autocomplete="list"
+                        aria-controls="dg-ws-set-emp-crm-menu"
+                        aria-expanded="false"
+                      />
+                      <div class="dg-ws-set-search-select-menu" id="dg-ws-set-emp-crm-menu" role="listbox"></div>
+                    </div>
+                    <div class="form-text">Staff из CRM Prime (ФИО). Таймер «Начать работу» синхронизируется с Datagon.</div>
                   </div>
                   <div class="col-md-4 d-flex align-items-end">
                     <div class="form-check mb-2">

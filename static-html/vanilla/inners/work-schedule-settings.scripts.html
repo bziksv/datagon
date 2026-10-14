@@ -14,10 +14,14 @@
     employees: [],
     usersAvailable: [],
     bitcopPeople: [],
+    crmUsers: [],
+    crmConfigured: false,
     empSort: { key: "name", dir: "asc" },
     empSearch: "",
     pendingEmpSearch: "",
   };
+
+  var LINK_MENU_MAX = 80;
 
   var EMP_SEARCH_KEYS = [
     "full_name",
@@ -290,10 +294,32 @@
       });
   }
 
+  function loadCrmUsers() {
+    return api("/crm/users")
+      .then(function (j) {
+        state.crmUsers = j.rows || [];
+        state.crmConfigured = !!j.configured;
+        return state.crmUsers;
+      })
+      .catch(function () {
+        state.crmUsers = [];
+        state.crmConfigured = false;
+        return [];
+      });
+  }
+
   function bitcopPersonById(id) {
     var n = Number(id);
     if (!n) return null;
     return (state.bitcopPeople || []).find(function (p) {
+      return Number(p.id) === n;
+    }) || null;
+  }
+
+  function crmUserById(id) {
+    var n = Number(id);
+    if (!n) return null;
+    return (state.crmUsers || []).find(function (p) {
       return Number(p.id) === n;
     }) || null;
   }
@@ -308,27 +334,208 @@
     return "#" + id;
   }
 
-  function fillBitcopSelect(selectedId) {
-    var sel = document.getElementById("dg-ws-set-emp-bitcop");
-    if (!sel) return;
-    var cur = selectedId != null && selectedId !== "" ? Number(selectedId) : 0;
-    var opts = ['<option value="">— не привязан —</option>'];
-    (state.bitcopPeople || []).forEach(function (p) {
-      opts.push(
-        '<option value="' +
-          p.id +
-          '"' +
-          (Number(p.id) === cur ? " selected" : "") +
-          ">" +
-          (p.full_name || p.id) +
-          (p.email ? " · " + p.email : "") +
-          "</option>"
-      );
+  function crmLabel(e) {
+    var id = e && e.crm_user_id != null && e.crm_user_id !== "" ? Number(e.crm_user_id) : 0;
+    if (!id) return "";
+    var p = crmUserById(id);
+    if (p) return String(p.full_name || p.email || "#" + id);
+    return "#" + id;
+  }
+
+  function escapeHtml(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function personLinkLabel(p, fallbackPrefix) {
+    if (!p) return "";
+    var name = String(p.full_name || p.email || "").trim();
+    if (name) return p.email && name.indexOf(p.email) < 0 ? name + " · " + p.email : name;
+    var id = Number(p.id) || 0;
+    return id ? (fallbackPrefix || "#") + id : "";
+  }
+
+  function filterLinkPeople(list, query) {
+    var q = String(query || "")
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, " ");
+    var rows = list || [];
+    if (!q) return rows.slice();
+    var toks = q.split(" ").filter(Boolean);
+    return rows.filter(function (p) {
+      var hay = (
+        String(p.full_name || "") +
+        " " +
+        String(p.email || "") +
+        " " +
+        String(p.id || "") +
+        " " +
+        String(p.job_title || "")
+      )
+        .toLowerCase()
+        .replace(/\s+/g, " ");
+      return toks.every(function (t) {
+        return hay.indexOf(t) >= 0;
+      });
     });
-    if (cur && !(state.bitcopPeople || []).some(function (p) { return Number(p.id) === cur; })) {
-      opts.push('<option value="' + cur + '" selected>Bitcop #' + cur + " (нет в списке)</option>");
+  }
+
+  function syncLinkSearchDisplay(kind) {
+    var hidden = document.getElementById("dg-ws-set-emp-" + kind);
+    var inp = document.getElementById("dg-ws-set-emp-" + kind + "-search");
+    if (!hidden || !inp) return;
+    var id = Number(hidden.value) || 0;
+    if (!id) {
+      inp.value = "";
+      inp.placeholder = "Поиск по ФИО / email…";
+      return;
     }
-    sel.innerHTML = opts.join("");
+    var p =
+      kind === "bitcop"
+        ? bitcopPersonById(id)
+        : crmUserById(id);
+    if (p) {
+      inp.value = personLinkLabel(p, kind === "bitcop" ? "Bitcop #" : "CRM #");
+    } else {
+      inp.value = (kind === "bitcop" ? "Bitcop #" : "CRM #") + id + " (нет в списке)";
+    }
+  }
+
+  function closeLinkMenu(kind) {
+    var menu = document.getElementById("dg-ws-set-emp-" + kind + "-menu");
+    var inp = document.getElementById("dg-ws-set-emp-" + kind + "-search");
+    if (menu) menu.classList.remove("is-open");
+    if (inp) inp.setAttribute("aria-expanded", "false");
+  }
+
+  function openLinkMenu(kind) {
+    var menu = document.getElementById("dg-ws-set-emp-" + kind + "-menu");
+    var inp = document.getElementById("dg-ws-set-emp-" + kind + "-search");
+    if (menu) menu.classList.add("is-open");
+    if (inp) inp.setAttribute("aria-expanded", "true");
+  }
+
+  function renderLinkMenu(kind, query) {
+    var menu = document.getElementById("dg-ws-set-emp-" + kind + "-menu");
+    var hidden = document.getElementById("dg-ws-set-emp-" + kind);
+    if (!menu) return;
+    var list = kind === "bitcop" ? state.bitcopPeople || [] : state.crmUsers || [];
+    var cur = hidden ? Number(hidden.value) || 0 : 0;
+    var filtered = filterLinkPeople(list, query);
+    var total = filtered.length;
+    var show = filtered.slice(0, LINK_MENU_MAX);
+    var html =
+      '<button type="button" class="dg-ws-set-search-select-item' +
+      (!cur ? " is-active" : "") +
+      '" data-dg-ws-set-link-id="" data-dg-no-activity="1">— не привязан —</button>';
+    show.forEach(function (p) {
+      var id = Number(p.id) || 0;
+      var label = personLinkLabel(p, kind === "bitcop" ? "Bitcop #" : "CRM #");
+      html +=
+        '<button type="button" class="dg-ws-set-search-select-item' +
+        (id === cur ? " is-active" : "") +
+        '" data-dg-ws-set-link-id="' +
+        id +
+        '" data-dg-no-activity="1">' +
+        escapeHtml(label) +
+        "</button>";
+    });
+    if (!list.length) {
+      html =
+        '<div class="dg-ws-set-search-select-empty">' +
+        (kind === "bitcop"
+          ? "Список Bitcop пуст — сохраните API-ключ и проверьте связь"
+          : state.crmConfigured === false
+            ? "CRM Prime DB не настроена"
+            : "Сотрудники CRM не найдены") +
+        "</div>";
+    } else if (!total && String(query || "").trim()) {
+      html += '<div class="dg-ws-set-search-select-empty">Ничего не найдено</div>';
+    } else if (total > LINK_MENU_MAX) {
+      html +=
+        '<div class="dg-ws-set-search-select-empty">Показано ' +
+        LINK_MENU_MAX +
+        " из " +
+        total +
+        " — уточните запрос</div>";
+    }
+    menu.innerHTML = html;
+  }
+
+  function setLinkValue(kind, id) {
+    var hidden = document.getElementById("dg-ws-set-emp-" + kind);
+    if (!hidden) return;
+    var n = Number(id) || 0;
+    hidden.value = n > 0 ? String(n) : "";
+    syncLinkSearchDisplay(kind);
+    closeLinkMenu(kind);
+  }
+
+  function fillBitcopSelect(selectedId) {
+    var hidden = document.getElementById("dg-ws-set-emp-bitcop");
+    if (!hidden) return;
+    var cur = selectedId != null && selectedId !== "" ? Number(selectedId) : 0;
+    hidden.value = cur > 0 ? String(cur) : "";
+    syncLinkSearchDisplay("bitcop");
+    closeLinkMenu("bitcop");
+  }
+
+  function fillCrmSelect(selectedId) {
+    var hidden = document.getElementById("dg-ws-set-emp-crm");
+    if (!hidden) return;
+    var cur = selectedId != null && selectedId !== "" ? Number(selectedId) : 0;
+    hidden.value = cur > 0 ? String(cur) : "";
+    syncLinkSearchDisplay("crm");
+    closeLinkMenu("crm");
+  }
+
+  function bindLinkSearchSelect(kind) {
+    var wrap = document.getElementById("dg-ws-set-emp-" + kind + "-wrap");
+    var inp = document.getElementById("dg-ws-set-emp-" + kind + "-search");
+    var menu = document.getElementById("dg-ws-set-emp-" + kind + "-menu");
+    if (!inp || !menu || !wrap || wrap.getAttribute("data-dg-bound") === "1") return;
+    wrap.setAttribute("data-dg-bound", "1");
+
+    inp.addEventListener("focus", function () {
+      inp.value = "";
+      renderLinkMenu(kind, "");
+      openLinkMenu(kind);
+    });
+    inp.addEventListener("input", function () {
+      renderLinkMenu(kind, inp.value);
+      openLinkMenu(kind);
+    });
+    inp.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        syncLinkSearchDisplay(kind);
+        closeLinkMenu(kind);
+        inp.blur();
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        var first = menu.querySelector("[data-dg-ws-set-link-id]");
+        if (first && menu.classList.contains("is-open")) {
+          setLinkValue(kind, first.getAttribute("data-dg-ws-set-link-id"));
+        }
+      }
+    });
+    inp.addEventListener("blur", function () {
+      setTimeout(function () {
+        if (!menu.classList.contains("is-open")) return;
+        syncLinkSearchDisplay(kind);
+        closeLinkMenu(kind);
+      }, 150);
+    });
+    menu.addEventListener("mousedown", function (e) {
+      var btn = e.target && e.target.closest && e.target.closest("[data-dg-ws-set-link-id]");
+      if (!btn) return;
+      e.preventDefault();
+      setLinkValue(kind, btn.getAttribute("data-dg-ws-set-link-id"));
+    });
   }
 
   function toDateInput(v) {
@@ -550,6 +757,8 @@
         return formatPremLabel(effectiveEmpPrem(e)).toLowerCase();
       case "bitcop":
         return bitcopLabel(e).toLowerCase() || (e.bitcop_employee_id ? String(e.bitcop_employee_id) : "");
+      case "crm":
+        return crmLabel(e).toLowerCase() || (e.crm_user_id ? String(e.crm_user_id) : "");
       case "overrides":
         return hasOverrides(e) ? 1 : 0;
       default:
@@ -628,6 +837,12 @@
       parts.push("bitcop");
       if (e.bitcop_employee_id) parts.push(String(e.bitcop_employee_id));
     }
+    var crm = crmLabel(e);
+    if (crm) {
+      parts.push(crm);
+      parts.push("crm");
+      if (e.crm_user_id) parts.push(String(e.crm_user_id));
+    }
     if (hasOverrides(e)) parts.push("есть переопределения override");
     return parts.join(" ").toLowerCase().replace(/\s+/g, " ");
   }
@@ -687,7 +902,7 @@
         ? "Нет сотрудников в выбранной организации фильтра"
         : "Нет сотрудников — «Привязать пользователя»";
       if (q) emptyHint = "Ничего не найдено по запросу «" + q + "»";
-      tb.innerHTML = '<tr><td colspan="15" class="text-muted p-3">' + emptyHint + "</td></tr>";
+      tb.innerHTML = '<tr><td colspan="16" class="text-muted p-3">' + emptyHint + "</td></tr>";
       return;
     }
     tb.innerHTML = list
@@ -706,6 +921,10 @@
             '">' +
             bc +
             "</span>"
+          : '<span class="text-muted">—</span>';
+        var crm = crmLabel(e);
+        var crmCell = crm
+          ? '<span title="CRM user id ' + Number(e.crm_user_id) + '">' + crm + "</span>"
           : '<span class="text-muted">—</span>';
         var payHourly = String(e.pay_type || "salary") === "hourly";
         var payLbl = payHourly
@@ -744,6 +963,8 @@
           premLbl +
           "</td><td>" +
           bcCell +
+          "</td><td>" +
+          crmCell +
           "</td><td>" +
           ov +
           '</td><td class="text-end">' +
@@ -1311,9 +1532,15 @@
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
-      }).then(function () {
+      }).then(function (j) {
         showOverlay("emp-add", false);
-        toast("success", "Сотрудник привязан");
+        var msg = "Сотрудник привязан";
+        if (j && j.crm_user_id) {
+          msg += j.crm_auto_linked ? " · CRM привязан автоматически" : " · CRM #" + j.crm_user_id;
+        } else {
+          msg += " · CRM: выберите вручную при необходимости";
+        }
+        toast("success", msg);
         selectOrg(orgId);
         return loadAll();
       });
@@ -1381,13 +1608,15 @@
     if (noSen) noSen.checked = Number(e.seniority_pay_disabled) === 1;
     var openOverlay = function () {
       fillBitcopSelect(e.bitcop_employee_id);
+      fillCrmSelect(e.crm_user_id);
       showOverlay("emp", true);
     };
-    if (!(state.bitcopPeople || []).length) {
-      loadBitcopPeople().then(openOverlay).catch(openOverlay);
-    } else {
-      openOverlay();
-    }
+    Promise.all([
+      (state.bitcopPeople || []).length ? Promise.resolve() : loadBitcopPeople(),
+      (state.crmUsers || []).length ? Promise.resolve() : loadCrmUsers(),
+    ])
+      .then(openOverlay)
+      .catch(openOverlay);
   }
 
   function saveEmp() {
@@ -1402,6 +1631,7 @@
       return;
     }
     var bitcopSel = document.getElementById("dg-ws-set-emp-bitcop");
+    var crmSel = document.getElementById("dg-ws-set-emp-crm");
     var noSen = document.getElementById("dg-ws-set-emp-no-seniority");
     var paySel = document.getElementById("dg-ws-set-emp-pay-type");
     var compFrom = document.getElementById("dg-ws-set-emp-comp-from");
@@ -1426,6 +1656,7 @@
         true
       ),
       bitcop_employee_id: bitcopSel && bitcopSel.value ? Number(bitcopSel.value) : null,
+      crm_user_id: crmSel && crmSel.value ? Number(crmSel.value) : null,
       seniority_pay_disabled: !!(noSen && noSen.checked),
       comp_from: (compFrom && compFrom.value) || undefined,
     };
@@ -1719,12 +1950,13 @@
         applyLoaded(arr);
         loadBitcopConfig();
         loadCalendarStatus();
-        return loadBitcopPeople()
+        return Promise.all([loadBitcopPeople(), loadCrmUsers()])
           .then(function () {
             renderEmps();
             return ensureGroupsAsDepartments();
           })
           .catch(function () {
+            renderEmps();
             return ensureGroupsAsDepartments();
           });
       })
@@ -1734,6 +1966,18 @@
   }
 
   function bind() {
+    bindLinkSearchSelect("bitcop");
+    bindLinkSearchSelect("crm");
+    document.addEventListener("mousedown", function (e) {
+      ["bitcop", "crm"].forEach(function (kind) {
+        var wrap = document.getElementById("dg-ws-set-emp-" + kind + "-wrap");
+        var menu = document.getElementById("dg-ws-set-emp-" + kind + "-menu");
+        if (!wrap || !menu || !menu.classList.contains("is-open")) return;
+        if (wrap.contains(e.target)) return;
+        syncLinkSearchDisplay(kind);
+        closeLinkMenu(kind);
+      });
+    });
     var bitcopSave = document.getElementById("dg-ws-set-bitcop-save");
     if (bitcopSave) bitcopSave.addEventListener("click", function () { saveBitcopConfig(); });
     var bitcopTest = document.getElementById("dg-ws-set-bitcop-test");

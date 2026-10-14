@@ -2542,9 +2542,19 @@
       });
     }
 
+    /** MSK wall 'YYYY-MM-DD HH:mm:ss' → epoch (не browser-local TZ). */
+    function mskWallToEpoch(sql) {
+      var s = String(sql || "").trim();
+      if (!s) return NaN;
+      if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2})?$/.test(s) && !/[zZ]|[+-]\d{2}:?\d{2}$/.test(s)) {
+        return new Date(s.replace(" ", "T") + "+03:00").getTime();
+      }
+      return new Date(s).getTime();
+    }
+
     function applyStatus(j) {
       if (j && j.open && j.check_in) {
-        var ts = new Date(String(j.check_in).replace(" ", "T")).getTime();
+        var ts = mskWallToEpoch(j.check_in);
         state = {
           open: true,
           startedAt: Number.isFinite(ts) ? ts : Date.now(),
@@ -2569,13 +2579,15 @@
       busy = true;
       return apiFetch("/clock/start", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" })
         .then(function (j) {
-          var ts = j.check_in ? new Date(String(j.check_in).replace(" ", "T")).getTime() : Date.now();
+          var ts = j.check_in ? mskWallToEpoch(j.check_in) : Date.now();
           state = { open: true, startedAt: Number.isFinite(ts) ? ts : Date.now(), employeeId: state.employeeId };
           emit();
           if (window.DatagonNotify && window.DatagonNotify.toast) {
+            var startMsg = j.resumed ? "Смена продолжена (день уже был закрыт)" : "Смена начата";
+            if (j.crm_sync_error) startMsg += " · CRM: " + j.crm_sync_error;
             window.DatagonNotify.toast({
-              type: "success",
-              message: j.resumed ? "Смена продолжена (день уже был закрыт)" : "Смена начата",
+              type: j.crm_sync_error ? "warning" : "success",
+              message: startMsg,
             });
           }
           return readState();
@@ -2616,8 +2628,12 @@
           else if (prev.startedAt) msg += " · " + formatElapsed(Date.now() - prev.startedAt);
           if (j.segments_count != null) msg += " · сегментов: " + j.segments_count;
           if (j.payroll_error) msg += " (начисление позже: " + j.payroll_error + ")";
+          if (j.crm_sync_error) msg += " · CRM: " + j.crm_sync_error;
           if (window.DatagonNotify && window.DatagonNotify.toast) {
-            window.DatagonNotify.toast({ type: j.payroll_error ? "warning" : "success", message: msg });
+            window.DatagonNotify.toast({
+              type: j.payroll_error || j.crm_sync_error ? "warning" : "success",
+              message: msg,
+            });
           }
           return readState();
         })

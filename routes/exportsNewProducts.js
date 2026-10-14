@@ -2177,9 +2177,21 @@ module.exports = function exportsNewProductsRouterFactory(db, config, appSetting
                     seedRu,
                 ]
             );
-            const [[kit]] = await db.query('SELECT * FROM dg_new_product_kits WHERE id = ? LIMIT 1', [
+            let [[kit]] = await db.query('SELECT * FROM dg_new_product_kits WHERE id = ? LIMIT 1', [
                 ins.insertId,
             ]);
+            // Штрихкод / НДС комплекта — из МС по коду комплекта (не копируем с родителя).
+            if (kit && String(kit.product_code || '').trim()) {
+                try {
+                    const enr = await markets.enrichAndPersistKitFromMs(db, kit, {
+                        allowLive: true,
+                        force: false,
+                    });
+                    if (enr && enr.kit) kit = enr.kit;
+                } catch (ee) {
+                    console.warn('[new-products] kit MS enrich on create', ee && ee.message);
+                }
+            }
             const mapped = markets.mapKitRow(kit);
             mapped.ru_url = String(parent.ru_url || '').trim();
             try {
@@ -2279,9 +2291,45 @@ module.exports = function exportsNewProductsRouterFactory(db, config, appSetting
             } catch (le) {
                 console.warn('[new-products] kit patch log', le);
             }
-            const [[updated]] = await db.query('SELECT * FROM dg_new_product_kits WHERE id = ? LIMIT 1', [
+            let [[updated]] = await db.query('SELECT * FROM dg_new_product_kits WHERE id = ? LIMIT 1', [
                 kitId,
             ]);
+            // Смена кода комплекта → перечитать штрихкод/НДС из МС (комплект = отдельная сущность).
+            const codeChanged =
+                'product_code' in fields &&
+                String(fields.product_code || '').trim() !== String(kit.product_code || '').trim();
+            const needMs =
+                codeChanged ||
+                !String((updated && updated.barcode) || '').trim() ||
+                !String((updated && updated.vat) || '').trim();
+            if (needMs && updated && String(updated.product_code || '').trim()) {
+                try {
+                    const enr = await markets.enrichAndPersistKitFromMs(db, updated, {
+                        allowLive: true,
+                        force: codeChanged,
+                    });
+                    if (enr && enr.kit) updated = enr.kit;
+                    if (enr && enr.patch) {
+                        for (const key of Object.keys(enr.patch)) {
+                            if (valuesEqualForLog(key, kit[key], enr.patch[key])) continue;
+                            await insertProductLog(db, {
+                                productId: parentId,
+                                channel: 'marketplaces',
+                                kitId,
+                                field: key,
+                                oldValue: formatFieldForLog(key, kit[key], 'marketplaces'),
+                                newValue: formatFieldForLog(key, enr.patch[key], 'marketplaces'),
+                                action: 'kit_ms_enrich',
+                                source: 'ms',
+                                actor: req.datagonActor,
+                                note: 'Подтянуто из МойСклад (комплект)',
+                            }).catch(() => {});
+                        }
+                    }
+                } catch (ee) {
+                    console.warn('[new-products] kit MS enrich on patch', ee && ee.message);
+                }
+            }
             const [[parent]] = await db.query(
                 'SELECT ru_url FROM dg_new_products WHERE id = ? LIMIT 1',
                 [parentId]

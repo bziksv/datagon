@@ -13,13 +13,51 @@ const {
 const bitcop = require('../lib/datagonBitcopClient');
 const rfCalendar = require('../lib/datagonWorkCalendarRf');
 const empComp = require('../lib/datagonWorkScheduleComp');
+const crmAttendance = require('../lib/datagonCrmAttendanceSync');
 
 let schemaReady = false;
+let crmLinkBackfillDone = false;
 
 async function ensureSchema(db) {
     if (schemaReady) return;
     await ensureWorkScheduleSchema(db);
     schemaReady = true;
+    if (!crmLinkBackfillDone) {
+        crmLinkBackfillDone = true;
+        crmAttendance.backfillCrmLinks(db).catch((e) =>
+            console.warn('[work-schedule] crm link backfill:', e && e.message ? e.message : e)
+        );
+    }
+}
+
+function clockSyncSecretExpected() {
+    let fromConfig = '';
+    try {
+        const config = require('../config');
+        if (config && config.datagonClockSyncSecret != null) {
+            fromConfig = String(config.datagonClockSyncSecret);
+        }
+    } catch (_) {
+        /* optional */
+    }
+    return String(process.env.DATAGON_CLOCK_SYNC_SECRET || fromConfig || '').trim();
+}
+
+function clockSyncSecretOk(req) {
+    const expected = clockSyncSecretExpected();
+    if (!expected) return false;
+    const got =
+        String(req.get('x-datagon-clock-sync') || req.get('x-datagon-sync-secret') || '').trim() ||
+        String((req.body && req.body.secret) || '').trim();
+    return got && got === expected;
+}
+
+async function pushCrmSafe(fn) {
+    try {
+        return await fn();
+    } catch (e) {
+        return { ok: false, error: (e && e.message) || String(e) };
+    }
 }
 
 function actorOf(req) {
@@ -1364,6 +1402,27 @@ function createWorkScheduleRouter(db) {
                 note: 'create',
                 actorId: actorOf(req).id || null,
             });
+            let crm_user_id =
+                b.crm_user_id === '' || b.crm_user_id == null ? null : Number(b.crm_user_id);
+            let crm_auto_linked = false;
+            if (!(Number.isFinite(crm_user_id) && crm_user_id > 0)) {
+                const [urows] = await db.query(`SELECT full_name FROM users WHERE id=? LIMIT 1`, [
+                    userId,
+                ]);
+                const fullName = (urows[0] && urows[0].full_name) || '';
+                const crmList = await crmAttendance.listCrmStaffUsers();
+                const hit = crmAttendance.matchCrmUserByFio(fullName, crmList.rows || []);
+                if (hit) {
+                    crm_user_id = hit.id;
+                    crm_auto_linked = true;
+                }
+            }
+            if (Number.isFinite(crm_user_id) && crm_user_id > 0) {
+                await db.query(`UPDATE ws_employee SET crm_user_id=? WHERE id=?`, [
+                    crm_user_id,
+                    r.insertId,
+                ]);
+            }
             await writeAudit(db, req, {
                 entity_type: 'employee',
                 entity_id: r.insertId,
@@ -1372,7 +1431,12 @@ function createWorkScheduleRouter(db) {
                 old_value: null,
                 new_value: String(newSalary),
             });
-            res.json({ success: true, id: r.insertId });
+            res.json({
+                success: true,
+                id: r.insertId,
+                crm_user_id: crm_user_id || null,
+                crm_auto_linked,
+            });
         } catch (e) {
             if (e && e.code === 'ER_DUP_ENTRY') {
                 return res.status(409).json({ success: false, error: 'user already linked' });
@@ -1398,6 +1462,8 @@ function createWorkScheduleRouter(db) {
             b.bitcop_employee_id === '' || b.bitcop_employee_id == null
                 ? null
                 : Number(b.bitcop_employee_id);
+        const crmUserId =
+            b.crm_user_id === '' || b.crm_user_id == null ? null : Number(b.crm_user_id);
         const seniorityOff = b.seniority_pay_disabled === true || b.seniority_pay_disabled === 1 || b.seniority_pay_disabled === '1';
         const payType = calc.normalizePayType(b.pay_type);
         await db.query(
@@ -1405,7 +1471,7 @@ function createWorkScheduleRouter(db) {
              organization_id=?, department_id=?, position=?, hire_date=?, fire_date=?, salary=?, pay_type=?, grade=?,
              official_employment=?, personal_work_hours_per_day=?, personal_rate_full_hours=?,
              personal_rate_half_hours=?, personal_sick_leave_rate=?, personal_schedule_type=?,
-             personal_premium_rule_json=?, bitcop_employee_id=?, seniority_pay_disabled=?
+             personal_premium_rule_json=?, bitcop_employee_id=?, crm_user_id=?, seniority_pay_disabled=?
              WHERE id=?`,
             [
                 Number(b.organization_id),
@@ -1424,6 +1490,7 @@ function createWorkScheduleRouter(db) {
                 b.personal_schedule_type || null,
                 normalizePremiumRuleBody(b.personal_premium_rule_json, { allowInherit: true }),
                 Number.isFinite(bitcopId) && bitcopId > 0 ? bitcopId : null,
+                Number.isFinite(crmUserId) && crmUserId > 0 ? crmUserId : null,
                 seniorityOff ? 1 : 0,
                 id,
             ]
@@ -1804,6 +1871,7 @@ function createWorkScheduleRouter(db) {
             action: resumed ? 'clock_restart' : 'clock_start',
             new_value: JSON.stringify({ check_in: now, hours_worked_so_far: hoursSoFar, segments }),
         });
+        const crm_sync = await pushCrmSafe(() => crmAttendance.pushDatagonOpenToCrm(emp, now));
         res.json({
             success: true,
             check_in: now,
@@ -1811,6 +1879,8 @@ function createWorkScheduleRouter(db) {
             resumed,
             hours_worked_so_far: hoursSoFar,
             segments_count: segments.length,
+            crm_sync,
+            crm_sync_error: crm_sync && crm_sync.ok === false ? crm_sync.error : null,
         });
     });
 
@@ -1874,6 +1944,9 @@ function createWorkScheduleRouter(db) {
         } catch (e) {
             payroll_error = e.message || String(e);
         }
+        const crm_sync = await pushCrmSafe(() =>
+            crmAttendance.pushDatagonCloseToCrm(emp, now, ' datagon-stop')
+        );
         res.json({
             success: true,
             hours_worked: hours,
@@ -1882,7 +1955,68 @@ function createWorkScheduleRouter(db) {
             segments: packed.segments,
             payroll,
             payroll_error,
+            crm_sync,
+            crm_sync_error: crm_sync && crm_sync.ok === false ? crm_sync.error : null,
         });
+    });
+
+    /**
+     * Вызов из CRM после attendance/log_time.
+     * Header: X-Datagon-Clock-Sync: <DATAGON_CLOCK_SYNC_SECRET>
+     * Body: { crm_user_id, action: 'start'|'stop', in_time?, out_time? } (UTC SQL)
+     */
+    router.post('/clock/sync-from-crm', async (req, res) => {
+        try {
+            if (!clockSyncSecretOk(req)) {
+                return res.status(401).json({ success: false, error: 'unauthorized' });
+            }
+            await ensureSchema(db);
+            const b = req.body || {};
+            const crmUserId = Number(b.crm_user_id);
+            if (!crmUserId) {
+                return res.status(400).json({ success: false, error: 'crm_user_id required' });
+            }
+            const emp = await crmAttendance.getEmployeeByCrmUserId(db, crmUserId);
+            if (!emp) {
+                return res.json({ success: true, skipped: true, reason: 'no_datagon_employee' });
+            }
+            const action = String(b.action || '').toLowerCase();
+            if (action === 'start' || action === 'in' || action === 'clock_in') {
+                const r = await crmAttendance.alignDatagonOpenFromCrm({
+                    db,
+                    emp,
+                    crmInUtc: b.in_time || b.in_time_utc || null,
+                    ip: clientIp(req),
+                    device: 'crm-sync',
+                    userAgent: userAgent(req),
+                });
+                if (r && r.ok && r.check_in) {
+                    await pushCrmSafe(() => crmAttendance.pushDatagonOpenToCrm(emp, r.check_in));
+                }
+                return res.json({ success: true, ...r });
+            }
+            if (action === 'stop' || action === 'out' || action === 'clock_out') {
+                const r = await crmAttendance.alignDatagonCloseFromCrm({
+                    db,
+                    emp,
+                    crmOutUtc: b.out_time || b.out_time_utc || null,
+                    recalcPayroll,
+                });
+                if (r && r.ok && r.action === 'closed' && r.check_out) {
+                    await pushCrmSafe(() =>
+                        crmAttendance.pushDatagonCloseToCrm(emp, r.check_out, ' crm-sync')
+                    );
+                }
+                return res.json({ success: true, ...r });
+            }
+            return res.status(400).json({ success: false, error: 'action start|stop required' });
+        } catch (e) {
+            console.warn('[work-schedule] sync-from-crm:', e && e.message ? e.message : e);
+            return res.status(500).json({
+                success: false,
+                error: (e && e.message) || String(e),
+            });
+        }
     });
 
     router.get('/stuck-shifts', async (req, res) => {
@@ -2541,6 +2675,30 @@ function createWorkScheduleRouter(db) {
         } catch (e) {
             return res.status(502).json({ success: false, error: (e && e.message) || String(e) });
         }
+    });
+
+    router.get('/crm/users', async (req, res) => {
+        if (!isAccounting(actorOf(req))) return res.status(403).json({ success: false, error: 'forbidden' });
+        const list = await crmAttendance.listCrmStaffUsers();
+        if (!list.configured) {
+            return res.json({
+                success: true,
+                configured: false,
+                rows: [],
+                message: 'CRM Prime DB не настроена (CRM_PRIME_DB_*)',
+            });
+        }
+        if (list.error) {
+            return res.status(502).json({ success: false, error: list.error, configured: true });
+        }
+        res.json({ success: true, configured: true, rows: list.rows });
+    });
+
+    router.post('/crm/link-backfill', async (req, res) => {
+        if (!isAccounting(actorOf(req))) return res.status(403).json({ success: false, error: 'forbidden' });
+        await ensureSchema(db);
+        const r = await crmAttendance.backfillCrmLinks(db);
+        res.json({ success: !r.error, ...r });
     });
 
     router.post('/bitcop/test', async (req, res) => {
@@ -3500,7 +3658,7 @@ function escXml(s) {
 async function processStuckShifts(db) {
     await ensureSchema(db);
     const [rows] = await db.query(
-        `SELECT w.*, e.id AS emp_id, d.norm_hours, d.rate_full_hours, d.rate_half_hours,
+        `SELECT w.*, e.id AS emp_id, e.crm_user_id, d.norm_hours, d.rate_full_hours, d.rate_half_hours,
                 o.clock_auto_close_hours, e.personal_work_hours_per_day,
                 e.personal_rate_full_hours, e.personal_rate_half_hours,
                 DATE_FORMAT(w.work_date, '%Y-%m-%d') AS work_ymd,
@@ -3516,6 +3674,7 @@ async function processStuckShifts(db) {
     let closed = 0;
     let dayRollover = 0;
     let hoursLimit = 0;
+    let crmClosed = 0;
     for (const r of rows) {
         const workYmd = r.work_ymd || calc.toYmd(r.work_date);
         const checkInSql = r.check_in_sql || r.check_in;
@@ -3562,11 +3721,33 @@ async function processStuckShifts(db) {
         } catch (e) {
             /* часы уже зафиксированы */
         }
+        if (r.crm_user_id) {
+            const crmR = await pushCrmSafe(() =>
+                crmAttendance.pushDatagonCloseToCrm(
+                    { crm_user_id: r.crm_user_id },
+                    finalOut,
+                    pastDay ? ' day-rollover' : ' auto-close'
+                )
+            );
+            if (crmR && crmR.ok && crmR.closed) crmClosed += 1;
+        }
         closed += 1;
         if (pastDay) dayRollover += 1;
         else hoursLimit += 1;
     }
-    return { closed, day_rollover: dayRollover, hours_limit: hoursLimit };
+    let crm_reconcile = null;
+    try {
+        crm_reconcile = await crmAttendance.reconcileLinkedClocks(db);
+    } catch (e) {
+        crm_reconcile = { error: (e && e.message) || String(e) };
+    }
+    return {
+        closed,
+        day_rollover: dayRollover,
+        hours_limit: hoursLimit,
+        crm_closed: crmClosed,
+        crm_reconcile,
+    };
 }
 
 module.exports = createWorkScheduleRouter;

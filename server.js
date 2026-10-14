@@ -2951,7 +2951,13 @@ async function processAutoSyncQueue() {
                         ', обновлено ' +
                         (r.updated || 0) +
                         ', без совпадения в МС ' +
-                        (r.missed || 0)
+                        (r.missed || 0) +
+                        '; комплекты: скан ' +
+                        (r.kits_scanned || 0) +
+                        ', обновлено ' +
+                        (r.kits_updated || 0) +
+                        ', miss ' +
+                        (r.kits_missed || 0)
                     ).slice(0, 480);
                 } catch (e) {
                     statusNp = 'failed';
@@ -3323,7 +3329,9 @@ initDB().then(async () => {
         const pathOnly = String(req.path || '').split('?')[0];
         const isPublicAuth =
             (req.method === 'POST' && (pathOnly === '/login' || pathOnly === '/auth/login')) ||
-            (req.method === 'POST' && (pathOnly === '/logout' || pathOnly === '/auth/logout'));
+            (req.method === 'POST' && (pathOnly === '/logout' || pathOnly === '/auth/logout')) ||
+            // CRM attendance → Datagon (секрет в X-Datagon-Clock-Sync, без сессии)
+            (req.method === 'POST' && pathOnly === '/work-schedule/clock/sync-from-crm');
         if (isPublicAuth) return next();
         try {
             const actor = await authModule.getActor(req);

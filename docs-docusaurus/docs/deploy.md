@@ -111,6 +111,8 @@ pm2 ls   # parser-app + parser-autosync-w2
 ```
 
 - **`DATAGON_STARTUP_DEFER_MS`** — отсрочка тяжёлых фоновых задач после старта (default 60000 мс).
+- **`DATAGON_CLOCK_SYNC_SECRET`** — общий секрет для `POST /api/work-schedule/clock/sync-from-crm` (вызов из CRM после attendance). Без него endpoint отвечает 401.
+- **CRM Prime** (репозиторий `crm.prime-ltd`): в `.env` задать `DATAGON_CLOCK_SYNC_URL=https://p.datagon.ru/api/work-schedule/clock/sync-from-crm` и тот же `DATAGON_CLOCK_SYNC_SECRET`; выкатить `app/Models/Attendance_model.php`. Доступ Datagon к БД CRM — уже через `CRM_PRIME_DB_*` (см. `lib/crmPrimeTimesheets.js`).
 - **`MS_TOKEN`** (или поле в `config.js`) — не коммитьте в публичный git; на сервере используйте `.env`, переменные systemd/pm2 или секрет-хранилище.
 - **Юридические страницы** (`/legal/privacy.html`, `/legal/cookies.html`, `/legal/recommendation.html`, `/legal/consent.html`) отдаются **без авторизации**. Cookie-баннер (как на titlo.ru) показывается **только неавторизованным**; ссылки на политики — в подвале панели и на `/login.html`. Пересборка из ODT (`rules/` → HTML): `npm run build:legal-html` (старый конвейер; актуальные тексты правок 21.08.2026 могут правиться напрямую в `public/legal/*.html`).
 - **Пароль БД** — только на машине приложения; в `deploy/` nginx **не** хранит креды MySQL для Node (MySQL обычно на `127.0.0.1` или внутренней сети).

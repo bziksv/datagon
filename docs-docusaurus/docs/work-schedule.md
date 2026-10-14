@@ -84,7 +84,20 @@ description: Учёт рабочего времени, табель, отпус�
 - Сегменты в `ws_work_log.segments_json` (`in`/`out`/`ms`/`hours`/`ip_*`).
 - `hours_worked` — сумма сегментов; в UI длительности — **ЧЧ:ММ** (не «0.77 ч»).
 - Ставка дня (0 / 0,5 / 1) по порогам часов отдела/сотрудника; короткие куски не обнуляются до 5 мин для отображения часов.
-- **Автозакрытие** (тик ~15 мин): смена суток МСК → `day-rollover` на `23:59:59`; иначе лимит `clock_auto_close_hours` → `auto-close`. Статус `needs_confirm`.
+- **Автозакрытие** (тик ~15 мин): смена суток МСК → `day-rollover` на `23:59:59`; иначе лимит `clock_auto_close_hours` → `auto-close`. Статус `needs_confirm`. Параллельно закрывается incomplete в CRM (`rise_attendance`) для сотрудников с `crm_user_id`.
+
+## Связка таймера с CRM Prime
+
+Источник истины для табеля/ФОТ — **Datagon**. CRM (`crm.prime-ltd.su`, виджет «Начать работу» → `rise_attendance`) — зеркало дашборда.
+
+| Направление | Как |
+|-------------|-----|
+| Datagon → CRM | после `POST /clock/start\|stop` пишется/закрывается `rise_attendance` (UTC) через `lib/datagonCrmAttendanceSync.js` |
+| CRM → Datagon | после `Attendance_model::log_time` CRM шлёт `POST /api/work-schedule/clock/sync-from-crm` (без сессии, заголовок `X-Datagon-Clock-Sync`) |
+| Конфликт стартов | побеждает более ранний `in`/`check_in` по UTC epoch |
+| Конец дня | rollover МСК закрывает оба конца |
+
+Привязка сотрудника: поле `ws_employee.crm_user_id` + select «Сотрудник в CRM» на `/work-schedule-settings.html` (как Bitcop). Автопо ФИО (`users.full_name` ↔ `first_name`+`last_name` staff) при создании и backfill однозначных совпадений. Env CRM: `DATAGON_CLOCK_SYNC_URL`, `DATAGON_CLOCK_SYNC_SECRET`; Datagon: `DATAGON_CLOCK_SYNC_SECRET` (+ доступ к БД CRM через `CRM_PRIME_DB_*`). Ошибка зеркала CRM **не** откатывает смену Datagon (`crm_sync_error` в ответе / тост).
 
 ## Экраны `/work-schedule-settings.html`
 
@@ -95,7 +108,7 @@ description: Учёт рабочего времени, табель, отпус�
 1. **Организации** — селект «какую править» (не фильтрует сотрудников), поля: название, ИНН, TZ, больничный неофиц. ₽/день, стаж (база / шаг / период мес.). Сохранить → inline `#dg-ws-set-org-msg`. Удаление — своя модалка; **409**, если есть сотрудники. Seed при пустой таблице: **АЛЬМАМЕД** / **ВИЛМЕД**.
 2. **Bitcop** — аккаунт (поддомен), API-ключ, метрика часов (`productiveTime` по умолчанию / `activeTime` / `totalTime`). Проверка связи и сохранение в `app_settings` (`ws_bitcop_*`). См. [Bitcop Web API](https://bitcop.ru/guide/api).
 3. **Отделы** — общий справочник (без привязки к юрлицу). **«Подтянуть группы»** → `POST /departments/import-specialties` (имена из `specialties`, без «Полный доступ», без дублей). Карточка отдела (overlay): тип графика 5/2|2/2|сменный|гибкий, норма дня, пороги ставки 1 / 0,5, лимит отпусков, правило премии `stub` / `fixed` / `fixed_full`, блок **«Доступ к другим отделам»** (`manage_scopes`: галка отдела + «правки»). Seed при старте Node (`seedDefaultDepartmentManageScopes`): «Руководитель склада» → «Склад» / «Делопроизводитель» / «Логистика» (правки); «SEO-специалист» ↔ «Проект-Менеджер» (взаимный просмотр без правок).
-4. **Сотрудники** — фильтр орг. в шапке + умный поиск (**Применить** / Enter, не на каждый `input`). Колонки: ФИО, орг, отдел, дата приёма, **Стаж**, **За стаж**, **Оплата** (оклад / по часам), оклад или ₽/ч, личный график/норма/больничный/премия, **Bitcop**, переопределения. В карточке: **тип оплаты**, ставка/оклад, привязка **Bitcop**, галка **«Не выплачиваем за стаж»**. **Привязать пользователя** — из `GET /users-available` + обязательный `hire_date`. История оклада — `GET /employees/:id/salary-history`.
+4. **Сотрудники** — фильтр орг. в шапке + умный поиск (**Применить** / Enter, не на каждый `input`). Колонки: ФИО, орг, отдел, дата приёма, **Стаж**, **За стаж**, **Оплата** (оклад / по часам), оклад или ₽/ч, личный график/норма/больничный/премия, **Bitcop**, **CRM**, переопределения. В карточке: **тип оплаты**, ставка/оклад, привязка **Bitcop** и **CRM Prime**, галка **«Не выплачиваем за стаж»**. **Привязать пользователя** — из `GET /users-available` + обязательный `hire_date` (однозначное ФИО → авто `crm_user_id`). История оклада — `GET /employees/:id/salary-history`.
 
 **Производственный календарь РФ** — карточка на этой странице + `POST /calendar/sync-rf`. Маппинг 1С (`/1c-map`) — в API; экспорт CSV 1С — кнопка на **`/work-schedule.html`** (табель).
 
@@ -131,6 +144,7 @@ description: Учёт рабочего времени, табель, отпус�
 |------|------------|
 | `lib/datagonWorkScheduleSchema.js` | DDL `ws_*`, импорт отделов из specialties, seed орг. |
 | `lib/datagonWorkScheduleCalc.js` | ставки, стаж, премии, сегменты, МСК-даты |
+| `lib/datagonCrmAttendanceSync.js` | зеркало таймера ↔ CRM `rise_attendance` (UTC↔MSK, FIO-link) |
 | `lib/managerSalesMonthBonus.js` | премии менеджеров за месяц для табеля |
 | `routes/workSchedule.js` | HTTP API |
 | `static-html/vanilla/inners/work-schedule*.html` | UI (+ sync → `public/`) |
