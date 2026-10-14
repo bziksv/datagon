@@ -1582,6 +1582,8 @@ Query: `channel`, `search`, `status`, `priority`, `brand`, `responsible` (id | `
 
 Частичное обновление + авто-статус по каналу. Для Альмамед: `sell_on_markets`, `has_kits` (0/1). При любом из флагов =1 поля синхронизируются во вкладку маркетов. Ответ: `data`, `missing_required`, `auto_status_changed`, `markets_sync`.
 
+**`markets_sync` и коллизии по коду МС:** upsert ищет свою строку маркетов **только** по `source_almamed_id` (авто-merge по `product_code` отключён). Если код МС уже занят другой строкой маркетов — ответ `markets_sync.reason = "code_collision"`, `needs_confirm: true`, объект `collision` (Марк #, артикул, код, Альм #, МП); чужая строка **не** меняется, галочка `sell_on_markets` откатывается в `0`. UI показывает модалку: **«Создать как новый»** / **«Отмена»**. Подтверждение: повторный `PATCH` с `markets_collision_action: "create_new"` (или `markets_force_create: 1`) — создаётся отдельная строка маркетов **без** чужого `product_code`. Каскад soft-delete Альмамед → маркеты: `source_almamed_id` и совпадающий (или пустой) артикул.
+
 ### POST `/api/exports/new-products/:id/kits`
 
 Добавить комплект к строке маркетов (`has_kits` обязателен). Body: `{ title?, product_code? }`. После insert — обогащение штрихкода/НДС/артикула из МС по коду. Ответ: `{ success, data }` (в т.ч. `barcode`, `vat`).

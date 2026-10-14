@@ -421,7 +421,12 @@ async function initDB() {
             database: config.db.database,
             waitForConnections: true,
             connectionLimit: Math.max(10, Number(process.env.DB_CONNECTION_LIMIT || 20)),
-            queueLimit: 0
+            queueLimit: 0,
+            // Удалённый MySQL/NAT часто рвёт idle — без keep-alive ловим
+            // "Connection lost: The server closed the connection" на /api/auth/me.
+            enableKeepAlive: true,
+            keepAliveInitialDelay: 10000,
+            idleTimeout: 60000,
         });
         await db.query('SELECT 1');
         console.log('[DB] Connected');

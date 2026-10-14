@@ -2148,7 +2148,30 @@ module.exports = function exportsNewProductsRouterFactory(db, config, appSetting
                 (Number(row.sell_on_markets) === 1 || Number(row.has_kits) === 1)
             ) {
                 try {
-                    marketsSync = await markets.upsertMarketsFromAlmamed(db, row, { syncFields: true });
+                    const forceCreate =
+                        body.markets_collision_action === 'create_new' ||
+                        body.markets_collision_action === 'create' ||
+                        body.markets_force_create === true ||
+                        body.markets_force_create === 1 ||
+                        String(body.markets_force_create) === '1';
+                    marketsSync = await markets.upsertMarketsFromAlmamed(db, row, {
+                        syncFields: true,
+                        forceCreate,
+                    });
+                    // Коллизия без подтверждения — галочку «Маркеты» не оставляем включённой.
+                    if (
+                        marketsSync &&
+                        marketsSync.needs_confirm &&
+                        marketsSync.reason === 'code_collision' &&
+                        Number(row.sell_on_markets) === 1 &&
+                        'sell_on_markets' in fields
+                    ) {
+                        await db.query(
+                            `UPDATE dg_new_products SET sell_on_markets = 0 WHERE id = ?`,
+                            [id]
+                        );
+                        row.sell_on_markets = 0;
+                    }
                 } catch (se) {
                     marketsSync = { error: se.message || 'Ошибка постановки в маркеты' };
                     console.warn('[new-products] sell_on_markets/has_kits sync', se);

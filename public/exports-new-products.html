@@ -3270,6 +3270,8 @@
   <script>
 (function () {
   "use strict";
+  // bump при смене логики маркетов — проверка в консоли: window.__DG_NP_MARKETS_GUARD__
+  window.__DG_NP_MARKETS_GUARD__ = "v3-collision-modal-20261014";
 
   var FILTERS_KEY = "datagon_np_filters_collapsed_v1";
   var TABLE_KEY = "dg.np.table-card.collapsed.v1";
@@ -5060,9 +5062,66 @@
     patchQueues[key] = next;
     return next;
   }
+  function formatMarketsCollisionToast(ms) {
+    var c = ms && ms.collision;
+    if (!c) return "";
+    var parts = [];
+    if (c.channel_num != null) parts.push("Марк #" + c.channel_num);
+    else if (c.markets_id != null) parts.push("id=" + c.markets_id);
+    if (c.article) parts.push("артикул " + c.article);
+    if (c.product_code) parts.push("код " + c.product_code);
+    if (c.title) {
+      var t = String(c.title);
+      if (t.length > 60) t = t.slice(0, 57) + "…";
+      parts.push("«" + t + "»");
+    }
+    var links = [];
+    if (c.source_almamed_channel_num != null) links.push("Альм #" + c.source_almamed_channel_num);
+    else if (c.source_almamed_id != null) links.push("Альм id=" + c.source_almamed_id);
+    if (c.source_almamed_article) links.push("арт. " + c.source_almamed_article);
+    var mp = [];
+    if (c.placement_ozon) mp.push("OZON");
+    if (c.placement_wb) mp.push("WB");
+    if (c.placement_ym) mp.push("ЯМ");
+    var msg =
+      "Такой код/артикул уже в маркетах: " +
+      parts.join(", ") +
+      (links.length ? ". Привязка: " + links.join(", ") : "") +
+      (mp.length ? ". Уже на МП: " + mp.join(", ") : "") +
+      ". Чужую строку не перезаписываем.";
+    if (ms.created) {
+      msg +=
+        ms.channel_num != null
+          ? " Создана отдельная строка Марк #" + ms.channel_num + "."
+          : " Создана отдельная строка маркетов.";
+    } else if (ms.skipped && ms.already_on_all_mp) {
+      msg += " Код уже на всех маркетплейсах — новую строку не создаём.";
+    }
+    return msg;
+  }
+
   function afterAlmamedMarketsSync(j) {
     var ms = j && j.markets_sync;
     if (!ms || ms.error || ms.reason === "no_code") return;
+    if (ms.reason === "code_collision" && ms.needs_confirm && ms.collision) {
+      // Модалка вызывается из обработчика галочки «Маркеты»; здесь только страховка-тост.
+      if (window.DatagonNotify && window.DatagonNotify.toast) {
+        window.DatagonNotify.toast({
+          type: "warning",
+          message: formatMarketsCollisionToast(ms),
+        });
+      }
+      return;
+    }
+    if (ms.reason === "code_collision" && ms.collision) {
+      if (window.DatagonNotify && window.DatagonNotify.toast) {
+        window.DatagonNotify.toast({
+          type: "warning",
+          message: formatMarketsCollisionToast(ms),
+        });
+      }
+      return;
+    }
     if (ms.updated || ms.created) {
       if (window.DatagonNotify && window.DatagonNotify.toast) {
         window.DatagonNotify.toast({
@@ -5481,10 +5540,16 @@
       var title = el("dg-np-confirm-title");
       var text = el("dg-np-confirm-text");
       var okBtn = el("dg-np-confirm-ok");
+      var cancelBtn = el("dg-np-confirm-cancel");
       if (title) title.textContent = o.title || "Удалить?";
-      if (text) text.textContent = o.message || "Действие нельзя отменить.";
+      if (text) {
+        if (o.html) text.innerHTML = o.html;
+        else text.textContent = o.message || "Действие нельзя отменить.";
+      }
+      if (cancelBtn) cancelBtn.textContent = o.cancelLabel || "Отмена";
       if (okBtn) {
         okBtn.textContent = o.okLabel || "Удалить";
+        okBtn.className = o.okClass || "btn btn-danger";
         if (o.notifyStart) okBtn.setAttribute("data-dg-notify-start", o.notifyStart);
         else okBtn.setAttribute("data-dg-notify-start", "Удаляем…");
       }
@@ -5500,6 +5565,46 @@
           okBtn.focus();
         } catch (_) {}
       }
+    });
+  }
+
+  function openMarketsCollisionConfirm(ms) {
+    var c = (ms && ms.collision) || {};
+    var lines = [];
+    lines.push(
+      "Введённый артикул совпал с <b>кодом МойСклад</b> товара, который уже есть в «Размещение на маркеты»."
+    );
+    lines.push("");
+    var who = [];
+    if (c.channel_num != null) who.push("Марк #" + c.channel_num);
+    if (c.article) who.push("артикул <b>" + escapeHtml(c.article) + "</b>");
+    if (c.product_code) who.push("код МС <b>" + escapeHtml(c.product_code) + "</b>");
+    if (c.title) {
+      var t = String(c.title);
+      if (t.length > 80) t = t.slice(0, 77) + "…";
+      who.push("«" + escapeHtml(t) + "»");
+    }
+    if (who.length) lines.push(who.join(", "));
+    var bind = [];
+    if (c.source_almamed_channel_num != null) bind.push("Альм #" + c.source_almamed_channel_num);
+    if (c.source_almamed_article) bind.push("арт. " + escapeHtml(c.source_almamed_article));
+    if (bind.length) lines.push("Сейчас привязан к: " + bind.join(", "));
+    var mp = [];
+    if (c.placement_ozon) mp.push("OZON");
+    if (c.placement_wb) mp.push("WB");
+    if (c.placement_ym) mp.push("ЯМ");
+    if (mp.length) lines.push("Уже на МП: " + mp.join(", "));
+    lines.push("");
+    lines.push(
+      "Чужую строку <b>не перезаписываем</b>. Можно создать отдельную строку в маркетах или отменить."
+    );
+    return openNpConfirm({
+      title: "Такой код уже есть в маркетах",
+      html: lines.join("<br>"),
+      okLabel: "Создать как новый",
+      okClass: "btn btn-primary",
+      cancelLabel: "Отмена",
+      notifyStart: "Создаём отдельную строку маркетов…",
     });
   }
 
@@ -5769,16 +5874,58 @@
           var ms = j && j.markets_sync;
           if (on) {
             if (ms && ms.error) {
+              chkSell.checked = false;
               if (window.DatagonNotify && window.DatagonNotify.toast) {
                 window.DatagonNotify.toast({ type: "danger", message: ms.error });
               }
             } else if (ms && ms.reason === "no_code") {
+              chkSell.checked = false;
               if (window.DatagonNotify && window.DatagonNotify.toast) {
                 window.DatagonNotify.toast({
                   type: "warning",
                   message: "Сначала укажите артикул — без него в маркеты не поставить",
                 });
               }
+            } else if (ms && ms.reason === "code_collision" && ms.needs_confirm) {
+              chkSell.checked = false;
+              return openMarketsCollisionConfirm(ms).then(function (ok) {
+                if (!ok) return null;
+                return patchRowQueued(row.id, {
+                  sell_on_markets: 1,
+                  markets_collision_action: "create_new",
+                }).then(function (j2) {
+                  applyPatched(row, j2);
+                  chkSell.checked = !!(j2.data && j2.data.sell_on_markets);
+                  var ms2 = j2 && j2.markets_sync;
+                  if (ms2 && (ms2.created || ms2.updated)) {
+                    if (window.DatagonNotify && window.DatagonNotify.toast) {
+                      window.DatagonNotify.toast({
+                        type: "success",
+                        message:
+                          "Создана отдельная строка маркетов" +
+                          (ms2.channel_num != null ? " Марк #" + ms2.channel_num : "") +
+                          " (без чужого кода МС).",
+                      });
+                    }
+                    load();
+                  } else if (ms2 && ms2.error) {
+                    chkSell.checked = false;
+                    if (window.DatagonNotify && window.DatagonNotify.toast) {
+                      window.DatagonNotify.toast({ type: "danger", message: ms2.error });
+                    }
+                  }
+                  return j2;
+                });
+              });
+            } else if (ms && ms.reason === "code_collision") {
+              chkSell.checked = !!(j.data && j.data.sell_on_markets);
+              if (window.DatagonNotify && window.DatagonNotify.toast) {
+                window.DatagonNotify.toast({
+                  type: "warning",
+                  message: formatMarketsCollisionToast(ms),
+                });
+              }
+              if (ms.created) load();
             } else if (ms && ms.reason === "already_on_all_mp") {
               if (window.DatagonNotify && window.DatagonNotify.toast) {
                 window.DatagonNotify.toast({
@@ -5841,6 +5988,27 @@
                 window.DatagonNotify.toast({
                   type: "warning",
                   message: "Укажите артикул — без него строка маркетов не создастся",
+                });
+              }
+            } else if (ms && ms.reason === "code_collision" && ms.needs_confirm) {
+              chkKits.checked = false;
+              return openMarketsCollisionConfirm(ms).then(function (ok) {
+                if (!ok) return null;
+                return patchRowQueued(row.id, {
+                  has_kits: 1,
+                  markets_collision_action: "create_new",
+                }).then(function (j2) {
+                  applyPatched(row, j2);
+                  chkKits.checked = !!(j2.data && j2.data.has_kits);
+                  if (j2.markets_sync && j2.markets_sync.created) load();
+                  return j2;
+                });
+              });
+            } else if (ms && ms.reason === "code_collision") {
+              if (window.DatagonNotify && window.DatagonNotify.toast) {
+                window.DatagonNotify.toast({
+                  type: "warning",
+                  message: formatMarketsCollisionToast(ms),
                 });
               }
             } else if (ms && (ms.created || ms.updated)) {
