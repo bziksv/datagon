@@ -194,6 +194,41 @@
   function colWidthsKey() {
     return "dg.np.col-widths.v1:" + state.channel;
   }
+  function sortPrefsKey() {
+    return "dg.np.sort.v1:" + state.channel;
+  }
+  function defaultSortForChannel() {
+    return { sort_by: "priority", sort_dir: "asc" };
+  }
+  function persistSortPrefs() {
+    try {
+      localStorage.setItem(
+        sortPrefsKey(),
+        JSON.stringify({ sort_by: state.sort_by, sort_dir: state.sort_dir })
+      );
+    } catch (_) {}
+  }
+  function loadSortForChannel() {
+    var def = defaultSortForChannel();
+    var allowed = new Set(
+      currentCols()
+        .filter(function (c) {
+          return c.sort;
+        })
+        .map(function (c) {
+          return c.key;
+        })
+    );
+    var nextBy = def.sort_by;
+    var nextDir = def.sort_dir;
+    try {
+      var raw = JSON.parse(localStorage.getItem(sortPrefsKey()) || "null");
+      if (raw && allowed.has(String(raw.sort_by))) nextBy = String(raw.sort_by);
+      if (raw && (raw.sort_dir === "asc" || raw.sort_dir === "desc")) nextDir = raw.sort_dir;
+    } catch (_) {}
+    state.sort_by = nextBy;
+    state.sort_dir = nextDir;
+  }
   function visibleColsArray() {
     return currentCols()
       .map(function (c) {
@@ -1813,6 +1848,7 @@
           state.sort_by = c.key;
           state.sort_dir = c.key === "priority" ? "asc" : "desc";
         }
+        persistSortPrefs();
         load();
       });
     }
@@ -5496,6 +5532,7 @@
     } catch (_) {}
     loadVisibleColsForChannel();
     loadWidthsForChannel();
+    loadSortForChannel();
     state.offset = 0;
     // Не оставляем чужие/устаревшие строки на экране на время ожидания PATCH + load.
     state.rows = [];
@@ -6134,6 +6171,7 @@
     loadHidePlacedPref();
     loadVisibleColsForChannel();
     loadWidthsForChannel();
+    loadSortForChannel();
     syncStatsTabAccess();
 
     var urlTab = parseTabFromLocation();
