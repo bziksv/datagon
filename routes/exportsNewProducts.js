@@ -1481,16 +1481,32 @@ module.exports = function exportsNewProductsRouterFactory(db, config, appSetting
                 }
             }
             if (search) {
-                const idNum = parseInt(String(search).replace(/^id:\s*/i, '').trim(), 10);
-                if (Number.isFinite(idNum) && idNum > 0 && String(search).trim().match(/^(id:\s*)?\d+$/i)) {
+                const rawSearch = String(search).trim();
+                const idOnly = /^id:\s*\d+$/i.test(rawSearch);
+                const idNum = parseInt(rawSearch.replace(/^id:\s*/i, '').trim(), 10);
+                // Только «id:123» — строго по channel_num/id. Чистый «40642» — ещё артикул/код
+                // (коды МС часто чисто числовые; иначе умный поиск «не находит»).
+                if (idOnly && Number.isFinite(idNum) && idNum > 0) {
                     where.push('(channel_num = ? OR id = ?)');
                     params.push(idNum, idNum);
                 } else {
-                    where.push(
-                        `(title LIKE ? OR article LIKE ? OR brand LIKE ? OR supplier_url LIKE ? OR comment LIKE ? OR COALESCE(manager_comment,'') LIKE ? OR product_manager_name LIKE ? OR responsible_name LIKE ? OR COALESCE(product_code,'') LIKE ? OR COALESCE(barcode,'') LIKE ? OR COALESCE(ru_url,'') LIKE ? OR COALESCE(ss_ds_url,'') LIKE ? OR CAST(COALESCE(channel_num, id) AS CHAR) LIKE ?)`
-                    );
-                    const like = `%${search}%`;
-                    params.push(
+                    const like = `%${rawSearch}%`;
+                    const parts = [
+                        'title LIKE ?',
+                        'article LIKE ?',
+                        'brand LIKE ?',
+                        'supplier_url LIKE ?',
+                        'comment LIKE ?',
+                        "COALESCE(manager_comment,'') LIKE ?",
+                        'product_manager_name LIKE ?',
+                        'responsible_name LIKE ?',
+                        "COALESCE(product_code,'') LIKE ?",
+                        "COALESCE(barcode,'') LIKE ?",
+                        "COALESCE(ru_url,'') LIKE ?",
+                        "COALESCE(ss_ds_url,'') LIKE ?",
+                        'CAST(COALESCE(channel_num, id) AS CHAR) LIKE ?',
+                    ];
+                    const likeParams = [
                         like,
                         like,
                         like,
@@ -1503,8 +1519,14 @@ module.exports = function exportsNewProductsRouterFactory(db, config, appSetting
                         like,
                         like,
                         like,
-                        like
-                    );
+                        like,
+                    ];
+                    if (Number.isFinite(idNum) && idNum > 0 && /^\d+$/.test(rawSearch)) {
+                        parts.push('channel_num = ?', 'id = ?', 'article = ?', 'product_code = ?');
+                        likeParams.push(idNum, idNum, rawSearch, rawSearch);
+                    }
+                    where.push('(' + parts.join(' OR ') + ')');
+                    params.push(...likeParams);
                 }
             }
 
