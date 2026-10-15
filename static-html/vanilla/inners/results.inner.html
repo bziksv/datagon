@@ -202,7 +202,19 @@
                   data-dg-tooltip="Зеркало поля «Умный поиск» в карточке фильтров. Enter — применить, Esc — очистить."
                 />
               </div>
-              <div class="d-flex align-items-center gap-2 flex-shrink-0">
+              <div class="d-flex align-items-center gap-2 flex-shrink-0 flex-wrap">
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-primary"
+                  id="dg-res-bulk-toggle"
+                  data-dg-notify-start="Режим массовой смены типа…"
+                  title="Выбрать строки и сменить тип разом (Товар / Инфо / Утиль…)"
+                >
+                  Массовая смена типа
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-secondary d-none" id="dg-res-bulk-cancel" data-dg-no-activity="1">
+                  Отмена выбора
+                </button>
                 <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-res-columns-toggle-header" data-dg-tooltip="Открыть панель управления видимостью столбцов">🧩 Столбцы</button>
                 <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-res-widths-toggle-header" data-dg-tooltip="Ручная ширина каждой колонки в пикселях (или drag за правый край заголовка)">📏 Ширины</button>
                 <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-res-table-toggle">Свернуть</button>
@@ -210,6 +222,11 @@
             </div>
             <div class="card-body">
               <div id="dg-res-table-collapse-body">
+              <div id="dg-res-bulk-banner" class="alert alert-info py-2 px-3 small mb-2 d-none" role="status">
+                Клик по строке — выбрать / снять (Shift+клик — диапазон на странице). Затем снова
+                <strong>«Массовая смена типа»</strong>, чтобы задать тип всем выбранным. Ссылки, селект типа и кнопки действий не переключают выбор.
+              </div>
+              <div id="dg-res-action-log" class="alert py-2 px-3 small mb-2 d-none" role="status"></div>
               <div class="datagon-columns-toolbox mb-2 d-none" id="dg-res-toolbox-panels">
                 <!-- Оригинальные кнопки скрыты: управление перенесено в card-header
                      (proxy → этот элемент), wrap-контейнеры оставлены, чтобы панели
@@ -321,6 +338,16 @@
               <div class="card-body">
                 <h5 class="card-title mb-2" id="dg-res-type-confirm-title">Сменить тип страницы?</h5>
                 <p class="card-text text-muted mb-3" id="dg-res-type-confirm-text"></p>
+                <div id="dg-res-type-confirm-bulk-wrap" class="mb-3 d-none">
+                  <label class="form-label" for="dg-res-type-confirm-bulk-type">Новый тип</label>
+                  <select class="form-select" id="dg-res-type-confirm-bulk-type">
+                    <option value="product">Товар</option>
+                    <option value="category">Категория</option>
+                    <option value="info">Инфо</option>
+                    <option value="junk">Утиль</option>
+                    <option value="unknown">Неизвестно</option>
+                  </select>
+                </div>
                 <div class="d-flex justify-content-end gap-2">
                   <button type="button" class="btn btn-outline-secondary" id="dg-res-type-confirm-cancel">Отмена</button>
                   <button type="button" class="btn btn-danger" id="dg-res-type-confirm-ok" data-dg-notify-start="Меняем тип страницы…">Сменить тип</button>

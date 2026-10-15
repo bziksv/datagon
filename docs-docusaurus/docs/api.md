@@ -409,6 +409,9 @@ Query:
 ### PATCH `/api/pages/:id/type`
 Ручная смена типа страницы очереди. Body: `{ "page_type": "product"|"category"|"info"|"junk"|"unknown" }`. Ставит `pages.page_type_manual = 1` (парсер не перезаписывает тип). При типе ≠ `product` страница → `done`, строка **`prices` сохраняется** (фильтр «Тип» и поиск на `/results.html` продолжают её находить). Журнал — **`dg_pages_type_log`**.
 
+### POST `/api/pages/type-bulk`
+Массовая смена типа (кнопка **«Массовая смена типа»** на `/results.html`). Body: `{ "page_ids": number[], "page_type": "product"|"category"|"info"|"junk"|"unknown" }` (до **200** id). Ответ: `{ success, page_type, total, updated, unchanged, missing, failed, errors[{ page_id, error }], duration_sec }`. В журнале `source = ui_bulk`.
+
 ### POST `/api/pages/restore-demoted-prices`
 Восстановить `prices` для страниц с ручным типом ≠ `product`, у которых строку результатов раньше удалили. Берёт кэш `pages.product_name` / `last_sku` / `last_price` / `url`. Ответ: `{ success, restored }`.
 

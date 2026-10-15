@@ -202,6 +202,17 @@
     body.datagon-vanilla-body[data-dg-active-nav="results"] a.dg-res-product-link:hover {
       text-decoration: underline;
     }
+    /* Массовая смена типа — как выбор дней в графике работы */
+    body.datagon-vanilla-body[data-dg-active-nav="results"] #dg-res-main-table.dg-res-bulk-on tbody tr[data-page-id] {
+      cursor: pointer;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="results"] #dg-res-main-table.dg-res-bulk-on tbody tr[data-page-id]:hover > td {
+      background-color: rgba(63, 106, 216, 0.06);
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="results"] #dg-res-main-table tbody tr.dg-res-bulk-sel > td {
+      background-color: rgba(63, 106, 216, 0.14) !important;
+      box-shadow: inset 3px 0 0 #3f6ad8;
+    }
     /* «лог» в углу ячейки типа — паритет с exports-new-products .dg-np-field-log-btn */
     body.datagon-vanilla-body[data-dg-active-nav="results"] .dg-res-type-cell {
       position: relative;
@@ -1426,7 +1437,19 @@
                   data-dg-tooltip="Зеркало поля «Умный поиск» в карточке фильтров. Enter — применить, Esc — очистить."
                 />
               </div>
-              <div class="d-flex align-items-center gap-2 flex-shrink-0">
+              <div class="d-flex align-items-center gap-2 flex-shrink-0 flex-wrap">
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-primary"
+                  id="dg-res-bulk-toggle"
+                  data-dg-notify-start="Режим массовой смены типа…"
+                  title="Выбрать строки и сменить тип разом (Товар / Инфо / Утиль…)"
+                >
+                  Массовая смена типа
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-secondary d-none" id="dg-res-bulk-cancel" data-dg-no-activity="1">
+                  Отмена выбора
+                </button>
                 <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-res-columns-toggle-header" data-dg-tooltip="Открыть панель управления видимостью столбцов">🧩 Столбцы</button>
                 <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-res-widths-toggle-header" data-dg-tooltip="Ручная ширина каждой колонки в пикселях (или drag за правый край заголовка)">📏 Ширины</button>
                 <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-res-table-toggle">Свернуть</button>
@@ -1434,6 +1457,11 @@
             </div>
             <div class="card-body">
               <div id="dg-res-table-collapse-body">
+              <div id="dg-res-bulk-banner" class="alert alert-info py-2 px-3 small mb-2 d-none" role="status">
+                Клик по строке — выбрать / снять (Shift+клик — диапазон на странице). Затем снова
+                <strong>«Массовая смена типа»</strong>, чтобы задать тип всем выбранным. Ссылки, селект типа и кнопки действий не переключают выбор.
+              </div>
+              <div id="dg-res-action-log" class="alert py-2 px-3 small mb-2 d-none" role="status"></div>
               <div class="datagon-columns-toolbox mb-2 d-none" id="dg-res-toolbox-panels">
                 <!-- Оригинальные кнопки скрыты: управление перенесено в card-header
                      (proxy → этот элемент), wrap-контейнеры оставлены, чтобы панели
@@ -1545,6 +1573,16 @@
               <div class="card-body">
                 <h5 class="card-title mb-2" id="dg-res-type-confirm-title">Сменить тип страницы?</h5>
                 <p class="card-text text-muted mb-3" id="dg-res-type-confirm-text"></p>
+                <div id="dg-res-type-confirm-bulk-wrap" class="mb-3 d-none">
+                  <label class="form-label" for="dg-res-type-confirm-bulk-type">Новый тип</label>
+                  <select class="form-select" id="dg-res-type-confirm-bulk-type">
+                    <option value="product">Товар</option>
+                    <option value="category">Категория</option>
+                    <option value="info">Инфо</option>
+                    <option value="junk">Утиль</option>
+                    <option value="unknown">Неизвестно</option>
+                  </select>
+                </div>
                 <div class="d-flex justify-content-end gap-2">
                   <button type="button" class="btn btn-outline-secondary" id="dg-res-type-confirm-cancel">Отмена</button>
                   <button type="button" class="btn btn-danger" id="dg-res-type-confirm-ok" data-dg-notify-start="Меняем тип страницы…">Сменить тип</button>
@@ -1689,6 +1727,9 @@
       ];
       var pendingTypeChange = null;
       var typeLogState = { pageId: 0, label: "", limit: 50 };
+      var bulkMode = false;
+      var bulkSelected = {};
+      var bulkLastIdx = null;
       var columnWidths = {};
       var resizeState = null;
       var FLOATING_HEADER_OFFSET_PX = 2;
@@ -2144,11 +2185,17 @@
           resRefreshFloatingAfterLayout();
           return;
         }
-        filtered.forEach(function (r) {
+        filtered.forEach(function (r, rowIdx) {
           var matched = Number(r.is_matched || 0) === 1;
           var pageStatus = String(r.page_status || "").toLowerCase();
           var tr = document.createElement("tr");
-          if (matched) tr.className = "table-success";
+          var pageIdNum = Number(r.page_id);
+          if (Number.isFinite(pageIdNum) && pageIdNum > 0) {
+            tr.setAttribute("data-page-id", String(pageIdNum));
+            tr.setAttribute("data-row-idx", String(rowIdx));
+            if (bulkSelected[String(pageIdNum)]) tr.classList.add("dg-res-bulk-sel");
+          }
+          if (matched) tr.classList.add("table-success");
           var tdDate = document.createElement("td");
           var d1 = document.createElement("div");
           d1.innerHTML = "<b>Результат:</b> " + fmtDate(r.parsed_at);
@@ -2340,6 +2387,10 @@
         applyVisibleColumns();
         applyStoredColumnWidths();
         initColumnResizeHandles();
+        paintBulkSelectionOnRows();
+        var tableEl = document.getElementById("dg-res-main-table");
+        if (tableEl) tableEl.classList.toggle("dg-res-bulk-on", !!bulkMode);
+        syncBulkUi();
         resRefreshFloatingAfterLayout();
       }
 
@@ -2486,7 +2537,7 @@
         if (Number(r.page_type_manual) === 1) {
           sel.title = "Тип задан вручную — автоклассификация при парсинге не перезапишет";
         } else {
-          sel.title = "Сменить тип (Утиль / Категория / Инфо убирает строку из результатов)";
+          sel.title = "Сменить тип (строка останется в результатах; матчинг берёт только «Товар»)";
         }
         if (!pageId) {
           sel.disabled = true;
@@ -2506,25 +2557,278 @@
         ov.setAttribute("hidden", "");
       }
 
+      function showActionLog(kind, htmlOrText) {
+        var el = document.getElementById("dg-res-action-log");
+        if (!el) return;
+        el.classList.remove("d-none", "alert-info", "alert-success", "alert-danger", "alert-warning");
+        el.classList.add(
+          kind === "success" ? "alert-success" : kind === "danger" ? "alert-danger" : kind === "warning" ? "alert-warning" : "alert-info"
+        );
+        if (htmlOrText && htmlOrText.indexOf && htmlOrText.indexOf("<") >= 0) el.innerHTML = htmlOrText;
+        else el.textContent = htmlOrText || "";
+      }
+
+      function hideActionLog() {
+        var el = document.getElementById("dg-res-action-log");
+        if (!el) return;
+        el.classList.add("d-none");
+        el.textContent = "";
+      }
+
+      function bulkSelectedCount() {
+        return Object.keys(bulkSelected || {}).length;
+      }
+
+      function bulkSelectedIds() {
+        return Object.keys(bulkSelected || {})
+          .map(function (k) {
+            return Number(k);
+          })
+          .filter(function (n) {
+            return Number.isFinite(n) && n > 0;
+          });
+      }
+
+      function clearBulkSelection() {
+        bulkSelected = {};
+        bulkLastIdx = null;
+        var tbody = document.getElementById("dg-res-tbody");
+        if (tbody) {
+          tbody.querySelectorAll("tr.dg-res-bulk-sel").forEach(function (tr) {
+            tr.classList.remove("dg-res-bulk-sel");
+          });
+        }
+      }
+
+      function setBulkMode(on) {
+        bulkMode = !!on;
+        if (!bulkMode) clearBulkSelection();
+        var table = document.getElementById("dg-res-main-table");
+        if (table) table.classList.toggle("dg-res-bulk-on", !!bulkMode);
+        syncBulkUi();
+      }
+
+      function syncBulkUi() {
+        var n = bulkSelectedCount();
+        var btn = document.getElementById("dg-res-bulk-toggle");
+        var cancel = document.getElementById("dg-res-bulk-cancel");
+        var banner = document.getElementById("dg-res-bulk-banner");
+        if (banner) banner.classList.toggle("d-none", !bulkMode);
+        if (cancel) cancel.classList.toggle("d-none", !bulkMode);
+        if (!btn) return;
+        btn.classList.toggle("btn-outline-primary", !bulkMode);
+        btn.classList.toggle("btn-primary", !!bulkMode);
+        if (!bulkMode) {
+          btn.textContent = "Массовая смена типа";
+          btn.setAttribute("data-dg-notify-start", "Режим массовой смены типа…");
+        } else if (n === 0) {
+          btn.textContent = "Массовая смена · выберите строки";
+          btn.setAttribute("data-dg-notify-start", "Сначала выберите строки…");
+        } else {
+          btn.textContent = "Сменить тип (" + n + ")";
+          btn.setAttribute("data-dg-notify-start", "Открываем смену типа у " + n + "…");
+        }
+      }
+
+      function paintBulkSelectionOnRows() {
+        var tbody = document.getElementById("dg-res-tbody");
+        if (!tbody) return;
+        tbody.querySelectorAll("tr[data-page-id]").forEach(function (tr) {
+          var id = String(tr.getAttribute("data-page-id") || "");
+          tr.classList.toggle("dg-res-bulk-sel", !!bulkSelected[id]);
+        });
+      }
+
+      function toggleBulkRow(pageId, rowIdx, withShift) {
+        var id = String(pageId);
+        if (!id || id === "0") return;
+        if (withShift && bulkLastIdx != null && Number.isFinite(rowIdx)) {
+          var a = Math.min(bulkLastIdx, rowIdx);
+          var b = Math.max(bulkLastIdx, rowIdx);
+          var tbody = document.getElementById("dg-res-tbody");
+          if (tbody) {
+            for (var i = a; i <= b; i++) {
+              var tr = tbody.querySelector('tr[data-row-idx="' + i + '"]');
+              if (!tr) continue;
+              var pid = tr.getAttribute("data-page-id");
+              if (pid) bulkSelected[pid] = 1;
+            }
+          }
+        } else if (bulkSelected[id]) {
+          delete bulkSelected[id];
+        } else {
+          bulkSelected[id] = 1;
+        }
+        bulkLastIdx = Number.isFinite(rowIdx) ? rowIdx : null;
+        paintBulkSelectionOnRows();
+        syncBulkUi();
+      }
+
+      function openBulkTypeConfirm() {
+        var ids = bulkSelectedIds();
+        if (!ids.length) {
+          if (window.DatagonNotify && window.DatagonNotify.toast) {
+            window.DatagonNotify.toast({ type: "warning", message: "Сначала выберите строки в таблице" });
+          }
+          return;
+        }
+        openTypeConfirm({ bulk: true, pageIds: ids, newType: "info" });
+      }
+
       function openTypeConfirm(payload) {
         pendingTypeChange = payload;
         var ov = document.getElementById("dg-res-type-confirm-overlay");
         var text = document.getElementById("dg-res-type-confirm-text");
         var title = document.getElementById("dg-res-type-confirm-title");
+        var bulkWrap = document.getElementById("dg-res-type-confirm-bulk-wrap");
+        var bulkSel = document.getElementById("dg-res-type-confirm-bulk-type");
         if (!ov || !text) return;
-        var label = pageTypeLabel(payload.newType);
-        if (title) {
-          title.textContent =
-            payload.newType === "junk" ? "Отправить в утиль?" : "Сменить тип страницы?";
+        var isBulk = !!(payload && payload.bulk);
+        if (bulkWrap) bulkWrap.classList.toggle("d-none", !isBulk);
+        if (isBulk && bulkSel) {
+          bulkSel.value = payload.newType || "info";
         }
-        text.textContent =
-          "Тип станет «" +
-          label +
-          "». Страница перестанет парситься как товар (автоклассификация не перетрёт тип), " +
-          "но строка останется в «Результатах» — её можно найти фильтром «Тип» и поиском. " +
-          "Вернуть в товары можно снова выбрав «Товар».";
+        var label = pageTypeLabel(isBulk ? (bulkSel && bulkSel.value) || payload.newType : payload.newType);
+        var n = isBulk ? (payload.pageIds || []).length : 1;
+        if (title) {
+          title.textContent = isBulk
+            ? "Сменить тип у " + n + " стр.?"
+            : payload.newType === "junk"
+              ? "Отправить в утиль?"
+              : "Сменить тип страницы?";
+        }
+        text.textContent = isBulk
+          ? "Выбрано строк: " +
+            n +
+            ". Тип станет «" +
+            label +
+            "» (можно выбрать ниже). Автоклассификация не перетрёт; строки останутся в результатах. Матчинг учитывает только тип «Товар»."
+          : "Тип станет «" +
+            label +
+            "». Страница перестанет парситься как товар (автоклассификация не перетрёт тип), " +
+            "но строка останется в «Результатах» — её можно найти фильтром «Тип» и поиском. " +
+            "Вернуть в товары можно снова выбрав «Товар».";
         ov.classList.remove("d-none");
         ov.removeAttribute("hidden");
+      }
+
+      function applyBulkPageTypeChange(pageIds, newType) {
+        var ids = (pageIds || []).map(Number).filter(function (n) {
+          return Number.isFinite(n) && n > 0;
+        });
+        if (!ids.length) return Promise.resolve();
+        var label = pageTypeLabel(newType);
+        var t0 = Date.now();
+        showActionLog(
+          "info",
+          "Меняем тип на «" +
+            escHtml(label) +
+            "» у " +
+            ids.length +
+            " стр.…<br><span class=\"text-muted\">идёт запрос…</span>"
+        );
+        var tick = setInterval(function () {
+          var sec = Math.round((Date.now() - t0) / 1000);
+          showActionLog(
+            "info",
+            "Меняем тип на «" +
+              escHtml(label) +
+              "» у " +
+              ids.length +
+              " стр.…<br><span class=\"text-muted\">идёт, прошло " +
+              sec +
+              " с…</span>"
+          );
+        }, 1000);
+        var run = function () {
+          return fetch("/api/pages/type-bulk", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ page_ids: ids, page_type: newType }),
+          })
+            .then(function (res) {
+              return res.json().then(function (j) {
+                return { res: res, j: j };
+              });
+            })
+            .then(function (x) {
+              clearInterval(tick);
+              if (!x.res.ok || !x.j.success) {
+                throw new Error((x.j && x.j.error) || "Не удалось сменить тип");
+              }
+              var j = x.j;
+              var errHtml = "";
+              if (Array.isArray(j.errors) && j.errors.length) {
+                errHtml =
+                  "<ul class=\"mb-0 mt-1\">" +
+                  j.errors
+                    .slice(0, 20)
+                    .map(function (e) {
+                      return (
+                        "<li>page " +
+                        escHtml(e.page_id) +
+                        ": " +
+                        escHtml(e.error) +
+                        "</li>"
+                      );
+                    })
+                    .join("") +
+                  "</ul>";
+              }
+              showActionLog(
+                j.failed || j.missing ? "warning" : "success",
+                "<div><b>Массовая смена типа → «" +
+                  escHtml(label) +
+                  "»</b></div>" +
+                  "<ul class=\"mb-0 mt-1\">" +
+                  "<li>в запросе: " +
+                  fmtIntRu(j.total) +
+                  "</li>" +
+                  "<li>изменено: " +
+                  fmtIntRu(j.updated) +
+                  "</li>" +
+                  "<li>без изменений: " +
+                  fmtIntRu(j.unchanged) +
+                  "</li>" +
+                  "<li>не найдено: " +
+                  fmtIntRu(j.missing) +
+                  "</li>" +
+                  "<li>длительность: " +
+                  (j.duration_sec != null ? j.duration_sec : Math.round((Date.now() - t0) / 1000)) +
+                  " с</li>" +
+                  "</ul>" +
+                  errHtml
+              );
+              if (window.DatagonNotify && window.DatagonNotify.toast) {
+                window.DatagonNotify.toast({
+                  type: j.failed || j.missing ? "warning" : "success",
+                  message:
+                    "Тип «" +
+                    label +
+                    "»: изменено " +
+                    Number(j.updated || 0) +
+                    " из " +
+                    Number(j.total || 0),
+                });
+              }
+              setBulkMode(false);
+              return Promise.all([loadResults({ showSkeleton: false }), loadResultsStats()]);
+            })
+            .catch(function (e) {
+              clearInterval(tick);
+              var err = e.message || String(e);
+              showActionLog("danger", "Ошибка массовой смены типа: " + escHtml(err));
+              if (window.DatagonNotify && window.DatagonNotify.toast) {
+                window.DatagonNotify.toast({ type: "danger", message: err });
+              }
+            });
+        };
+        var btn = document.getElementById("dg-res-type-confirm-ok");
+        if (window.DatagonNotify && window.DatagonNotify.busyRun && btn) {
+          return window.DatagonNotify.busyRun(btn, run);
+        }
+        return run();
       }
 
       function applyPageTypeChange(r, newType, selectEl, prevType) {
@@ -3432,11 +3736,34 @@
         var ok = document.getElementById("dg-res-type-confirm-ok");
         var cancel = document.getElementById("dg-res-type-confirm-cancel");
         var backdrop = document.getElementById("dg-res-type-confirm-backdrop");
+        var bulkSel = document.getElementById("dg-res-type-confirm-bulk-type");
         function onCancel() {
           closeTypeConfirm();
         }
         if (cancel) cancel.addEventListener("click", onCancel);
         if (backdrop) backdrop.addEventListener("click", onCancel);
+        if (bulkSel) {
+          bulkSel.addEventListener("change", function () {
+            if (!pendingTypeChange || !pendingTypeChange.bulk) return;
+            pendingTypeChange.newType = bulkSel.value;
+            var text = document.getElementById("dg-res-type-confirm-text");
+            var n = (pendingTypeChange.pageIds || []).length;
+            if (text) {
+              text.textContent =
+                "Выбрано строк: " +
+                n +
+                ". Тип станет «" +
+                pageTypeLabel(bulkSel.value) +
+                "». Автоклассификация не перетрёт; строки останутся в результатах. Матчинг учитывает только тип «Товар».";
+            }
+            var title = document.getElementById("dg-res-type-confirm-title");
+            if (title && bulkSel.value === "junk") {
+              title.textContent = "Отправить в утиль " + n + " стр.?";
+            } else if (title) {
+              title.textContent = "Сменить тип у " + n + " стр.?";
+            }
+          });
+        }
         document.addEventListener("keydown", function (e) {
           if (e.key !== "Escape") return;
           var logOv = document.getElementById("dg-res-type-log-overlay");
@@ -3451,10 +3778,68 @@
             var p = pendingTypeChange;
             closeTypeConfirm();
             if (!p) return;
+            if (p.bulk) {
+              var t =
+                (document.getElementById("dg-res-type-confirm-bulk-type") &&
+                  document.getElementById("dg-res-type-confirm-bulk-type").value) ||
+                p.newType ||
+                "info";
+              applyBulkPageTypeChange(p.pageIds, t);
+              return;
+            }
             if (p.selectEl) p.selectEl.value = p.newType;
             applyPageTypeChange(p.r, p.newType, p.selectEl, p.prevType);
           });
         }
+      })();
+
+      (function bindBulkTypeMode() {
+        var btn = document.getElementById("dg-res-bulk-toggle");
+        var cancel = document.getElementById("dg-res-bulk-cancel");
+        var tbody = document.getElementById("dg-res-tbody");
+        if (btn) {
+          btn.addEventListener("click", function () {
+            if (!bulkMode) {
+              setBulkMode(true);
+              if (window.DatagonNotify && window.DatagonNotify.toast) {
+                window.DatagonNotify.toast({
+                  type: "info",
+                  message: "Кликните строки для выбора, затем снова кнопку",
+                });
+              }
+              return;
+            }
+            if (bulkSelectedCount() === 0) {
+              if (window.DatagonNotify && window.DatagonNotify.toast) {
+                window.DatagonNotify.toast({ type: "warning", message: "Сначала выберите строки" });
+              }
+              syncBulkUi();
+              return;
+            }
+            openBulkTypeConfirm();
+          });
+        }
+        if (cancel) {
+          cancel.addEventListener("click", function () {
+            setBulkMode(false);
+          });
+        }
+        if (tbody) {
+          tbody.addEventListener("click", function (e) {
+            if (!bulkMode) return;
+            var t = e.target;
+            if (!t || !t.closest) return;
+            if (t.closest("a, button, select, input, label, .dg-res-field-log-btn")) return;
+            var tr = t.closest("tr[data-page-id]");
+            if (!tr) return;
+            var pageId = Number(tr.getAttribute("data-page-id"));
+            var rowIdx = Number(tr.getAttribute("data-row-idx"));
+            if (!Number.isFinite(pageId) || pageId <= 0) return;
+            e.preventDefault();
+            toggleBulkRow(pageId, rowIdx, !!e.shiftKey);
+          });
+        }
+        syncBulkUi();
       })();
 
       (function bindTypeLogOverlay() {

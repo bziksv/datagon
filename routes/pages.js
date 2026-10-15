@@ -1569,6 +1569,139 @@ module.exports = (db, settings) => {
     });
 
     /**
+     * Одна страница: зафиксировать тип вручную (prices не удаляем).
+     * @returns {Promise<{ ok: true, page_id: number, page_type: string, old_page_type: string|null, unchanged: boolean } | { ok: false, missing: true }>}
+     */
+    async function applyManualPageType(pageId, pageType, actor, source) {
+        const [rows] = await db.query(
+            'SELECT id, page_type, page_type_manual, project_id, url FROM pages WHERE id = ?',
+            [pageId]
+        );
+        if (!rows.length) return { ok: false, missing: true };
+        const prev = String(rows[0].page_type || '').toLowerCase() || null;
+        if (prev === pageType && Number(rows[0].page_type_manual) === 1) {
+            return {
+                ok: true,
+                page_id: pageId,
+                page_type: pageType,
+                old_page_type: prev,
+                unchanged: true,
+            };
+        }
+        await db.query('UPDATE pages SET page_type = ?, page_type_manual = 1 WHERE id = ?', [
+            pageType,
+            pageId,
+        ]);
+        let note = null;
+        if (pageType !== 'product') {
+            await db.query(
+                'UPDATE pages SET status = "done", last_error = NULL, parsed_at = COALESCE(parsed_at, NOW()) WHERE id = ?',
+                [pageId]
+            );
+            note = 'тип зафиксирован; строка остаётся в результатах';
+        }
+        await insertPageTypeLog({
+            pageId,
+            projectId: rows[0].project_id,
+            url: rows[0].url,
+            oldVal: prev,
+            newVal: pageType,
+            source: source || 'ui',
+            actor: actor || null,
+            note,
+        });
+        return {
+            ok: true,
+            page_id: pageId,
+            page_type: pageType,
+            old_page_type: prev,
+            unchanged: false,
+        };
+    }
+
+    function invalidateResultsListCacheSafe() {
+        try {
+            const { invalidateResultsListCache } = require('./results');
+            if (typeof invalidateResultsListCache === 'function') invalidateResultsListCache();
+        } catch (_) {}
+    }
+
+    /**
+     * Массовая смена типа (Результаты). Body: { page_ids: number[], page_type }.
+     * Лимит 200 id. Ответ со счётчиками для action-log.
+     */
+    router.post('/type-bulk', async (req, res) => {
+        const t0 = Date.now();
+        try {
+            await ensurePagesTypeManualColumn();
+            await ensurePagesTypeLogTable();
+            const pageType = String(req.body?.page_type || '')
+                .trim()
+                .toLowerCase();
+            if (!PAGE_TYPE_VALUES.has(pageType)) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Допустимые типы: product, category, info, junk, unknown',
+                });
+            }
+            const rawIds = Array.isArray(req.body?.page_ids) ? req.body.page_ids : [];
+            const ids = [];
+            const seen = new Set();
+            for (const x of rawIds) {
+                const n = Number(x);
+                if (!Number.isFinite(n) || n <= 0 || seen.has(n)) continue;
+                seen.add(n);
+                ids.push(n);
+                if (ids.length >= 200) break;
+            }
+            if (!ids.length) {
+                return res.status(400).json({ success: false, error: 'Нужен непустой page_ids' });
+            }
+            let updated = 0;
+            let unchanged = 0;
+            let missing = 0;
+            const errors = [];
+            for (const pageId of ids) {
+                try {
+                    const r = await applyManualPageType(
+                        pageId,
+                        pageType,
+                        req.datagonActor || null,
+                        'ui_bulk'
+                    );
+                    if (!r.ok) {
+                        missing += 1;
+                        if (errors.length < 20) errors.push({ page_id: pageId, error: 'не найдена' });
+                        continue;
+                    }
+                    if (r.unchanged) unchanged += 1;
+                    else updated += 1;
+                } catch (e) {
+                    if (errors.length < 20) {
+                        errors.push({ page_id: pageId, error: e.message || String(e) });
+                    }
+                }
+            }
+            if (updated) invalidateResultsListCacheSafe();
+            const duration_sec = Math.round(((Date.now() - t0) / 1000) * 10) / 10;
+            res.json({
+                success: true,
+                page_type: pageType,
+                total: ids.length,
+                updated,
+                unchanged,
+                missing,
+                failed: errors.length,
+                errors,
+                duration_sec,
+                dry_run: false,
+            });
+        } catch (e) {
+            res.status(500).json({ success: false, error: e.message });
+        }
+    });
+
+    /**
      * Ручная смена типа страницы (очередь / результаты).
      * Ставит page_type_manual=1 — автоклассификация при парсинге не перетирает.
      * Body: { page_type: product|category|info|junk|unknown }
@@ -1592,58 +1725,24 @@ module.exports = (db, settings) => {
                     error: 'Допустимые типы: product, category, info, junk, unknown',
                 });
             }
-            const [rows] = await db.query(
-                'SELECT id, page_type, page_type_manual, project_id, url FROM pages WHERE id = ?',
-                [pageId]
+            const r = await applyManualPageType(
+                pageId,
+                pageType,
+                req.datagonActor || null,
+                'ui'
             );
-            if (!rows.length) {
+            if (!r.ok) {
                 return res.status(404).json({ success: false, error: 'Страница не найдена' });
             }
-            const prev = String(rows[0].page_type || '').toLowerCase() || null;
-            if (prev === pageType && Number(rows[0].page_type_manual) === 1) {
-                return res.json({
-                    success: true,
-                    page_id: pageId,
-                    page_type: pageType,
-                    page_type_manual: 1,
-                    prices_deleted: 0,
-                    unchanged: true,
-                });
-            }
-            await db.query(
-                'UPDATE pages SET page_type = ?, page_type_manual = 1 WHERE id = ?',
-                [pageType, pageId]
-            );
-            /** Не удаляем prices: иначе строка пропадает из «Результатов» и поиск/фильтр по типу её не найдёт. */
-            let note = null;
-            if (pageType !== 'product') {
-                await db.query(
-                    'UPDATE pages SET status = "done", last_error = NULL, parsed_at = COALESCE(parsed_at, NOW()) WHERE id = ?',
-                    [pageId]
-                );
-                note = 'тип зафиксирован; строка остаётся в результатах';
-            }
-            try {
-                const { invalidateResultsListCache } = require('./results');
-                if (typeof invalidateResultsListCache === 'function') invalidateResultsListCache();
-            } catch (_) {}
-            await insertPageTypeLog({
-                pageId,
-                projectId: rows[0].project_id,
-                url: rows[0].url,
-                oldVal: prev,
-                newVal: pageType,
-                source: 'ui',
-                actor: req.datagonActor || null,
-                note,
-            });
+            if (!r.unchanged) invalidateResultsListCacheSafe();
             res.json({
                 success: true,
                 page_id: pageId,
                 page_type: pageType,
                 page_type_manual: 1,
                 prices_deleted: 0,
-                old_page_type: prev,
+                unchanged: !!r.unchanged,
+                old_page_type: r.old_page_type,
             });
         } catch (e) {
             res.status(500).json({ success: false, error: e.message });
@@ -1697,7 +1796,12 @@ module.exports = (db, settings) => {
                     old_label: pageTypeLabel(r.old_value),
                     new_label: pageTypeLabel(r.new_value),
                     source: r.source != null ? String(r.source) : 'ui',
-                    source_label: String(r.source || 'ui') === 'ui' ? 'Вручную' : String(r.source || ''),
+                    source_label:
+                        String(r.source || 'ui') === 'ui'
+                            ? 'Вручную'
+                            : String(r.source || '') === 'ui_bulk'
+                              ? 'Массово'
+                              : String(r.source || ''),
                     changed_by_user_id:
                         r.changed_by_user_id != null ? Number(r.changed_by_user_id) : null,
                     changed_by_name: r.changed_by_name != null ? String(r.changed_by_name) : '',
