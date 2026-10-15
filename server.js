@@ -29,11 +29,17 @@ const AUTO_SYNC_SCHEDULER_DISABLED = ['0', 'off', 'false', 'no'].includes(
 );
 
 /**
- * Номер воркера автосинка (1|2). Воркер 1 — основной `parser-app` (HTTP + МС/маркеты).
- * Воркер 2 — `parser-autosync-w2` (банки / finance_tochka). Задачи маршрутизируются
- * по полю `worker` в `lib/datagonAutoSyncRegistry.js`.
+ * Номер воркера автосинка (1|2|3). Воркер 1 — основной `parser-app` (HTTP + МС/маркеты).
+ * Воркер 2 — `parser-autosync-w2` (банки / Planfix / Bitcop).
+ * Воркер 3 — `parser-autosync-w3` (перепарсинг результатов).
+ * Задачи маршрутизируются по полю `worker` в `lib/datagonAutoSyncRegistry.js`.
  */
-const AUTO_SYNC_WORKER_ID = Number(process.env.DATAGON_AUTO_SYNC_WORKER_ID || 1) === 2 ? 2 : 1;
+const AUTO_SYNC_WORKER_ID = (() => {
+    const n = Number(process.env.DATAGON_AUTO_SYNC_WORKER_ID || 1);
+    if (n === 2) return 2;
+    if (n === 3) return 3;
+    return 1;
+})();
 
 /**
  * DATAGON_HTTP=off — процесс без HTTP (второй воркер автосинка): только scheduler/queue.
@@ -113,6 +119,9 @@ let appSettings = {
     auto_sync_network_prices_time: '11:00',
     auto_sync_network_prices_weekdays: '1,2,3,4,5,6,7',
     network_prices_source_site_id: '2',
+    auto_sync_results_reparse_products_enabled: 1,
+    auto_sync_results_reparse_products_time: '23:00',
+    auto_sync_results_reparse_products_weekdays: '4',
     auto_sync_finance_tochka_enabled: 0,
     auto_sync_finance_tochka_time: '07:00',
     auto_sync_finance_tochka_days: 30,
@@ -468,6 +477,9 @@ async function initDB() {
             ['auto_sync_network_prices_enabled','0'],['auto_sync_network_prices_time','11:00'],
             ['auto_sync_network_prices_weekdays','1,2,3,4,5,6,7'],
             ['network_prices_source_site_id','2'],
+            ['auto_sync_results_reparse_products_enabled','1'],
+            ['auto_sync_results_reparse_products_time','23:00'],
+            ['auto_sync_results_reparse_products_weekdays','4'],
             ['auto_sync_finance_tochka_enabled','0'],
             ['auto_sync_finance_tochka_time','07:00'],
             ['auto_sync_finance_tochka_days','30'],
@@ -2729,6 +2741,30 @@ async function processAutoSyncQueue() {
                 }
                 await finishAutoSyncRun('network_prices', statusNp, messageNp);
                 console.log(`[AUTO SYNC] Queue done: network_prices — ${statusNp}`);
+            } else if (task === 'results_reparse_products') {
+                console.log('[AUTO SYNC] Queue start: results_reparse_products');
+                await startAutoSyncRun('results_reparse_products', triggerType);
+                let statusRrp = 'failed';
+                let messageRrp = 'Ошибка перепарсинга результатов';
+                try {
+                    const { refreshResultsByFilters } = require('./lib/datagonResultsRefresh');
+                    await touchAutoSyncRunMessage(
+                        'results_reparse_products',
+                        'Результаты: ставим товары (page_type=product) в очередь…'
+                    ).catch(() => {});
+                    const result = await refreshResultsByFilters(db, { page_type: 'product' });
+                    messageRrp = String((result && result.message) || 'Готово').slice(0, 480);
+                    if (result && Number(result.total || result.added || 0) === 0) {
+                        messageRrp = (messageRrp + ' (0 URL)').slice(0, 480);
+                    }
+                    statusRrp = result && result.success === false ? 'failed' : 'completed';
+                } catch (e) {
+                    messageRrp = (
+                        'Ошибка перепарсинга результатов: ' + (e && e.message ? e.message : e)
+                    ).slice(0, 480);
+                }
+                await finishAutoSyncRun('results_reparse_products', statusRrp, messageRrp);
+                console.log(`[AUTO SYNC] Queue done: results_reparse_products — ${statusRrp}`);
             } else if (task === 'finance_tochka') {
                 console.log('[AUTO SYNC] Queue start: finance_tochka');
                 await startAutoSyncRun('finance_tochka', triggerType);
@@ -3225,6 +3261,17 @@ function startAutoSyncScheduler() {
                     enabled: Number(appSettings.auto_sync_network_prices_enabled || 0) === 1,
                     time: String(appSettings.auto_sync_network_prices_time || '11:00').slice(0, 5),
                     weekdays: parseAutoSyncWeekdaysMon17(appSettings.auto_sync_network_prices_weekdays)
+                },
+                {
+                    type: 'results_reparse_products',
+                    enabled: Number(appSettings.auto_sync_results_reparse_products_enabled || 0) === 1,
+                    time: String(appSettings.auto_sync_results_reparse_products_time || '23:00').slice(0, 5),
+                    weekdays: parseAutoSyncWeekdaysMon17(
+                        appSettings.auto_sync_results_reparse_products_weekdays != null &&
+                            String(appSettings.auto_sync_results_reparse_products_weekdays).trim() !== ''
+                            ? appSettings.auto_sync_results_reparse_products_weekdays
+                            : '4'
+                    ),
                 },
                 {
                     type: 'finance_tochka',

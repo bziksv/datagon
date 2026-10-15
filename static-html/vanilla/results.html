@@ -1361,7 +1361,7 @@
               <div class="mt-3 d-flex flex-wrap gap-2" data-dg-res-filter-field="filter_actions">
                 <button type="button" class="btn btn-sm btn-primary" id="results-apply" data-dg-tooltip="Применить фильтры и обновить таблицу. Сохраняет выбранные значения для следующего визита." data-dg-notify-start="Применяем фильтры результатов…"><i class="pe-7s-search me-1"></i>Применить</button>
                 <button type="button" class="btn btn-sm btn-outline-secondary" id="results-default" data-dg-tooltip="Сбросить фильтры к значениям по умолчанию и очистить сохранённые настройки этой страницы." data-dg-notify-start="Сбрасываем фильтры результатов…"><i class="pe-7s-refresh me-1"></i>По умолчанию</button>
-                <button type="button" class="btn btn-sm btn-outline-success" id="results-reparse-all" title="Повторный парсинг отфильтрованных: обновит артикулы и цены в результатах" data-dg-notify-start="Ставим отфильтрованные в очередь перепарсинга…"><i class="pe-7s-refresh-2 me-1"></i>В очередь на перепарсинг (обновит артикула и цены)</button>
+                <button type="button" class="btn btn-sm btn-outline-success" id="results-reparse-all" title="Повторный парсинг по применённым фильтрам таблицы (тип, проект, поиск, сопоставление…)" data-dg-tooltip="Ставит в очередь URL из выборки после «Применить» — все активные фильтры, не только текущая страница пагинации." data-dg-notify-start="Ставим отфильтрованные в очередь перепарсинга…"><i class="pe-7s-refresh-2 me-1"></i>В очередь на перепарсинг (обновит артикула и цены)</button>
                 <button type="button" class="btn btn-sm btn-outline-danger" id="results-clear-history" title="Очистить историю результатов по текущему проекту" data-dg-notify-start="Очищаем историю результатов…"><i class="pe-7s-trash me-1"></i>Очистить историю</button>
               </div>
               </div>
@@ -3541,9 +3541,32 @@
           });
       }
 
+      function summarizeAppliedFiltersForConfirm(f) {
+        var parts = [];
+        if (f.project_id && f.project_id !== "all") parts.push("проект #" + f.project_id);
+        if (f.page_type && f.page_type !== "all") parts.push("тип «" + pageTypeLabel(f.page_type) + "»");
+        if (f.page_status) parts.push("статус «" + f.page_status + "»");
+        if (f.matched === "1") parts.push("сопоставленные");
+        if (f.matched === "0") parts.push("не сопоставленные");
+        if (f.availability === "in_stock") parts.push("в наличии");
+        if (f.availability === "oos") parts.push("под заказ");
+        if (f.search) parts.push("поиск «" + f.search.slice(0, 40) + (f.search.length > 40 ? "…" : "") + "»");
+        if (f.project_name) parts.push("проект содержит «" + f.project_name.slice(0, 30) + "»");
+        if (f.price_min !== "" && f.price_min != null) parts.push("цена от " + f.price_min);
+        if (f.price_max !== "" && f.price_max != null) parts.push("цена до " + f.price_max);
+        return parts.length ? parts.join(", ") : "без доп. фильтров (все результаты)";
+      }
+
       function reparseAll() {
-        if (!window.confirm("Добавить в очередь URL из результатов по текущим фильтрам?")) return;
         var f = readApiFilters();
+        var filt = summarizeAppliedFiltersForConfirm(f);
+        if (
+          !window.confirm(
+            "Добавить в очередь URL из результатов по применённым фильтрам?\n\n" + filt + "\n\n(как в таблице после «Применить»)"
+          )
+        ) {
+          return;
+        }
         var btn = document.getElementById("results-reparse-all");
         var run = function () {
           return fetch("/api/parse/refresh-results", {
@@ -3553,7 +3576,13 @@
             body: JSON.stringify({
               project_id: f.project_id === "all" ? null : f.project_id,
               page_status: f.page_status || null,
+              page_type: f.page_type === "all" ? null : f.page_type,
+              matched: f.matched === "all" ? null : f.matched,
+              availability: f.availability === "all" ? null : f.availability,
               search: f.search || null,
+              project_name: f.project_name || null,
+              price_min: f.price_min !== "" ? f.price_min : null,
+              price_max: f.price_max !== "" ? f.price_max : null,
             }),
           })
             .then(function (r) {

@@ -117,6 +117,9 @@
         auto_sync_network_prices_enabled: 0,
         auto_sync_network_prices_time: "11:00",
         auto_sync_network_prices_weekdays: "1,2,3,4,5,6,7",
+        auto_sync_results_reparse_products_enabled: 1,
+        auto_sync_results_reparse_products_time: "23:00",
+        auto_sync_results_reparse_products_weekdays: "4",
         auto_sync_finance_tochka_enabled: 0,
         auto_sync_finance_tochka_time: "07:00",
         auto_sync_finance_tochka_days: 30,
@@ -767,7 +770,8 @@
         var catPill = meta.el.querySelector(".dg-as-cat-pill-dynamic");
         if (catPill) catPill.textContent = AS_CATEGORY_LABELS[meta.category] || meta.category;
         var head = meta.el.querySelector(".dg-as-task-head");
-        var workerN = Number(meta.el.getAttribute("data-as-worker") || 1) === 2 ? 2 : 1;
+        var workerAttr = Number(meta.el.getAttribute("data-as-worker") || 1);
+        var workerN = workerAttr === 2 ? 2 : workerAttr === 3 ? 3 : 1;
         var wBadge = head ? head.querySelector(".dg-as-worker-badge") : null;
         if (head) {
           if (!wBadge) {
@@ -779,10 +783,13 @@
           }
           wBadge.textContent = "Воркер " + workerN;
           wBadge.classList.toggle("is-w2", workerN === 2);
+          wBadge.classList.toggle("is-w3", workerN === 3);
           wBadge.title =
             workerN === 2
               ? "Отдельный процесс parser-autosync-w2 (банки / Точка)"
-              : "Основной процесс parser-app";
+              : workerN === 3
+                ? "Отдельный процесс parser-autosync-w3 (перепарсинг результатов)"
+                : "Основной процесс parser-app";
         }
         var badge = meta.el.querySelector(".dg-as-next-badge-dynamic");
         if (badge) {
@@ -1156,6 +1163,21 @@
           merged.auto_sync_network_prices_weekdays != null && String(merged.auto_sync_network_prices_weekdays).trim() !== ""
             ? merged.auto_sync_network_prices_weekdays
             : "1,2,3,4,5,6,7"
+        );
+        var resultsReparseEn = document.getElementById("dg-set-auto_results_reparse_products_en");
+        if (resultsReparseEn) {
+          resultsReparseEn.checked = Number(merged.auto_sync_results_reparse_products_enabled) === 1;
+        }
+        set(
+          "dg-set-auto_results_reparse_products_time",
+          merged.auto_sync_results_reparse_products_time || "23:00"
+        );
+        applyAutoSyncWeekdayChecks(
+          "dg-set-auto_results_reparse_products_wd",
+          merged.auto_sync_results_reparse_products_weekdays != null &&
+            String(merged.auto_sync_results_reparse_products_weekdays).trim() !== ""
+            ? merged.auto_sync_results_reparse_products_weekdays
+            : "4"
         );
         var financeTochkaEn = document.getElementById("dg-set-auto_finance_tochka_en");
         if (financeTochkaEn) financeTochkaEn.checked = Number(merged.auto_sync_finance_tochka_enabled) === 1;
@@ -2362,6 +2384,16 @@
             : false,
           auto_sync_network_prices_time: getStr("dg-set-auto_network_prices_time") || "11:00",
           auto_sync_network_prices_weekdays: collectAutoSyncWeekdayCsv("dg-set-auto_network_prices_wd"),
+          auto_sync_results_reparse_products_enabled: document.getElementById(
+            "dg-set-auto_results_reparse_products_en"
+          )
+            ? document.getElementById("dg-set-auto_results_reparse_products_en").checked
+            : false,
+          auto_sync_results_reparse_products_time:
+            getStr("dg-set-auto_results_reparse_products_time") || "23:00",
+          auto_sync_results_reparse_products_weekdays: collectAutoSyncWeekdayCsv(
+            "dg-set-auto_results_reparse_products_wd"
+          ),
           auto_sync_finance_tochka_enabled: document.getElementById("dg-set-auto_finance_tochka_en")
             ? document.getElementById("dg-set-auto_finance_tochka_en").checked
             : false,
@@ -2465,6 +2497,9 @@
             "auto_sync_network_prices_enabled",
             "auto_sync_network_prices_time",
             "auto_sync_network_prices_weekdays",
+            "auto_sync_results_reparse_products_enabled",
+            "auto_sync_results_reparse_products_time",
+            "auto_sync_results_reparse_products_weekdays",
             "auto_sync_finance_tochka_enabled",
             "auto_sync_finance_tochka_time",
             "auto_sync_finance_tochka_days",
@@ -2522,6 +2557,7 @@
         purchase_formula_cache: "Закупки: кэш формулы",
         medmarket: "Медмаркет: каталог из МС",
         medmarket_fill: "Медмаркет: коды в МС (код+тип)",
+        results_reparse_products: "Результаты: перепарсинг товаров",
         price_comp_sync: "Цены с конкурента (ДМ/МК)",
         network_prices: "Цены сети",
         finance_tochka: "Финансы: Точка",
@@ -3991,6 +4027,16 @@
       if (priceCompRunBtn) {
         priceCompRunBtn.addEventListener("click", function () {
           runAutoSyncNow("price_comp_sync", "Цены с конкурента", "dg-set-auto_price_comp_run");
+        });
+      }
+      var resultsReparseRunBtn = document.getElementById("dg-set-auto_results_reparse_products_run");
+      if (resultsReparseRunBtn) {
+        resultsReparseRunBtn.addEventListener("click", function () {
+          runAutoSyncNow(
+            "results_reparse_products",
+            "Результаты: перепарсинг товаров",
+            "dg-set-auto_results_reparse_products_run"
+          );
         });
       }
       var networkPricesRunBtn = document.getElementById("dg-set-auto_network_prices_run");

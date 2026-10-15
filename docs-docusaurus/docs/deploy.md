@@ -98,16 +98,17 @@ Hard refresh browser cache after deploy:
   - **Локально всегда:** `npm run dev:local` (агент Cursor и разработчик — та же команда; не `npm start`).
   - **Прод:** переменную **не задавать** — по умолчанию scheduler включён (`pm2` → `node server.js`).
   - В логе при старте локально должна быть строка: `[AUTO SYNC] scheduler ВЫКЛЮЧЕН …`.
-- **`DATAGON_AUTO_SYNC_WORKER_ID`** — `1` (default, `parser-app`) или `2` (`parser-autosync-w2`). Назначение задачи → поле `worker` в `lib/datagonAutoSyncRegistry.js` (**`finance_tochka` → 2**, остальное → 1). Ручной запуск с HTTP-воркера 1 для чужой задачи пишется в `auto_sync_dispatch`, воркер 2 забирает её за несколько секунд.
-- **`DATAGON_HTTP=off`** — процесс без `listen` (только автосинк). Нужен для `parser-autosync-w2`. На основном `parser-app` **не** задавать.
-- **Второй воркер на проде:**
+- **`DATAGON_AUTO_SYNC_WORKER_ID`** — `1` (default, `parser-app`), `2` (`parser-autosync-w2`), `3` (`parser-autosync-w3`). Назначение задачи → поле `worker` в `lib/datagonAutoSyncRegistry.js` (**банки/Planfix/Bitcop → 2**, **`results_reparse_products` → 3**, остальное → 1). Ручной запуск с HTTP-воркера 1 для чужой задачи пишется в `auto_sync_dispatch`, целевой воркер забирает её за несколько секунд.
+- **`DATAGON_HTTP=off`** — процесс без `listen` (только автосинк). Нужен для `parser-autosync-w2` / `parser-autosync-w3`. На основном `parser-app` **не** задавать.
+- **Доп. воркеры на проде:**
 
 ```bash
 cd /var/www/p_datagon_ru_usr/data/www/p.datagon.ru
 pm2 start ecosystem.autosync-w2.config.cjs
+pm2 start ecosystem.autosync-w3.config.cjs
 pm2 save
 pm2 restart parser-app
-pm2 ls   # parser-app + parser-autosync-w2
+pm2 ls   # parser-app + parser-autosync-w2 + parser-autosync-w3
 ```
 
 - **`DATAGON_STARTUP_DEFER_MS`** — отсрочка тяжёлых фоновых задач после старта (default 60000 мс).

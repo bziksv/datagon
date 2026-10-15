@@ -164,6 +164,7 @@ module.exports = (db, appSettings) => {
             auto_sync_price_comp_match_audit, auto_sync_price_comp_rand_min, auto_sync_price_comp_rand_max,
             auto_sync_price_comp_stock_min, auto_sync_price_comp_stock_max, auto_sync_price_comp_site_id,
             auto_sync_network_prices_enabled, auto_sync_network_prices_time, auto_sync_network_prices_weekdays,
+            auto_sync_results_reparse_products_enabled, auto_sync_results_reparse_products_time, auto_sync_results_reparse_products_weekdays,
             auto_sync_finance_tochka_enabled, auto_sync_finance_tochka_time, auto_sync_finance_tochka_days, auto_sync_finance_tochka_weekdays,
             auto_sync_ops_planfix_enabled, auto_sync_ops_planfix_time, auto_sync_ops_planfix_weekdays,
             auto_sync_bitcop_hours_enabled, auto_sync_bitcop_hours_time, auto_sync_bitcop_hours_days, auto_sync_bitcop_hours_only_hourly, auto_sync_bitcop_hours_weekdays,
@@ -279,6 +280,24 @@ module.exports = (db, appSettings) => {
                 queries.push([
                     'auto_sync_network_prices_weekdays',
                     normalizeAutoSyncWeekdaysCsv(auto_sync_network_prices_weekdays),
+                ]);
+            }
+            if (auto_sync_results_reparse_products_enabled !== undefined) {
+                queries.push([
+                    'auto_sync_results_reparse_products_enabled',
+                    auto_sync_results_reparse_products_enabled ? 1 : 0,
+                ]);
+            }
+            if (auto_sync_results_reparse_products_time !== undefined) {
+                queries.push([
+                    'auto_sync_results_reparse_products_time',
+                    auto_sync_results_reparse_products_time || '23:00',
+                ]);
+            }
+            if (auto_sync_results_reparse_products_weekdays !== undefined) {
+                queries.push([
+                    'auto_sync_results_reparse_products_weekdays',
+                    normalizeAutoSyncWeekdaysCsv(auto_sync_results_reparse_products_weekdays),
                 ]);
             }
             if (auto_sync_finance_tochka_enabled !== undefined) {
@@ -641,6 +660,20 @@ module.exports = (db, appSettings) => {
             }
             if(auto_sync_network_prices_weekdays !== undefined) {
                 appSettings.auto_sync_network_prices_weekdays = normalizeAutoSyncWeekdaysCsv(auto_sync_network_prices_weekdays);
+            }
+            if(auto_sync_results_reparse_products_enabled !== undefined) {
+                appSettings.auto_sync_results_reparse_products_enabled = auto_sync_results_reparse_products_enabled
+                    ? 1
+                    : 0;
+            }
+            if(auto_sync_results_reparse_products_time !== undefined) {
+                appSettings.auto_sync_results_reparse_products_time =
+                    auto_sync_results_reparse_products_time || '23:00';
+            }
+            if(auto_sync_results_reparse_products_weekdays !== undefined) {
+                appSettings.auto_sync_results_reparse_products_weekdays = normalizeAutoSyncWeekdaysCsv(
+                    auto_sync_results_reparse_products_weekdays
+                );
             }
             if(auto_sync_finance_tochka_enabled !== undefined) {
                 appSettings.auto_sync_finance_tochka_enabled = auto_sync_finance_tochka_enabled ? 1 : 0;

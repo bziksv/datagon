@@ -22,7 +22,7 @@ description: Таблица prices — фильтры, сортировка, п�
 | **`view`** | Список — GET |
 | **`full`** | clear, DELETE строки; повторный парсинг идёт через `/api/pages` / `/api/parse` (ключ **`queue`**) |
 
-Фильтры / поиск — только по **«Применить»** / Enter. Пагинация по умолчанию **100** строк.
+Фильтры / поиск — только по **«Применить»** / Enter. Пагинация по умолчанию **100** строк. Кнопка **«В очередь на перепарсинг»** ставит в очередь URL **по тем же применённым фильтрам**, что и таблица (включая тип страницы, сопоставление, наличие, цены).
 
 <blockquote class="dg-doc-tip">
 <strong>Снимок интерфейса.</strong> PNG: <code>npm run docs:capture-screenshots</code> + <code>npm run docs:docusaurus:build</code>. Кадр <strong>viewport</strong>; без входа — макет <code>/doc-screenshots/results-sample.html</code>. <a href="/docs/capture-screenshots/">Съёмка</a>.

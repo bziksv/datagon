@@ -2095,6 +2095,7 @@
         { key: "mssales", title: "Продажи МС", subtitle: "Импорт entity/demand → ms_demand / ms_demand_position", cfgEnabled: "mssales_enabled", cfgTime: "mssales_time" },
         { key: "mssales_full", title: "Продажи МС (полный)", subtitle: "Импорт demand с fresh=true", cfgEnabled: "mssales_full_enabled", cfgTime: "mssales_full_time" },
         { key: "network_prices", title: "Цены сети", subtitle: "Эталон → целевые сайты", cfgEnabled: "network_prices_enabled", cfgTime: "network_prices_time" },
+        { key: "results_reparse_products", title: "Результаты: перепарсинг товаров", subtitle: "page_type=product → очередь парсинга", cfgEnabled: "results_reparse_products_enabled", cfgTime: "results_reparse_products_time" },
         { key: "finance_tochka", title: "Финансы: Точка", subtitle: "Счета, балансы и выписка (только чтение)", cfgEnabled: "finance_tochka_enabled", cfgTime: "finance_tochka_time" },
         { key: "bitcop_hours", title: "График: часы из Bitcop", subtitle: "Продуктивные часы → табель", cfgEnabled: "bitcop_hours_enabled", cfgTime: "bitcop_hours_time" },
         { key: "ops_planfix", title: "Операционный лист: Planfix", subtitle: "Отчёт 450694 (generate + статусы)", cfgEnabled: "ops_planfix_enabled", cfgTime: "ops_planfix_time" },
@@ -2207,7 +2208,7 @@
                 title: String(s.title || s.key || ""),
                 subtitle: s.subtitle ? String(s.subtitle) : "",
                 category: String(s.category || "internal"),
-                worker: Number(s.worker) === 2 ? 2 : 1,
+                worker: Number(s.worker) === 2 ? 2 : Number(s.worker) === 3 ? 3 : 1,
                 enabled: Boolean(s.enabled),
                 time: s.time != null ? String(s.time) : "—",
                 extras: Array.isArray(s.extras) ? s.extras : [],
@@ -2652,12 +2653,21 @@
               .join("");
           }
           var catLabel = AS_PROC_CATEGORY_LABELS[cat] || cat;
-          var workerN = Number(sec.worker) === 2 ? 2 : 1;
+          var workerRaw = Number(sec.worker);
+          var workerN = workerRaw === 2 ? 2 : workerRaw === 3 ? 3 : 1;
+          var workerBadgeCls =
+            workerN === 2
+              ? "bg-success-subtle text-success border border-success-subtle"
+              : workerN === 3
+                ? "bg-warning-subtle text-dark border border-warning-subtle"
+                : "bg-primary-subtle text-primary border border-primary-subtle";
+          var workerBadgeTitle =
+            workerN === 2 ? "parser-autosync-w2" : workerN === 3 ? "parser-autosync-w3" : "parser-app";
           var workerBadge =
             '<span class="badge ' +
-            (workerN === 2 ? "bg-success-subtle text-success border border-success-subtle" : "bg-primary-subtle text-primary border border-primary-subtle") +
+            workerBadgeCls +
             '" title="' +
-            (workerN === 2 ? "parser-autosync-w2" : "parser-app") +
+            workerBadgeTitle +
             '">воркер ' +
             workerN +
             "</span>";

@@ -678,3 +678,5 @@ module.exports = (db, settings) => {
 };
 
 module.exports.invalidateResultsListCache = invalidateResultsListCache;
+/** Общий WHERE списка/сводки — для refresh-results и др. */
+module.exports.buildResultsWhere = buildResultsWhere;
