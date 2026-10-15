@@ -179,82 +179,85 @@
     body.datagon-vanilla-body[data-dg-active-nav="results"] a.dg-res-product-link:hover {
       text-decoration: underline;
     }
-    /* Hover-журнал смены типа (паритет с purchase / dimensions) */
-    body.datagon-vanilla-body[data-dg-active-nav="results"] .dg-res-type-wrap {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.25rem;
-      max-width: 100%;
+    /* «лог» в углу ячейки типа — паритет с exports-new-products .dg-np-field-log-btn */
+    body.datagon-vanilla-body[data-dg-active-nav="results"] .dg-res-type-cell {
+      position: relative;
+      padding-right: 2.1rem !important;
     }
-    body.datagon-vanilla-body[data-dg-active-nav="results"] .dg-res-type-log-btn {
-      flex: 0 0 auto;
+    body.datagon-vanilla-body[data-dg-active-nav="results"] .dg-res-field-log-btn {
+      position: absolute;
+      top: 2px;
+      right: 2px;
+      z-index: 3;
+      opacity: 0;
+      pointer-events: none;
+      font-size: 0.6rem;
       line-height: 1;
-      padding: 0.15rem 0.35rem;
-      font-size: 0.75rem;
+      padding: 0.12rem 0.28rem;
+      border: 1px solid #ced4da;
+      border-radius: 0.25rem;
+      background: #fff;
+      color: #495057;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
     }
-    .dg-res-cell-tip {
+    body.datagon-vanilla-body[data-dg-active-nav="results"] .dg-res-type-cell:hover .dg-res-field-log-btn,
+    body.datagon-vanilla-body[data-dg-active-nav="results"] .dg-res-field-log-btn:focus {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="results"] .dg-res-field-log-btn:hover {
+      background: #f8f9fa;
+      color: #0d6efd;
+      border-color: #86b7fe;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="results"] .dg-res-log-overlay {
       position: fixed;
-      z-index: 10000;
-      max-width: 360px;
-      min-width: 220px;
-      background: #ffffff;
-      color: #1f2937;
-      border: 1px solid #d1d5db;
-      border-radius: 6px;
-      padding: 8px 10px;
-      box-shadow: 0 6px 18px rgba(15, 23, 42, 0.12);
-      font-size: 11px;
-      line-height: 1.35;
-      display: none;
+      inset: 0;
+      z-index: 1080;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
     }
-    .dg-res-cell-tip .dg-res-cell-tip-title {
-      font-weight: 600;
-      font-size: 11px;
-      color: #374151;
-      margin-bottom: 6px;
+    body.datagon-vanilla-body[data-dg-active-nav="results"] .dg-res-log-overlay .dg-res-log-backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.45);
     }
-    .dg-res-cell-tip .dg-res-cell-tip-list {
-      list-style: none;
-      padding: 0;
+    body.datagon-vanilla-body[data-dg-active-nav="results"] .dg-res-log-overlay .dg-res-log-panel {
+      position: relative;
+      z-index: 1;
+      width: min(720px, 100%);
+      max-height: min(80vh, 640px);
+      display: flex;
+      flex-direction: column;
       margin: 0;
     }
-    .dg-res-cell-tip .dg-res-cell-tip-list li {
-      padding: 4px 0;
-      border-top: 1px solid #f3f4f6;
+    body.datagon-vanilla-body[data-dg-active-nav="results"] .dg-res-log-body {
+      max-height: min(60vh, 480px);
+      overflow: auto;
     }
-    .dg-res-cell-tip .dg-res-cell-tip-list li:first-child {
-      border-top: 0;
-      padding-top: 0;
+    body.datagon-vanilla-body[data-dg-active-nav="results"] .dg-res-log-body table {
+      margin: 0;
+      font-size: 0.85rem;
     }
-    .dg-res-cell-tip .dg-res-cell-tip-row1 {
-      color: #6b7280;
-      font-size: 10px;
-      margin-bottom: 2px;
+    body.datagon-vanilla-body[data-dg-active-nav="results"] .dg-res-log-body thead th {
+      position: sticky;
+      top: 0;
+      background: #f8f9fa;
+      z-index: 1;
     }
-    .dg-res-cell-tip .dg-res-cell-tip-old {
-      color: #b91c1c;
+    body.datagon-vanilla-body[data-dg-active-nav="results"] .dg-res-log-old {
+      color: #b02a37;
       text-decoration: line-through;
-      text-decoration-thickness: 1px;
     }
-    .dg-res-cell-tip .dg-res-cell-tip-new {
-      color: #14532d;
-      font-weight: 600;
+    body.datagon-vanilla-body[data-dg-active-nav="results"] .dg-res-log-arrow {
+      margin: 0 0.35rem;
+      color: #6c757d;
     }
-    .dg-res-cell-tip .dg-res-cell-tip-empty,
-    .dg-res-cell-tip .dg-res-cell-tip-loading,
-    .dg-res-cell-tip .dg-res-cell-tip-err {
-      color: #6b7280;
-      font-style: italic;
-    }
-    .dg-res-cell-tip .dg-res-cell-tip-err {
-      color: #b91c1c;
-    }
-    .dg-res-cell-tip .dg-res-log-src {
-      font-size: 9px;
-      padding: 0 4px;
-      border-radius: 3px;
-      background: #dbeafe;
-      color: #1e40af;
+    body.datagon-vanilla-body[data-dg-active-nav="results"] .dg-res-log-new {
+      color: #146c43;
+      font-weight: 500;
     }
     body.datagon-vanilla-body[data-dg-active-nav="results"] .dg-res-stats-row {
       margin-bottom: 0;

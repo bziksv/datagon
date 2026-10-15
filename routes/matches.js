@@ -34,6 +34,13 @@ function normalizeProductMatchLookup(v) {
 }
 
 /**
+ * Сопоставление берёт только «товары» из прайса (как /results.html?page_type=product).
+ * LEFT JOIN pages + COALESCE: строки без page_id / без типа остаются в пуле (legacy).
+ */
+const SQL_PRICES_PRODUCT_JOIN = 'LEFT JOIN pages pg ON pg.id = p.page_id';
+const SQL_PRICES_IS_PRODUCT = "COALESCE(pg.page_type, 'product') = 'product'";
+
+/**
  * Коэффициент упаковки на паре.
  * @returns {{ ok: true, pack_qty: number|null, pack_basis: 'ours'|'competitor'|null } | { ok: false, error: string }}
  */
@@ -1809,7 +1816,9 @@ module.exports = (db, settings) => {
                        MAX(p.parsed_at) AS parsed_at
                 FROM prices p
                 JOIN projects pr ON p.project_id = pr.id
+                ${SQL_PRICES_PRODUCT_JOIN}
                 WHERE p.project_id = ?
+                  AND ${SQL_PRICES_IS_PRODUCT}
                 GROUP BY p.sku, p.product_name, p.price, p.currency, p.url, pr.domain
                 ORDER BY MAX(p.parsed_at) DESC
             `, [compId]);
@@ -2734,8 +2743,10 @@ module.exports = (db, settings) => {
                         const [compRows] = await db.query(
                             `SELECT p.project_id, p.sku, p.product_name, p.price, p.currency, p.url, p.parsed_at, p.id
                              FROM prices p
+                             ${SQL_PRICES_PRODUCT_JOIN}
                              WHERE p.project_id IN (${compSiteIds.map(() => '?').join(',')})
                                AND p.sku IN (${compSkus.map(() => '?').join(',')})
+                               AND ${SQL_PRICES_IS_PRODUCT}
                              ORDER BY p.parsed_at DESC, p.id DESC
                              LIMIT 2000`,
                             params
@@ -2756,8 +2767,10 @@ module.exports = (db, settings) => {
                         const [compRows] = await db.query(
                             `SELECT p.project_id, p.sku, p.product_name, p.price, p.currency, p.url, p.parsed_at, p.id
                              FROM prices p
+                             ${SQL_PRICES_PRODUCT_JOIN}
                              WHERE p.project_id IN (${compSiteIds.map(() => '?').join(',')})
                                AND p.product_name IN (${compNames.map(() => '?').join(',')})
+                               AND ${SQL_PRICES_IS_PRODUCT}
                              ORDER BY p.parsed_at DESC, p.id DESC
                              LIMIT 2000`,
                             params
@@ -3305,11 +3318,13 @@ module.exports = (db, settings) => {
             );
             if (siblingCompSkus.length) {
                 const [priceRows] = await dbConn.query(
-                    `SELECT sku, url
-                     FROM prices
-                     WHERE project_id = ?
-                       AND TRIM(sku) IN (${siblingCompSkus.map(() => '?').join(',')})
-                     ORDER BY parsed_at DESC, id DESC
+                    `SELECT p.sku, p.url
+                     FROM prices p
+                     ${SQL_PRICES_PRODUCT_JOIN}
+                     WHERE p.project_id = ?
+                       AND TRIM(p.sku) IN (${siblingCompSkus.map(() => '?').join(',')})
+                       AND ${SQL_PRICES_IS_PRODUCT}
+                     ORDER BY p.parsed_at DESC, p.id DESC
                      LIMIT 50`,
                     [compId, ...siblingCompSkus]
                 );
@@ -3679,8 +3694,10 @@ module.exports = (db, settings) => {
                 `SELECT p.project_id AS project_id, MIN(pr.name) AS project_name
                  FROM prices p
                  INNER JOIN projects pr ON pr.id = p.project_id
+                 ${SQL_PRICES_PRODUCT_JOIN}
                  WHERE p.sku IS NOT NULL AND TRIM(p.sku) <> ''
                    AND LOWER(TRIM(p.sku)) = LOWER(TRIM(?))
+                   AND ${SQL_PRICES_IS_PRODUCT}
                  GROUP BY p.project_id
                  ORDER BY MIN(pr.name)
                  LIMIT 60`,
@@ -3707,9 +3724,13 @@ module.exports = (db, settings) => {
             const val = `%${q.slice(0, 120)}%`;
             const lim = Math.max(1, Math.min(parseInt(String(req.query.limit || '25'), 10) || 25, 80));
             const [rows] = await db.query(
-                `SELECT id, sku, product_name, price, currency, url, parsed_at
-                 FROM prices WHERE project_id = ? AND (sku LIKE ? OR product_name LIKE ?)
-                 ORDER BY parsed_at DESC, id DESC LIMIT ?`,
+                `SELECT p.id, p.sku, p.product_name, p.price, p.currency, p.url, p.parsed_at
+                 FROM prices p
+                 ${SQL_PRICES_PRODUCT_JOIN}
+                 WHERE p.project_id = ?
+                   AND (p.sku LIKE ? OR p.product_name LIKE ?)
+                   AND ${SQL_PRICES_IS_PRODUCT}
+                 ORDER BY p.parsed_at DESC, p.id DESC LIMIT ?`,
                 [projectId, val, val, lim]
             );
             return res.json({ data: rows });

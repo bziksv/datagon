@@ -407,10 +407,13 @@ Query:
 Сводка по тем же фильтрам, что `GET /api/results` (без limit/offset): `{ success, total, matched, unmatched, in_stock, oos, parse_error, no_sku, no_price }`.
 
 ### PATCH `/api/pages/:id/type`
-Ручная смена типа страницы очереди. Body: `{ "page_type": "product"|"category"|"info"|"junk"|"unknown" }`. Ставит `pages.page_type_manual = 1` (парсер не перезаписывает тип). При типе ≠ `product` удаляет строки `prices` по `page_id` и помечает страницу `done` («Утиль» / категория / инфо — не в «Результатах»). Пишет строку в журнал **`dg_pages_type_log`** (кто / когда / старое→новое).
+Ручная смена типа страницы очереди. Body: `{ "page_type": "product"|"category"|"info"|"junk"|"unknown" }`. Ставит `pages.page_type_manual = 1` (парсер не перезаписывает тип). При типе ≠ `product` страница → `done`, строка **`prices` сохраняется** (фильтр «Тип» и поиск на `/results.html` продолжают её находить). Журнал — **`dg_pages_type_log`**.
+
+### POST `/api/pages/restore-demoted-prices`
+Восстановить `prices` для страниц с ручным типом ≠ `product`, у которых строку результатов раньше удалили. Берёт кэш `pages.product_name` / `last_sku` / `last_price` / `url`. Ответ: `{ success, restored }`.
 
 ### GET `/api/pages/:id/type-log`
-Журнал ручных смен типа. Query: `limit` (по умолчанию 8, макс. 50). Ответ: `{ success, page_id, rows: [{ old_value, new_value, old_label, new_label, source, source_label, changed_by_name, note, changed_at, … }] }`. UI «Результаты» — hover/кнопка 🕘 у колонки «Тип».
+Журнал ручных смен типа. Query: `limit` (по умолчанию 8, макс. 50). Ответ: `{ success, page_id, rows: [{ old_value, new_value, old_label, new_label, source, source_label, changed_by_name, note, changed_at, … }] }`. UI «Результаты» — микрокнопка **«лог»** в правом верхнем углу ячейки «Тип» (как на `/exports-new-products.html` → маркеты), открывает модалку.
 
 ### POST `/api/results/clear`
 Очистить результаты (все или по `project_id`).
@@ -624,7 +627,7 @@ Query:
 Список конкурентных проектов для сопоставления.
 
 ### POST `/api/matches/start-matching`
-Запустить фоновую задачу сопоставления.
+Запустить фоновую задачу сопоставления. Прайс конкурента — строки `prices` с `pages.page_type` = **product** (или без типа / без `page_id`); инфо, категория, утиль в автомат **не** попадают.
 
 Body (пример):
 ```json
@@ -733,7 +736,7 @@ Body:
 `POST /api/matches/manual-match/confirm` принимает те же опциональные `pack_qty` / `pack_basis` и тоже снимает лишние confirmed с того же конкурента.
 ## Расширенные маршруты матчинга
 
-Эндпоинты для экрана «Сопоставление» (ручная очередь, архив, поиск по ценам конкурента, лог): `GET/DELETE /api/matches/manual-queue`, `POST /api/matches/manual-queue/return-to-auto` (массово «Вернуть в авто» по фильтрам: `my_site_id`, опц. `competitor_site_id` / `search` / `exclusion_reason`, `confirm: true`; ответ `{ success, deleted, duration_sec, filters }`; лог — пакет до 50 примеров + сводка, без N отдельных INSERT), `POST /api/matches/manual-queue/archive-all` (массово «В архив все» по тем же фильтрам + опц. `note`; ответ `{ success, archived, duration_sec, filters }`), `GET/DELETE /api/matches/manual-archive` (`GET` — query `my_site_id`, опц. `competitor_site_id` / `search` / `limit` (1–300, UI по умолчанию 100) / `offset`; UI шага 4 — пагинация «На странице» + Назад/Вперёд, URL `manual_archive_page` / `manual_archive_limit`; поиск по SKU/названию нашего товара, SKU/названию конкурента, заметке, `archived_by`, имени/домену проекта; в строках также `mp_source_url`, `my_site_domain`, `my_site_cms_type` для ссылки «Мой товар»), `GET /api/matches/prices-resolve-sku`, `GET /api/matches/prices-search`, `GET /api/matches/product-match-log`, `POST /api/matches/manual-match/confirm`, `POST /api/matches/manual-match/archive`. Точные query и JSON — в `routes/matches.js`. **Поле `archived_by`** в ответе `GET /api/matches/manual-archive` — пользователь, который нажал «В архив» в блоке ручного сопоставления (заполняется при `POST /api/matches/manual-match/archive` через `resolveActorDisplayName`); миграция колонки `match_manual_archive.archived_by VARCHAR(100) NULL` и UNIQUE `uq_match_manual_archive (my_site_id, competitor_site_id, my_product_id)` живут внутри `ensureMatchLaneTables()` (дубли архива схлопываются при старте; запись в архив — upsert). **Семантика шага 4:** пара в `match_manual_archive` больше не попадает в авто-сопоставление и не создаёт `match_exclusion` (шаг 3), пока запись не удалят из архива; при миграции/архивировании пересечения с очередью очищаются.
+Эндпоинты для экрана «Сопоставление» (ручная очередь, архив, поиск по ценам конкурента, лог): `GET/DELETE /api/matches/manual-queue`, `POST /api/matches/manual-queue/return-to-auto` (массово «Вернуть в авто» по фильтрам: `my_site_id`, опц. `competitor_site_id` / `search` / `exclusion_reason`, `confirm: true`; ответ `{ success, deleted, duration_sec, filters }`; лог — пакет до 50 примеров + сводка, без N отдельных INSERT), `POST /api/matches/manual-queue/archive-all` (массово «В архив все» по тем же фильтрам + опц. `note`; ответ `{ success, archived, duration_sec, filters }`), `GET/DELETE /api/matches/manual-archive` (`GET` — query `my_site_id`, опц. `competitor_site_id` / `search` / `limit` (1–300, UI по умолчанию 100) / `offset`; UI шага 4 — пагинация «На странице» + Назад/Вперёд, URL `manual_archive_page` / `manual_archive_limit`; поиск по SKU/названию нашего товара, SKU/названию конкурента, заметке, `archived_by`, имени/домену проекта; в строках также `mp_source_url`, `my_site_domain`, `my_site_cms_type` для ссылки «Мой товар»), `GET /api/matches/prices-resolve-sku`, `GET /api/matches/prices-search` (оба и загрузка прайса в автомате — только `page_type=product` / без типа), `GET /api/matches/product-match-log`, `POST /api/matches/manual-match/confirm`, `POST /api/matches/manual-match/archive`. Точные query и JSON — в `routes/matches.js`. **Поле `archived_by`** в ответе `GET /api/matches/manual-archive` — пользователь, который нажал «В архив» в блоке ручного сопоставления (заполняется при `POST /api/matches/manual-match/archive` через `resolveActorDisplayName`); миграция колонки `match_manual_archive.archived_by VARCHAR(100) NULL` и UNIQUE `uq_match_manual_archive (my_site_id, competitor_site_id, my_product_id)` живут внутри `ensureMatchLaneTables()` (дубли архива схлопываются при старте; запись в архив — upsert). **Семантика шага 4:** пара в `match_manual_archive` больше не попадает в авто-сопоставление и не создаёт `match_exclusion` (шаг 3), пока запись не удалят из архива; при миграции/архивировании пересечения с очередью очищаются.
 
 ## MoySklad
 

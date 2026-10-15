@@ -202,82 +202,85 @@
     body.datagon-vanilla-body[data-dg-active-nav="results"] a.dg-res-product-link:hover {
       text-decoration: underline;
     }
-    /* Hover-журнал смены типа (паритет с purchase / dimensions) */
-    body.datagon-vanilla-body[data-dg-active-nav="results"] .dg-res-type-wrap {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.25rem;
-      max-width: 100%;
+    /* «лог» в углу ячейки типа — паритет с exports-new-products .dg-np-field-log-btn */
+    body.datagon-vanilla-body[data-dg-active-nav="results"] .dg-res-type-cell {
+      position: relative;
+      padding-right: 2.1rem !important;
     }
-    body.datagon-vanilla-body[data-dg-active-nav="results"] .dg-res-type-log-btn {
-      flex: 0 0 auto;
+    body.datagon-vanilla-body[data-dg-active-nav="results"] .dg-res-field-log-btn {
+      position: absolute;
+      top: 2px;
+      right: 2px;
+      z-index: 3;
+      opacity: 0;
+      pointer-events: none;
+      font-size: 0.6rem;
       line-height: 1;
-      padding: 0.15rem 0.35rem;
-      font-size: 0.75rem;
+      padding: 0.12rem 0.28rem;
+      border: 1px solid #ced4da;
+      border-radius: 0.25rem;
+      background: #fff;
+      color: #495057;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
     }
-    .dg-res-cell-tip {
+    body.datagon-vanilla-body[data-dg-active-nav="results"] .dg-res-type-cell:hover .dg-res-field-log-btn,
+    body.datagon-vanilla-body[data-dg-active-nav="results"] .dg-res-field-log-btn:focus {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="results"] .dg-res-field-log-btn:hover {
+      background: #f8f9fa;
+      color: #0d6efd;
+      border-color: #86b7fe;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="results"] .dg-res-log-overlay {
       position: fixed;
-      z-index: 10000;
-      max-width: 360px;
-      min-width: 220px;
-      background: #ffffff;
-      color: #1f2937;
-      border: 1px solid #d1d5db;
-      border-radius: 6px;
-      padding: 8px 10px;
-      box-shadow: 0 6px 18px rgba(15, 23, 42, 0.12);
-      font-size: 11px;
-      line-height: 1.35;
-      display: none;
+      inset: 0;
+      z-index: 1080;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
     }
-    .dg-res-cell-tip .dg-res-cell-tip-title {
-      font-weight: 600;
-      font-size: 11px;
-      color: #374151;
-      margin-bottom: 6px;
+    body.datagon-vanilla-body[data-dg-active-nav="results"] .dg-res-log-overlay .dg-res-log-backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.45);
     }
-    .dg-res-cell-tip .dg-res-cell-tip-list {
-      list-style: none;
-      padding: 0;
+    body.datagon-vanilla-body[data-dg-active-nav="results"] .dg-res-log-overlay .dg-res-log-panel {
+      position: relative;
+      z-index: 1;
+      width: min(720px, 100%);
+      max-height: min(80vh, 640px);
+      display: flex;
+      flex-direction: column;
       margin: 0;
     }
-    .dg-res-cell-tip .dg-res-cell-tip-list li {
-      padding: 4px 0;
-      border-top: 1px solid #f3f4f6;
+    body.datagon-vanilla-body[data-dg-active-nav="results"] .dg-res-log-body {
+      max-height: min(60vh, 480px);
+      overflow: auto;
     }
-    .dg-res-cell-tip .dg-res-cell-tip-list li:first-child {
-      border-top: 0;
-      padding-top: 0;
+    body.datagon-vanilla-body[data-dg-active-nav="results"] .dg-res-log-body table {
+      margin: 0;
+      font-size: 0.85rem;
     }
-    .dg-res-cell-tip .dg-res-cell-tip-row1 {
-      color: #6b7280;
-      font-size: 10px;
-      margin-bottom: 2px;
+    body.datagon-vanilla-body[data-dg-active-nav="results"] .dg-res-log-body thead th {
+      position: sticky;
+      top: 0;
+      background: #f8f9fa;
+      z-index: 1;
     }
-    .dg-res-cell-tip .dg-res-cell-tip-old {
-      color: #b91c1c;
+    body.datagon-vanilla-body[data-dg-active-nav="results"] .dg-res-log-old {
+      color: #b02a37;
       text-decoration: line-through;
-      text-decoration-thickness: 1px;
     }
-    .dg-res-cell-tip .dg-res-cell-tip-new {
-      color: #14532d;
-      font-weight: 600;
+    body.datagon-vanilla-body[data-dg-active-nav="results"] .dg-res-log-arrow {
+      margin: 0 0.35rem;
+      color: #6c757d;
     }
-    .dg-res-cell-tip .dg-res-cell-tip-empty,
-    .dg-res-cell-tip .dg-res-cell-tip-loading,
-    .dg-res-cell-tip .dg-res-cell-tip-err {
-      color: #6b7280;
-      font-style: italic;
-    }
-    .dg-res-cell-tip .dg-res-cell-tip-err {
-      color: #b91c1c;
-    }
-    .dg-res-cell-tip .dg-res-log-src {
-      font-size: 9px;
-      padding: 0 4px;
-      border-radius: 3px;
-      background: #dbeafe;
-      color: #1e40af;
+    body.datagon-vanilla-body[data-dg-active-nav="results"] .dg-res-log-new {
+      color: #146c43;
+      font-weight: 500;
     }
     body.datagon-vanilla-body[data-dg-active-nav="results"] .dg-res-stats-row {
       margin-bottom: 0;
@@ -1508,6 +1511,27 @@
             </div>
           </div>
 
+          <div id="dg-res-type-log-overlay" class="dg-res-log-overlay" style="display: none" aria-hidden="true">
+            <div class="dg-res-log-backdrop" id="dg-res-type-log-backdrop"></div>
+            <div class="dg-res-log-panel card shadow-lg border-0">
+              <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+                <div>
+                  <div class="fw-semibold" id="dg-res-type-log-title">Журнал смены типа</div>
+                  <div class="text-muted small" id="dg-res-type-log-subtitle"></div>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-res-type-log-refresh" data-dg-notify-start="Обновляем журнал…">Обновить</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-res-type-log-close">Закрыть</button>
+                </div>
+              </div>
+              <div class="card-body p-0">
+                <div class="dg-res-log-body" id="dg-res-type-log-body">
+                  <div class="text-muted small text-center py-4">Загрузка журнала…</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div
             id="dg-res-type-confirm-overlay"
             class="dg-res-confirm-overlay d-none"
@@ -1664,12 +1688,7 @@
         { value: "unknown", label: "Неизвестно" },
       ];
       var pendingTypeChange = null;
-      var resTipEl = null;
-      var resTipCurrentTarget = null;
-      var resTipPinned = false;
-      var resTipCache = {};
-      var RES_TIP_CACHE_TTL_MS = 60000;
-      var resTipDocCloseBound = false;
+      var typeLogState = { pageId: 0, label: "", limit: 50 };
       var columnWidths = {};
       var resizeState = null;
       var FLOATING_HEADER_OFFSET_PX = 2;
@@ -2141,7 +2160,9 @@
           var tdProj = document.createElement("td");
           tdProj.textContent = r.project_name || "-";
           var tdType = document.createElement("td");
+          tdType.className = "dg-res-type-cell";
           tdType.appendChild(buildPageTypeSelect(r));
+          attachTypeFieldLog(tdType, r);
           var tdProd = document.createElement("td");
           var pageUrl = String(r.page_url || r.url || "").trim();
           var prodName = String(r.product_name || "").trim() || (pageUrl ? pageUrl : "—");
@@ -2330,7 +2351,7 @@
           .replace(/"/g, "&quot;");
       }
 
-      function formatResTipWhen(iso) {
+      function formatResLogWhen(iso) {
         if (!iso) return "—";
         try {
           var d = new Date(iso);
@@ -2341,151 +2362,110 @@
         }
       }
 
-      function ensureResTipEl() {
-        if (resTipEl) return resTipEl;
-        resTipEl = document.createElement("div");
-        resTipEl.className = "dg-res-cell-tip";
-        resTipEl.setAttribute("role", "tooltip");
-        document.body.appendChild(resTipEl);
-        resTipEl.addEventListener("mouseenter", function () {
-          /* держим открытым при наведении на сам tip */
-        });
-        resTipEl.addEventListener("mouseleave", function () {
-          if (!resTipPinned) hideResTip();
-        });
-        return resTipEl;
+      function closeResTypeLog() {
+        var overlay = document.getElementById("dg-res-type-log-overlay");
+        if (!overlay) return;
+        overlay.style.display = "none";
+        overlay.setAttribute("aria-hidden", "true");
       }
 
-      function hideResTip() {
-        resTipPinned = false;
-        resTipCurrentTarget = null;
-        if (resTipEl) resTipEl.style.display = "none";
-      }
-
-      function bindResTipDocClose() {
-        if (resTipDocCloseBound) return;
-        resTipDocCloseBound = true;
-        document.addEventListener(
-          "click",
-          function (e) {
-            if (!resTipEl || resTipEl.style.display === "none") return;
-            if (resTipEl.contains(e.target)) return;
-            if (e.target && e.target.closest && e.target.closest(".dg-res-type-wrap")) return;
-            hideResTip();
-          },
-          true
-        );
-        document.addEventListener("keydown", function (e) {
-          if (e.key === "Escape") hideResTip();
-        });
-      }
-
-      function positionResTip(target) {
-        if (!resTipEl || !target) return;
-        var rect = target.getBoundingClientRect();
-        resTipEl.style.left = "-9999px";
-        resTipEl.style.top = "-9999px";
-        resTipEl.style.display = "block";
-        var tipRect = resTipEl.getBoundingClientRect();
-        var left = Math.min(window.innerWidth - tipRect.width - 8, Math.max(8, rect.left));
-        var top = rect.bottom + 6;
-        if (top + tipRect.height > window.innerHeight - 8) {
-          top = Math.max(8, rect.top - tipRect.height - 6);
+      function openResTypeLog(pageId, label) {
+        typeLogState.pageId = Number(pageId) || 0;
+        typeLogState.label = label || "#" + pageId;
+        var overlay = document.getElementById("dg-res-type-log-overlay");
+        var titleEl = document.getElementById("dg-res-type-log-title");
+        var subEl = document.getElementById("dg-res-type-log-subtitle");
+        if (titleEl) titleEl.textContent = "Журнал: Тип";
+        if (subEl) subEl.textContent = "page #" + pageId + " · " + typeLogState.label;
+        if (overlay) {
+          overlay.style.display = "flex";
+          overlay.setAttribute("aria-hidden", "false");
         }
-        resTipEl.style.left = left + "px";
-        resTipEl.style.top = top + "px";
+        loadResTypeLog();
       }
 
-      function renderResTipContent(rows) {
-        if (!rows || !rows.length) {
-          return '<div class="dg-res-cell-tip-empty">Тип ещё не меняли вручную.</div>';
-        }
-        var out = '<div class="dg-res-cell-tip-title">Журнал смены типа</div><ul class="dg-res-cell-tip-list">';
-        rows.forEach(function (row) {
-          var oldV = escHtml(row.old_label || row.old_value || "∅");
-          var newV = escHtml(row.new_label || row.new_value || "∅");
-          var who = row.changed_by_name || (row.changed_by_user_id ? "user#" + row.changed_by_user_id : "—");
-          var srcLabel = row.source_label || row.source || "ui";
-          out +=
-            "<li>" +
-            '<div class="dg-res-cell-tip-row1"><span>' +
-            escHtml(formatResTipWhen(row.changed_at)) +
-            "</span> · <span>" +
-            escHtml(who) +
-            '</span> · <span class="dg-res-log-src">' +
-            escHtml(srcLabel) +
-            "</span></div>" +
-            '<div><span class="dg-res-cell-tip-old">' +
-            oldV +
-            '</span> → <span class="dg-res-cell-tip-new">' +
-            newV +
-            "</span>" +
-            (row.note
-              ? ' <span class="text-muted">(' + escHtml(row.note) + ")</span>"
-              : "") +
-            "</div>" +
-            "</li>";
-        });
-        out += "</ul>";
-        return out;
-      }
-
-      function showResTypeTip(target, pageId, pinned) {
-        if (!target || !pageId) return;
-        bindResTipDocClose();
-        ensureResTipEl();
-        resTipCurrentTarget = target;
-        if (pinned) resTipPinned = true;
-        var cacheKey = String(pageId);
-        var now = Date.now();
-        var cached = resTipCache[cacheKey];
-        if (cached && now - cached.ts < RES_TIP_CACHE_TTL_MS) {
-          resTipEl.innerHTML = renderResTipContent(cached.rows);
-          positionResTip(target);
-          return;
-        }
-        resTipEl.innerHTML = '<div class="dg-res-cell-tip-loading">Загрузка журнала…</div>';
-        positionResTip(target);
-        fetch("/api/pages/" + encodeURIComponent(String(pageId)) + "/type-log?limit=8", {
-          credentials: "same-origin",
-        })
+      function loadResTypeLog() {
+        var body = document.getElementById("dg-res-type-log-body");
+        if (!body || !typeLogState.pageId) return;
+        body.innerHTML = '<div class="text-muted small text-center py-4">Загрузка журнала…</div>';
+        fetch(
+          "/api/pages/" +
+            encodeURIComponent(String(typeLogState.pageId)) +
+            "/type-log?limit=" +
+            encodeURIComponent(String(typeLogState.limit || 50)),
+          { credentials: "same-origin" }
+        )
           .then(function (r) {
             return r.json().then(function (j) {
               return { ok: r.ok, j: j };
             });
           })
           .then(function (x) {
-            if (resTipCurrentTarget !== target) return;
             if (!x.ok || !x.j || x.j.success === false) {
-              resTipEl.innerHTML =
-                '<div class="dg-res-cell-tip-err">' +
-                escHtml((x.j && x.j.error) || "Не удалось загрузить") +
+              body.innerHTML =
+                '<div class="text-danger small text-center py-4">' +
+                escHtml((x.j && x.j.error) || "Не удалось загрузить журнал") +
                 "</div>";
-              positionResTip(target);
               return;
             }
             var rows = Array.isArray(x.j.rows) ? x.j.rows : [];
-            resTipCache[cacheKey] = { ts: Date.now(), rows: rows };
-            resTipEl.innerHTML = renderResTipContent(rows);
-            positionResTip(target);
+            if (!rows.length) {
+              body.innerHTML =
+                '<div class="text-muted small text-center py-4">Тип ещё не меняли вручную.</div>';
+              return;
+            }
+            var html =
+              '<table class="table table-sm table-striped mb-0"><thead><tr>' +
+              "<th>Когда</th><th>Кто</th><th>Изменение</th><th>Примечание</th>" +
+              "</tr></thead><tbody>";
+            rows.forEach(function (row) {
+              var who =
+                row.changed_by_name ||
+                (row.changed_by_user_id ? "user#" + row.changed_by_user_id : "—");
+              var oldV = escHtml(row.old_label || row.old_value || "∅");
+              var newV = escHtml(row.new_label || row.new_value || "∅");
+              html +=
+                "<tr><td class=\"text-nowrap small\">" +
+                escHtml(formatResLogWhen(row.changed_at)) +
+                "</td><td class=\"small\">" +
+                escHtml(who) +
+                '</td><td class="small"><span class="dg-res-log-old">' +
+                oldV +
+                '</span><span class="dg-res-log-arrow">→</span><span class="dg-res-log-new">' +
+                newV +
+                "</span></td><td class=\"small text-muted\">" +
+                escHtml(row.note || "—") +
+                "</td></tr>";
+            });
+            html += "</tbody></table>";
+            body.innerHTML = html;
           })
           .catch(function () {
-            if (resTipCurrentTarget !== target) return;
-            resTipEl.innerHTML = '<div class="dg-res-cell-tip-err">Сетевая ошибка</div>';
-            positionResTip(target);
+            body.innerHTML =
+              '<div class="text-danger small text-center py-4">Сетевая ошибка</div>';
           });
       }
 
-      function invalidateResTypeTipCache(pageId) {
-        if (pageId != null) delete resTipCache[String(pageId)];
+      function attachTypeFieldLog(td, r) {
+        var pageId = Number(r.page_id);
+        if (!td || !Number.isFinite(pageId) || pageId <= 0) return;
+        var btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "dg-res-field-log-btn";
+        btn.textContent = "лог";
+        btn.title = "Журнал смены типа";
+        btn.setAttribute("data-dg-no-activity", "1");
+        btn.addEventListener("click", function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          var label = String(r.product_name || r.sku || r.page_url || r.url || "").trim() || "#" + pageId;
+          openResTypeLog(pageId, label);
+        });
+        td.appendChild(btn);
       }
 
       function buildPageTypeSelect(r) {
-        var wrap = document.createElement("div");
-        wrap.className = "dg-res-type-wrap";
         var pageId = Number(r.page_id);
-        wrap.setAttribute("data-dg-page-id", String(pageId || ""));
-
         var sel = document.createElement("select");
         sel.className = "form-select form-select-sm dg-res-type-select";
         sel.setAttribute("data-dg-notify-start", "Меняем тип страницы…");
@@ -2515,33 +2495,7 @@
         sel.addEventListener("change", function () {
           requestPageTypeChange(r, sel.value, sel, cur);
         });
-        wrap.appendChild(sel);
-
-        if (pageId) {
-          var logBtn = document.createElement("button");
-          logBtn.type = "button";
-          logBtn.className = "btn btn-sm btn-outline-secondary dg-res-type-log-btn";
-          logBtn.setAttribute("data-dg-no-activity", "1");
-          logBtn.setAttribute("data-dg-tooltip", "Журнал смены типа");
-          logBtn.textContent = "🕘";
-          logBtn.addEventListener("mouseenter", function () {
-            showResTypeTip(logBtn, pageId, false);
-          });
-          logBtn.addEventListener("mouseleave", function () {
-            if (!resTipPinned) {
-              setTimeout(function () {
-                if (!resTipPinned && resTipEl && !resTipEl.matches(":hover")) hideResTip();
-              }, 120);
-            }
-          });
-          logBtn.addEventListener("click", function (e) {
-            e.preventDefault();
-            e.stopPropagation();
-            showResTypeTip(logBtn, pageId, true);
-          });
-          wrap.appendChild(logBtn);
-        }
-        return wrap;
+        return sel;
       }
 
       function closeTypeConfirm() {
@@ -2566,8 +2520,9 @@
         text.textContent =
           "Тип станет «" +
           label +
-          "». Страница перестанет считаться товаром: запись исчезнет из «Результатов», " +
-          "повторный парсинг не вернёт её как товар, пока тип не сменят обратно вручную.";
+          "». Страница перестанет парситься как товар (автоклассификация не перетрёт тип), " +
+          "но строка останется в «Результатах» — её можно найти фильтром «Тип» и поиском. " +
+          "Вернуть в товары можно снова выбрав «Товар».";
         ov.classList.remove("d-none");
         ov.removeAttribute("hidden");
       }
@@ -2599,21 +2554,17 @@
               }
               r.page_type = newType;
               r.page_type_manual = 1;
-              invalidateResTypeTipCache(pageId);
               var msg =
                 newType === "product"
                   ? "Тип: товар (зафиксирован вручную)"
-                  : "Тип: " + pageTypeLabel(newType) + (x.j.prices_deleted ? " · убрано из результатов" : "");
+                  : "Тип: " + pageTypeLabel(newType) + " (остаётся в результатах, ищите фильтром «Тип»)";
               if (window.DatagonNotify && window.DatagonNotify.toast) {
                 window.DatagonNotify.toast({ type: "success", message: msg });
-              }
-              if (newType !== "product") {
-                return Promise.all([loadResults({ showSkeleton: false }), loadResultsStats()]);
               }
               if (selectEl) {
                 selectEl.title = "Тип задан вручную — автоклассификация при парсинге не перезапишет";
               }
-              return loadResultsStats();
+              return Promise.all([loadResults({ showSkeleton: false }), loadResultsStats()]);
             })
             .catch(function (e) {
               if (selectEl) selectEl.value = prevType;
@@ -3487,7 +3438,13 @@
         if (cancel) cancel.addEventListener("click", onCancel);
         if (backdrop) backdrop.addEventListener("click", onCancel);
         document.addEventListener("keydown", function (e) {
-          if (e.key === "Escape" && pendingTypeChange) closeTypeConfirm();
+          if (e.key !== "Escape") return;
+          var logOv = document.getElementById("dg-res-type-log-overlay");
+          if (logOv && logOv.style.display === "flex") {
+            closeResTypeLog();
+            return;
+          }
+          if (pendingTypeChange) closeTypeConfirm();
         });
         if (ok) {
           ok.addEventListener("click", function () {
@@ -3496,6 +3453,19 @@
             if (!p) return;
             if (p.selectEl) p.selectEl.value = p.newType;
             applyPageTypeChange(p.r, p.newType, p.selectEl, p.prevType);
+          });
+        }
+      })();
+
+      (function bindTypeLogOverlay() {
+        var closeBtn = document.getElementById("dg-res-type-log-close");
+        var refreshBtn = document.getElementById("dg-res-type-log-refresh");
+        var backdrop = document.getElementById("dg-res-type-log-backdrop");
+        if (closeBtn) closeBtn.addEventListener("click", closeResTypeLog);
+        if (backdrop) backdrop.addEventListener("click", closeResTypeLog);
+        if (refreshBtn) {
+          refreshBtn.addEventListener("click", function () {
+            loadResTypeLog();
           });
         }
       })();

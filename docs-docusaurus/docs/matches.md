@@ -37,7 +37,7 @@ description: Матчинг мой товар ↔ конкурент — пар�
 ## Подготовка к запуску
 
 1. В [Мои сайты](/docs/mysites/) выполнен **синк** — в `my_products` есть актуальные строки.
-2. В [Результаты](/docs/results/) есть **свежие** `prices` по выбранным конкурентам.
+2. В [Результаты](/docs/results/) есть **свежие** `prices` по выбранным конкурентам с типом **товар** (`page_type=product`). Автомат, ручной поиск и resolve SKU **не** берут инфо/категорию/утиль (даже если строка есть в `prices`).
 3. В [Настройках](/docs/settings/) заданы разумные **лимиты** нагрузки (если матчинг длинный — уменьшите `batchSize`, увеличьте паузы).
 
 ## Параметры задачи (что означают)
@@ -82,6 +82,6 @@ description: Матчинг мой товар ↔ конкурент — пар�
 
 - Авто: `POST /start-matching`, `/stop`, `/retry-last`; `GET /status`, `/list`; `POST /confirm` / `/reject` / `/unlink`.
 - Ручное: `GET/DELETE /manual-queue`, `POST …/return-to-auto`, `…/archive-all`; `GET/DELETE /manual-archive`; `POST /manual-match/confirm|relink|archive`.
-- Вспомогательные: `/prices-search`, `/prices-resolve-sku`, `/product-match-log`.
+- Вспомогательные: `/prices-search`, `/prices-resolve-sku`, `/product-match-log` (прайс конкурента — только `pages.page_type` = product / без типа).
 
 Полный перечень — [REST API — Matches](/docs/api/#matches).

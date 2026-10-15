@@ -247,6 +247,47 @@ module.exports = (db, settings) => {
         );
     }
 
+    /**
+     * Вернуть в prices строки, удалённые при старой логике «сменил тип → DELETE prices».
+     * Берём кэш с pages (product_name / last_sku / last_price / url).
+     * @returns {Promise<number>} сколько вставлено
+     */
+    async function restorePricesForDemotedPages() {
+        await ensurePagesTypeManualColumn();
+        await ensurePagesParseCacheColumns(db);
+        const [r] = await db.query(
+            `INSERT INTO prices (project_id, page_id, sku, product_name, price, is_oos, is_out_of_stock, url, page_status_cached, parsed_at)
+             SELECT pg.project_id,
+                    pg.id,
+                    NULLIF(TRIM(pg.last_sku), ''),
+                    NULLIF(TRIM(pg.product_name), ''),
+                    COALESCE(pg.last_price, 0),
+                    0,
+                    0,
+                    pg.url,
+                    COALESCE(NULLIF(TRIM(pg.status), ''), 'done'),
+                    COALESCE(pg.parsed_at, NOW())
+               FROM pages pg
+               LEFT JOIN prices pr ON pr.page_id = pg.id
+              WHERE pr.id IS NULL
+                AND COALESCE(pg.page_type_manual, 0) = 1
+                AND LOWER(COALESCE(pg.page_type, '')) IN ('info', 'category', 'junk', 'unknown')
+                AND (
+                      (pg.product_name IS NOT NULL AND TRIM(pg.product_name) <> '')
+                   OR (pg.url IS NOT NULL AND TRIM(pg.url) <> '')
+                )`
+        );
+        const n = Number(r && r.affectedRows) || 0;
+        if (n) {
+            try {
+                const { invalidateResultsListCache } = require('./results');
+                if (typeof invalidateResultsListCache === 'function') invalidateResultsListCache();
+            } catch (_) {}
+            console.log('[pages] restorePricesForDemotedPages: restored', n);
+        }
+        return n;
+    }
+
     async function cleanupDiscoveredUrlsWithQuery() {
         if (pagesQueryCleanupDone) return;
         try {
@@ -1531,7 +1572,8 @@ module.exports = (db, settings) => {
      * Ручная смена типа страницы (очередь / результаты).
      * Ставит page_type_manual=1 — автоклассификация при парсинге не перетирает.
      * Body: { page_type: product|category|info|junk|unknown }
-     * При типе ≠ product удаляет строки prices по page_id (не товар — не в «Результаты»).
+     * При типе ≠ product страница done + тип зафиксирован; строка prices сохраняется
+     * (чтобы искать по названию/фильтру «Инфо»/«Утиль» на /results.html).
      */
     router.patch('/:id/type', async (req, res) => {
         try {
@@ -1572,21 +1614,19 @@ module.exports = (db, settings) => {
                 'UPDATE pages SET page_type = ?, page_type_manual = 1 WHERE id = ?',
                 [pageType, pageId]
             );
-            let pricesDeleted = 0;
+            /** Не удаляем prices: иначе строка пропадает из «Результатов» и поиск/фильтр по типу её не найдёт. */
             let note = null;
             if (pageType !== 'product') {
-                const [del] = await db.query('DELETE FROM prices WHERE page_id = ?', [pageId]);
-                pricesDeleted = Number(del.affectedRows) || 0;
                 await db.query(
                     'UPDATE pages SET status = "done", last_error = NULL, parsed_at = COALESCE(parsed_at, NOW()) WHERE id = ?',
                     [pageId]
                 );
-                if (pricesDeleted) note = `убрано из результатов: ${pricesDeleted}`;
-                try {
-                    const { invalidateResultsListCache } = require('./results');
-                    if (typeof invalidateResultsListCache === 'function') invalidateResultsListCache();
-                } catch (_) {}
+                note = 'тип зафиксирован; строка остаётся в результатах';
             }
+            try {
+                const { invalidateResultsListCache } = require('./results');
+                if (typeof invalidateResultsListCache === 'function') invalidateResultsListCache();
+            } catch (_) {}
             await insertPageTypeLog({
                 pageId,
                 projectId: rows[0].project_id,
@@ -1602,9 +1642,22 @@ module.exports = (db, settings) => {
                 page_id: pageId,
                 page_type: pageType,
                 page_type_manual: 1,
-                prices_deleted: pricesDeleted,
+                prices_deleted: 0,
                 old_page_type: prev,
             });
+        } catch (e) {
+            res.status(500).json({ success: false, error: e.message });
+        }
+    });
+
+    /**
+     * Восстановить prices для страниц, у которых вручную сменили тип и старый код
+     * удалил строку из результатов (поиск по «Инфо»/«Утиль» пустел).
+     */
+    router.post('/restore-demoted-prices', async (req, res) => {
+        try {
+            const restored = await restorePricesForDemotedPages();
+            res.json({ success: true, restored });
         } catch (e) {
             res.status(500).json({ success: false, error: e.message });
         }
