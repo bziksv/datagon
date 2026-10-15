@@ -16,6 +16,7 @@ function resultsListCacheKey(query, effectiveLimit, effectiveOffset) {
     return JSON.stringify({
         project_id: query.project_id != null ? String(query.project_id) : '',
         page_status: query.page_status != null ? String(query.page_status) : '',
+        page_type: query.page_type != null ? String(query.page_type) : '',
         search: String(query.search ?? '').trim(),
         matched: query.matched != null ? String(query.matched) : '',
         availability: query.availability != null ? String(query.availability) : '',
@@ -27,6 +28,73 @@ function resultsListCacheKey(query, effectiveLimit, effectiveOffset) {
         sort_by: query.sort_by != null ? String(query.sort_by) : '',
         sort_dir: query.sort_dir != null ? String(query.sort_dir) : '',
     });
+}
+
+const RESULTS_PAGE_TYPES = new Set(['product', 'category', 'info', 'junk', 'unknown']);
+
+/**
+ * Общие WHERE для списка и сводки результатов.
+ * @returns {{ sql: string, params: unknown[], needsPagesJoin: boolean }}
+ */
+function buildResultsWhere(query) {
+    const {
+        project_id,
+        page_status,
+        page_type,
+        search,
+        matched,
+        availability,
+        project_name,
+        price_min,
+        price_max,
+    } = query || {};
+    let sql = '';
+    const params = [];
+    let needsPagesJoin = false;
+
+    if (project_id && project_id !== 'all') {
+        sql += ' AND pr.project_id = ?';
+        params.push(project_id);
+    }
+    if (page_status && ['pending', 'processing', 'done', 'error'].includes(String(page_status).toLowerCase())) {
+        needsPagesJoin = true;
+        sql += ` AND ${PAGE_STATUS_EXPR} = ?`;
+        params.push(String(page_status).toLowerCase());
+    }
+    const pt = String(page_type || '').trim().toLowerCase();
+    if (pt && RESULTS_PAGE_TYPES.has(pt)) {
+        needsPagesJoin = true;
+        sql += ' AND COALESCE(pg.page_type, \'product\') = ?';
+        params.push(pt);
+    }
+    if (search && String(search).trim()) {
+        needsPagesJoin = true;
+        const val = `%${String(search).trim()}%`;
+        sql +=
+            ' AND (pr.sku LIKE ? OR pr.product_name LIKE ? OR pr.url LIKE ? OR COALESCE(pg.url, \'\') LIKE ?)';
+        params.push(val, val, val, val);
+    }
+    if (project_name && String(project_name).trim()) {
+        sql += ' AND EXISTS (SELECT 1 FROM projects pjn WHERE pjn.id = pr.project_id AND pjn.name LIKE ?)';
+        params.push(`%${String(project_name).trim()}%`);
+    }
+    const pMin = parseFloat(String(price_min != null ? price_min : '').trim());
+    if (Number.isFinite(pMin)) {
+        sql += ' AND pr.price >= ?';
+        params.push(pMin);
+    }
+    const pMax = parseFloat(String(price_max != null ? price_max : '').trim());
+    if (Number.isFinite(pMax)) {
+        sql += ' AND pr.price <= ?';
+        params.push(pMax);
+    }
+    if (availability === 'in_stock') {
+        sql += ' AND COALESCE(pr.is_oos, 0) = 0';
+    } else if (availability === 'oos') {
+        sql += ' AND COALESCE(pr.is_oos, 0) = 1';
+    }
+    sql += sqlMatchedFilter(matched);
+    return { sql, params, needsPagesJoin };
 }
 
 function pruneResultsListCache() {
@@ -257,6 +325,16 @@ async function ensureResultsListPerf(db) {
 
 async function runEnsureResultsListPerfOnce(db) {
     try {
+        const [manualCols] = await db.query("SHOW COLUMNS FROM pages LIKE 'page_type_manual'");
+        if (!manualCols.length) {
+            await db.query(
+                'ALTER TABLE pages ADD COLUMN page_type_manual TINYINT(1) NOT NULL DEFAULT 0'
+            );
+        }
+    } catch (e) {
+        console.warn('[results] pages.page_type_manual column:', e.message);
+    }
+    try {
         const [colRows] = await db.query(
             `SELECT COUNT(*) AS cnt
              FROM information_schema.COLUMNS
@@ -416,45 +494,11 @@ module.exports = (db, settings) => {
 
             await ensureResultsListPerf(db);
 
+            const whereBuilt = buildResultsWhere(req.query);
             if (l === 0) {
                 let qcOnly = `SELECT COUNT(*) as total FROM prices pr LEFT JOIN pages pg ON pr.page_id = pg.id WHERE 1=1`;
-                const pcOnly = [];
-                if (project_id && project_id !== 'all') {
-                    qcOnly += ' AND pr.project_id = ?';
-                    pcOnly.push(project_id);
-                }
-                if (page_status && ['pending', 'processing', 'done', 'error'].includes(String(page_status).toLowerCase())) {
-                    const pageStatus = String(page_status).toLowerCase();
-                    qcOnly += ` AND ${PAGE_STATUS_EXPR} = ?`;
-                    pcOnly.push(pageStatus);
-                }
-                if (search && String(search).trim()) {
-                    const val = `%${String(search).trim()}%`;
-                    qcOnly += ' AND (pr.sku LIKE ? OR pr.product_name LIKE ? OR pr.url LIKE ? OR COALESCE(pg.url, \'\') LIKE ?)';
-                    pcOnly.push(val, val, val, val);
-                }
-                if (project_name && String(project_name).trim()) {
-                    const pn = `%${String(project_name).trim()}%`;
-                    qcOnly += ' AND EXISTS (SELECT 1 FROM projects pjn WHERE pjn.id = pr.project_id AND pjn.name LIKE ?)';
-                    pcOnly.push(pn);
-                }
-                const pMin0 = parseFloat(String(price_min != null ? price_min : '').trim());
-                if (Number.isFinite(pMin0)) {
-                    qcOnly += ' AND pr.price >= ?';
-                    pcOnly.push(pMin0);
-                }
-                const pMax0 = parseFloat(String(price_max != null ? price_max : '').trim());
-                if (Number.isFinite(pMax0)) {
-                    qcOnly += ' AND pr.price <= ?';
-                    pcOnly.push(pMax0);
-                }
-                if (availability === 'in_stock') {
-                    qcOnly += ' AND COALESCE(pr.is_oos, 0) = 0';
-                } else if (availability === 'oos') {
-                    qcOnly += ' AND COALESCE(pr.is_oos, 0) = 1';
-                }
-                qcOnly += sqlMatchedFilter(matched);
-                const [cntRows] = await db.query(qcOnly, pcOnly);
+                qcOnly += whereBuilt.sql;
+                const [cntRows] = await db.query(qcOnly, whereBuilt.params);
                 const payloadCount = { rows: [], total: Number(cntRows[0]?.total) || 0 };
                 if (allowResultsListCache) {
                     resultsListResponseCache.set(listCacheKey, { ts: Date.now(), payload: payloadCount });
@@ -474,6 +518,7 @@ module.exports = (db, settings) => {
                 product_name: 'pr.product_name',
                 sku: 'pr.sku',
                 page_status: PAGE_STATUS_EXPR,
+                page_type: 'pg.page_type',
                 is_oos: 'pr.is_oos',
                 price: 'pr.price',
                 url: 'pr.url'
@@ -482,70 +527,14 @@ module.exports = (db, settings) => {
 
             const joinFrom =
                 'FROM prices pr JOIN projects p ON pr.project_id = p.id LEFT JOIN pages pg ON pr.page_id = pg.id WHERE 1=1';
-            let qCond = '';
-            // JOIN pages в COUNT нужен для статуса страницы и для поиска по URL страницы.
-            const needPagesForCount =
-                !!(page_status && ['pending', 'processing', 'done', 'error'].includes(String(page_status).toLowerCase())) ||
-                !!(search && String(search).trim());
+            const qCond = whereBuilt.sql;
+            const needPagesForCount = whereBuilt.needsPagesJoin;
             let qc = needPagesForCount
                 ? `SELECT COUNT(*) as total FROM prices pr LEFT JOIN pages pg ON pr.page_id = pg.id WHERE 1=1`
                 : `SELECT COUNT(*) as total FROM prices pr WHERE 1=1`;
-            let p = [], pc = [];
-            
-            if (project_id && project_id !== 'all') { 
-                qCond += ' AND pr.project_id = ?'; 
-                qc += ' AND pr.project_id = ?'; 
-                p.push(project_id); 
-                pc.push(project_id); 
-            }
-            if (page_status && ['pending', 'processing', 'done', 'error'].includes(String(page_status).toLowerCase())) {
-                const pageStatus = String(page_status).toLowerCase();
-                qCond += ` AND ${PAGE_STATUS_EXPR} = ?`;
-                qc += ` AND ${PAGE_STATUS_EXPR} = ?`;
-                p.push(pageStatus);
-                pc.push(pageStatus);
-            }
-
-            if (search && String(search).trim()) {
-                const val = `%${String(search).trim()}%`;
-                qCond += ' AND (pr.sku LIKE ? OR pr.product_name LIKE ? OR pr.url LIKE ? OR COALESCE(pg.url, \'\') LIKE ?)';
-                qc += ' AND (pr.sku LIKE ? OR pr.product_name LIKE ? OR pr.url LIKE ? OR COALESCE(pg.url, \'\') LIKE ?)';
-                p.push(val, val, val, val);
-                pc.push(val, val, val, val);
-            }
-            if (project_name && String(project_name).trim()) {
-                const pn = `%${String(project_name).trim()}%`;
-                qCond += ' AND p.name LIKE ?';
-                qc += ' AND EXISTS (SELECT 1 FROM projects pjn WHERE pjn.id = pr.project_id AND pjn.name LIKE ?)';
-                p.push(pn);
-                pc.push(pn);
-            }
-            const pMin = parseFloat(String(price_min != null ? price_min : '').trim());
-            if (Number.isFinite(pMin)) {
-                qCond += ' AND pr.price >= ?';
-                qc += ' AND pr.price >= ?';
-                p.push(pMin);
-                pc.push(pMin);
-            }
-            const pMax = parseFloat(String(price_max != null ? price_max : '').trim());
-            if (Number.isFinite(pMax)) {
-                qCond += ' AND pr.price <= ?';
-                qc += ' AND pr.price <= ?';
-                p.push(pMax);
-                pc.push(pMax);
-            }
-            if (availability === 'in_stock') {
-                qCond += ' AND COALESCE(pr.is_oos, 0) = 0';
-                qc += ' AND COALESCE(pr.is_oos, 0) = 0';
-            } else if (availability === 'oos') {
-                qCond += ' AND COALESCE(pr.is_oos, 0) = 1';
-                qc += ' AND COALESCE(pr.is_oos, 0) = 1';
-            }
-            {
-                const mf = sqlMatchedFilter(matched);
-                qCond += mf;
-                qc += mf;
-            }
+            qc += whereBuilt.sql;
+            const p = whereBuilt.params.slice();
+            const pc = whereBuilt.params.slice();
             
             const orderBySql = ` ORDER BY dg_res_sort ${sortDir}, pr.id DESC LIMIT ? OFFSET ?`;
             const idSub = `SELECT pr.id, ${sortField} AS dg_res_sort ${joinFrom}${qCond}${orderBySql}`;
@@ -569,6 +558,8 @@ module.exports = (db, settings) => {
                         GROUP BY prm.id
                       ) dg_res_pm ON dg_res_pm.price_id = pr.id`;
             const q = `SELECT pr.*, p.name as project_name, pg.url as page_url,
+                           COALESCE(pg.page_type, 'product') AS page_type,
+                           COALESCE(pg.page_type_manual, 0) AS page_type_manual,
                            ${PAGE_STATUS_EXPR} as page_status, pg.last_error as page_error, pg.parsed_at as page_parsed_at,
                            ${isMatchedExpr} AS is_matched
                      FROM prices pr 
@@ -599,6 +590,51 @@ module.exports = (db, settings) => {
         } catch (e) {
             console.error('Error fetching results:', e);
             res.status(500).json({ error: e.message });
+        }
+    });
+
+    /**
+     * Сводка по текущим фильтрам: всего / сопоставлено / нет / наличие наличии / под заказ /
+     * ошибки парсинга / без SKU / без цены.
+     * Query — те же, что у GET / (без limit/offset).
+     */
+    router.get('/stats', async (req, res) => {
+        try {
+            await ensureResultsListPerf(db);
+            const whereBuilt = buildResultsWhere(req.query);
+            const matchedSub = matchedPriceIdsSubquerySql();
+            const sql = `
+                SELECT
+                  COUNT(*) AS total,
+                  SUM(CASE WHEN pr.id IN ${matchedSub} THEN 1 ELSE 0 END) AS matched,
+                  SUM(CASE WHEN pr.id NOT IN ${matchedSub} THEN 1 ELSE 0 END) AS unmatched,
+                  SUM(CASE WHEN COALESCE(pr.is_oos, 0) = 0 THEN 1 ELSE 0 END) AS in_stock,
+                  SUM(CASE WHEN COALESCE(pr.is_oos, 0) = 1 THEN 1 ELSE 0 END) AS oos,
+                  SUM(CASE WHEN ${PAGE_STATUS_EXPR} = 'error' THEN 1 ELSE 0 END) AS parse_error,
+                  SUM(CASE WHEN pr.sku IS NULL OR TRIM(pr.sku) = '' THEN 1 ELSE 0 END) AS no_sku,
+                  SUM(CASE WHEN COALESCE(pr.is_oos, 0) = 0 AND (pr.price IS NULL OR pr.price <= 0) THEN 1 ELSE 0 END) AS no_price
+                FROM prices pr
+                LEFT JOIN pages pg ON pr.page_id = pg.id
+                WHERE 1=1
+                ${whereBuilt.sql}
+            `;
+            const [rows] = await db.query(sql, whereBuilt.params);
+            const r = rows[0] || {};
+            const num = (v) => Number(v) || 0;
+            res.json({
+                success: true,
+                total: num(r.total),
+                matched: num(r.matched),
+                unmatched: num(r.unmatched),
+                in_stock: num(r.in_stock),
+                oos: num(r.oos),
+                parse_error: num(r.parse_error),
+                no_sku: num(r.no_sku),
+                no_price: num(r.no_price),
+            });
+        } catch (e) {
+            console.error('Error fetching results stats:', e);
+            res.status(500).json({ success: false, error: e.message });
         }
     });
 

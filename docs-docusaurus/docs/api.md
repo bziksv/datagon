@@ -395,12 +395,22 @@ Query:
 - `project_id`
 - `search` — подстрока по `sku`, `product_name`, `url` (и `pages.url` при join)
 - `matched` — `1` только сопоставленные / `0` только без подтверждённого матча (фильтр через `IN`/`NOT IN` от подтверждённых `product_matches`, не построчный `EXISTS`)
-- для строк ответа дополнительно: `match_partners[]` (`my_sku`, `my_product_name`, `my_site_name`, …), `match_my_sku` / `match_my_name` / `match_my_site` (первая пара)
+- `page_type` — `product` / `category` / `info` / `junk` / `unknown` (тип из `pages.page_type`)
+- для строк ответа дополнительно: `page_type`, `page_type_manual`, `match_partners[]` (`my_sku`, `my_product_name`, `my_site_name`, …), `match_my_sku` / `match_my_name` / `match_my_site` (первая пара)
 - `page_status`, `page_error` (`pages.last_error`) — в UI бейдж «Ошибка» показывает человекочитаемую подсказку по наведению
 - `limit` — максимум **1500** строк на запрос (сверху зажимается на сервере; раньше до 25000 можно было положить Node по памяти).
 - `offset`
 
 Кэш ответа в памяти процесса используется только при `limit` ≤ **400** (и `limit=0` для count-only).
+
+### GET `/api/results/stats`
+Сводка по тем же фильтрам, что `GET /api/results` (без limit/offset): `{ success, total, matched, unmatched, in_stock, oos, parse_error, no_sku, no_price }`.
+
+### PATCH `/api/pages/:id/type`
+Ручная смена типа страницы очереди. Body: `{ "page_type": "product"|"category"|"info"|"junk"|"unknown" }`. Ставит `pages.page_type_manual = 1` (парсер не перезаписывает тип). При типе ≠ `product` удаляет строки `prices` по `page_id` и помечает страницу `done` («Утиль» / категория / инфо — не в «Результатах»). Пишет строку в журнал **`dg_pages_type_log`** (кто / когда / старое→новое).
+
+### GET `/api/pages/:id/type-log`
+Журнал ручных смен типа. Query: `limit` (по умолчанию 8, макс. 50). Ответ: `{ success, page_id, rows: [{ old_value, new_value, old_label, new_label, source, source_label, changed_by_name, note, changed_at, … }] }`. UI «Результаты» — hover/кнопка 🕘 у колонки «Тип».
 
 ### POST `/api/results/clear`
 Очистить результаты (все или по `project_id`).

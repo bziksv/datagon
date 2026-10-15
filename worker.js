@@ -94,13 +94,18 @@ async function runWorker() {
                         for (let sel of oosSelectors) { if ($(sel.trim()).length > 0) { hasOosElement = true; break; } }
                     }
 
-                    const genericProduct = hasGenericProductSignals($, html);
-                    if (!hasPriceElement && !hasOosElement && !genericProduct) {
-                        if ($('.catalog-grid, .news-list, .item_list').length > 0) pageType = 'category';
-                        else pageType = 'info';
+                    const typeLocked = Number(page.page_type_manual) === 1;
+                    const lockedType = String(page.page_type || '').toLowerCase();
+                    if (typeLocked && ['product', 'category', 'info', 'junk', 'unknown'].includes(lockedType)) {
+                        pageType = lockedType;
+                    } else {
+                        const genericProduct = hasGenericProductSignals($, html);
+                        if (!hasPriceElement && !hasOosElement && !genericProduct) {
+                            if ($('.catalog-grid, .news-list, .item_list').length > 0) pageType = 'category';
+                            else pageType = 'info';
+                        }
+                        await db.query('UPDATE pages SET page_type = ? WHERE id = ?', [pageType, page.id]);
                     }
-
-                    await db.query('UPDATE pages SET page_type = ? WHERE id = ?', [pageType, page.id]);
 
                     if (pageType !== 'product') {
                         await db.query('UPDATE pages SET status = "done", parsed_at = NOW(), last_error = NULL WHERE id = ?', [page.id]);

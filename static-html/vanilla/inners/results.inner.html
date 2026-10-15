@@ -79,6 +79,17 @@
                     <option value="0">Только несопоставленные</option>
                   </select>
                 </div>
+                <div class="col-md-2" data-dg-res-filter-field="page_type">
+                  <label class="form-label" for="dg-res-f-page_type">Тип страницы</label>
+                  <select class="form-select" id="dg-res-f-page_type">
+                    <option value="all">Все типы</option>
+                    <option value="product">Товар</option>
+                    <option value="category">Категория</option>
+                    <option value="info">Инфо</option>
+                    <option value="junk">Утиль</option>
+                    <option value="unknown">Неизвестно</option>
+                  </select>
+                </div>
                 <div class="col-md-2" data-dg-res-filter-field="page_status">
                   <label class="form-label" for="dg-res-f-page_status">Статус парсинга</label>
                   <select class="form-select" id="dg-res-f-page_status">
@@ -120,6 +131,57 @@
               </div>
               </div>
               <p class="text-muted mb-0 mt-2" id="dg-res-filters-hint">Всего записей: 0</p>
+            </div>
+          </div>
+
+          <div class="row row-cols-2 row-cols-md-4 row-cols-xl-8 g-2 dg-res-stats-row align-items-stretch mb-3">
+            <div class="col d-flex">
+              <button type="button" class="card mb-0 card-body dg-res-stat-card w-100 text-start border" id="dg-res-st-total" data-dg-res-stat="total" data-dg-notify-start="Фильтр: все по текущим условиям…">
+                <div class="text-muted dg-res-stat-label"><i class="pe-7s-box2 me-1"></i>Всего</div>
+                <div class="h4 mb-0 dg-res-stat-value" id="dg-res-st-total-v">—</div>
+              </button>
+            </div>
+            <div class="col d-flex">
+              <button type="button" class="card mb-0 card-body dg-res-stat-card w-100 text-start border" id="dg-res-st-matched" data-dg-res-stat="matched" data-dg-notify-start="Фильтр: сопоставленные…">
+                <div class="text-muted dg-res-stat-label"><i class="pe-7s-link me-1"></i>Сопоставлено</div>
+                <div class="h4 mb-0 dg-res-stat-value text-success" id="dg-res-st-matched-v">—</div>
+              </button>
+            </div>
+            <div class="col d-flex">
+              <button type="button" class="card mb-0 card-body dg-res-stat-card w-100 text-start border" id="dg-res-st-unmatched" data-dg-res-stat="unmatched" data-dg-notify-start="Фильтр: не сопоставлено…">
+                <div class="text-muted dg-res-stat-label"><i class="pe-7s-unlink me-1"></i>Не сопоставлено</div>
+                <div class="h4 mb-0 dg-res-stat-value text-warning" id="dg-res-st-unmatched-v">—</div>
+              </button>
+            </div>
+            <div class="col d-flex">
+              <button type="button" class="card mb-0 card-body dg-res-stat-card w-100 text-start border" id="dg-res-st-in_stock" data-dg-res-stat="in_stock" data-dg-notify-start="Фильтр: в наличии…">
+                <div class="text-muted dg-res-stat-label"><i class="pe-7s-check me-1"></i>В наличии</div>
+                <div class="h4 mb-0 dg-res-stat-value" id="dg-res-st-in_stock-v">—</div>
+              </button>
+            </div>
+            <div class="col d-flex">
+              <button type="button" class="card mb-0 card-body dg-res-stat-card w-100 text-start border" id="dg-res-st-oos" data-dg-res-stat="oos" data-dg-notify-start="Фильтр: под заказ…">
+                <div class="text-muted dg-res-stat-label"><i class="pe-7s-less me-1"></i>Под заказ</div>
+                <div class="h4 mb-0 dg-res-stat-value" id="dg-res-st-oos-v">—</div>
+              </button>
+            </div>
+            <div class="col d-flex">
+              <button type="button" class="card mb-0 card-body dg-res-stat-card w-100 text-start border" id="dg-res-st-parse_error" data-dg-res-stat="parse_error" data-dg-notify-start="Фильтр: ошибки парсинга…">
+                <div class="text-muted dg-res-stat-label"><i class="pe-7s-close-circle me-1"></i>Ошибки парсинга</div>
+                <div class="h4 mb-0 dg-res-stat-value text-danger" id="dg-res-st-parse_error-v">—</div>
+              </button>
+            </div>
+            <div class="col d-flex">
+              <button type="button" class="card mb-0 card-body dg-res-stat-card w-100 text-start border" id="dg-res-st-no_sku" data-dg-res-stat="no_sku" data-dg-tooltip="Товары без SKU в текущей выборке (клик не меняет фильтр — смотрите таблицу или поиск)">
+                <div class="text-muted dg-res-stat-label"><i class="pe-7s-ticket me-1"></i>Без SKU</div>
+                <div class="h4 mb-0 dg-res-stat-value" id="dg-res-st-no_sku-v">—</div>
+              </button>
+            </div>
+            <div class="col d-flex">
+              <button type="button" class="card mb-0 card-body dg-res-stat-card w-100 text-start border" id="dg-res-st-no_price" data-dg-res-stat="no_price" data-dg-tooltip="В наличии, но цена пустая или 0 — часто промах селектора">
+                <div class="text-muted dg-res-stat-label"><i class="pe-7s-cash me-1"></i>Без цены</div>
+                <div class="h4 mb-0 dg-res-stat-value" id="dg-res-st-no_price-v">—</div>
+              </button>
             </div>
           </div>
 
@@ -191,13 +253,13 @@
                       <tr>
                         <th style="cursor:pointer" data-res-sort="parsed_at" data-res-col-label="Дата"><span class="dg-res-th-text">Дата</span></th>
                         <th style="cursor:pointer" data-res-sort="project_name" data-res-col-label="Проект"><span class="dg-res-th-text">Проект</span></th>
+                        <th style="cursor:pointer" data-res-sort="page_type" data-res-col-label="Тип"><span class="dg-res-th-text">Тип</span></th>
                         <th style="cursor:pointer" data-res-sort="product_name" data-res-col-label="Товар"><span class="dg-res-th-text">Товар</span></th>
                         <th style="cursor:pointer" data-res-sort="sku" data-res-col-label="SKU"><span class="dg-res-th-text">SKU</span></th>
                         <th data-res-col-label="Сопоставление"><span class="dg-res-th-text">Сопоставление</span></th>
                         <th style="cursor:pointer" data-res-sort="page_status" data-res-col-label="Парсинг"><span class="dg-res-th-text">Парсинг</span></th>
                         <th style="cursor:pointer" data-res-sort="is_oos" data-res-col-label="Наличие"><span class="dg-res-th-text">Наличие</span></th>
                         <th style="cursor:pointer" data-res-sort="price" data-res-col-label="Цена"><span class="dg-res-th-text">Цена</span></th>
-                        <th style="cursor:pointer" data-res-sort="url" data-res-col-label="URL"><span class="dg-res-th-text">URL</span></th>
                         <th data-res-col-label="Действия"><span class="dg-res-th-text">Действия</span></th>
                       </tr>
                     </thead>
@@ -221,6 +283,27 @@
                 </div>
               </div>
               <p class="text-muted mb-0 mt-2" id="dg-res-table-hint">Страница 1/1</p>
+              </div>
+            </div>
+          </div>
+
+          <div
+            id="dg-res-type-confirm-overlay"
+            class="dg-res-confirm-overlay d-none"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="dg-res-type-confirm-title"
+            hidden
+          >
+            <div class="dg-res-confirm-backdrop" id="dg-res-type-confirm-backdrop"></div>
+            <div class="dg-res-confirm-panel card shadow-lg border-0">
+              <div class="card-body">
+                <h5 class="card-title mb-2" id="dg-res-type-confirm-title">Сменить тип страницы?</h5>
+                <p class="card-text text-muted mb-3" id="dg-res-type-confirm-text"></p>
+                <div class="d-flex justify-content-end gap-2">
+                  <button type="button" class="btn btn-outline-secondary" id="dg-res-type-confirm-cancel">Отмена</button>
+                  <button type="button" class="btn btn-danger" id="dg-res-type-confirm-ok" data-dg-notify-start="Меняем тип страницы…">Сменить тип</button>
+                </div>
               </div>
             </div>
           </div>

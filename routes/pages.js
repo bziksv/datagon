@@ -48,6 +48,27 @@ module.exports = (db, settings) => {
     let pagesAddedFromReady = false;
     let pagesAddedAtReady = false;
     let pagesStatusReady = false;
+    let pagesTypeManualReady = false;
+    let pagesTypeLogReady = false;
+    /** Допустимые значения pages.page_type (в т.ч. ручной «утиль»). */
+    const PAGE_TYPE_VALUES = new Set(['product', 'category', 'info', 'junk', 'unknown']);
+    const PAGE_TYPE_LABELS = {
+        product: 'Товар',
+        category: 'Категория',
+        info: 'Инфо',
+        junk: 'Утиль',
+        unknown: 'Неизвестно',
+    };
+
+    function actorDisplayName(actor) {
+        if (!actor) return '';
+        return String(actor.full_name || actor.username || '').trim();
+    }
+
+    function pageTypeLabel(v) {
+        const t = String(v || '').toLowerCase();
+        return PAGE_TYPE_LABELS[t] || t || '—';
+    }
     let pagesQueryCleanupDone = false;
     let discoverySchemaReady = false;
     const activeDiscoveryRunIds = new Map();
@@ -158,6 +179,72 @@ module.exports = (db, settings) => {
             await db.query("UPDATE pages SET status = 'sitemap' WHERE (status = '' OR status IS NULL) AND added_from IN ('Sitemap','Ссылка со стр.')");
             pagesStatusReady = true;
         } catch (_) {}
+    }
+
+    /** Ручная смена типа: парсер не перезаписывает page_type, пока флаг = 1. */
+    async function ensurePagesTypeManualColumn() {
+        if (pagesTypeManualReady) return;
+        try {
+            const [cols] = await db.query("SHOW COLUMNS FROM pages LIKE 'page_type_manual'");
+            if (!cols.length) {
+                await db.query(
+                    'ALTER TABLE pages ADD COLUMN page_type_manual TINYINT(1) NOT NULL DEFAULT 0'
+                );
+            }
+            pagesTypeManualReady = true;
+        } catch (_) {}
+    }
+
+    /** Журнал ручных смен page_type (hover-tip на «Результаты», как у закупок/габаритов). */
+    async function ensurePagesTypeLogTable() {
+        if (pagesTypeLogReady) return;
+        try {
+            await db.query(`
+                CREATE TABLE IF NOT EXISTS dg_pages_type_log (
+                    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                    page_id INT NOT NULL,
+                    project_id INT NULL,
+                    url VARCHAR(2048) NULL,
+                    old_value VARCHAR(32) NULL,
+                    new_value VARCHAR(32) NULL,
+                    source VARCHAR(32) NOT NULL DEFAULT 'ui',
+                    changed_by_user_id INT NULL,
+                    changed_by_name VARCHAR(255) NULL,
+                    note VARCHAR(500) NULL,
+                    changed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    INDEX idx_dg_pages_type_log_page (page_id, changed_at),
+                    INDEX idx_dg_pages_type_log_user (changed_by_user_id)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            `);
+            pagesTypeLogReady = true;
+        } catch (e) {
+            console.warn('[pages] dg_pages_type_log:', e && e.message ? e.message : e);
+        }
+    }
+
+    async function insertPageTypeLog(opts) {
+        await ensurePagesTypeLogTable();
+        const pageId = Number(opts.pageId);
+        if (!Number.isFinite(pageId) || pageId <= 0) return;
+        const actor = opts.actor || null;
+        const uid = actor && actor.id != null ? Number(actor.id) : null;
+        const uname = actorDisplayName(actor) || null;
+        await db.query(
+            `INSERT INTO dg_pages_type_log
+                (page_id, project_id, url, old_value, new_value, source, changed_by_user_id, changed_by_name, note)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+                pageId,
+                opts.projectId != null ? Number(opts.projectId) : null,
+                opts.url != null ? String(opts.url).slice(0, 2048) : null,
+                opts.oldVal != null ? String(opts.oldVal).slice(0, 32) : null,
+                opts.newVal != null ? String(opts.newVal).slice(0, 32) : null,
+                String(opts.source || 'ui').slice(0, 32),
+                Number.isFinite(uid) ? uid : null,
+                uname,
+                opts.note != null ? String(opts.note).slice(0, 500) : null,
+            ]
+        );
     }
 
     async function cleanupDiscoveredUrlsWithQuery() {
@@ -689,13 +776,18 @@ module.exports = (db, settings) => {
                 : (hasHardOosByText || hasOosBySelector || hasOosByText || priceOnRequest)
                     ? true
                     : false;            
-            type = detectPageType($, pageRow.url, pr, hasPrice, hasOos, hasInStockByText, html);
-            
-            await db.query('UPDATE pages SET page_type = ? WHERE id = ?', [type, pageRow.id]);
-            
-            if (type !== 'product') { 
-                await db.query('UPDATE pages SET status = "done", parsed_at = NOW() WHERE id = ?', [pageRow.id]); 
-                return; 
+            await ensurePagesTypeManualColumn();
+            const typeLocked = Number(pageRow.page_type_manual) === 1;
+            if (typeLocked && PAGE_TYPE_VALUES.has(String(pageRow.page_type || '').toLowerCase())) {
+                type = String(pageRow.page_type).toLowerCase();
+            } else {
+                type = detectPageType($, pageRow.url, pr, hasPrice, hasOos, hasInStockByText, html);
+                await db.query('UPDATE pages SET page_type = ? WHERE id = ?', [type, pageRow.id]);
+            }
+
+            if (type !== 'product') {
+                await db.query('UPDATE pages SET status = "done", parsed_at = NOW() WHERE id = ?', [pageRow.id]);
+                return;
             }
 
             let name = '';
@@ -778,6 +870,7 @@ module.exports = (db, settings) => {
             await ensurePagesAddedFromColumn();
             await ensurePagesAddedAtColumn();
             await ensurePagesStatusColumnSupportsSitemap();
+            await ensurePagesTypeManualColumn();
             await ensurePagesParseCacheColumns(db);
             await cleanupDiscoveredUrlsWithQuery();
             // Старые deadlock-error: не держим как «Ошибка», сразу снова в очередь
@@ -1275,6 +1368,8 @@ module.exports = (db, settings) => {
                 ensurePagesAddedFromColumn(),
                 ensurePagesAddedAtColumn(),
                 ensurePagesStatusColumnSupportsSitemap(),
+                ensurePagesTypeManualColumn(),
+                ensurePagesTypeLogTable(),
                 ensurePagesQueueIndex(),
                 ensurePagesParseCacheColumns(db),
             ]);
@@ -1429,6 +1524,136 @@ module.exports = (db, settings) => {
             res.json({ success: true });
         } catch (e) {
             res.status(500).json({ error: e.message });
+        }
+    });
+
+    /**
+     * Ручная смена типа страницы (очередь / результаты).
+     * Ставит page_type_manual=1 — автоклассификация при парсинге не перетирает.
+     * Body: { page_type: product|category|info|junk|unknown }
+     * При типе ≠ product удаляет строки prices по page_id (не товар — не в «Результаты»).
+     */
+    router.patch('/:id/type', async (req, res) => {
+        try {
+            await ensurePagesTypeManualColumn();
+            await ensurePagesTypeLogTable();
+            const pageId = Number(req.params.id);
+            const pageType = String(req.body?.page_type || '')
+                .trim()
+                .toLowerCase();
+            if (!Number.isFinite(pageId) || pageId <= 0) {
+                return res.status(400).json({ success: false, error: 'Некорректный id страницы' });
+            }
+            if (!PAGE_TYPE_VALUES.has(pageType)) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Допустимые типы: product, category, info, junk, unknown',
+                });
+            }
+            const [rows] = await db.query(
+                'SELECT id, page_type, page_type_manual, project_id, url FROM pages WHERE id = ?',
+                [pageId]
+            );
+            if (!rows.length) {
+                return res.status(404).json({ success: false, error: 'Страница не найдена' });
+            }
+            const prev = String(rows[0].page_type || '').toLowerCase() || null;
+            if (prev === pageType && Number(rows[0].page_type_manual) === 1) {
+                return res.json({
+                    success: true,
+                    page_id: pageId,
+                    page_type: pageType,
+                    page_type_manual: 1,
+                    prices_deleted: 0,
+                    unchanged: true,
+                });
+            }
+            await db.query(
+                'UPDATE pages SET page_type = ?, page_type_manual = 1 WHERE id = ?',
+                [pageType, pageId]
+            );
+            let pricesDeleted = 0;
+            let note = null;
+            if (pageType !== 'product') {
+                const [del] = await db.query('DELETE FROM prices WHERE page_id = ?', [pageId]);
+                pricesDeleted = Number(del.affectedRows) || 0;
+                await db.query(
+                    'UPDATE pages SET status = "done", last_error = NULL, parsed_at = COALESCE(parsed_at, NOW()) WHERE id = ?',
+                    [pageId]
+                );
+                if (pricesDeleted) note = `убрано из результатов: ${pricesDeleted}`;
+                try {
+                    const { invalidateResultsListCache } = require('./results');
+                    if (typeof invalidateResultsListCache === 'function') invalidateResultsListCache();
+                } catch (_) {}
+            }
+            await insertPageTypeLog({
+                pageId,
+                projectId: rows[0].project_id,
+                url: rows[0].url,
+                oldVal: prev,
+                newVal: pageType,
+                source: 'ui',
+                actor: req.datagonActor || null,
+                note,
+            });
+            res.json({
+                success: true,
+                page_id: pageId,
+                page_type: pageType,
+                page_type_manual: 1,
+                prices_deleted: pricesDeleted,
+                old_page_type: prev,
+            });
+        } catch (e) {
+            res.status(500).json({ success: false, error: e.message });
+        }
+    });
+
+    /**
+     * Журнал смен типа страницы (для hover-tip в «Результаты»).
+     * Query: limit (по умолчанию 8, макс. 50).
+     */
+    router.get('/:id/type-log', async (req, res) => {
+        try {
+            await ensurePagesTypeLogTable();
+            const pageId = Number(req.params.id);
+            if (!Number.isFinite(pageId) || pageId <= 0) {
+                return res.status(400).json({ success: false, error: 'Некорректный id страницы' });
+            }
+            let limit = parseInt(String(req.query.limit || '8'), 10);
+            if (!Number.isFinite(limit) || limit < 1) limit = 8;
+            limit = Math.min(limit, 50);
+            const [rows] = await db.query(
+                `SELECT id, page_id, old_value, new_value, source,
+                        changed_by_user_id, changed_by_name, note, changed_at
+                   FROM dg_pages_type_log
+                  WHERE page_id = ?
+                  ORDER BY changed_at DESC, id DESC
+                  LIMIT ?`,
+                [pageId, limit]
+            );
+            res.json({
+                success: true,
+                page_id: pageId,
+                rows: (rows || []).map((r) => ({
+                    id: Number(r.id),
+                    page_id: Number(r.page_id),
+                    old_value: r.old_value != null ? String(r.old_value) : null,
+                    new_value: r.new_value != null ? String(r.new_value) : null,
+                    old_label: pageTypeLabel(r.old_value),
+                    new_label: pageTypeLabel(r.new_value),
+                    source: r.source != null ? String(r.source) : 'ui',
+                    source_label: String(r.source || 'ui') === 'ui' ? 'Вручную' : String(r.source || ''),
+                    changed_by_user_id:
+                        r.changed_by_user_id != null ? Number(r.changed_by_user_id) : null,
+                    changed_by_name: r.changed_by_name != null ? String(r.changed_by_name) : '',
+                    note: r.note != null ? String(r.note) : '',
+                    changed_at: r.changed_at,
+                })),
+            });
+        } catch (e) {
+            res.status(500).json({ success: false, error: e.message });
         }
     });
 
