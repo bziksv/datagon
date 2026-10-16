@@ -1405,6 +1405,8 @@ module.exports = function exportsNewProductsRouterFactory(db, config, appSetting
             const placement = String(req.query.placement || '')
                 .trim()
                 .toLowerCase();
+            const gapRaw = String(req.query.gap || '').trim();
+            const gap = markets.PRESENCE_GAP_KEYS.has(gapRaw) ? gapRaw : '';
 
             let limit = parseInt(req.query.limit, 10);
             if (!Number.isFinite(limit) || limit < 1) limit = 100;
@@ -1533,7 +1535,43 @@ module.exports = function exportsNewProductsRouterFactory(db, config, appSetting
                 }
             }
 
-            const whereSql = where.join(' AND ');
+            let whereSql = where.join(' AND ');
+            if (gap) {
+                const gapIds = await markets.idsMissingPresenceGap(db, whereSql, params, gap);
+                if (!gapIds.length) {
+                    return res.json({
+                        success: true,
+                        data: [],
+                        total: 0,
+                        limit,
+                        offset,
+                        channel,
+                        incomplete_count: 0,
+                        required_fields: channel === 'marketplaces' ? markets.MARKETS_REQUIRED : REQUIRED_KEYS,
+                        can_edit_huckster: actorCanEditHuckster(req.datagonActor),
+                        can_set_verified: actorCanSetVerified(req.datagonActor),
+                        applied_filters: {
+                            search,
+                            status: status || '',
+                            priority: priority || '',
+                            brand,
+                            responsible,
+                            manager,
+                            exclude_verified: excludeVerified ? '1' : '0',
+                            wip: wipOnly ? '1' : '0',
+                            stale_days: staleDays > 0 ? String(staleDays) : '',
+                            placement:
+                                placement === 'none' || placement === 'all3' || placement === 'any' ? placement : '',
+                            gap,
+                        },
+                        sort_by: sortBy,
+                        sort_dir: sortDesc ? 'desc' : 'asc',
+                    });
+                }
+                where.push(`id IN (${gapIds.map(() => '?').join(',')})`);
+                params.push(...gapIds);
+                whereSql = where.join(' AND ');
+            }
             let orderSql;
             if (sortBy === 'priority') {
                 orderSql = `${PRIORITY_ORDER_SQL} ${sortDesc ? 'DESC' : 'ASC'}, COALESCE(channel_num, id) DESC`;
@@ -1592,6 +1630,7 @@ module.exports = function exportsNewProductsRouterFactory(db, config, appSetting
                     wip: wipOnly ? '1' : '0',
                     stale_days: staleDays > 0 ? String(staleDays) : '',
                     placement: placement === 'none' || placement === 'all3' || placement === 'any' ? placement : '',
+                    gap,
                 },
                 sort_by: sortBy,
                 sort_dir: sortDesc ? 'desc' : 'asc',

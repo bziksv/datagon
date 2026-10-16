@@ -2324,6 +2324,18 @@
                   Убрать размещенные
                 </button>
               </div>
+              <div class="mt-3" id="dg-np-gap-presets">
+                <div class="small text-muted mb-1">Пресеты «нет в» — по бейджам «Связь», обе вкладки</div>
+                <div class="d-flex flex-wrap gap-1">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" data-dg-np-gap="no_almamed" data-dg-notify-start="Пресет: нет на Альмамед…">Нет на Альмамед</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" data-dg-np-gap="no_ms" data-dg-notify-start="Пресет: нет в МойСклад…">Нет в МойСклад</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" data-dg-np-gap="no_my" data-dg-notify-start="Пресет: нет в Моих товарах…">Нет в моих товарах</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" data-dg-np-gap="no_ozon" data-dg-notify-start="Пресет: нет на Ozon…">Нет на Ozon</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" data-dg-np-gap="no_wb" data-dg-notify-start="Пресет: нет на WB…">Нет на WB</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" data-dg-np-gap="no_ym" data-dg-notify-start="Пресет: нет на Я.Маркет…">Нет на Я.Маркет</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" data-dg-np-gap="no_huckster" data-dg-notify-start="Пресет: нет в Huckster…">Нет в Huckster</button>
+                </div>
+              </div>
               <div id="dg-np-action-log" class="alert mt-3 mb-0 d-none" role="status"></div>
             </div>
           </div>
@@ -3301,6 +3313,8 @@
     hide_placed: false,
     /** KPI-фильтр: wip | stale14 | placement_none | placement_all3 | mp_wip | '' */
     list_scope: "",
+    /** Пресет бейджей «Связь»: no_almamed | no_ms | no_my | no_ozon | no_wb | no_ym | no_huckster | '' */
+    gap: "",
     placementOverview: null,
     pending: {
       search: "",
@@ -4705,6 +4719,8 @@
     if (el("dg-np-f-responsible")) el("dg-np-f-responsible").value = "";
     if (el("dg-np-f-manager")) el("dg-np-f-manager").value = "";
     state.hide_placed = false;
+    state.gap = "";
+    syncGapPresetUi();
     persistHidePlaced();
     syncRemovePlacedBtn();
   }
@@ -5010,6 +5026,22 @@
     syncPlacementKpiActive();
   }
 
+  function syncGapPresetUi() {
+    document.querySelectorAll("#dg-np-gap-presets [data-dg-np-gap]").forEach(function (btn) {
+      var on = btn.getAttribute("data-dg-np-gap") === state.gap;
+      btn.classList.toggle("btn-primary", on);
+      btn.classList.toggle("btn-outline-secondary", !on);
+    });
+  }
+
+  function applyGapPreset(key) {
+    var k = String(key || "");
+    state.gap = state.gap === k ? "" : k;
+    state.offset = 0;
+    syncGapPresetUi();
+    load();
+  }
+
   function resetFilters() {
     el("dg-np-search").value = "";
     el("dg-np-f-status").value = "";
@@ -5018,6 +5050,8 @@
     el("dg-np-f-responsible").value = "";
     el("dg-np-f-manager").value = "";
     state.list_scope = "";
+    state.gap = "";
+    syncGapPresetUi();
     if (state.channel === "almamed") {
       state.hide_placed = false;
       persistHidePlaced();
@@ -6617,6 +6651,7 @@
     if (state.list_scope === "placement_none") p.set("placement", "none");
     if (state.list_scope === "placement_all3") p.set("placement", "all3");
     if (state.list_scope === "placement_any") p.set("placement", "any");
+    if (state.gap) p.set("gap", state.gap);
     return fetch("/api/exports/new-products?" + p.toString(), {
       credentials: "same-origin",
       headers: authHeaders(false),
@@ -9018,6 +9053,8 @@
         if (el("dg-np-f-responsible")) el("dg-np-f-responsible").value = "";
         if (el("dg-np-f-manager")) el("dg-np-f-manager").value = "";
         state.list_scope = "";
+        state.gap = "";
+        syncGapPresetUi();
         state.hide_placed = false;
         try {
           var filtersBody = el("dg-np-filters-body");
@@ -9732,6 +9769,15 @@
     el("dg-np-add").addEventListener("click", addRow);
     bindBulkAddUi();
     bindPlacementKpiUi();
+    var gapBox = el("dg-np-gap-presets");
+    if (gapBox) {
+      gapBox.addEventListener("click", function (e) {
+        var btn = e.target && e.target.closest ? e.target.closest("[data-dg-np-gap]") : null;
+        if (!btn) return;
+        applyGapPreset(btn.getAttribute("data-dg-np-gap"));
+      });
+    }
+    syncGapPresetUi();
     el("dg-np-distribute").addEventListener("click", distribute);
     var btnSync = el("dg-np-sync-markets");
     if (btnSync) btnSync.addEventListener("click", syncMarketsQueue);

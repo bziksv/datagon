@@ -1523,6 +1523,8 @@ Body (JSON):
 
 **Сводка размещения (Альмамед):** `GET /api/exports/new-products/placement-overview` — снимок KPI «сейчас» (`almamed.wip` / `by_status` / `wip_stale14` / `wip_important`, `markets.linked|wip|ozon|wb|ym|all3|none_live`). UI: карточка **«Сводка размещения»** над выгрузкой; клик по KPI ставит фильтр списка. Доп. query списка: `wip=1`, `stale_days=14`, `placement=none|all3|any` (для вкладки маркетов — по `placement_ozon/wb/ym`).
 
+**Пресеты «нет в»** (обе вкладки, кнопки в «Фильтры и действия»): query `gap=no_almamed|no_ms|no_my|no_ozon|no_wb|no_ym|no_huckster`. Отбор по тем же бейджам колонки **«Связь»**: нет ссылки Альмамед, нет в `ms_export`, нет SKU в `my_products`, нет в выгрузке Ozon / WB / Я.Маркет, нет в снапшоте Huckster и не отмечено «Добавлено». Повторный клик снимает пресет. В `applied_filters.gap`.
+
 **UI / wide-таблица (lock):** плавающая шапка — `#dg-np-float-host` (`position: fixed` клон thead), **не** `translate3d` на живом `#dg-np-thead` (тяжёлая таблица; shop-схема Ozon сюда не копировать). Ширины — только `<colgroup>`, `table-layout: auto`. Контракт: `.cursor/rules/datagon-table-behavior-lock.mdc` (раздел «Новые товары»).
 
 Доступ по матрице страницы **`exports-new-products`** (как дочерняя маркетплейсов наследует скрытие родителя `exports-marketplaces`, если у дочерней нет явного `view`/`full`).
