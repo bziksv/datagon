@@ -28,6 +28,7 @@ const PAGES = [
   "sections.html",
   "exports-marketplaces.html",
   "exports-marketplaces-ozon.html",
+  "exports-ozon-merge.html",
   "exports-marketplaces-wildberries.html",
   "exports-marketplaces-yandex.html",
   "exports-dimensions.html",

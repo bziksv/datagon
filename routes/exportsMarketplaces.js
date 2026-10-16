@@ -41,6 +41,16 @@ const {
     updateYmOffersVatBatch,
     patchLocalYmVat,
 } = require('../lib/ymProductVatUpdate');
+const {
+    getOzonMergeLog,
+    scanOzonMergeAttributesToCache,
+    buildAutoMergeGroupsList,
+    saveOzonMergeDecision,
+    previewOzonMergeGroups,
+    applyOzonMergeGroups,
+    unmergeOzonGroup,
+    searchOzonAttributeDictionaryValues,
+} = require('../lib/ozonProductMerge');
 
 const MARKETPLACE_EXTERNAL_KEY = {
     ozon: 'offer_id',
@@ -254,26 +264,65 @@ async function enrichRowsWithMsManagers(db, kind, rows) {
     }
 }
 
+const MP_SETTINGS_DB_KEYS = [
+    'ozon_client_id',
+    'ozon_api_key',
+    'wb_api_key',
+    'wb_token_type',
+    'ym_api_key',
+    'ym_campaign_id',
+    'ym_business_id',
+    'mp_ozon_delay_ms',
+    'mp_wb_delay_cards_ms',
+    'mp_wb_delay_other_ms',
+    'mp_yandex_delay_ms',
+    'mp_ozon_include_archived',
+];
+
+async function refreshMarketplaceCredsFromDb(db, appSettings) {
+    if (!db || typeof db.query !== 'function' || !appSettings || typeof appSettings !== 'object') {
+        return appSettings;
+    }
+    try {
+        const ph = MP_SETTINGS_DB_KEYS.map(() => '?').join(',');
+        const [rows] = await db.query(
+            `SELECT setting_key, setting_value FROM app_settings WHERE setting_key IN (${ph})`,
+            MP_SETTINGS_DB_KEYS
+        );
+        for (const r of rows || []) {
+            if (r && r.setting_key) {
+                appSettings[r.setting_key] = r.setting_value != null ? String(r.setting_value) : '';
+            }
+        }
+    } catch (e) {
+        console.warn('[exports/marketplaces] refreshMarketplaceCredsFromDb warn:', e.message || e);
+    }
+    return appSettings;
+}
+
 function getOzonCreds(appSettings) {
+    const s = appSettings || {};
     return {
-        clientId: String(process.env.OZON_CLIENT_ID || appSettings.ozon_client_id || '').trim(),
-        apiKey: String(process.env.OZON_API_KEY || appSettings.ozon_api_key || '').trim(),
+        clientId: String(s.ozon_client_id || '').trim(),
+        apiKey: String(s.ozon_api_key || '').trim(),
     };
 }
 
 function getWbCreds(appSettings) {
+    const s = appSettings || {};
     return {
-        apiKey: String(process.env.WB_API_KEY || appSettings.wb_api_key || '').trim(),
+        apiKey: String(s.wb_api_key || '').trim(),
     };
 }
 
 /**
  * Тип WB-токена в кабинете (personal/service/base/test). Передаётся в экспорт только для лога;
  * лимиты WB задаются категорией API (Content / Prices & Discounts / Marketplace), а не этим полем.
- * Источник: process.env.WB_TOKEN_TYPE → app_settings.wb_token_type → 'base'.
+ * Источник: ТОЛЬКО app_settings.wb_token_type (/settings.html) → 'base'.
  */
 function getWbTokenType(appSettings) {
-    const raw = String(process.env.WB_TOKEN_TYPE || appSettings.wb_token_type || 'base')
+    const s = appSettings || {};
+    const raw = String(s.wb_token_type || 'base')
         .trim()
         .toLowerCase();
     if (raw === 'personal' || raw === 'service' || raw === 'test') return raw;
@@ -281,10 +330,11 @@ function getWbTokenType(appSettings) {
 }
 
 function getYmCreds(appSettings) {
+    const s = appSettings || {};
     return {
-        apiKey: String(process.env.YM_API_KEY || appSettings.ym_api_key || '').trim(),
-        campaignId: String(process.env.YM_CAMPAIGN_ID || appSettings.ym_campaign_id || '').trim(),
-        businessId: String(process.env.YM_BUSINESS_ID || appSettings.ym_business_id || '').trim(),
+        apiKey: String(s.ym_api_key || '').trim(),
+        campaignId: String(s.ym_campaign_id || '').trim(),
+        businessId: String(s.ym_business_id || '').trim(),
     };
 }
 
@@ -473,7 +523,8 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
         },
     };
 
-    router.get('/status', (req, res) => {
+    router.get('/status', async (req, res) => {
+        await refreshMarketplaceCredsFromDb(db, appSettings);
         const ozon = getOzonCreds(appSettings);
         const wb = getWbCreds(appSettings);
         const ym = getYmCreds(appSettings);
@@ -496,9 +547,8 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
                 yandex: parseMsOrDefault(appSettings.mp_yandex_delay_ms, 280, MP_MIN_DELAY_MS.yandex),
             },
             hints: {
-                env: 'Можно задать переменные окружения: OZON_CLIENT_ID, OZON_API_KEY, WB_API_KEY, WB_TOKEN_TYPE (personal|service|base|test), YM_API_KEY, YM_CAMPAIGN_ID, YM_BUSINESS_ID (опционально для ссылки покупателю).',
                 settings:
-                    'Либо ключи/лимиты в БД через POST /api/exports/marketplaces/config (см. api.md): ozon_client_id, ozon_api_key, wb_api_key, wb_token_type, ym_api_key, ym_campaign_id, ym_business_id, mp_ozon_delay_ms, mp_wb_delay_cards_ms, mp_wb_delay_other_ms, mp_yandex_delay_ms.',
+                    'Ключи и лимиты маркетплейсов берутся ТОЛЬКО из БД (app_settings) со страницы Настройки (/settings.html): ozon_client_id, ozon_api_key, wb_api_key, wb_token_type, ym_api_key, ym_campaign_id, ym_business_id, mp_ozon_delay_ms, mp_wb_delay_cards_ms, mp_wb_delay_other_ms, mp_yandex_delay_ms.',
                 pacing:
                     'Query delay_* можно только увеличить относительно дефолта; жёсткий минимум в rate_limits_ms_min. Лимиты кабинетов уточняйте в официальной документации маркетплейсов.',
                 wb_token_types:
@@ -619,7 +669,8 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
             const updatedAt = rows.length ? rows[0].updated || '' : '';
             const note =
                 rows.length === 0
-                    ? (() => {
+                    ? await (async () => {
+                          await refreshMarketplaceCredsFromDb(db, appSettings);
                           const credsOk =
                               kind === 'ozon'
                                   ? maskSet(getOzonCreds(appSettings).clientId) &&
@@ -630,7 +681,7 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
                                       maskSet(getYmCreds(appSettings).campaignId);
                           return credsOk
                               ? 'Сохранённого снапшота нет. Запустите «Обновить из маркетплейса».'
-                              : 'Сохранённого снапшота нет, и ключи маркетплейса не заданы (см. «Маркетплейсы → Настройки»).';
+                              : 'Сохранённого снапшота нет, и ключи маркетплейса не заданы (см. «Настройки»).';
                       })()
                     : '';
             return res.json({
@@ -685,6 +736,7 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
         const httpUser = (req.headers['x-auth-username'] || '').toString();
         logger.log('http:request', { format: stream ? 'ndjson' : format, maxItems, ip: req.ip, user: httpUser || null });
         try {
+            await refreshMarketplaceCredsFromDb(db, appSettings);
             const creds =
                 kind === 'ozon'
                     ? getOzonCreds(appSettings)
@@ -838,6 +890,7 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
     }
 
     async function runSingleRefresh(kind) {
+        await refreshMarketplaceCredsFromDb(db, appSettings);
         const creds =
             kind === 'ozon'
                 ? getOzonCreds(appSettings)
@@ -1799,6 +1852,7 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
                 });
             }
 
+            await refreshMarketplaceCredsFromDb(db, appSettings);
             const creds = getOzonCreds(appSettings || {});
             if (!creds.clientId || !creds.apiKey) {
                 return res.status(400).json({
@@ -1976,6 +2030,7 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
                 });
             }
 
+            await refreshMarketplaceCredsFromDb(db, appSettings);
             const creds = getWbCreds(appSettings || {});
             if (!creds.apiKey) {
                 return res.status(400).json({
@@ -2208,6 +2263,7 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
                 });
             }
 
+            await refreshMarketplaceCredsFromDb(db, appSettings);
             const creds = getYmCreds(appSettings || {});
             if (!creds.apiKey || !creds.businessId) {
                 return res.status(400).json({
@@ -2411,6 +2467,7 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
                 });
             }
 
+            await refreshMarketplaceCredsFromDb(db, appSettings);
             const creds = getOzonCreds(appSettings || {});
             if (!creds.clientId || !creds.apiKey) {
                 return res.status(400).json({
@@ -2591,6 +2648,7 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
                 });
             }
 
+            await refreshMarketplaceCredsFromDb(db, appSettings);
             const creds = getWbCreds(appSettings || {});
             if (!creds.apiKey) {
                 return res.status(400).json({
@@ -2801,6 +2859,7 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
                 });
             }
 
+            await refreshMarketplaceCredsFromDb(db, appSettings);
             const creds = getYmCreds(appSettings || {});
             if (!creds.apiKey || !creds.campaignId) {
                 return res.status(400).json({
@@ -3054,6 +3113,335 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
         } catch (e) {
             console.error('[exports/marketplaces] issues snapshot-run failed:', e && e.stack ? e.stack : e);
             return res.status(500).json({ error: e.message || String(e), code: 'ISSUES_SNAPSHOT_RUN_FAILED' });
+        }
+    });
+
+    /**
+     * Автоматический список групп объединения карточек Ozon по 3 очередям:
+     *  - status = 'suggested' («Предложения к объединению»)
+     *  - status = 'merged' («Уже объединены на Ozon»)
+     *  - status = 'ignored' («Не объединять / Скрытые»)
+     * Query: status, kind (all|bundles|name_variants|partial_merged|custom), search, limit, offset
+     */
+    router.get('/ozon-merge/list', async (req, res) => {
+        try {
+            const out = await buildAutoMergeGroupsList(db, {
+                status: req.query.status || 'suggested',
+                kind: req.query.kind || 'all',
+                manager: req.query.manager || 'all',
+                search: req.query.search || '',
+                limit: req.query.limit || 100,
+                offset: req.query.offset || 0,
+            });
+            return res.json(out);
+        } catch (e) {
+            console.error('[exports/marketplaces] ozon-merge/list failed:', e && e.stack ? e.stack : e);
+            return res.status(500).json({
+                success: false,
+                error: e && e.message ? e.message : String(e),
+                code: 'OZON_MERGE_LIST_FAILED',
+            });
+        }
+    });
+
+    /**
+     * Пакетное обновление атрибутов склейки (9048, бренд 85, категория/тип) из Ozon API
+     * в локальный кэш `dg_ozon_merge_cards_cache`.
+     */
+    router.post('/ozon-merge/scan', async (req, res) => {
+        try {
+            await refreshMarketplaceCredsFromDb(db, appSettings);
+            const creds = getOzonCreds(appSettings);
+            if (!creds.clientId || !creds.apiKey) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Не заданы ozon_client_id / ozon_api_key в настройках',
+                    code: 'MISSING_CREDS',
+                });
+            }
+            const delayMs = Math.max(
+                MP_MIN_DELAY_MS.ozon || 200,
+                Number((appSettings && appSettings.mp_ozon_delay_ms) || 250) || 250
+            );
+            const logger = createMarketplaceLogger('ozon-merge-scan');
+            const out = await scanOzonMergeAttributesToCache(creds, db, { delayMs, logger });
+            return res.json(out);
+        } catch (e) {
+            console.error('[exports/marketplaces] ozon-merge/scan failed:', e && e.stack ? e.stack : e);
+            return res.status(500).json({
+                success: false,
+                error: e && e.message ? e.message : String(e),
+                code: 'OZON_MERGE_SCAN_FAILED',
+            });
+        }
+    });
+
+    function resolveOzonMergeActor(req) {
+        const a = (req && req.datagonActor) || {};
+        const s = (req && req.session) || {};
+        const actorUserId =
+            a.id != null && Number.isFinite(Number(a.id))
+                ? Number(a.id)
+                : s.userId != null && Number.isFinite(Number(s.userId))
+                  ? Number(s.userId)
+                  : null;
+        const actorName = String(
+            a.full_name ||
+                a.fullName ||
+                a.display_name ||
+                a.username ||
+                s.full_name ||
+                s.fullName ||
+                s.username ||
+                ''
+        ).trim();
+        return {
+            actorUserId,
+            actorName: actorName || (actorUserId ? `User #${actorUserId}` : 'admin'),
+        };
+    }
+
+    /**
+     * Журнал изменений (лог склеек, расклеек, скрытий и решений) по карточкам Ozon.
+     * Query: signature?, offer_id?, limit?, offset?
+     */
+    router.get('/ozon-merge/log', async (req, res) => {
+        try {
+            const out = await getOzonMergeLog(db, {
+                signature: req.query.signature || '',
+                offer_id: req.query.offer_id || '',
+                limit: req.query.limit || 100,
+                offset: req.query.offset || 0,
+            });
+            return res.json(out);
+        } catch (e) {
+            console.error('[exports/marketplaces] ozon-merge/log failed:', e && e.stack ? e.stack : e);
+            return res.status(500).json({
+                success: false,
+                error: e && e.message ? e.message : String(e),
+                code: 'OZON_MERGE_LOG_FAILED',
+            });
+        }
+    });
+
+    /**
+     * Сохранение решения сотрудника по группе:
+     *  - action: 'ignore' («Не объединять — скрыть группу навсегда»)
+     *  - action: 'restore' («Вернуть группу из скрытых в предложения»)
+     *  - action: 'exclude_code' («Убрать 1 лишний товар из группы навсегда»)
+     *  - action: 'create_custom' («Создать свою группу по списку кодов МС»)
+     */
+    router.post('/ozon-merge/decision', async (req, res) => {
+        try {
+            const body = req.body && typeof req.body === 'object' ? req.body : {};
+            const { actorName, actorUserId } = resolveOzonMergeActor(req);
+            const out = await saveOzonMergeDecision(db, {
+                ...body,
+                actorName,
+                actorUserId,
+            });
+            return res.json(out);
+        } catch (e) {
+            console.error('[exports/marketplaces] ozon-merge/decision failed:', e && e.stack ? e.stack : e);
+            const status =
+                e && (e.code === 'MISSING_SIGNATURE' || e.code === 'INVALID_CODES' || e.code === 'MISSING_CODE' || e.code === 'UNKNOWN_ACTION')
+                    ? 400
+                    : 500;
+            return res.status(status).json({
+                success: false,
+                error: e && e.message ? e.message : String(e),
+                code: (e && e.code) || 'OZON_MERGE_DECISION_FAILED',
+            });
+        }
+    });
+
+    /**
+     * Разъединение ошибочно склеенных карточек на Ozon (очистка атрибута 9048).
+     * Body: { offer_ids: string[], signature?: string, confirm?: boolean }
+     */
+    router.post('/ozon-merge/unmerge', async (req, res) => {
+        try {
+            await refreshMarketplaceCredsFromDb(db, appSettings);
+            const creds = getOzonCreds(appSettings);
+            if (!creds.clientId || !creds.apiKey) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Не заданы ozon_client_id / ozon_api_key в настройках',
+                    code: 'MISSING_CREDS',
+                });
+            }
+            const body = req.body && typeof req.body === 'object' ? req.body : {};
+            if (!body.confirm) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Для разъединения карточек в Ozon передайте confirm: true',
+                    code: 'CONFIRM_REQUIRED',
+                });
+            }
+            const delayMs = Math.max(
+                MP_MIN_DELAY_MS.ozon || 200,
+                Number((appSettings && appSettings.mp_ozon_delay_ms) || 350) || 350
+            );
+            const { actorName, actorUserId } = resolveOzonMergeActor(req);
+            const logger = createMarketplaceLogger('ozon-unmerge');
+            const out = await unmergeOzonGroup(creds, db, {
+                offer_ids: body.offer_ids,
+                signature: body.signature,
+                delayMs,
+                actorName,
+                actorUserId,
+                logger,
+            });
+            return res.json(out);
+        } catch (e) {
+            console.error('[exports/marketplaces] ozon-merge/unmerge failed:', e && e.stack ? e.stack : e);
+            return res.status(500).json({
+                success: false,
+                error: e && e.message ? e.message : String(e),
+                code: 'OZON_UNMERGE_FAILED',
+            });
+        }
+    });
+
+    /**
+     * Предпросмотр объединения карточек Ozon:
+     * подгружает карточки по группам offer_id из Ozon, вариативные атрибуты категории (is_aspect: true)
+     * и автоподстановку отличительных значений из названия/МС.
+     * Body: { groups_text?: string, groups?: string[][] }
+     */
+    router.post('/ozon-merge/preview', async (req, res) => {
+        const t0 = Date.now();
+        try {
+            await refreshMarketplaceCredsFromDb(db, appSettings);
+            const creds = getOzonCreds(appSettings);
+            if (!creds.clientId || !creds.apiKey) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Не заданы ozon_client_id / ozon_api_key в настройках',
+                    code: 'MISSING_CREDS',
+                });
+            }
+            const body = req.body && typeof req.body === 'object' ? req.body : {};
+            const delayMs = Math.max(
+                MP_MIN_DELAY_MS.ozon || 200,
+                Number((appSettings && appSettings.mp_ozon_delay_ms) || 350) || 350
+            );
+            const logger = createMarketplaceLogger('ozon-merge');
+            const out = await previewOzonMergeGroups(creds, db, {
+                groups_text: body.groups_text,
+                groups: body.groups,
+                delayMs,
+                logger,
+            });
+            out.duration_sec = Number(((Date.now() - t0) / 1000).toFixed(2));
+            return res.json(out);
+        } catch (e) {
+            console.error('[exports/marketplaces] ozon-merge/preview failed:', e && e.stack ? e.stack : e);
+            const status = e && (e.code === 'EMPTY_GROUPS' || e.code === 'TOO_MANY_CODES' || e.code === 'MISSING_CREDS') ? 400 : 500;
+            return res.status(status).json({
+                success: false,
+                error: e && e.message ? e.message : String(e),
+                code: (e && e.code) || 'OZON_MERGE_PREVIEW_FAILED',
+            });
+        }
+    });
+
+    /**
+     * Поиск справочных значений для вариативного атрибута категории Ozon.
+     * Body: { description_category_id, type_id, attribute_id, query?: string, limit?: number }
+     */
+    router.post('/ozon-merge/attribute-values', async (req, res) => {
+        try {
+            await refreshMarketplaceCredsFromDb(db, appSettings);
+            const creds = getOzonCreds(appSettings);
+            if (!creds.clientId || !creds.apiKey) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Не заданы ozon_client_id / ozon_api_key',
+                    code: 'MISSING_CREDS',
+                });
+            }
+            const body = req.body && typeof req.body === 'object' ? req.body : {};
+            const logger = createMarketplaceLogger('ozon-merge');
+            const values = await searchOzonAttributeDictionaryValues(
+                creds,
+                {
+                    descriptionCategoryId: body.description_category_id,
+                    typeId: body.type_id,
+                    attributeId: body.attribute_id,
+                    query: body.query || '',
+                    limit: body.limit || 25,
+                },
+                logger
+            );
+            return res.json({ success: true, values });
+        } catch (e) {
+            return res.status(500).json({
+                success: false,
+                error: e && e.message ? e.message : String(e),
+                code: 'OZON_ATTR_VALUES_FAILED',
+            });
+        }
+    });
+
+    /**
+     * Применение объединения карточек Ozon через POST /v3/product/import.
+     * Body: {
+     *   groups: Array<{
+     *     group_key: string,
+     *     main_offer_id?: string,
+     *     copy_from_main?: boolean,
+     *     aspect_attribute_id?: number,
+     *     items: Array<{ offer_id: string, aspect_value?: string, aspect_dictionary_value_id?: number }>
+     *   }>,
+     *   dry_run?: boolean,
+     *   confirm?: boolean
+     * }
+     */
+    router.post('/ozon-merge/apply', async (req, res) => {
+        try {
+            await refreshMarketplaceCredsFromDb(db, appSettings);
+            const creds = getOzonCreds(appSettings);
+            if (!creds.clientId || !creds.apiKey) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Не заданы ozon_client_id / ozon_api_key в настройках',
+                    code: 'MISSING_CREDS',
+                });
+            }
+            const body = req.body && typeof req.body === 'object' ? req.body : {};
+            const dryRun = Boolean(body.dry_run) || String(req.query.dry_run || '') === '1';
+            const confirmed = Boolean(body.confirm);
+            if (!dryRun && !confirmed) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Для записи в Ozon передайте confirm: true (или dry_run: true для проверки)',
+                    code: 'CONFIRM_REQUIRED',
+                });
+            }
+            const delayMs = Math.max(
+                MP_MIN_DELAY_MS.ozon || 200,
+                Number((appSettings && appSettings.mp_ozon_delay_ms) || 400) || 400
+            );
+            const { actorName, actorUserId } = resolveOzonMergeActor(req);
+            const logger = createMarketplaceLogger('ozon-merge');
+            const out = await applyOzonMergeGroups(creds, db, {
+                groups: body.groups,
+                copyFromMain: body.copy_from_main !== false,
+                dryRun,
+                delayMs,
+                actorName,
+                actorUserId,
+                logger,
+            });
+            return res.json(out);
+        } catch (e) {
+            console.error('[exports/marketplaces] ozon-merge/apply failed:', e && e.stack ? e.stack : e);
+            return res.status(500).json({
+                success: false,
+                error: e && e.message ? e.message : String(e),
+                code: 'OZON_MERGE_APPLY_FAILED',
+            });
         }
     });
 

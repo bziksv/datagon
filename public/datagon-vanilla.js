@@ -291,6 +291,7 @@
     sections: "Статические экраны",
     "exports-marketplaces": "Маркетплейсы — Настройки",
     "exports-marketplaces-ozon": "Маркетплейсы — Ozon",
+    "exports-ozon-merge": "Маркетплейсы — Объединение Ozon",
     "exports-marketplaces-wildberries": "Маркетплейсы — Wildberries",
     "exports-marketplaces-yandex": "Маркетплейсы — Яндекс Маркет",
     "architectui-demo": "ArchitectUI меню",
@@ -955,6 +956,7 @@
     var nk = String(navKey || "").trim();
     var mpChild =
       nk === "exports-marketplaces-ozon" ||
+      nk === "exports-ozon-merge" ||
       nk === "exports-marketplaces-wildberries" ||
       nk === "exports-marketplaces-yandex" ||
       nk === "exports-marketplaces-issues" ||

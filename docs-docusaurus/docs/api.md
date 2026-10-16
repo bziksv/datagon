@@ -811,10 +811,9 @@ Query:
 
 Префикс: `/api/exports/marketplaces`. Доступ к API проверяется по странице **`exports-marketplaces`** (матрица `page_modes`: скрытие родителя без `view`/`full` у дочернего листа закрывает и HTML shop-экранов — `isHtmlLeafAccessHidden`). Настройки ключей/лимитов — в **`/settings.html`** (и форма на `/exports-marketplaces.html` по прямому URL; пункт меню скрыт). Отдельные экраны таблиц — **`/exports-marketplaces-ozon.html`**, **`/exports-marketplaces-wildberries.html`**, **`/exports-marketplaces-yandex.html`**: автозагрузка последнего снапшота (`GET …/snapshot?shop=…`) и кнопка принудительного обновления (`GET …/ozon|wildberries|yandex-market` / sync). UI-toolbox таблицы маркетплейсов: кнопки «Столбцы» (чекбоксы видимости) и «Ширины» (input px на колонку); состояние сохраняется в `localStorage` (`dg.mp.cols.<shop>`, `dg.mp.colwidths.<shop>`, `dg.mp.page.size.<shop>`). Заголовок таблицы — sticky-th под верхним меню (с CSS-переменной `--dg-table-sticky-top`). Сами запросы выполняются **на сервере** (долгие циклы допустимы; таймауты прокси/nginx настройте под свой каталог). Для новых страниц этой группы целевая структура — по эталону `/moysklad.html` (карточки «Фильтры и действия» + «Выгрузка &lt;X&gt;», кнопки «Столбцы»/«Ширины»/«Свернуть» в card-header справа, поиск-зеркало в шапке таблицы; см. `.cursor/rules/datagon-list-page-baseline-moysklad.mdc`).
 
-**Учётные данные** (в порядке приоритета):
+**Учётные данные**:
 
-1. Переменные окружения: `OZON_CLIENT_ID`, `OZON_API_KEY`, `WB_API_KEY`, `WB_TOKEN_TYPE` (`personal`|`service`|`base`|`test`, по умолчанию `base`), `YM_API_KEY`, `YM_CAMPAIGN_ID`, `YM_BUSINESS_ID` (последний опционально — для ссылки «Покупателю» на Я.Маркете).
-2. Либо ключи в таблице `app_settings`: `ozon_client_id`, `ozon_api_key`, `wb_api_key`, `wb_token_type`, `ym_api_key`, `ym_campaign_id`, `ym_business_id` — через `POST /api/exports/marketplaces/config` (только **admin** или пользователь с **полным** доступом к разделу «Настройки»).
+Берутся **только** из таблицы `app_settings` (раздел **`/settings.html`** → «Выгрузки маркетплейсов»): `ozon_client_id`, `ozon_api_key`, `wb_api_key`, `wb_token_type` (`personal`|`service`|`base`|`test`, по умолчанию `base`), `ym_api_key`, `ym_campaign_id`, `ym_business_id`. Переменные окружения `process.env.OZON_*` / `WB_*` / `YM_*` не используются.
 
 ### GET `/api/exports/marketplaces/status`
 
@@ -855,7 +854,7 @@ Query: `format`, `max_items`, `delay_cards`, `delay_other` (мс; по умол�
 
 #### Разные категории API WB и поле `wb_token_type`
 
-Источник: `process.env.WB_TOKEN_TYPE` → `app_settings.wb_token_type` → `'base'` (по умолчанию). Значения: `personal` | `service` | `base` | `test`. Поле **не отключает** загрузку цен в коде — оно для справки и подстройки пауз. В `GET /api/exports/marketplaces/status`: `wb_token_type`, `wb_prices_disabled_by_token` (всегда `false`; поле оставлено для совместимости клиентов).
+Источник: `app_settings.wb_token_type` → `'base'` (по умолчанию). Значения: `personal` | `service` | `base` | `test`. Поле **не отключает** загрузку цен в коде — оно для справки и подстройки пауз. В `GET /api/exports/marketplaces/status`: `wb_token_type`, `wb_prices_disabled_by_token` (всегда `false`; поле оставлено для совместимости клиентов).
 
 Таблица из общего раздела WB про лимиты категории **«Маркетплейс»** (пример для Базового токена: **150 запросов за 1 минуту**, интервал **200 мс**, всплеск **10**) относится к **`marketplace-api`** (склады, остатки: `v3/warehouses`, `v3/stocks/{warehouseId}`). **Не к ценам.**
 
@@ -1029,6 +1028,52 @@ Body JSON:
 UI: кнопка **«Исправить НДС на Я.М»**, колонка **`ym_fix_vat`**; пакеты по 100; лог `#dg-mpu-action-log-ym_vat`. При `status=ERROR` на пакете — повтор по одному (как у dims).
 
 Ответ — как у `fix-ozon-vat` / `fix-wb-vat`. Локальный снапшот: marketplace=`yandex_market`, `updated_label = 'YM НДС ← МС'`.
+
+### GET `/api/exports/marketplaces/ozon-merge/list`
+Автоматический список групп объединения карточек Ozon по 4 очередям (`lib/ozonProductMerge.js`, экран `/exports-ozon-merge.html`, пункт меню **Маркетплейсы → Объединение Ozon**, ключ доступа `exports-ozon-merge`):
+- Query-параметры:
+  - `status`: `suggested` («Предложения к объединению», по умолчанию), `merged` («Уже объединены на Ozon» — только группы, где в Ozon у всех карточек фактически сохранён единый `9048`), `failed` («Проблемные объединения» — группы, по которым была попытка объединения, но Ozon отклонил или проигнорировал склейку `9048`), `ignored` («Не объединять / Скрытые»);
+  - `kind`: `all`, `bundles` (базовый товар + моно-комплекты из `dg_bundle_components` и коды `БАЗА-N`), `name_variants` (линейки одной модели по основе названия, коду модификации `БАЗАsМОД` и поставщику/бренду), `partial_merged` (доклейка к существующей связке `9048`), `custom` (ручные группы);
+  - `manager`: фильтр по менеджеру товара из МойСклад (`all`, ФИО менеджера — например `Назерке Койман`, `Катерина Лычковская`, `Яна Ярцева`, либо `__empty__` — без менеджера);
+  - `search`, `limit` (по умолчанию `100`, в пошаговом режиме `1`), `offset`.
+- Возвращает `{ success, counts: { suggested, merged, failed, ignored, by_kind }, managers: string[], cache_stats: { total_ozon_rows, cached_cards, cards_with_9048 }, total, limit, offset, rows }`, где каждая группа во вкладке `failed` содержит `problem_reason` с точным объяснением причины отказа Ozon.
+
+### POST `/api/exports/marketplaces/ozon-merge/scan`
+Пакетное сканирование атрибутов склейки (`attribute_id: 9048`), бренда (`85`), `description_category_id` и `type_id` по всем товарам Ozon из `/v4/product/info/attributes` в таблицу кэша `dg_ozon_merge_cards_cache`.
+- Возвращает `{ success, total, scanned, with_9048, duration_sec }`.
+
+### POST `/api/exports/marketplaces/ozon-merge/decision`
+Сохранение решения сотрудника в таблицу `dg_ozon_merge_decisions`:
+- `action: 'ignore'` — отметить группу «Не объединять (скрыть навсегда)»;
+- `action: 'restore'` — вернуть группу из скрытых обратно в «Предложения к объединению»;
+- `action: 'exclude_code'` — навсегда исключить один лишний товар (`offer_id`) из предложенной группы;
+- `action: 'create_custom'` — добавить собственную группу по списку кодов МС (`codes_text`).
+
+### POST `/api/exports/marketplaces/ozon-merge/unmerge`
+Разъединение ошибочно склеенных карточек в Ozon (удаление атрибута `9048` через `POST /v3/product/import` и очистка `merge_key_9048` в `dg_ozon_merge_cards_cache`).
+- Принимает `{ offer_ids: string[], signature?: string, confirm: true }`.
+
+### POST `/api/exports/marketplaces/ozon-merge/preview`
+Предпросмотр групп карточек для объединения в одну карточку на Ozon (экран `/exports-ozon-merge.html`, пункт меню **Маркетплейсы → Объединение Ozon**, ключ доступа `exports-ozon-merge`).
+- Принимает `{ groups_text?: string, groups?: string[][] }` (по 2+ кода МС / `offer_id` в группе, первый код — главная карточка).
+- Загружает карточки из Ozon (`/v3/product/info/list` + `/v4/product/info/attributes`), характеристики категории главной карточки (`/v1/description-category/attribute`), выделяет вариативные (`is_aspect: true`) атрибуты и предлагает автоподстановку отличительного значения из названия/МС.
+- По умолчанию `group_key` (атрибут `9048` «Объединить на одной карточке») берётся из текущего `9048` главной карточки, либо равен `offer_id` главной карточки.
+
+### POST `/api/exports/marketplaces/ozon-merge/attribute-values`
+Поиск справочных значений для вариативного атрибута категории Ozon (`/v1/description-category/attribute/values/search`).
+- Принимает `{ description_category_id, type_id, attribute_id, query?: string, limit?: number }`.
+
+### GET `/api/exports/marketplaces/ozon-merge/log`
+Журнал изменений (лог склеек, ошибок склейки, расклеек, скрытий и пользовательских решений) по карточкам Ozon из таблицы `dg_ozon_merge_log` (`lib/ozonProductMerge.js`, модальное окно `#dg-ozm-log-overlay` на `/exports-ozon-merge.html` — по аналогии с журналом на `/exports-new-products.html`).
+- Query-параметры: `signature` (опционально — фильтр по группе), `offer_id` (опционально — фильтр по конкретному коду товара), `limit` (по умолчанию `100`, до `500`), `offset` (по умолчанию `0`).
+- Возвращает `{ success, total, limit, offset, rows: [{ id, group_signature, offer_id, action, field, field_label, old_value, new_value, note, changed_by_user_id, changed_by_name, changed_at }] }`.
+- Записи в `dg_ozon_merge_log` автоматически добавляются при вызовах `POST /ozon-merge/apply`, `POST /ozon-merge/unmerge`, `POST /ozon-merge/decision` с фиксацией сотрудника из `req.datagonActor` (`full_name` / `username`, `id`).
+
+### POST `/api/exports/marketplaces/ozon-merge/apply`
+Применение объединения карточек Ozon через `POST /v3/product/import` и ожидание `task_id` через `/v1/product/import/info` (`lib/ozonProductMerge.js`).
+- Принимает `{ groups: [{ group_key, main_offer_id, copy_from_main, aspect_attribute_id, items: [{ offer_id, aspect_value, aspect_dictionary_value_id }] }], dry_run?: boolean, confirm?: boolean }`.
+- При `copy_from_main: true` (по умолчанию) выравнивает `description_category_id`, `type_id`, Бренд (`id: 85`) и недостающие обязательные атрибуты по главной карточке.
+- Возвращает расширенные счётчики для `#dg-ozm-action-log`: `{ success, dry_run, total_groups, total, to_update, would_update, filled, corrected, skipped, ms_ok, ms_failed, errors[], groups_result[], duration_sec }`.
 
 Поле `bundle_component_codes_known` — размер набора кодов-компонентов, отбираемых из `ms_entity_details`. `removed_by_bundle_filter` — сколько строк было отрезано серверным фильтром «исключить товары из комплектов» (полезно для отладки). Когда `exclude_bundle_components=0`, `bundle_component_codes_known` равно `0` и `removed_by_bundle_filter` равно `0`.
 
@@ -1572,7 +1617,7 @@ Body (JSON):
 
 **Альмамед:** новый товар — `new`. Когда заполнены обязательные поля (**артикул**, **название**, **цена Альмамед**, **ссылка поставщика**, **приоритет**) → `not_added`. Контент: `in_progress` → `added`; замечания — `revision` + `comment`. Кнопка **«Убрать размещенные»** на вкладке Альмамед — **пресет фильтра** (`exclude_verified=1`): скрывает `verified` из списка, **не** переводит в `removed`.
 
-**Размещение на маркеты:** строки из Альмамед со статусом `added` (и legacy `transferred`) или с флагами **`sell_on_markets=1`** / **`has_kits=1`** через `POST /sync-markets-queue` и при каждом `PATCH` Альмамед-строки с этими флагами. Аналогичные поля (менеджер, ответственный, приоритет, артикул/код, название, цена, `has_kits`) копируются/обновляются в строку `channel=marketplaces` (`source_almamed_id`). На один `source_almamed_id` — **не больше одной** активной строки маркетов (`UNIQUE` + транзакция `FOR UPDATE` при upsert; гонка галочек «Маркеты»/«Комплект» больше не плодит дубли). **ID разные:** Альмамед и маркеты — отдельные строки одной таблицы (`dg_new_products`); у каждой вкладки своя нумерация `channel_num` (1, 2, 3…), не общий auto-increment. В UI колонка ID показывает `channel_num`; связь `← Альм. #N` / `→ Марк. #N` тоже по номерам вкладки (`source_almamed_id` / `markets_product_id` — внутренние PK). Из МС (по **коду** или **артикулу**, когда товар уже есть в `ms_export`) подтягиваются **код МС**, **штрихкод** (`payload.barcodes`), **НДС** (`ms_export.vat` / `effectiveVat` / атрибут «НДС на товаре…»; `0` → «без НДС»), **ссылка на РУ** (атрибут **«РУ ссылка на файл»** и родственные), **СС, ДС товара ссылка** (`ss_ds_url`, атрибут МС **«СС, ДС товара ссылка»** — в UI колонка-ссылка; не обязательна для статуса). Поля габаритов (`length_cm` / `width_cm` / `height_cm` / `weight_kg`) в БД остаются, но **в UI вкладки «Размещение на маркеты» не показываются и не обязательны**. На **`GET` списка** обогащение идёт только из **кэша БД** (без live API МС — иначе каждый refresh тормозит страницу при пустых НДС/РУ). Live `GET` карточки МС — при `POST /sync-markets-queue` (лимит). Результат пишется в `ms_entity_details` и пустые поля `dg_new_products` + журнал `source=ms_enrich`. Размещение Ozon/WB/ЯМ — live-бейджи в колонке «Связь» по `marketplace_export_rows.external_id` (= код МС). Обязательные: приоритет, код, артикул, название для маркетов, штрихкод, цена на маркеты, НДС, ссылка на РУ. Пустые → `new`; все заполнены → `not_added`; на всех трёх МП → `added`. Комментарий → `revision`; очистка комментария → снова `added` (если на всех МП) или `new`/`not_added`. Ручные: `not_cooperate`, `in_bundle`. Кнопка **«Убрать размещенные»** → `POST /remove-placed` (status `added` → `removed`).
+**Размещение на маркеты:** строки из Альмамед со статусом `added` (и legacy `transferred`) или с флагами **`sell_on_markets=1`** / **`has_kits=1`** через `POST /sync-markets-queue` и при каждом `PATCH` Альмамед-строки с этими флагами. Аналогичные поля (менеджер, ответственный, приоритет, артикул/код, название, цена, `has_kits`) копируются/обновляются в строку `channel=marketplaces` (`source_almamed_id`). На один `source_almamed_id` — **не больше одной** активной строки маркетов (`UNIQUE` + транзакция `FOR UPDATE` при upsert; гонка галочек «Маркеты»/«Комплект» больше не плодит дубли). **ID разные:** Альмамед и маркеты — отдельные строки одной таблицы (`dg_new_products`); у каждой вкладки своя нумерация `channel_num` (1, 2, 3…), не общий auto-increment. В UI колонка ID показывает `channel_num`; связь `← Альм. #N` / `→ Марк. #N` тоже по номерам вкладки (`source_almamed_id` / `markets_product_id` — внутренние PK). Из МС подтягиваются **код МС** (строго `ms_export.code` карточки: сначала по `ms_product_uuid`, иначе по точному `denorm_article`; артикул в поле «Код» не копируется, и совпадение артикула с чужим кодом — например артикул `20079` и код `20079` другого товара — код не подменяет), **штрихкод** (`payload.barcodes`), **НДС** (`ms_export.vat` / `effectiveVat` / атрибут «НДС на товаре…»; `0` → «без НДС»), **ссылка на РУ** (атрибут **«РУ ссылка на файл»** и родственные), **СС, ДС товара ссылка** (`ss_ds_url`, атрибут МС **«СС, ДС товара ссылка»** — в UI колонка-ссылка; не обязательна для статуса). Поля габаритов (`length_cm` / `width_cm` / `height_cm` / `weight_kg`) в БД остаются, но **в UI вкладки «Размещение на маркеты» не показываются и не обязательны**. На **`GET` списка** обогащение идёт только из **кэша БД** (без live API МС — иначе каждый refresh тормозит страницу при пустых НДС/РУ). Live `GET` карточки МС — при `POST /sync-markets-queue` (лимит). Результат пишется в `ms_entity_details` и пустые поля `dg_new_products` + журнал `source=ms_enrich`. Размещение Ozon/WB/ЯМ — live-бейджи в колонке «Связь» по `marketplace_export_rows.external_id` (= код МС). Обязательные: приоритет, код, артикул, название для маркетов, штрихкод, цена на маркеты, НДС, ссылка на РУ. Пустые → `new`; все заполнены → `not_added`; на всех трёх МП → `added`. Комментарий → `revision`; очистка комментария → снова `added` (если на всех МП) или `new`/`not_added`. Ручные: `not_cooperate`, `in_bundle`. Кнопка **«Убрать размещенные»** → `POST /remove-placed` (status `added` → `removed`).
 
 **Комплекты:** колонка Альмамед **«Комплект»** (`has_kits`). На маркетах при `has_kits=1` — кнопка **«+ Комплект»**; комплекты — вложенные строки. У комплекта редактируются: код, название, цена, статус, комментарий. **Не редактируются вручную:** артикул, штрихкод, НДС — подтягиваются из МойСклад по `product_code` комплекта (кэш `ms_export`/`ms_entity_details`; при пустом кэше — live `GET /entity/bundle|product?filter=code=…`, затем `GET …/{uuid}` с barcodes). При `POST …/kits` и при смене кода в `PATCH …/kits/:kitId` сервер вызывает `enrichAndPersistKitFromMs`; массово — в начале и в конце `POST /sync-markets-queue` (`backfillKitsMsFieldsFromCache`, live-бюджет до ~500). **Ссылка на РУ** и **СС, ДС товара ссылка** у комплекта всегда с родительского товара (`parent.ru_url` / `parent.ss_ds_url`). API: `POST/PATCH/DELETE /api/exports/new-products/:id/kits[/:kitId]`.
 

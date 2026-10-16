@@ -1,0 +1,307 @@
+<!-- Маркетплейсы — Объединение карточек Ozon: пошаговый конвейер (высокая контрастность и читаемость) -->
+<style>
+  /* Баннер 3 шагов */
+  .dg-ozm-step-banner {
+    background: #f8fafc;
+    border: 1px solid #cbd5e1;
+    border-left: 5px solid #2563eb;
+    border-radius: 0.5rem;
+    color: #0f172a;
+  }
+  .dg-ozm-step-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #0f172a;
+  }
+  .dg-ozm-step-desc {
+    font-size: 0.875rem;
+    color: #334155;
+    line-height: 1.45;
+  }
+  .dg-ozm-code-pill {
+    display: inline-block;
+    background: #ffffff;
+    color: #0f172a;
+    border: 1px solid #94a3b8;
+    border-radius: 0.25rem;
+    padding: 0.05rem 0.4rem;
+    font-family: SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.875rem;
+    font-weight: 600;
+    text-transform: none !important;
+  }
+
+  /* Крупные карточки выбора очереди — без нечитаемого серого текста на синем фоне */
+  .dg-ozm-queue-btn {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: #ffffff;
+    border: 2px solid #cbd5e1;
+    border-radius: 0.5rem;
+    padding: 0.85rem 1rem;
+    cursor: pointer;
+    transition: all 0.15s ease-in-out;
+  }
+  .dg-ozm-queue-btn:hover {
+    border-color: #64748b;
+    background: #f8fafc;
+  }
+  .dg-ozm-q-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #0f172a;
+  }
+  .dg-ozm-q-sub {
+    font-size: 0.875rem;
+    color: #334155;
+    margin-top: 0.25rem;
+    line-height: 1.35;
+  }
+  .dg-ozm-q-count {
+    display: inline-block;
+    min-width: 2rem;
+    text-align: center;
+    padding: 0.2rem 0.6rem;
+    border-radius: 999px;
+    font-size: 0.875rem;
+    font-weight: 700;
+    background: #e2e8f0;
+    color: #0f172a;
+  }
+
+  /* Активные состояния 3 очередей: светлый контрастный фон + тёмный чёткий текст */
+  .dg-ozm-queue-btn[data-ozm-queue="suggested"].active {
+    background: #eff6ff;
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+  }
+  .dg-ozm-queue-btn[data-ozm-queue="suggested"].active .dg-ozm-q-title {
+    color: #1e3a8a;
+  }
+  .dg-ozm-queue-btn[data-ozm-queue="suggested"].active .dg-ozm-q-sub {
+    color: #1e40af;
+  }
+  .dg-ozm-queue-btn[data-ozm-queue="suggested"] .dg-ozm-q-count {
+    background: #2563eb;
+    color: #ffffff;
+  }
+
+  .dg-ozm-queue-btn[data-ozm-queue="merged"].active {
+    background: #ecfdf5;
+    border-color: #16a34a;
+    box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.15);
+  }
+  .dg-ozm-queue-btn[data-ozm-queue="merged"].active .dg-ozm-q-title {
+    color: #14532d;
+  }
+  .dg-ozm-queue-btn[data-ozm-queue="merged"].active .dg-ozm-q-sub {
+    color: #166534;
+  }
+  .dg-ozm-queue-btn[data-ozm-queue="merged"] .dg-ozm-q-count {
+    background: #16a34a;
+    color: #ffffff;
+  }
+
+  .dg-ozm-queue-btn[data-ozm-queue="failed"].active {
+    background: #fef2f2;
+    border-color: #dc2626;
+    box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.15);
+  }
+  .dg-ozm-queue-btn[data-ozm-queue="failed"].active .dg-ozm-q-title {
+    color: #7f1d1d;
+  }
+  .dg-ozm-queue-btn[data-ozm-queue="failed"].active .dg-ozm-q-sub {
+    color: #991b1b;
+  }
+  .dg-ozm-queue-btn[data-ozm-queue="failed"] .dg-ozm-q-count {
+    background: #dc2626;
+    color: #ffffff;
+  }
+
+  .dg-ozm-queue-btn[data-ozm-queue="ignored"].active {
+    background: #f1f5f9;
+    border-color: #475569;
+    box-shadow: 0 0 0 3px rgba(71, 85, 105, 0.15);
+  }
+  .dg-ozm-queue-btn[data-ozm-queue="ignored"].active .dg-ozm-q-title {
+    color: #0f172a;
+  }
+  .dg-ozm-queue-btn[data-ozm-queue="ignored"].active .dg-ozm-q-sub {
+    color: #334155;
+  }
+  .dg-ozm-queue-btn[data-ozm-queue="ignored"] .dg-ozm-q-count {
+    background: #475569;
+    color: #ffffff;
+  }
+
+  /* Контрастные бейджи (без принудительного UPPERCASE от ArchitectUI .card-header) */
+  .dg-ozm-pill {
+    display: inline-block;
+    padding: 0.25rem 0.65rem;
+    border-radius: 0.35rem;
+    font-size: 0.875rem !important;
+    font-weight: 600 !important;
+    line-height: 1.3;
+    text-transform: none !important;
+    letter-spacing: normal !important;
+  }
+  .dg-ozm-pill-neutral {
+    background: #f1f5f9;
+    color: #0f172a !important;
+    border: 1px solid #cbd5e1;
+  }
+  .dg-ozm-pill-step {
+    background: #fef3c7;
+    color: #78350f !important;
+    border: 1px solid #f59e0b;
+  }
+  .dg-ozm-pill-danger {
+    background: #fee2e2;
+    color: #7f1d1d !important;
+    border: 1px solid #fca5a5;
+  }
+  .dg-ozm-pill-primary {
+    background: #dbeafe;
+    color: #1e3a8a !important;
+    border: 1px solid #93c5fd;
+  }
+  .dg-ozm-pill-info {
+    background: #e0f2fe;
+    color: #0c4a6e !important;
+    border: 1px solid #7dd3fc;
+  }
+  .dg-ozm-pill-success {
+    background: #dcfce7;
+    color: #14532d !important;
+    border: 1px solid #86efac;
+  }
+  .dg-ozm-pill-dark {
+    background: #334155;
+    color: #ffffff !important;
+    border: 1px solid #1e293b;
+  }
+
+  /* Карточка отдельной группы */
+  .dg-ozm-group-card {
+    border: 2px solid #94a3b8;
+    border-radius: 0.5rem;
+    background: #ffffff;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+  }
+  .dg-ozm-group-card-main {
+    border-color: #3b82f6;
+  }
+  .dg-ozm-group-header {
+    background: #f8fafc;
+    border-bottom: 1px solid #cbd5e1;
+    padding: 0.9rem 1.15rem;
+    border-radius: 0.4rem 0.4rem 0 0;
+  }
+  .dg-ozm-group-title {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #0f172a;
+  }
+  .dg-ozm-group-meta {
+    font-size: 0.875rem;
+    color: #334155;
+  }
+  .dg-ozm-row-main {
+    background-color: #eff6ff !important;
+  }
+  .dg-ozm-row-unchecked {
+    opacity: 0.55;
+    background-color: #f8fafc !important;
+  }
+  .dg-ozm-header-search {
+    flex: 0 1 420px;
+    min-width: 260px;
+    text-transform: none !important;
+  }
+  .dg-ozm-confirm-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2050;
+    background: rgba(15, 23, 42, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+  }
+  .dg-ozm-confirm-dialog {
+    background: #fff;
+    border-radius: 0.5rem;
+    max-width: 620px;
+    width: 100%;
+    box-shadow: 0 20px 45px rgba(0, 0, 0, 0.25);
+    overflow: hidden;
+    color: #0f172a;
+  }
+  .dg-ozm-sortable {
+    user-select: text;
+    -webkit-user-select: text;
+    color: #0f172a;
+    font-weight: 700;
+  }
+  .dg-flt-dirty {
+    box-shadow: 0 0 0 0.2rem rgba(37, 99, 235, 0.3);
+  }
+
+  /* Модальное окно журнала склеек/расклеек (аналог #dg-np-log-overlay на /exports-new-products.html) */
+  .dg-ozm-log-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2060;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+  }
+  .dg-ozm-log-overlay .dg-ozm-log-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.48);
+  }
+  .dg-ozm-log-overlay .dg-ozm-log-panel {
+    position: relative;
+    z-index: 1;
+    width: min(980px, 100%);
+    max-height: min(82vh, 740px);
+    display: flex;
+    flex-direction: column;
+  }
+  .dg-ozm-log-body {
+    max-height: min(66vh, 580px);
+    overflow: auto;
+  }
+  .dg-ozm-log-body table {
+    margin: 0;
+    font-size: 0.85rem;
+  }
+  .dg-ozm-log-body thead th {
+    position: sticky;
+    top: 0;
+    background: #f8f9fa;
+    z-index: 1;
+    color: #0f172a;
+    font-weight: 700;
+  }
+  .dg-ozm-log-old {
+    color: #b02a37;
+    text-decoration: line-through;
+  }
+  .dg-ozm-log-arrow {
+    margin: 0 0.35rem;
+    color: #6c757d;
+  }
+  .dg-ozm-log-new {
+    color: #146c43;
+    font-weight: 600;
+  }
+  .dg-ozm-log-action {
+    font-size: 0.75rem;
+    padding: 0.2rem 0.45rem;
+    text-transform: none !important;
+  }
+</style>

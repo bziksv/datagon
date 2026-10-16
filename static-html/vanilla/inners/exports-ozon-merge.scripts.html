@@ -1,0 +1,2049 @@
+<script>
+  (function () {
+    "use strict";
+
+    var FILTERS_COLLAPSED_KEY = "datagon_ozm_filters_collapsed_v2";
+    var TABLE_COLLAPSED_KEY = "dg.ozm.table-card.collapsed.v2";
+    var COLS_VISIBLE_KEY = "datagon_ozm_visible_cols_v3";
+    var COLS_WIDTH_KEY = "datagon_ozm_col_widths_v3";
+    var FILTER_STATE_KEY = "datagon_ozm_filter_state_v1";
+    var GROUP_DRAFTS_KEY = "datagon_ozm_group_drafts_v1";
+
+    // Единый источник истины для колонок таблицы внутри каждой группы (moysklad baseline)
+    var OZM_COLS = [
+      ["include", "Вкл."],
+      ["main", "Главная карточка"],
+      ["offer_id", "Код МС (offer_id)"],
+      ["name", "Наименование товара"],
+      ["supplier", "Поставщик / Бренд"],
+      ["manager", "Менеджер товара"],
+      ["stock", "Остаток Ozon"],
+      ["price", "Цена Ozon"],
+      ["current_merge", "Текущая склейка в Ozon"],
+      ["aspect_value", "Чем отличается этот вариант (размер / шт. / фасовка)"],
+      ["remove_action", "Убрать из группы"],
+    ];
+
+    var DEFAULT_WIDTHS = {
+      include: 56,
+      main: 145,
+      offer_id: 145,
+      name: 340,
+      supplier: 170,
+      manager: 165,
+      stock: 110,
+      price: 110,
+      current_merge: 170,
+      aspect_value: 290,
+      remove_action: 95,
+    };
+
+    var FIELD_GROUPS = [
+      {
+        title: "Основные фильтры",
+        fields: [
+          ["queue_status", "Очередь групп (Предложения / Объединены / Скрытые)"],
+          ["kind", "По какому признаку найдены"],
+          ["manager", "Менеджер товара"],
+          ["search", "Умный поиск"],
+          ["step_mode", "Пошаговый режим (по 1 группе)"],
+        ],
+      },
+    ];
+
+    // Двухслойное состояние: applied vs pending (по правилу datagon-table-filter-apply.mdc)
+    var state = {
+      status: "suggested",
+      kind: "all",
+      manager: "all",
+      search: "",
+      stepMode: true,
+      page: 1,
+      pageSize: 100,
+      pending: {
+        status: "suggested",
+        kind: "all",
+        manager: "all",
+        search: "",
+        stepMode: true,
+      },
+      managers: ["Назерке Койман", "Катерина Лычковская", "Яна Ярцева", "Ирина Новикова"],
+      counts: {
+        suggested: 0,
+        merged: 0,
+        failed: 0,
+        ignored: 0,
+      },
+      cacheStats: {
+        total_ozon_rows: 0,
+        cached_cards: 0,
+        cards_with_9048: 0,
+      },
+      total: 0,
+      rows: [],
+      visibleCols: OZM_COLS.map(function (c) { return c[0]; }),
+      colWidths: Object.assign({}, DEFAULT_WIDTHS),
+      confirmCallback: null,
+    };
+
+    function byId(id) {
+      return document.getElementById(id);
+    }
+
+    function esc(s) {
+      return String(s == null ? "" : s)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    function fmtNum(n) {
+      if (window.DatagonFmt && typeof window.DatagonFmt.formatInt === "function") {
+        return window.DatagonFmt.formatInt(n);
+      }
+      var num = Number(n);
+      return Number.isFinite(num) ? num.toLocaleString("ru-RU") : String(n == null ? "" : n);
+    }
+
+    function fmtDateTime(val) {
+      if (!val) return "—";
+      var raw = String(val).replace("T", " ").replace(/\.\d+Z?$/, "").trim();
+      var m = raw.match(/^(\d{4}-\d{2}-\d{2})(?:\s+(\d{2}:\d{2}(?::\d{2})?))?/);
+      if (m) {
+        var dPart =
+          window.DatagonFmt && typeof window.DatagonFmt.formatDate === "function"
+            ? window.DatagonFmt.formatDate(m[1])
+            : m[1].split("-").reverse().join("-");
+        return m[2] ? dPart + " " + m[2] : dPart;
+      }
+      return raw;
+    }
+
+    function toast(type, message) {
+      if (window.DatagonNotify && typeof window.DatagonNotify.toast === "function") {
+        window.DatagonNotify.toast({ type: type || "info", message: message });
+      }
+    }
+
+    function showActionLog(kind, html) {
+      var box = byId("dg-ozm-action-log");
+      if (!box) return;
+      box.className = "alert mt-3 mb-0 alert-" + (kind || "info");
+      box.innerHTML = html;
+      box.classList.remove("d-none");
+    }
+
+    function hideActionLog() {
+      var box = byId("dg-ozm-action-log");
+      if (!box) return;
+      box.classList.add("d-none");
+      box.innerHTML = "";
+    }
+
+    function isDirty() {
+      return (
+        state.pending.status !== state.status ||
+        state.pending.kind !== state.kind ||
+        state.pending.manager !== state.manager ||
+        state.pending.search.trim() !== state.search.trim() ||
+        Boolean(state.pending.stepMode) !== Boolean(state.stepMode)
+      );
+    }
+
+    function syncDirtyButton() {
+      var btn = byId("dg-ozm-apply-filters-btn");
+      if (!btn) return;
+      if (isDirty()) {
+        btn.textContent = "Применить •";
+        btn.classList.add("dg-flt-dirty");
+      } else {
+        btn.textContent = "Применить";
+        btn.classList.remove("dg-flt-dirty");
+      }
+    }
+
+    // Сохранение и восстановление колонок / ширин
+    function loadColsPrefs() {
+      try {
+        var rawVis = localStorage.getItem(COLS_VISIBLE_KEY);
+        if (rawVis) {
+          var parsed = JSON.parse(rawVis);
+          if (Array.isArray(parsed) && parsed.length) {
+            state.visibleCols = parsed;
+          }
+        }
+        var rawW = localStorage.getItem(COLS_WIDTH_KEY);
+        if (rawW) {
+          var parsedW = JSON.parse(rawW);
+          if (parsedW && typeof parsedW === "object") {
+            state.colWidths = Object.assign({}, DEFAULT_WIDTHS, parsedW);
+          }
+        }
+      } catch (_) {}
+    }
+
+    function renderColumnControls() {
+      var panel = byId("dg-ozm-columns-panel");
+      if (!panel) return;
+      var html = '<div class="fw-semibold mb-2">Отображаемые столбцы внутри группы</div><div class="d-flex flex-wrap gap-3">';
+      OZM_COLS.forEach(function (pair) {
+        var key = pair[0];
+        var label = pair[1];
+        var checked = state.visibleCols.indexOf(key) >= 0 ? "checked" : "";
+        html +=
+          '<label class="form-check form-check-inline mb-1">' +
+          '<input type="checkbox" class="form-check-input dg-ozm-col-vis-cb" data-col-key="' + esc(key) + '" ' + checked + " />" +
+          '<span class="form-check-label small">' + esc(label) + "</span>" +
+          "</label>";
+      });
+      html += "</div>";
+      panel.innerHTML = html;
+
+      panel.querySelectorAll(".dg-ozm-col-vis-cb").forEach(function (cb) {
+        cb.addEventListener("change", function () {
+          var next = [];
+          panel.querySelectorAll(".dg-ozm-col-vis-cb").forEach(function (el) {
+            if (el.checked) next.push(el.getAttribute("data-col-key"));
+          });
+          if (!next.length) next = ["offer_id", "name", "aspect_value"];
+          state.visibleCols = next;
+          try {
+            localStorage.setItem(COLS_VISIBLE_KEY, JSON.stringify(next));
+          } catch (_) {}
+          renderGroupsList();
+        });
+      });
+    }
+
+    function renderWidthControls() {
+      var panel = byId("dg-ozm-widths-panel");
+      if (!panel) return;
+      var html = '<div class="fw-semibold mb-2">Ширина столбцов (px)</div><div class="row g-2">';
+      OZM_COLS.forEach(function (pair) {
+        var key = pair[0];
+        var label = pair[1];
+        var w = Number(state.colWidths[key] || DEFAULT_WIDTHS[key] || 140);
+        html +=
+          '<div class="col-md-3 col-sm-6">' +
+          '<label class="form-label small mb-1">' + esc(label) + "</label>" +
+          '<input type="number" min="50" max="700" step="10" class="form-control form-control-sm dg-ozm-col-width-inp" data-col-key="' + esc(key) + '" value="' + w + '" />' +
+          "</div>";
+      });
+      html += "</div>";
+      panel.innerHTML = html;
+
+      panel.querySelectorAll(".dg-ozm-col-width-inp").forEach(function (inp) {
+        inp.addEventListener("change", function () {
+          var k = inp.getAttribute("data-col-key");
+          var val = Math.max(50, Math.min(700, Number(inp.value) || 140));
+          state.colWidths[k] = val;
+          try {
+            localStorage.setItem(COLS_WIDTH_KEY, JSON.stringify(state.colWidths));
+          } catch (_) {}
+          renderGroupsList();
+        });
+      });
+    }
+
+    function initToolboxPanels() {
+      var wrap = byId("dg-ozm-toolbox-panels");
+      var colsPanel = byId("dg-ozm-columns-panel");
+      var widthsPanel = byId("dg-ozm-widths-panel");
+      var colsBtn = byId("dg-ozm-cols-btn");
+      var widthsBtn = byId("dg-ozm-widths-btn");
+      if (!wrap || !colsPanel || !widthsPanel) return;
+
+      function syncWrap() {
+        var anyOpen = !colsPanel.classList.contains("d-none") || !widthsPanel.classList.contains("d-none");
+        wrap.classList.toggle("d-none", !anyOpen);
+      }
+
+      if (colsBtn) {
+        colsBtn.addEventListener("click", function (e) {
+          e.stopPropagation();
+          colsPanel.classList.toggle("d-none");
+          widthsPanel.classList.add("d-none");
+          syncWrap();
+        });
+      }
+      if (widthsBtn) {
+        widthsBtn.addEventListener("click", function (e) {
+          e.stopPropagation();
+          widthsPanel.classList.toggle("d-none");
+          colsPanel.classList.add("d-none");
+          syncWrap();
+        });
+      }
+      document.addEventListener("click", function (e) {
+        if (wrap.contains(e.target) || (colsBtn && colsBtn.contains(e.target)) || (widthsBtn && widthsBtn.contains(e.target))) {
+          return;
+        }
+        colsPanel.classList.add("d-none");
+        widthsPanel.classList.add("d-none");
+        syncWrap();
+      });
+    }
+
+    function initCardCollapses() {
+      var fBtn = byId("dg-ozm-filters-toggle");
+      var fBody = byId("dg-ozm-filters-body");
+      if (fBtn && fBody) {
+        var fCollapsed = localStorage.getItem(FILTERS_COLLAPSED_KEY) === "1";
+        fBody.classList.toggle("d-none", fCollapsed);
+        fBtn.textContent = fCollapsed ? "Развернуть" : "Свернуть";
+        fBtn.addEventListener("click", function () {
+          var next = !fBody.classList.contains("d-none");
+          fBody.classList.toggle("d-none", next);
+          fBtn.textContent = next ? "Развернуть" : "Свернуть";
+          try {
+            localStorage.setItem(FILTERS_COLLAPSED_KEY, next ? "1" : "0");
+          } catch (_) {}
+        });
+      }
+
+      var tBtn = byId("dg-ozm-table-toggle");
+      var tBody = byId("dg-ozm-table-body");
+      if (tBtn && tBody) {
+        var tCollapsed = localStorage.getItem(TABLE_COLLAPSED_KEY) === "1";
+        tBody.classList.toggle("d-none", tCollapsed);
+        tBtn.textContent = tCollapsed ? "Развернуть" : "Свернуть";
+        tBtn.addEventListener("click", function () {
+          var next = !tBody.classList.contains("d-none");
+          tBody.classList.toggle("d-none", next);
+          tBtn.textContent = next ? "Развернуть" : "Свернуть";
+          try {
+            localStorage.setItem(TABLE_COLLAPSED_KEY, next ? "1" : "0");
+          } catch (_) {}
+        });
+      }
+
+      if (window.DatagonFilterFieldsVisibility && typeof window.DatagonFilterFieldsVisibility.init === "function") {
+        window.DatagonFilterFieldsVisibility.init({
+          storageKey: "datagon_ozm_filter_fields_v2",
+          attr: "data-dg-ozm-filter-field",
+          btnId: "dg-ozm-filter-fields-btn",
+          menuId: "dg-ozm-filter-fields-menu",
+          togglesRootId: "dg-ozm-filter-fields-toggles",
+          fieldGroups: FIELD_GROUPS,
+        });
+      }
+    }
+
+    // Модальное окно подтверждения (datagon-destructive-confirm-modal)
+    function openConfirmModal(opts) {
+      var overlay = byId("dg-ozm-confirm-overlay");
+      var titleEl = byId("dg-ozm-confirm-title");
+      var bodyEl = byId("dg-ozm-confirm-body");
+      var okBtn = byId("dg-ozm-confirm-ok");
+      if (!overlay || !titleEl || !bodyEl || !okBtn) return;
+
+      titleEl.textContent = opts.title || "Подтверждение действия";
+      bodyEl.innerHTML = opts.bodyHtml || "";
+      okBtn.textContent = opts.okText || "Да, выполнить";
+      okBtn.className = "btn fw-semibold " + (opts.okClass || "btn-success");
+      state.confirmCallback = typeof opts.onConfirm === "function" ? opts.onConfirm : null;
+      overlay.classList.remove("d-none");
+    }
+
+    function closeConfirmModal() {
+      var overlay = byId("dg-ozm-confirm-overlay");
+      if (overlay) overlay.classList.add("d-none");
+      state.confirmCallback = null;
+    }
+
+    function initConfirmModalEvents() {
+      var closeBtn = byId("dg-ozm-confirm-close");
+      var cancelBtn = byId("dg-ozm-confirm-cancel");
+      var okBtn = byId("dg-ozm-confirm-ok");
+      var overlay = byId("dg-ozm-confirm-overlay");
+
+      if (closeBtn) closeBtn.addEventListener("click", closeConfirmModal);
+      if (cancelBtn) cancelBtn.addEventListener("click", closeConfirmModal);
+      if (overlay) {
+        overlay.addEventListener("click", function (e) {
+          if (e.target === overlay) closeConfirmModal();
+        });
+      }
+      document.addEventListener("keydown", function (e) {
+        if (e.key === "Escape" && overlay && !overlay.classList.contains("d-none")) {
+          closeConfirmModal();
+        }
+      });
+      if (okBtn) {
+        okBtn.addEventListener("click", function () {
+          var cb = state.confirmCallback;
+          closeConfirmModal();
+          if (cb) cb();
+        });
+      }
+    }
+
+    function syncQueueButtonsUI() {
+      var wrap = byId("dg-ozm-queue-radios");
+      if (!wrap) return;
+      wrap.querySelectorAll(".dg-ozm-queue-btn").forEach(function (btn) {
+        var q = btn.getAttribute("data-ozm-queue");
+        btn.classList.toggle("active", q === state.pending.status);
+      });
+
+      var cSug = byId("dg-ozm-cnt-suggested");
+      var cMer = byId("dg-ozm-cnt-merged");
+      var cFail = byId("dg-ozm-cnt-failed");
+      var cIgn = byId("dg-ozm-cnt-ignored");
+      if (cSug) cSug.textContent = fmtNum(state.counts.suggested || 0);
+      if (cMer) cMer.textContent = fmtNum(state.counts.merged || 0);
+      if (cFail) cFail.textContent = fmtNum(state.counts.failed || 0);
+      if (cIgn) cIgn.textContent = fmtNum(state.counts.ignored || 0);
+
+      var listTitle = byId("dg-ozm-list-title");
+      if (listTitle) {
+        if (state.status === "suggested") {
+          listTitle.textContent = "Предложения к объединению (" + fmtNum(state.total) + ")";
+        } else if (state.status === "merged") {
+          listTitle.textContent = "Уже объединены на Ozon (" + fmtNum(state.total) + ")";
+        } else if (state.status === "failed") {
+          listTitle.textContent = "Проблемные объединения (" + fmtNum(state.total) + ")";
+        } else {
+          listTitle.textContent = "Не объединять / Скрытые (" + fmtNum(state.total) + ")";
+        }
+      }
+
+      var stepBadge = byId("dg-ozm-step-indicator");
+      if (stepBadge) {
+        if (state.stepMode) {
+          stepBadge.className = "dg-ozm-pill dg-ozm-pill-step";
+          stepBadge.textContent = "Пошаговый режим: по 1 группе на экране";
+        } else {
+          stepBadge.className = "dg-ozm-pill dg-ozm-pill-neutral";
+          stepBadge.textContent = "Режим списка: до " + fmtNum(state.pageSize) + " групп";
+        }
+      }
+
+      var cacheBadge = byId("dg-ozm-cache-badge");
+      if (cacheBadge) {
+        var cs = state.cacheStats || {};
+        cacheBadge.textContent =
+          "Товаров Ozon: " +
+          fmtNum(cs.total_ozon_rows || 0) +
+          " · уже со склейкой 9048: " +
+          fmtNum(cs.cards_with_9048 || 0);
+      }
+    }
+
+    function updatePaginationUI() {
+      var effectivePageSize = state.stepMode ? 1 : state.pageSize;
+      var totalPages = Math.max(1, Math.ceil(state.total / effectivePageSize));
+      if (state.page > totalPages) state.page = totalPages;
+
+      var pageSizeSel = byId("dg-ozm-page-size");
+      if (pageSizeSel) {
+        pageSizeSel.value = state.stepMode ? "1" : String(state.pageSize || 100);
+      }
+      var stepCb = byId("dg-ozm-step-mode");
+      if (stepCb) {
+        stepCb.checked = Boolean(state.stepMode);
+      }
+
+      var statusEl = byId("dg-ozm-pagination-status");
+      if (statusEl) {
+        statusEl.textContent =
+          "Найдено: " +
+          fmtNum(state.total) +
+          "; страница " +
+          fmtNum(state.page) +
+          "/" +
+          fmtNum(totalPages) +
+          "; показано: " +
+          fmtNum(state.rows.length);
+      }
+
+      var prevBtn = byId("dg-ozm-page-prev");
+      var nextBtn = byId("dg-ozm-page-next");
+      if (prevBtn) prevBtn.disabled = state.page <= 1;
+      if (nextBtn) nextBtn.disabled = state.page >= totalPages;
+    }
+
+    // Сохранение и восстановление всех фильтров, «На странице», режима и черновиков групп при перезагрузке
+    function saveFilterState() {
+      try {
+        var payload = {
+          status: state.status,
+          kind: state.kind,
+          manager: state.manager,
+          search: state.search,
+          stepMode: Boolean(state.stepMode),
+          pageSize: Number(state.pageSize) || 100,
+          page: Number(state.page) || 1,
+          pending: {
+            status: state.pending.status,
+            kind: state.pending.kind,
+            manager: state.pending.manager,
+            search: state.pending.search,
+            stepMode: Boolean(state.pending.stepMode),
+          },
+        };
+        localStorage.setItem(FILTER_STATE_KEY, JSON.stringify(payload));
+      } catch (_) {}
+
+      try {
+        if (window.history && typeof window.history.replaceState === "function") {
+          var url = new URL(window.location.href);
+          url.searchParams.set("status", state.status || "suggested");
+          if (state.kind && state.kind !== "all") url.searchParams.set("kind", state.kind);
+          else url.searchParams.delete("kind");
+          if (state.manager && state.manager !== "all") url.searchParams.set("manager", state.manager);
+          else url.searchParams.delete("manager");
+          if (state.search) url.searchParams.set("search", state.search);
+          else url.searchParams.delete("search");
+          url.searchParams.set("step", state.stepMode ? "1" : "0");
+          if (!state.stepMode) url.searchParams.set("pageSize", String(state.pageSize || 100));
+          else url.searchParams.delete("pageSize");
+          if (state.page > 1) url.searchParams.set("page", String(state.page));
+          else url.searchParams.delete("page");
+          window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+        }
+      } catch (_) {}
+    }
+
+    function syncManagerSelectOptions() {
+      var mgrSel = byId("dg-ozm-f-manager");
+      if (!mgrSel) return;
+      var curVal = state.pending.manager || state.manager || "all";
+      var list = Array.isArray(state.managers) && state.managers.length
+        ? state.managers
+        : ["Назерке Койман", "Катерина Лычковская", "Яна Ярцева", "Ирина Новикова"];
+
+      var html = '<option value="all">Все менеджеры</option>';
+      list.forEach(function (m) {
+        if (!m) return;
+        html += '<option value="' + esc(m) + '">' + esc(m) + "</option>";
+      });
+      if (curVal !== "all" && curVal !== "__empty__" && list.indexOf(curVal) < 0) {
+        html += '<option value="' + esc(curVal) + '">' + esc(curVal) + "</option>";
+      }
+      html += '<option value="__empty__">Без менеджера</option>';
+      mgrSel.innerHTML = html;
+      mgrSel.value = curVal;
+    }
+
+    function loadFilterState() {
+      var saved = null;
+      try {
+        var raw = localStorage.getItem(FILTER_STATE_KEY);
+        if (raw) saved = JSON.parse(raw);
+      } catch (_) {}
+
+      var params = null;
+      try {
+        params = new URLSearchParams(window.location.search || "");
+      } catch (_) {}
+
+      var validStatuses = ["suggested", "merged", "failed", "ignored"];
+      var validKinds = ["all", "bundles", "name_variants", "partial_merged", "custom"];
+      var validPageSizes = [10, 25, 50, 100];
+
+      var st = (params && params.get("status")) || (saved && (saved.pending && saved.pending.status || saved.status)) || "suggested";
+      if (validStatuses.indexOf(st) < 0) st = "suggested";
+
+      var kd = (params && params.get("kind")) || (saved && (saved.pending && saved.pending.kind || saved.kind)) || "all";
+      if (validKinds.indexOf(kd) < 0) kd = "all";
+
+      var mgr =
+        (params && params.get("manager")) ||
+        (saved && ((saved.pending && saved.pending.manager) || saved.manager)) ||
+        "all";
+
+      var sr =
+        params && params.has("search")
+          ? params.get("search")
+          : saved && saved.pending && typeof saved.pending.search === "string"
+            ? saved.pending.search
+            : (saved && saved.search) || "";
+
+      var stepMode = true;
+      if (params && params.has("step")) {
+        stepMode = params.get("step") !== "0";
+      } else if (saved && typeof saved.stepMode === "boolean") {
+        stepMode = saved.stepMode;
+      }
+
+      var pageSize = 100;
+      var rawPs = Number((params && params.get("pageSize")) || (saved && saved.pageSize) || 100);
+      if (validPageSizes.indexOf(rawPs) >= 0) {
+        pageSize = rawPs;
+      }
+
+      var page = Math.max(1, Number((params && params.get("page")) || (saved && saved.page) || 1) || 1);
+
+      state.status = st;
+      state.kind = kd;
+      state.manager = mgr;
+      state.search = String(sr || "").trim();
+      state.stepMode = stepMode;
+      state.pageSize = pageSize;
+      state.page = page;
+      state.pending = {
+        status: st,
+        kind: kd,
+        manager: mgr,
+        search: String(sr || ""),
+        stepMode: stepMode,
+      };
+
+      var kindSel = byId("dg-ozm-f-kind");
+      var searchInp = byId("dg-ozm-f-search");
+      var mirrorInp = byId("dg-ozm-table-search-mirror");
+      var stepCb = byId("dg-ozm-step-mode");
+      var pageSizeSel = byId("dg-ozm-page-size");
+
+      if (kindSel) kindSel.value = kd;
+      syncManagerSelectOptions();
+      if (searchInp) searchInp.value = state.pending.search;
+      if (mirrorInp) mirrorInp.value = state.pending.search;
+      if (stepCb) stepCb.checked = stepMode;
+      if (pageSizeSel) pageSizeSel.value = stepMode ? "1" : String(pageSize);
+      syncDirtyButton();
+    }
+
+    function loadGroupDraftsMap() {
+      try {
+        var raw = localStorage.getItem(GROUP_DRAFTS_KEY);
+        if (raw) {
+          var parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === "object") return parsed;
+        }
+      } catch (_) {}
+      return {};
+    }
+
+    function saveGroupDraft(group) {
+      if (!group || !group.signature) return;
+      try {
+        var map = loadGroupDraftsMap();
+        var itemsMap = {};
+        (group.items || []).forEach(function (it) {
+          if (!it || !it.offer_id) return;
+          itemsMap[it.offer_id] = {
+            aspect_value: String(it.aspect_value == null ? "" : it.aspect_value),
+            unchecked: Boolean(it._unchecked),
+          };
+        });
+        map[group.signature] = {
+          main_offer_id: group.main_offer_id,
+          group_key: group.group_key,
+          items: itemsMap,
+          ts: Date.now(),
+        };
+        localStorage.setItem(GROUP_DRAFTS_KEY, JSON.stringify(map));
+      } catch (_) {}
+    }
+
+    function clearGroupDraft(signature) {
+      if (!signature) return;
+      try {
+        var map = loadGroupDraftsMap();
+        if (map[signature]) {
+          delete map[signature];
+          localStorage.setItem(GROUP_DRAFTS_KEY, JSON.stringify(map));
+        }
+      } catch (_) {}
+    }
+
+    function applySavedGroupDrafts(rows) {
+      var map = loadGroupDraftsMap();
+      (rows || []).forEach(function (g) {
+        if (!g || !g.signature) return;
+        var draft = map[g.signature];
+        if (!draft) return;
+        if (
+          draft.main_offer_id &&
+          Array.isArray(g.items) &&
+          g.items.some(function (it) { return it.offer_id === draft.main_offer_id; })
+        ) {
+          g.main_offer_id = draft.main_offer_id;
+          if (!g.all_merged_in_ozon && draft.group_key) {
+            g.group_key = draft.group_key;
+          }
+        }
+        if (draft.items && Array.isArray(g.items)) {
+          g.items.forEach(function (it) {
+            var dIt = draft.items[it.offer_id];
+            if (!dIt) return;
+            if (typeof dIt.aspect_value === "string") {
+              it.aspect_value = dIt.aspect_value;
+            }
+            if (typeof dIt.unchecked === "boolean") {
+              it._unchecked = dIt.unchecked;
+            }
+          });
+        }
+      });
+    }
+
+    // Загрузка списка групп с сервера
+    function loadGroupsList() {
+      saveFilterState();
+      var effectiveLimit = state.stepMode ? 1 : state.pageSize;
+      var offset = (state.page - 1) * effectiveLimit;
+      var qs =
+        "?status=" +
+        encodeURIComponent(state.status) +
+        "&kind=" +
+        encodeURIComponent(state.kind) +
+        "&manager=" +
+        encodeURIComponent(state.manager || "all") +
+        "&search=" +
+        encodeURIComponent(state.search) +
+        "&limit=" +
+        encodeURIComponent(effectiveLimit) +
+        "&offset=" +
+        encodeURIComponent(offset);
+
+      return fetch("/api/exports/marketplaces/ozon-merge/list" + qs, {
+        credentials: "same-origin",
+      })
+        .then(function (r) {
+          return r.json();
+        })
+        .then(function (data) {
+          if (!data || !data.success) {
+            throw new Error((data && data.error) || "Не удалось загрузить группы объединения Ozon");
+          }
+          state.counts = data.counts || { suggested: 0, merged: 0, ignored: 0 };
+          if (Array.isArray(data.managers) && data.managers.length) {
+            state.managers = data.managers;
+            syncManagerSelectOptions();
+          }
+          state.cacheStats = data.cache_stats || {};
+          state.total = Number(data.total || 0);
+          state.rows = Array.isArray(data.rows) ? data.rows : [];
+          applySavedGroupDrafts(state.rows);
+
+          // Если мы были на последней странице и после скрытия/объединения она опустела — шаг назад
+          if (state.rows.length === 0 && state.total > 0 && state.page > 1) {
+            state.page = Math.max(1, state.page - 1);
+            return loadGroupsList();
+          }
+
+          syncQueueButtonsUI();
+          updatePaginationUI();
+          renderGroupsList();
+        })
+        .catch(function (err) {
+          toast("danger", err.message || String(err));
+        });
+    }
+
+    function commitFilters() {
+      state.status = state.pending.status;
+      state.kind = state.pending.kind;
+      state.manager = state.pending.manager || "all";
+      state.search = state.pending.search.trim();
+      state.stepMode = Boolean(state.pending.stepMode);
+      state.page = 1;
+
+      var pageSizeSel = byId("dg-ozm-page-size");
+      if (pageSizeSel) {
+        if (state.stepMode) {
+          pageSizeSel.value = "1";
+        } else {
+          if (!state.pageSize || state.pageSize <= 1) state.pageSize = 100;
+          pageSizeSel.value = String(state.pageSize);
+        }
+      }
+
+      saveFilterState();
+      syncDirtyButton();
+      return loadGroupsList();
+    }
+
+    function resetFilters() {
+      try {
+        localStorage.removeItem(FILTER_STATE_KEY);
+        localStorage.removeItem(GROUP_DRAFTS_KEY);
+      } catch (_) {}
+      state.pending = {
+        status: "suggested",
+        kind: "all",
+        manager: "all",
+        search: "",
+        stepMode: true,
+      };
+      var kindSel = byId("dg-ozm-f-kind");
+      var mgrSel = byId("dg-ozm-f-manager");
+      var searchInp = byId("dg-ozm-f-search");
+      var mirrorInp = byId("dg-ozm-table-search-mirror");
+      var stepCb = byId("dg-ozm-step-mode");
+      var pageSizeSel = byId("dg-ozm-page-size");
+
+      if (kindSel) kindSel.value = "all";
+      if (mgrSel) mgrSel.value = "all";
+      if (searchInp) searchInp.value = "";
+      if (mirrorInp) mirrorInp.value = "";
+      if (stepCb) stepCb.checked = true;
+      if (pageSizeSel) pageSizeSel.value = "1";
+      state.pageSize = 100;
+
+      hideActionLog();
+      return commitFilters();
+    }
+
+    // Рендер карточек групп
+    function renderGroupsList() {
+      var container = byId("dg-ozm-groups-container");
+      if (!container) return;
+
+      if (!state.rows.length) {
+        var emptyMsg = "";
+        if (state.status === "suggested") {
+          emptyMsg =
+            '<div class="alert alert-success mb-0">' +
+            '<div class="fw-bold mb-1">Предложений к объединению по текущему фильтру больше нет!</div>' +
+            '<div class="small">Все найденные группы уже обработаны, объединены или скрыты. Вы можете переключиться на очередь «Уже объединены на Ozon» или сбросить фильтр поиска.</div>' +
+            "</div>";
+        } else if (state.status === "merged") {
+          emptyMsg =
+            '<div class="alert alert-light border mb-0">' +
+            '<div class="fw-bold mb-1">Список объединённых групп пуст</div>' +
+            '<div class="small text-muted">Нажмите кнопку <strong>«Обновить склейки из Ozon API»</strong> выше, чтобы загрузить текущие склейки 9048 из вашего личного кабинета Ozon.</div>' +
+            "</div>";
+        } else if (state.status === "failed") {
+          emptyMsg =
+            '<div class="alert alert-success mb-0">' +
+            '<div class="fw-bold mb-1">Проблемных объединений нет!</div>' +
+            '<div class="small">Все отправленные на Ozon склейки успешно применились.</div>' +
+            "</div>";
+        } else {
+          emptyMsg =
+            '<div class="alert alert-light border mb-0">' +
+            '<div class="fw-bold mb-1">В скрытых («Не объединять») пока нет групп</div>' +
+            '<div class="small text-muted">Сюда попадают группы, по которым вы нажали кнопку «Не объединять (скрыть)».</div>' +
+            "</div>";
+        }
+        container.innerHTML = emptyMsg;
+        return;
+      }
+
+      var visSet = new Set(state.visibleCols);
+      var html = "";
+
+      state.rows.forEach(function (g, gIdx) {
+        var absNumber = (state.page - 1) * (state.stepMode ? 1 : state.pageSize) + gIdx + 1;
+        var kindPillClass =
+          g.base_kind === "bundles"
+            ? "dg-ozm-pill-primary"
+            : g.partial_merged_in_ozon
+              ? "dg-ozm-pill-step"
+              : g.base_kind === "custom"
+                ? "dg-ozm-pill-dark"
+                : "dg-ozm-pill-info";
+
+        var actorMetaHtml = "";
+        if (g.updated_by_name || g.updated_at) {
+          var whoStr = esc(g.updated_by_name || "admin");
+          var whenStr = g.updated_at ? fmtDateTime(g.updated_at) : "";
+          var actionVerb =
+            g.queue_status === "merged"
+              ? "Склеил(а)"
+              : g.queue_status === "failed"
+                ? "Попытка склейки"
+                : g.queue_status === "ignored"
+                  ? "Скрыл(а)"
+                  : "Изменил(а)";
+          actorMetaHtml =
+            '<span class="dg-ozm-pill dg-ozm-pill-neutral" title="Кто и когда провёл действие по группе">' +
+            "👤 " +
+            actionVerb +
+            ": <strong>" +
+            whoStr +
+            "</strong>" +
+            (whenStr ? " · " + esc(whenStr) : "") +
+            "</span>";
+        }
+
+        var mgrMetaHtml = g.manager
+          ? '<span class="dg-ozm-pill dg-ozm-pill-neutral" title="Менеджер товара в МойСклад">Менеджер: <strong>' + esc(g.manager) + "</strong></span>"
+          : '<span class="dg-ozm-pill dg-ozm-pill-neutral text-muted" title="Менеджер товара в МойСклад не указан">Без менеджера</span>';
+
+        html +=
+          '<div class="dg-ozm-group-card dg-ozm-group-card-main mb-3" data-group-idx="' + gIdx + '">' +
+          '<div class="dg-ozm-group-header d-flex justify-content-between align-items-start flex-wrap gap-3">' +
+          "<div>" +
+          '<div class="d-flex align-items-center gap-2 flex-wrap mb-2">' +
+          '<span class="dg-ozm-pill dg-ozm-pill-dark">Группа #' + fmtNum(absNumber) + " из " + fmtNum(state.total) + "</span>" +
+          '<span class="dg-ozm-pill ' + kindPillClass + '">' + esc(g.kind_label) + "</span>" +
+          '<span class="dg-ozm-pill dg-ozm-pill-neutral">Товаров в связке: ' + fmtNum(g.items.length) + "</span>" +
+          mgrMetaHtml +
+          actorMetaHtml +
+          "</div>" +
+          '<div class="dg-ozm-group-title">' + esc(g.reason_title) + "</div>" +
+          '<div class="dg-ozm-group-meta mt-1">' +
+          "Чем отличаются карточки: <strong>" + esc(g.what_differs_label) + "</strong> · " +
+          'Общий код склейки на Ozon (9048): <span class="dg-ozm-code-pill">' + esc(g.group_key) + "</span>" +
+          "</div>" +
+          "</div>";
+
+        // Кнопки управления группой справа
+        html += '<div class="d-flex align-items-center gap-2 flex-wrap">';
+        html +=
+          '<button type="button" class="btn btn-outline-secondary btn-sm fw-semibold dg-ozm-log-btn" ' +
+          'data-log-sig="' + esc(g.signature) + '" ' +
+          'data-log-label="' + esc("Группа «" + g.group_key + "» — " + g.reason_title) + '" ' +
+          'data-dg-notify-start="Открываем журнал…">' +
+          "лог" +
+          "</button>";
+        if (g.queue_status === "suggested") {
+          html +=
+            '<button type="button" class="btn btn-success fw-semibold dg-ozm-btn-merge-group" data-group-idx="' + gIdx + '" data-dg-no-activity="1">' +
+            "Объединить на Ozon (" + fmtNum(g.items.length) + " тов.)" +
+            "</button>" +
+            '<button type="button" class="btn btn-outline-dark fw-semibold dg-ozm-btn-ignore-group" data-group-idx="' + gIdx + '" data-dg-notify-start="Скрываем группу в «Не объединять»…">' +
+            "Не объединять (скрыть)" +
+            "</button>";
+        } else if (g.queue_status === "merged") {
+          html +=
+            '<span class="dg-ozm-pill dg-ozm-pill-success">Уже объединены на Ozon</span>' +
+            '<button type="button" class="btn btn-outline-primary btn-sm fw-semibold dg-ozm-btn-merge-group" data-group-idx="' + gIdx + '" data-dg-no-activity="1">' +
+            "Перезаписать склейку на Ozon" +
+            "</button>" +
+            '<button type="button" class="btn btn-outline-danger btn-sm fw-semibold dg-ozm-btn-unmerge-group" data-group-idx="' + gIdx + '" data-dg-no-activity="1">' +
+            "Разъединить в Ozon" +
+            "</button>";
+        } else if (g.queue_status === "failed") {
+          html +=
+            '<span class="dg-ozm-pill dg-ozm-pill-danger">Не склеились на Ozon</span>' +
+            '<button type="button" class="btn btn-warning btn-sm fw-bold text-dark dg-ozm-btn-merge-group" data-group-idx="' + gIdx + '" data-dg-no-activity="1">' +
+            "Проверить и повторить склейку на Ozon" +
+            "</button>" +
+            '<button type="button" class="btn btn-outline-secondary btn-sm fw-semibold dg-ozm-btn-restore-group" data-group-idx="' + gIdx + '" data-dg-notify-start="Возвращаем группу в предложения…">' +
+            "Вернуть в предложения" +
+            "</button>" +
+            '<button type="button" class="btn btn-outline-dark btn-sm fw-semibold dg-ozm-btn-ignore-group" data-group-idx="' + gIdx + '" data-dg-notify-start="Скрываем группу в «Не объединять»…">' +
+            "Не объединять (скрыть)" +
+            "</button>";
+        } else if (g.queue_status === "ignored") {
+          html +=
+            '<span class="dg-ozm-pill dg-ozm-pill-neutral">Скрыто («Не объединять»)</span>' +
+            '<button type="button" class="btn btn-outline-primary btn-sm fw-semibold dg-ozm-btn-restore-group" data-group-idx="' + gIdx + '" data-dg-notify-start="Возвращаем группу в предложения…">' +
+            "Вернуть в предложения" +
+            "</button>";
+        }
+        html += "</div></div>";
+
+        if (g.queue_status === "failed" && g.problem_reason) {
+          html +=
+            '<div class="alert alert-danger mx-3 mt-3 mb-0 py-2 px-3 border-danger">' +
+            '<div class="fw-bold text-dark mb-1">⚠️ Почему не прошло объединение на Ozon:</div>' +
+            '<div class="small text-dark">' + esc(g.problem_reason) + "</div>" +
+            "</div>";
+        }
+
+        // Таблица товаров внутри группы
+        html +=
+          '<div class="p-3">' +
+          '<div class="table-responsive">' +
+          '<table class="table table-sm table-bordered align-middle mb-0">' +
+          "<colgroup>";
+
+        OZM_COLS.forEach(function (pair) {
+          var key = pair[0];
+          if (!visSet.has(key)) return;
+          var w = Number(state.colWidths[key] || DEFAULT_WIDTHS[key] || 140);
+          html += '<col style="width:' + w + 'px" />';
+        });
+        html += "</colgroup><thead class=\"table-light\"><tr>";
+
+        OZM_COLS.forEach(function (pair) {
+          var key = pair[0];
+          var label = pair[1];
+          if (!visSet.has(key)) return;
+          html += '<th class="dg-ozm-sortable">' + esc(label) + "</th>";
+        });
+        html += "</tr></thead><tbody>";
+
+        g.items.forEach(function (it, iIdx) {
+          var isChecked = it._unchecked !== true;
+          var isMain = it.offer_id === g.main_offer_id;
+          var rowClass = !isChecked ? "dg-ozm-row-unchecked" : isMain ? "dg-ozm-row-main" : "";
+
+          html += '<tr class="' + rowClass + '" data-group-idx="' + gIdx + '" data-item-idx="' + iIdx + '">';
+
+          if (visSet.has("include")) {
+            html +=
+              '<td class="text-center">' +
+              '<input type="checkbox" class="form-check-input dg-ozm-item-check" data-group-idx="' + gIdx + '" data-item-idx="' + iIdx + '" ' +
+              (isChecked ? "checked" : "") +
+              ' title="Включить товар в склейку" />' +
+              "</td>";
+          }
+
+          if (visSet.has("main")) {
+            html +=
+              "<td>" +
+              '<label class="d-flex align-items-center gap-2 mb-0" style="cursor:pointer">' +
+              '<input type="radio" name="dg-ozm-main-' + gIdx + '" class="form-check-input mt-0 dg-ozm-item-main-radio" data-group-idx="' + gIdx + '" data-offer-id="' + esc(it.offer_id) + '" ' +
+              (isMain ? "checked" : "") +
+              " />" +
+              (isMain
+                ? '<span class="dg-ozm-pill dg-ozm-pill-primary">Главная</span>'
+                : '<span class="small text-dark">Сделать главной</span>') +
+              "</label>" +
+              "</td>";
+          }
+
+          if (visSet.has("offer_id")) {
+            html +=
+              '<td class="font-monospace fw-bold text-dark">' +
+              "<div>" + esc(it.offer_id) + "</div>" +
+              '<div class="d-flex gap-2 mt-1 small fw-semibold font-sans-serif">' +
+              (it.cabinet_url
+                ? '<a href="' + esc(it.cabinet_url) + '" target="_blank" rel="noopener">ЛК Ozon ↗</a>'
+                : "") +
+              (it.buyer_url
+                ? '<a href="' + esc(it.buyer_url) + '" target="_blank" rel="noopener">Витрина ↗</a>'
+                : "") +
+              "</div>" +
+              "</td>";
+          }
+
+          if (visSet.has("name")) {
+            html +=
+              "<td>" +
+              '<div class="fw-semibold text-dark">' + esc(it.name || it.ms_name || "—") + "</div>" +
+              "</td>";
+          }
+
+          if (visSet.has("supplier")) {
+            html += '<td class="small text-dark">' + esc(it.supplier || it.brand || "—") + "</td>";
+          }
+
+          if (visSet.has("manager")) {
+            html += '<td class="small text-dark fw-semibold">' + esc(it.manager || g.manager || "—") + "</td>";
+          }
+
+          if (visSet.has("stock")) {
+            html += '<td class="text-end fw-semibold text-dark">' + (it.stock !== "" ? esc(it.stock) : "—") + "</td>";
+          }
+
+          if (visSet.has("price")) {
+            html += '<td class="text-end fw-semibold text-dark">' + (it.price !== "" ? esc(it.price) + " ₽" : "—") + "</td>";
+          }
+
+          if (visSet.has("current_merge")) {
+            html +=
+              "<td>" +
+              (it.current_merge_key
+                ? '<span class="dg-ozm-pill dg-ozm-pill-info">' + esc(it.current_merge_key) + "</span>"
+                : '<span class="small text-dark">Не склеен</span>') +
+              "</td>";
+          }
+
+          if (visSet.has("aspect_value")) {
+            html +=
+              "<td>" +
+              '<input type="text" class="form-control form-control-sm dg-ozm-aspect-input" data-group-idx="' + gIdx + '" data-item-idx="' + iIdx + '" value="' + esc(it.aspect_value || "") + '" placeholder="Например: 5 шт. или Размер M" />' +
+              "</td>";
+          }
+
+          if (visSet.has("remove_action")) {
+            html +=
+              '<td class="text-center">' +
+              '<button type="button" class="btn btn-sm btn-outline-danger dg-ozm-btn-exclude-item" data-group-idx="' + gIdx + '" data-offer-id="' + esc(it.offer_id) + '" title="Навсегда убрать этот товар из данной группы" data-dg-notify-start="Убираем товар из группы…">×</button>' +
+              "</td>";
+          }
+
+          html += "</tr>";
+        });
+
+        html += "</tbody></table></div></div></div>";
+      });
+
+      container.innerHTML = html;
+      bindGroupCardEvents();
+    }
+
+    function bindGroupCardEvents() {
+      var container = byId("dg-ozm-groups-container");
+      if (!container) return;
+
+      // Снятие/установка галочки участия товара
+      container.querySelectorAll(".dg-ozm-item-check").forEach(function (cb) {
+        cb.addEventListener("change", function () {
+          var gIdx = Number(cb.getAttribute("data-group-idx"));
+          var iIdx = Number(cb.getAttribute("data-item-idx"));
+          var g = state.rows[gIdx];
+          if (!g || !g.items[iIdx]) return;
+          g.items[iIdx]._unchecked = !cb.checked;
+          saveGroupDraft(g);
+          renderGroupsList();
+        });
+      });
+
+      // Смена главной карточки радио-кнопкой
+      container.querySelectorAll(".dg-ozm-item-main-radio").forEach(function (rb) {
+        rb.addEventListener("change", function () {
+          if (!rb.checked) return;
+          var gIdx = Number(rb.getAttribute("data-group-idx"));
+          var offerId = rb.getAttribute("data-offer-id");
+          var g = state.rows[gIdx];
+          if (!g || !offerId) return;
+          g.main_offer_id = offerId;
+          if (!g.all_merged_in_ozon) {
+            g.group_key = offerId;
+          }
+          saveGroupDraft(g);
+          renderGroupsList();
+        });
+      });
+
+      // Редактирование текста отличия («Чем отличается этот вариант»)
+      container.querySelectorAll(".dg-ozm-aspect-input").forEach(function (inp) {
+        inp.addEventListener("input", function () {
+          var gIdx = Number(inp.getAttribute("data-group-idx"));
+          var iIdx = Number(inp.getAttribute("data-item-idx"));
+          var g = state.rows[gIdx];
+          if (g && g.items[iIdx]) {
+            g.items[iIdx].aspect_value = inp.value;
+            saveGroupDraft(g);
+          }
+        });
+      });
+
+      // Кнопка «×» — навсегда убрать 1 лишний товар из группы
+      container.querySelectorAll(".dg-ozm-btn-exclude-item").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var gIdx = Number(btn.getAttribute("data-group-idx"));
+          var offerId = btn.getAttribute("data-offer-id");
+          var g = state.rows[gIdx];
+          if (!g || !offerId) return;
+
+          fetch("/api/exports/marketplaces/ozon-merge/decision", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "same-origin",
+            body: JSON.stringify({
+              action: "exclude_code",
+              signature: g.signature,
+              offer_id: offerId,
+            }),
+          })
+            .then(function (r) { return r.json(); })
+            .then(function (res) {
+              if (!res || !res.success) {
+                throw new Error((res && res.error) || "Не удалось исключить товар");
+              }
+              toast("info", "Товар " + offerId + " убран из этой группы");
+              loadGroupsList();
+            })
+            .catch(function (err) {
+              toast("danger", err.message || String(err));
+            });
+        });
+      });
+
+      // Кнопка «Не объединять (скрыть)»
+      container.querySelectorAll(".dg-ozm-btn-ignore-group").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var gIdx = Number(btn.getAttribute("data-group-idx"));
+          var g = state.rows[gIdx];
+          if (!g) return;
+
+          var runIgnore = function () {
+            return fetch("/api/exports/marketplaces/ozon-merge/decision", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              credentials: "same-origin",
+              body: JSON.stringify({
+                action: "ignore",
+                signature: g.signature,
+                title: g.reason_title,
+                main_offer_id: g.main_offer_id,
+                codes: g.items.map(function (it) { return it.offer_id; }),
+              }),
+            })
+              .then(function (r) { return r.json(); })
+              .then(function (res) {
+                if (!res || !res.success) {
+                  throw new Error((res && res.error) || "Ошибка сохранения решения");
+                }
+                clearGroupDraft(g.signature);
+                toast("secondary", "Группа скрыта в «Не объединять» и больше не побеспокоит");
+                return loadGroupsList();
+              })
+              .catch(function (err) {
+                toast("danger", err.message || String(err));
+              });
+          };
+
+          if (window.DatagonNotify && window.DatagonNotify.busyRun) {
+            window.DatagonNotify.busyRun(btn, runIgnore);
+          } else {
+            runIgnore();
+          }
+        });
+      });
+
+      // Кнопка «Вернуть в предложения» (из вкладки «Не объединять»)
+      container.querySelectorAll(".dg-ozm-btn-restore-group").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var gIdx = Number(btn.getAttribute("data-group-idx"));
+          var g = state.rows[gIdx];
+          if (!g) return;
+
+          fetch("/api/exports/marketplaces/ozon-merge/decision", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "same-origin",
+            body: JSON.stringify({
+              action: "restore",
+              signature: g.signature,
+            }),
+          })
+            .then(function (r) { return r.json(); })
+            .then(function (res) {
+              if (!res || !res.success) {
+                throw new Error((res && res.error) || "Не удалось вернуть группу");
+              }
+              toast("success", "Группа возвращена в очередь «Предложения к объединению»");
+              loadGroupsList();
+            })
+            .catch(function (err) {
+              toast("danger", err.message || String(err));
+            });
+        });
+      });
+
+      // Кнопка «Объединить на Ozon»
+      container.querySelectorAll(".dg-ozm-btn-merge-group").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var gIdx = Number(btn.getAttribute("data-group-idx"));
+          var g = state.rows[gIdx];
+          if (!g) return;
+
+          var activeItems = g.items.filter(function (it) { return it._unchecked !== true; });
+          if (activeItems.length < 2) {
+            toast("warning", "Для объединения нужно оставить отмеченными минимум 2 товара в группе");
+            return;
+          }
+
+          var emptyAspect = activeItems.filter(function (it) {
+            return !String(it.aspect_value || "").trim();
+          });
+          if (emptyAspect.length > 0) {
+            toast("warning", "Заполните поле «Чем отличается этот вариант» у всех отмеченных товаров");
+            return;
+          }
+
+          var summaryListHtml = activeItems
+            .map(function (it) {
+              return (
+                "<li><code>" +
+                esc(it.offer_id) +
+                "</code> — " +
+                esc((it.name || "").slice(0, 65)) +
+                " → отличие: <strong>" +
+                esc(it.aspect_value) +
+                "</strong>" +
+                (it.offer_id === g.main_offer_id ? ' <span class="badge bg-primary">Главная</span>' : "") +
+                "</li>"
+              );
+            })
+            .join("");
+
+          openConfirmModal({
+            title: "Объединить карточки на Ozon (" + fmtNum(activeItems.length) + " шт.)",
+            okText: "Да, объединить на Ozon",
+            okClass: "btn-success",
+            bodyHtml:
+              '<div class="mb-2">Будет выполнена склейка товаров в одну карточку на Ozon:</div>' +
+              '<ul class="small mb-3">' +
+              "<li>Общий код склейки (атрибут 9048): <code>" + esc(g.group_key) + "</code></li>" +
+              "<li>Главная карточка (откуда копируются категория и бренд): <code>" + esc(g.main_offer_id) + "</code></li>" +
+              "</ul>" +
+              '<div class="fw-semibold small mb-1">Состав склейки:</div>' +
+              '<ul class="small mb-0">' + summaryListHtml + "</ul>",
+            onConfirm: function () {
+              executeMergeGroup(g, activeItems, btn);
+            },
+          });
+        });
+      });
+
+      // Кнопка «Разъединить в Ozon»
+      container.querySelectorAll(".dg-ozm-btn-unmerge-group").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var gIdx = Number(btn.getAttribute("data-group-idx"));
+          var g = state.rows[gIdx];
+          if (!g) return;
+          var activeItems = g.items.filter(function (it) { return it._unchecked !== true; });
+
+          openConfirmModal({
+            title: "Разъединить карточки на Ozon (" + fmtNum(activeItems.length) + " шт.)",
+            okText: "Да, разъединить карточки",
+            okClass: "btn-danger",
+            bodyHtml:
+              '<div class="mb-2">У выбранных карточек будет очищен атрибут объединения <code>9048</code> в Ozon, и они станут отдельными карточками:</div>' +
+              '<div class="font-monospace small">' +
+              activeItems.map(function (i) { return esc(i.offer_id); }).join(", ") +
+              "</div>",
+            onConfirm: function () {
+              executeUnmergeGroup(g, activeItems, btn);
+            },
+          });
+        });
+      });
+    }
+
+    // Выполнение склейки группы с расширенным журналом (#dg-ozm-action-log)
+    function executeMergeGroup(group, activeItems, triggerBtn) {
+      var startTs = Date.now();
+      var timer = setInterval(function () {
+        var sec = Math.round((Date.now() - startTs) / 1000);
+        showActionLog(
+          "info",
+          "<strong>Отправляем склейку группы «" +
+            esc(group.group_key) +
+            "» в Ozon Seller API…</strong> Прошло " +
+            fmtNum(sec) +
+            " с."
+        );
+      }, 1000);
+
+      showActionLog(
+        "info",
+        "<div><strong>Старт объединения карточек на Ozon</strong></div>" +
+          '<div class="small mt-1">Группа: <code>' +
+          esc(group.group_key) +
+          "</code> · Главная карточка: <code>" +
+          esc(group.main_offer_id) +
+          "</code> · Товаров к склейке: <strong>" +
+          fmtNum(activeItems.length) +
+          "</strong></div>"
+      );
+
+      var payload = {
+        confirm: true,
+        copy_from_main: true,
+        groups: [
+          {
+            signature: group.signature,
+            group_key: group.group_key,
+            main_offer_id: group.main_offer_id,
+            copy_from_main: true,
+            recommended_aspect_hint: group.recommended_aspect_hint,
+            items: activeItems.map(function (it) {
+              return {
+                offer_id: it.offer_id,
+                aspect_value: String(it.aspect_value || "").trim(),
+              };
+            }),
+          },
+        ],
+      };
+
+      var doReq = function () {
+        return fetch("/api/exports/marketplaces/ozon-merge/apply", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify(payload),
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (res) {
+            clearInterval(timer);
+            if (!res || (!res.success && !res.ms_ok)) {
+              var errText = (res && res.error) || "Ошибка объединения карточек в Ozon";
+              var errList = "";
+              if (res && Array.isArray(res.errors) && res.errors.length) {
+                errList =
+                  '<ul class="small mb-0 mt-1">' +
+                  res.errors
+                    .slice(0, 20)
+                    .map(function (e) {
+                      return "<li><code>" + esc(e.code) + "</code>: " + esc(e.error) + "</li>";
+                    })
+                    .join("") +
+                  "</ul>";
+              }
+                  showActionLog(
+                "danger",
+                "<div><strong>Ошибка при объединении группы «" +
+                  esc(group.group_key) +
+                  "»:</strong> " +
+                  esc(errText) +
+                  "</div>" +
+                  '<div class="small mt-1 text-dark">Группа перенесена во вкладку <strong>«Проблемные объединения»</strong> с подробным описанием причины отказа Ozon.</div>' +
+                  errList
+              );
+              toast("danger", errText);
+              return loadGroupsList();
+            }
+
+            var errHtml = "";
+            if (Array.isArray(res.errors) && res.errors.length) {
+              errHtml =
+                '<div class="mt-2 fw-semibold small">Ошибки по отдельным карточкам:</div><ul class="small mb-0">' +
+                res.errors
+                  .slice(0, 20)
+                  .map(function (e) {
+                    return "<li><code>" + esc(e.code) + "</code>: " + esc(e.error) + "</li>";
+                  })
+                  .join("") +
+                "</ul>";
+            }
+
+            showActionLog(
+              res.ms_failed > 0 ? "warning" : "success",
+              "<div><strong>Объединение группы «" +
+                esc(group.group_key) +
+                "» завершено за " +
+                esc(res.duration_sec || 0) +
+                " с.</strong></div>" +
+                '<div class="small mt-1 text-dark">Эта группа перемещена во вкладку <strong>«Уже объединены на Ozon»</strong>, а ниже автоматически открыта следующая группа из очереди предложений.</div>' +
+                '<div class="small mt-1 text-dark">⏳ <em>Обратите внимание: в личном кабинете Ozon атрибуты уже записаны мгновенно, а на покупательской витрине ozon.ru склейка вариантов в одну карточку появляется после переиндексации Ozon (обычно от 2 до 15 минут).</em></div>' +
+                '<ul class="small mb-0 mt-2">' +
+                "<li>Обработано карточек: <strong>" + fmtNum(res.total || 0) + "</strong></li>" +
+                "<li>Успешно записано в Ozon ✓: <strong>" + fmtNum(res.ms_ok || 0) + "</strong> (новых склеек: " + fmtNum(res.filled || 0) + ", обновлено: " + fmtNum(res.corrected || 0) + ")</li>" +
+                "<li>Ошибок ×: <strong>" + fmtNum(res.ms_failed || 0) + "</strong></li>" +
+                "</ul>" +
+                errHtml
+            );
+
+            toast(
+              res.ms_failed > 0 ? "warning" : "success",
+              "Группа «" + group.group_key + "» отправлена в Ozon (" + fmtNum(res.ms_ok || 0) + " шт.)"
+            );
+            clearGroupDraft(group.signature);
+            return loadGroupsList();
+          })
+          .catch(function (err) {
+            clearInterval(timer);
+            showActionLog("danger", "<strong>Ошибка запроса:</strong> " + esc(err.message || String(err)));
+            toast("danger", err.message || String(err));
+          });
+      };
+
+      if (triggerBtn && window.DatagonNotify && window.DatagonNotify.busyRun) {
+        window.DatagonNotify.busyRun(triggerBtn, doReq);
+      } else {
+        doReq();
+      }
+    }
+
+    function executeUnmergeGroup(group, activeItems, triggerBtn) {
+      var offerIds = activeItems.map(function (it) { return it.offer_id; });
+      showActionLog(
+        "info",
+        "<strong>Разъединяем карточки в Ozon (" + fmtNum(offerIds.length) + " шт.)…</strong>"
+      );
+
+      var doReq = function () {
+        return fetch("/api/exports/marketplaces/ozon-merge/unmerge", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify({
+            confirm: true,
+            signature: group.signature,
+            offer_ids: offerIds,
+          }),
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (res) {
+            if (!res || !res.success) {
+              throw new Error((res && res.error) || "Ошибка разъединения карточек");
+            }
+            showActionLog(
+              "success",
+              "<div><strong>Карточки разъединены в Ozon за " +
+                esc(res.duration_sec || 0) +
+                " с.</strong> Успешно обновлено: <strong>" +
+                fmtNum(res.ms_ok || 0) +
+                "</strong> шт.</div>"
+            );
+            toast("success", "Карточки разъединены в Ozon");
+            clearGroupDraft(group.signature);
+            return loadGroupsList();
+          })
+          .catch(function (err) {
+            showActionLog("danger", "<strong>Ошибка разъединения:</strong> " + esc(err.message || String(err)));
+            toast("danger", err.message || String(err));
+          });
+      };
+
+      if (triggerBtn && window.DatagonNotify && window.DatagonNotify.busyRun) {
+        window.DatagonNotify.busyRun(triggerBtn, doReq);
+      } else {
+        doReq();
+      }
+    }
+
+    // Сканирование атрибута 9048 из Ozon API
+    function handleScanOzonCatalog(btn) {
+      var startTs = Date.now();
+      var timer = setInterval(function () {
+        var sec = Math.round((Date.now() - startTs) / 1000);
+        showActionLog(
+          "info",
+          "<strong>Сканируем атрибуты склейки 9048 из Ozon API по всему каталогу…</strong> Прошло " +
+            fmtNum(sec) +
+            " с."
+        );
+      }, 1000);
+
+      showActionLog(
+        "info",
+        "<strong>Запущено обновление кэша склеек Ozon (атрибут 9048)…</strong>"
+      );
+
+      var doScan = function () {
+        return fetch("/api/exports/marketplaces/ozon-merge/scan", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify({}),
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (res) {
+            clearInterval(timer);
+            if (!res || !res.success) {
+              throw new Error((res && res.error) || "Ошибка сканирования Ozon API");
+            }
+            showActionLog(
+              "success",
+              "<div><strong>Кэш атрибутов склейки Ozon обновлён за " +
+                esc(res.duration_sec || 0) +
+                " с.</strong></div>" +
+                '<ul class="small mb-0 mt-1">' +
+                "<li>Всего товаров Ozon в снапшоте: <strong>" + fmtNum(res.total || 0) + "</strong></li>" +
+                "<li>Проверено карточек через Ozon API ✓: <strong>" + fmtNum(res.scanned || 0) + "</strong></li>" +
+                "<li>Найдено карточек с заполненной склейкой 9048: <strong>" + fmtNum(res.with_9048 || 0) + "</strong></li>" +
+                "</ul>"
+            );
+            toast("success", "Склейки из Ozon API обновлены (" + fmtNum(res.with_9048 || 0) + " карточек с 9048)");
+            return loadGroupsList();
+          })
+          .catch(function (err) {
+            clearInterval(timer);
+            showActionLog("danger", "<strong>Ошибка сканирования Ozon API:</strong> " + esc(err.message || String(err)));
+            toast("danger", err.message || String(err));
+          });
+      };
+
+      if (btn && window.DatagonNotify && window.DatagonNotify.busyRun) {
+        window.DatagonNotify.busyRun(btn, doScan);
+      } else {
+        doScan();
+      }
+    }
+
+    function bindFilterAndHeaderEvents() {
+      // Переключение 3 очередей (одиночное явное действие пользователя — сразу применяем)
+      var qWrap = byId("dg-ozm-queue-radios");
+      if (qWrap) {
+        qWrap.querySelectorAll(".dg-ozm-queue-btn").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            var q = btn.getAttribute("data-ozm-queue") || "suggested";
+            state.pending.status = q;
+            commitFilters();
+          });
+        });
+      }
+
+      // Селект типа находки -> пишет в черновик pending (применяется по кнопке «Применить»)
+      var kindSel = byId("dg-ozm-f-kind");
+      if (kindSel) {
+        kindSel.addEventListener("change", function () {
+          state.pending.kind = kindSel.value || "all";
+          saveFilterState();
+          syncDirtyButton();
+        });
+      }
+
+      // Селект менеджера товара -> пишет в черновик pending (применяется по кнопке «Применить»)
+      var mgrSel = byId("dg-ozm-f-manager");
+      if (mgrSel) {
+        mgrSel.addEventListener("change", function () {
+          state.pending.manager = mgrSel.value || "all";
+          saveFilterState();
+          syncDirtyButton();
+        });
+      }
+
+      // Переключатель Пошагового режима (одиночное действие — сразу переключает вид)
+      var stepCb = byId("dg-ozm-step-mode");
+      if (stepCb) {
+        stepCb.addEventListener("change", function () {
+          state.pending.stepMode = Boolean(stepCb.checked);
+          commitFilters();
+        });
+      }
+
+      // Поиск + зеркало в шапке таблицы (moysklad baseline)
+      var searchInp = byId("dg-ozm-f-search");
+      var mirrorInp = byId("dg-ozm-table-search-mirror");
+      var syncingSearch = false;
+
+      function onSearchInput(val, source) {
+        if (syncingSearch) return;
+        syncingSearch = true;
+        state.pending.search = val;
+        if (source !== searchInp && searchInp) searchInp.value = val;
+        if (source !== mirrorInp && mirrorInp) mirrorInp.value = val;
+        syncingSearch = false;
+        saveFilterState();
+        syncDirtyButton();
+      }
+
+      [searchInp, mirrorInp].forEach(function (inp) {
+        if (!inp) return;
+        inp.addEventListener("input", function () {
+          onSearchInput(inp.value, inp);
+        });
+        inp.addEventListener("keydown", function (e) {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            commitFilters();
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            onSearchInput("", null);
+            commitFilters();
+          }
+        });
+        inp.addEventListener("search", function () {
+          if (inp.value === "" && state.search !== "") {
+            onSearchInput("", null);
+            commitFilters();
+          }
+        });
+      });
+
+      var applyBtn = byId("dg-ozm-apply-filters-btn");
+      if (applyBtn) {
+        applyBtn.addEventListener("click", function () {
+          if (window.DatagonNotify && window.DatagonNotify.busyRun) {
+            window.DatagonNotify.busyRun(applyBtn, commitFilters);
+          } else {
+            commitFilters();
+          }
+        });
+      }
+
+      var resetBtn = byId("dg-ozm-reset-filters-btn");
+      if (resetBtn) {
+        resetBtn.addEventListener("click", function () {
+          if (window.DatagonNotify && window.DatagonNotify.busyRun) {
+            window.DatagonNotify.busyRun(resetBtn, resetFilters);
+          } else {
+            resetFilters();
+          }
+        });
+      }
+
+      // Пагинация
+      var pageSizeSel = byId("dg-ozm-page-size");
+      if (pageSizeSel) {
+        pageSizeSel.addEventListener("change", function () {
+          var v = Number(pageSizeSel.value) || 100;
+          if (v === 1) {
+            state.stepMode = true;
+            state.pending.stepMode = true;
+            if (stepCb) stepCb.checked = true;
+          } else {
+            state.stepMode = false;
+            state.pending.stepMode = false;
+            state.pageSize = v;
+            if (stepCb) stepCb.checked = false;
+          }
+          state.page = 1;
+          saveFilterState();
+          loadGroupsList();
+        });
+      }
+
+      var prevBtn = byId("dg-ozm-page-prev");
+      var nextBtn = byId("dg-ozm-page-next");
+      if (prevBtn) {
+        prevBtn.addEventListener("click", function () {
+          if (state.page > 1) {
+            state.page -= 1;
+            saveFilterState();
+            loadGroupsList();
+          }
+        });
+      }
+      if (nextBtn) {
+        nextBtn.addEventListener("click", function () {
+          state.page += 1;
+          saveFilterState();
+          loadGroupsList();
+        });
+      }
+
+      // Кнопка «Обновить склейки из Ozon API»
+      var scanBtn = byId("dg-ozm-scan-ozon-btn");
+      if (scanBtn) {
+        scanBtn.addEventListener("click", function () {
+          handleScanOzonCatalog(scanBtn);
+        });
+      }
+
+      // Ручное добавление своей группы по кодам МС
+      var openCustomBtn = byId("dg-ozm-open-custom-btn");
+      var closeCustomBtn = byId("dg-ozm-close-custom-btn");
+      var customBox = byId("dg-ozm-custom-box");
+      var saveCustomBtn = byId("dg-ozm-save-custom-btn");
+      var customCodesInp = byId("dg-ozm-custom-codes");
+
+      if (openCustomBtn && customBox) {
+        openCustomBtn.addEventListener("click", function () {
+          customBox.classList.toggle("d-none");
+          if (!customBox.classList.contains("d-none") && customCodesInp) {
+            customCodesInp.focus();
+          }
+        });
+      }
+      if (closeCustomBtn && customBox) {
+        closeCustomBtn.addEventListener("click", function () {
+          customBox.classList.add("d-none");
+        });
+      }
+      if (saveCustomBtn && customCodesInp) {
+        saveCustomBtn.addEventListener("click", function () {
+          var raw = String(customCodesInp.value || "").trim();
+          if (!raw) {
+            toast("warning", "Введите минимум 2 кода МС через запятую или пробел");
+            return;
+          }
+          var doCreate = function () {
+            return fetch("/api/exports/marketplaces/ozon-merge/decision", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              credentials: "same-origin",
+              body: JSON.stringify({
+                action: "create_custom",
+                codes_text: raw,
+              }),
+            })
+              .then(function (r) { return r.json(); })
+              .then(function (res) {
+                if (!res || !res.success) {
+                  throw new Error((res && res.error) || "Не удалось создать группу");
+                }
+                customCodesInp.value = "";
+                if (customBox) customBox.classList.add("d-none");
+                state.pending.status = "suggested";
+                state.pending.kind = "custom";
+                if (kindSel) kindSel.value = "custom";
+                toast("success", "Ваша группа добавлена в список предложений");
+                return commitFilters();
+              })
+              .catch(function (err) {
+                toast("danger", err.message || String(err));
+              });
+          };
+          if (window.DatagonNotify && window.DatagonNotify.busyRun) {
+            window.DatagonNotify.busyRun(saveCustomBtn, doCreate);
+          } else {
+            doCreate();
+          }
+        });
+      }
+    }
+
+    // =========================================================================
+    // Журнал изменений (лог склеек и расклеек — по эталону /exports-new-products.html)
+    // =========================================================================
+    var logState = {
+      signature: "",
+      offerId: "",
+      label: "",
+      limit: 100,
+      offset: 0,
+      total: 0,
+    };
+
+    function ozmLogActionLabel(action) {
+      var map = {
+        merge: "Склейка на Ozon",
+        merge_failed: "Ошибка склейки",
+        unmerge: "Расклейка (разъединение)",
+        ignore: "Не объединять (скрыто)",
+        restore: "Возврат в предложения",
+        exclude_code: "Исключён товар",
+        create_custom: "Создана группа",
+      };
+      return map[action] || action || "Изменение";
+    }
+
+    function ozmLogActionBadgeClass(action) {
+      if (action === "merge") return "bg-success text-white";
+      if (action === "merge_failed") return "bg-danger text-white";
+      if (action === "unmerge") return "bg-warning text-dark";
+      if (action === "ignore") return "bg-secondary text-white";
+      if (action === "restore" || action === "create_custom") return "bg-primary text-white";
+      return "bg-light text-dark border";
+    }
+
+    function syncOzmLogTitle() {
+      var titleEl = byId("dg-ozm-log-title");
+      var subEl = byId("dg-ozm-log-subtitle");
+      if (titleEl) {
+        if (logState.offerId) {
+          titleEl.textContent = "Журнал изменений: товар " + logState.offerId;
+        } else if (logState.signature) {
+          titleEl.textContent = "Журнал изменений группы";
+        } else {
+          titleEl.textContent = "Общий журнал склеек и расклеек Ozon";
+        }
+      }
+      if (subEl) {
+        subEl.textContent =
+          logState.label ||
+          (logState.signature ? "Группа: " + logState.signature : "Все операции объединения и разъединения карточек");
+      }
+    }
+
+    function openOzmLog(opts) {
+      var o = opts || {};
+      logState.signature = String(o.signature || "").trim();
+      logState.offerId = String(o.offerId || "").trim();
+      logState.label = String(o.label || "").trim();
+      logState.offset = 0;
+      syncOzmLogTitle();
+      var overlay = byId("dg-ozm-log-overlay");
+      if (overlay) {
+        overlay.style.display = "flex";
+        overlay.setAttribute("aria-hidden", "false");
+      }
+      loadOzmLog();
+    }
+
+    function closeOzmLog() {
+      var overlay = byId("dg-ozm-log-overlay");
+      if (!overlay) return;
+      overlay.style.display = "none";
+      overlay.setAttribute("aria-hidden", "true");
+    }
+
+    function renderOzmLogPager() {
+      var pages = Math.max(1, Math.ceil((logState.total || 0) / logState.limit) || 1);
+      var page = Math.floor(logState.offset / logState.limit) + 1;
+      var prevDisabled = logState.offset <= 0 ? " disabled" : "";
+      var nextDisabled = logState.offset + logState.limit >= logState.total ? " disabled" : "";
+      var showAllBtn =
+        logState.signature || logState.offerId
+          ? '<button type="button" class="btn btn-sm btn-outline-primary dg-ozm-log-show-all" data-dg-notify-start="Открываем весь журнал…">Показать весь журнал</button>'
+          : "";
+      return (
+        '<div class="d-flex align-items-center justify-content-between gap-2 px-3 py-2 border-top flex-wrap bg-light">' +
+        '<span class="small text-dark">Найдено: ' +
+        fmtNum(logState.total) +
+        "; страница " +
+        fmtNum(page) +
+        "/" +
+        fmtNum(pages) +
+        "</span>" +
+        '<div class="d-flex align-items-center gap-2 flex-wrap">' +
+        showAllBtn +
+        '<div class="btn-group">' +
+        '<button type="button" class="btn btn-sm btn-outline-secondary dg-ozm-log-prev"' +
+        prevDisabled +
+        ">Назад</button>" +
+        '<button type="button" class="btn btn-sm btn-outline-secondary dg-ozm-log-next"' +
+        nextDisabled +
+        ">Вперёд</button>" +
+        "</div></div></div>"
+      );
+    }
+
+    function loadOzmLog() {
+      var body = byId("dg-ozm-log-body");
+      if (!body) return;
+      body.innerHTML = '<div class="text-muted small text-center py-4">Загрузка журнала…</div>';
+
+      var qs =
+        "?limit=" +
+        encodeURIComponent(logState.limit) +
+        "&offset=" +
+        encodeURIComponent(logState.offset);
+      if (logState.offerId) {
+        qs += "&offer_id=" + encodeURIComponent(logState.offerId);
+      } else if (logState.signature) {
+        qs += "&signature=" + encodeURIComponent(logState.signature);
+      }
+
+      fetch("/api/exports/marketplaces/ozon-merge/log" + qs, {
+        credentials: "same-origin",
+      })
+        .then(function (r) {
+          return r.json();
+        })
+        .then(function (j) {
+          if (!j || j.success === false) {
+            throw new Error((j && j.error) || "Не удалось загрузить журнал");
+          }
+          logState.total = Number(j.total || 0);
+          var rows = Array.isArray(j.rows) ? j.rows : [];
+          var filterBar =
+            logState.signature || logState.offerId
+              ? '<div class="alert alert-info py-2 px-3 mb-0 rounded-0 small d-flex justify-content-between align-items-center flex-wrap gap-2">' +
+                "<span>Фильтр журнала: <strong>" +
+                esc(logState.offerId ? "Товар " + logState.offerId : logState.label || logState.signature) +
+                "</strong></span>" +
+                '<button type="button" class="btn btn-link btn-sm p-0 align-baseline fw-semibold dg-ozm-log-show-all" data-dg-notify-start="Открываем весь журнал…">Показать все записи по всем группам</button>' +
+                "</div>"
+              : "";
+
+          if (!rows.length) {
+            body.innerHTML =
+              filterBar +
+              '<div class="text-muted small text-center py-4">' +
+              "По выбранному фильтру записей в журнале пока нет." +
+              "</div>" +
+              renderOzmLogPager();
+            return;
+          }
+
+          var html =
+            filterBar +
+            '<div class="table-responsive"><table class="table table-sm table-bordered align-middle mb-0"><thead><tr>' +
+            "<th>Когда</th>" +
+            "<th>Кто проводил</th>" +
+            "<th>Действие</th>" +
+            "<th>Товар / Группа</th>" +
+            "<th>Было → Стало</th>" +
+            "</tr></thead><tbody>";
+
+          rows.forEach(function (r) {
+            var when = fmtDateTime(r.changed_at);
+            var who = esc(r.changed_by_name || "admin");
+            var actLabel = esc(ozmLogActionLabel(r.action));
+            var actCls = ozmLogActionBadgeClass(r.action);
+            var targetStr = r.offer_id
+              ? "<code>" + esc(r.offer_id) + "</code>"
+              : "<code>" + esc(r.group_signature || "—") + "</code>";
+            if (r.field_label) {
+              targetStr += '<div class="small text-muted">' + esc(r.field_label) + "</div>";
+            }
+            var oldVal =
+              r.old_value == null || r.old_value === ""
+                ? '<span class="text-muted">∅</span>'
+                : '<span class="dg-ozm-log-old">' + esc(r.old_value) + "</span>";
+            var newVal =
+              r.new_value == null || r.new_value === ""
+                ? '<span class="text-muted">∅</span>'
+                : '<span class="dg-ozm-log-new">' + esc(r.new_value) + "</span>";
+            var note =
+              r.note && String(r.note).trim()
+                ? '<div class="small text-dark mt-1">' + esc(r.note) + "</div>"
+                : "";
+
+            html +=
+              "<tr>" +
+              '<td class="text-nowrap small text-dark">' + esc(when) + "</td>" +
+              '<td class="fw-semibold text-dark">' + who + "</td>" +
+              '<td><span class="badge ' + actCls + ' dg-ozm-log-action">' + actLabel + "</span></td>" +
+              "<td>" + targetStr + "</td>" +
+              "<td>" +
+              oldVal +
+              '<span class="dg-ozm-log-arrow">→</span>' +
+              newVal +
+              note +
+              "</td>" +
+              "</tr>";
+          });
+
+          html += "</tbody></table></div>" + renderOzmLogPager();
+          body.innerHTML = html;
+        })
+        .catch(function (e) {
+          body.innerHTML =
+            '<div class="text-danger small text-center py-4">' +
+            esc(e.message || "Ошибка загрузки журнала") +
+            "</div>";
+        });
+    }
+
+    function bindOzmLogUi() {
+      var allLogBtn = byId("dg-ozm-open-all-log-btn");
+      if (allLogBtn) {
+        allLogBtn.addEventListener("click", function () {
+          openOzmLog({ signature: "", offerId: "", label: "Все операции склейки и расклейки карточек Ozon" });
+        });
+      }
+
+      document.addEventListener("click", function (ev) {
+        var btn = ev.target && ev.target.closest && ev.target.closest(".dg-ozm-log-btn");
+        if (btn) {
+          ev.preventDefault();
+          var sig = btn.getAttribute("data-log-sig") || "";
+          var offer = btn.getAttribute("data-log-offer") || "";
+          var label = btn.getAttribute("data-log-label") || "";
+          openOzmLog({ signature: sig, offerId: offer, label: label });
+          return;
+        }
+
+        var showAll = ev.target && ev.target.closest && ev.target.closest(".dg-ozm-log-show-all");
+        if (showAll) {
+          ev.preventDefault();
+          logState.signature = "";
+          logState.offerId = "";
+          logState.label = "Все операции склейки и расклейки карточек Ozon";
+          logState.offset = 0;
+          syncOzmLogTitle();
+          loadOzmLog();
+          return;
+        }
+
+        var prev = ev.target && ev.target.closest && ev.target.closest(".dg-ozm-log-prev");
+        if (prev) {
+          logState.offset = Math.max(0, logState.offset - logState.limit);
+          loadOzmLog();
+          return;
+        }
+
+        var next = ev.target && ev.target.closest && ev.target.closest(".dg-ozm-log-next");
+        if (next) {
+          if (logState.offset + logState.limit < logState.total) {
+            logState.offset += logState.limit;
+            loadOzmLog();
+          }
+        }
+      });
+
+      var closeBtn = byId("dg-ozm-log-close");
+      if (closeBtn) closeBtn.addEventListener("click", closeOzmLog);
+      var refreshBtn = byId("dg-ozm-log-refresh");
+      if (refreshBtn) refreshBtn.addEventListener("click", loadOzmLog);
+      var backdrop = byId("dg-ozm-log-backdrop");
+      if (backdrop) backdrop.addEventListener("click", closeOzmLog);
+
+      document.addEventListener("keydown", function (ev) {
+        if (ev.key !== "Escape") return;
+        var overlay = byId("dg-ozm-log-overlay");
+        if (overlay && overlay.style.display !== "none") closeOzmLog();
+      });
+    }
+
+    function init() {
+      loadColsPrefs();
+      loadFilterState();
+      renderColumnControls();
+      renderWidthControls();
+      initToolboxPanels();
+      initCardCollapses();
+      initConfirmModalEvents();
+      bindOzmLogUi();
+      bindFilterAndHeaderEvents();
+      loadGroupsList();
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
+  })();
+</script>

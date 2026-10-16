@@ -1062,10 +1062,8 @@ function createExportsHucksterRouter(_db, appSettings) {
         if (syncState.active) {
             return { ok: false, code: 'ALREADY_RUNNING' };
         }
-        const email = String(bodyObj.email || process.env.HUCKSTER_EMAIL || appSettings.huckster_email || '').trim();
-        const password = String(
-            bodyObj.password || process.env.HUCKSTER_PASSWORD || appSettings.huckster_password || ''
-        ).trim();
+        const email = String(bodyObj.email || appSettings.huckster_email || '').trim();
+        const password = String(bodyObj.password || appSettings.huckster_password || '').trim();
         if (!email || !password) {
             return { ok: false, code: 'MISSING_CREDS' };
         }

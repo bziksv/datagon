@@ -378,6 +378,14 @@ function assemble() {
             PAGE_SCRIPTS: mpShopScripts,
         },
         {
+            out: 'exports-ozon-merge.html',
+            PAGE_TITLE: 'Маркетплейсы — Объединение Ozon — Датагон',
+            BODY_ATTRS: 'class="datagon-vanilla-body" data-dg-active-nav="exports-ozon-merge"',
+            EXTRA_HEAD: read(path.join(vanillaDir, 'inners/exports-ozon-merge.head.html')),
+            MAIN_INNER: read(path.join(vanillaDir, 'inners/exports-ozon-merge.inner.html')),
+            PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/exports-ozon-merge.scripts.html')),
+        },
+        {
             out: 'exports-marketplaces-wildberries.html',
             PAGE_TITLE: 'Маркетплейсы — Wildberries — Датагон',
             BODY_ATTRS:

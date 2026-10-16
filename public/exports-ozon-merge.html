@@ -1,0 +1,3808 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, shrink-to-fit=no" />
+  <script>
+    (function () {
+      try {
+        if (localStorage.getItem("datagon_theme_font_source_sans_3_v1") === "1") {
+          document.documentElement.classList.add("dg-font-source-sans-3");
+          var l = document.createElement("link");
+          l.id = "dg-font-source-sans-3-link";
+          l.rel = "stylesheet";
+          l.href =
+            "https://fonts.googleapis.com/css2?family=Source+Sans+3:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap";
+          document.head.appendChild(l);
+        }
+      } catch (e) {}
+    })();
+  </script>
+  <title>Маркетплейсы — Объединение Ozon — Датагон</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="stylesheet" href="/static/css/main.989b22a9.css" />
+  <!-- Маркетплейсы — Объединение карточек Ozon: пошаговый конвейер (высокая контрастность и читаемость) -->
+<style>
+  /* Баннер 3 шагов */
+  .dg-ozm-step-banner {
+    background: #f8fafc;
+    border: 1px solid #cbd5e1;
+    border-left: 5px solid #2563eb;
+    border-radius: 0.5rem;
+    color: #0f172a;
+  }
+  .dg-ozm-step-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #0f172a;
+  }
+  .dg-ozm-step-desc {
+    font-size: 0.875rem;
+    color: #334155;
+    line-height: 1.45;
+  }
+  .dg-ozm-code-pill {
+    display: inline-block;
+    background: #ffffff;
+    color: #0f172a;
+    border: 1px solid #94a3b8;
+    border-radius: 0.25rem;
+    padding: 0.05rem 0.4rem;
+    font-family: SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.875rem;
+    font-weight: 600;
+    text-transform: none !important;
+  }
+
+  /* Крупные карточки выбора очереди — без нечитаемого серого текста на синем фоне */
+  .dg-ozm-queue-btn {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: #ffffff;
+    border: 2px solid #cbd5e1;
+    border-radius: 0.5rem;
+    padding: 0.85rem 1rem;
+    cursor: pointer;
+    transition: all 0.15s ease-in-out;
+  }
+  .dg-ozm-queue-btn:hover {
+    border-color: #64748b;
+    background: #f8fafc;
+  }
+  .dg-ozm-q-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #0f172a;
+  }
+  .dg-ozm-q-sub {
+    font-size: 0.875rem;
+    color: #334155;
+    margin-top: 0.25rem;
+    line-height: 1.35;
+  }
+  .dg-ozm-q-count {
+    display: inline-block;
+    min-width: 2rem;
+    text-align: center;
+    padding: 0.2rem 0.6rem;
+    border-radius: 999px;
+    font-size: 0.875rem;
+    font-weight: 700;
+    background: #e2e8f0;
+    color: #0f172a;
+  }
+
+  /* Активные состояния 3 очередей: светлый контрастный фон + тёмный чёткий текст */
+  .dg-ozm-queue-btn[data-ozm-queue="suggested"].active {
+    background: #eff6ff;
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+  }
+  .dg-ozm-queue-btn[data-ozm-queue="suggested"].active .dg-ozm-q-title {
+    color: #1e3a8a;
+  }
+  .dg-ozm-queue-btn[data-ozm-queue="suggested"].active .dg-ozm-q-sub {
+    color: #1e40af;
+  }
+  .dg-ozm-queue-btn[data-ozm-queue="suggested"] .dg-ozm-q-count {
+    background: #2563eb;
+    color: #ffffff;
+  }
+
+  .dg-ozm-queue-btn[data-ozm-queue="merged"].active {
+    background: #ecfdf5;
+    border-color: #16a34a;
+    box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.15);
+  }
+  .dg-ozm-queue-btn[data-ozm-queue="merged"].active .dg-ozm-q-title {
+    color: #14532d;
+  }
+  .dg-ozm-queue-btn[data-ozm-queue="merged"].active .dg-ozm-q-sub {
+    color: #166534;
+  }
+  .dg-ozm-queue-btn[data-ozm-queue="merged"] .dg-ozm-q-count {
+    background: #16a34a;
+    color: #ffffff;
+  }
+
+  .dg-ozm-queue-btn[data-ozm-queue="failed"].active {
+    background: #fef2f2;
+    border-color: #dc2626;
+    box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.15);
+  }
+  .dg-ozm-queue-btn[data-ozm-queue="failed"].active .dg-ozm-q-title {
+    color: #7f1d1d;
+  }
+  .dg-ozm-queue-btn[data-ozm-queue="failed"].active .dg-ozm-q-sub {
+    color: #991b1b;
+  }
+  .dg-ozm-queue-btn[data-ozm-queue="failed"] .dg-ozm-q-count {
+    background: #dc2626;
+    color: #ffffff;
+  }
+
+  .dg-ozm-queue-btn[data-ozm-queue="ignored"].active {
+    background: #f1f5f9;
+    border-color: #475569;
+    box-shadow: 0 0 0 3px rgba(71, 85, 105, 0.15);
+  }
+  .dg-ozm-queue-btn[data-ozm-queue="ignored"].active .dg-ozm-q-title {
+    color: #0f172a;
+  }
+  .dg-ozm-queue-btn[data-ozm-queue="ignored"].active .dg-ozm-q-sub {
+    color: #334155;
+  }
+  .dg-ozm-queue-btn[data-ozm-queue="ignored"] .dg-ozm-q-count {
+    background: #475569;
+    color: #ffffff;
+  }
+
+  /* Контрастные бейджи (без принудительного UPPERCASE от ArchitectUI .card-header) */
+  .dg-ozm-pill {
+    display: inline-block;
+    padding: 0.25rem 0.65rem;
+    border-radius: 0.35rem;
+    font-size: 0.875rem !important;
+    font-weight: 600 !important;
+    line-height: 1.3;
+    text-transform: none !important;
+    letter-spacing: normal !important;
+  }
+  .dg-ozm-pill-neutral {
+    background: #f1f5f9;
+    color: #0f172a !important;
+    border: 1px solid #cbd5e1;
+  }
+  .dg-ozm-pill-step {
+    background: #fef3c7;
+    color: #78350f !important;
+    border: 1px solid #f59e0b;
+  }
+  .dg-ozm-pill-danger {
+    background: #fee2e2;
+    color: #7f1d1d !important;
+    border: 1px solid #fca5a5;
+  }
+  .dg-ozm-pill-primary {
+    background: #dbeafe;
+    color: #1e3a8a !important;
+    border: 1px solid #93c5fd;
+  }
+  .dg-ozm-pill-info {
+    background: #e0f2fe;
+    color: #0c4a6e !important;
+    border: 1px solid #7dd3fc;
+  }
+  .dg-ozm-pill-success {
+    background: #dcfce7;
+    color: #14532d !important;
+    border: 1px solid #86efac;
+  }
+  .dg-ozm-pill-dark {
+    background: #334155;
+    color: #ffffff !important;
+    border: 1px solid #1e293b;
+  }
+
+  /* Карточка отдельной группы */
+  .dg-ozm-group-card {
+    border: 2px solid #94a3b8;
+    border-radius: 0.5rem;
+    background: #ffffff;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+  }
+  .dg-ozm-group-card-main {
+    border-color: #3b82f6;
+  }
+  .dg-ozm-group-header {
+    background: #f8fafc;
+    border-bottom: 1px solid #cbd5e1;
+    padding: 0.9rem 1.15rem;
+    border-radius: 0.4rem 0.4rem 0 0;
+  }
+  .dg-ozm-group-title {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #0f172a;
+  }
+  .dg-ozm-group-meta {
+    font-size: 0.875rem;
+    color: #334155;
+  }
+  .dg-ozm-row-main {
+    background-color: #eff6ff !important;
+  }
+  .dg-ozm-row-unchecked {
+    opacity: 0.55;
+    background-color: #f8fafc !important;
+  }
+  .dg-ozm-header-search {
+    flex: 0 1 420px;
+    min-width: 260px;
+    text-transform: none !important;
+  }
+  .dg-ozm-confirm-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2050;
+    background: rgba(15, 23, 42, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+  }
+  .dg-ozm-confirm-dialog {
+    background: #fff;
+    border-radius: 0.5rem;
+    max-width: 620px;
+    width: 100%;
+    box-shadow: 0 20px 45px rgba(0, 0, 0, 0.25);
+    overflow: hidden;
+    color: #0f172a;
+  }
+  .dg-ozm-sortable {
+    user-select: text;
+    -webkit-user-select: text;
+    color: #0f172a;
+    font-weight: 700;
+  }
+  .dg-flt-dirty {
+    box-shadow: 0 0 0 0.2rem rgba(37, 99, 235, 0.3);
+  }
+
+  /* Модальное окно журнала склеек/расклеек (аналог #dg-np-log-overlay на /exports-new-products.html) */
+  .dg-ozm-log-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2060;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+  }
+  .dg-ozm-log-overlay .dg-ozm-log-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.48);
+  }
+  .dg-ozm-log-overlay .dg-ozm-log-panel {
+    position: relative;
+    z-index: 1;
+    width: min(980px, 100%);
+    max-height: min(82vh, 740px);
+    display: flex;
+    flex-direction: column;
+  }
+  .dg-ozm-log-body {
+    max-height: min(66vh, 580px);
+    overflow: auto;
+  }
+  .dg-ozm-log-body table {
+    margin: 0;
+    font-size: 0.85rem;
+  }
+  .dg-ozm-log-body thead th {
+    position: sticky;
+    top: 0;
+    background: #f8f9fa;
+    z-index: 1;
+    color: #0f172a;
+    font-weight: 700;
+  }
+  .dg-ozm-log-old {
+    color: #b02a37;
+    text-decoration: line-through;
+  }
+  .dg-ozm-log-arrow {
+    margin: 0 0.35rem;
+    color: #6c757d;
+  }
+  .dg-ozm-log-new {
+    color: #146c43;
+    font-weight: 600;
+  }
+  .dg-ozm-log-action {
+    font-size: 0.75rem;
+    padding: 0.2rem 0.45rem;
+    text-transform: none !important;
+  }
+</style>
+
+  <style>
+    /* Один список сайдбара: «ArchitectUI меню» у нижнего края области навигации, без второго блока/ul */
+    .dg-sidebar-nav-scroll {
+      display: flex;
+      flex-direction: column;
+    }
+    .dg-sidebar-nav-measure {
+      flex: 1 1 auto;
+      min-height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+    .dg-sidebar-nav-measure .datagon-nav-shell,
+    .dg-sidebar-nav-measure .vertical-nav-menu {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    /* Только корневой список меню: иначе вложенный ul.metismenu-container (под «Маркетплейсы» и т.п.)
+       получает min-height:100% + flex и растягивается на всю колонку — вертикальная линия темы залезает на соседние пункты. */
+    .dg-sidebar-nav-measure .vertical-nav-menu > .metismenu-container {
+      display: flex;
+      flex-direction: column;
+      flex: 1 1 auto;
+      min-height: 100%;
+      margin-bottom: 0;
+    }
+    /*
+      Подменю «Маркетплейсы»: ArchitectUI скрывает .metismenu-icon у подпунктов и даёт малый padding.
+      Не трогаем узкую полоску без hover — большой padding раздувает li и смещает «left:50%» у всех иконок колонки.
+      При развороте по hover из closed-sidebar класс closed-sidebar не снимается — нужен отдельный селектор с .app-sidebar:hover.
+    */
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon,
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon,
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-work-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-work-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon {
+      display: block !important;
+    }
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link,
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link,
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-work-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-work-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link {
+      padding-left: 3.4375rem !important;
+      position: relative;
+      /* Длинные подписи подпунктов («Проблемы с товарами», «Яндекс Маркет»)
+         не должны обрезаться ellipsis: разрешаем перенос на 2 строки.
+         Иконка — как в ArchitectUI: top:50% + margin-top:-17px (не top:0.55rem —
+         иначе у однострочных пунктов иконка уезжает выше текста). */
+      white-space: normal !important;
+      line-height: 1.25;
+      align-items: center;
+      padding-top: 0.45rem !important;
+      padding-bottom: 0.45rem !important;
+      padding-right: 0.5rem !important;
+      min-height: 2rem;
+      height: auto !important;
+    }
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon,
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon,
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-work-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-work-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon {
+      top: 50% !important;
+      margin-top: -17px !important;
+    }
+    /* Пункты сайдбара с доступом как у журнала активности (admin / право на пользователей) */
+    .dg-sidebar-nav-restricted .metismenu-link {
+      display: inline-flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.15rem 0.35rem;
+    }
+    .dg-sidebar-nav-restricted .dg-nav-restricted-icon {
+      font-size: 0.7rem;
+      opacity: 0.72;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+    /*
+      Сайдбар: flex min-width:auto + overflow-y:auto раздували .app-sidebar__inner /
+      .custom-scrollbar до ~297px при колонке 280px — линии разделителей рисовались
+      за правым краем белой панели. Жёстко держим цепочку в ширине колонки.
+    */
+    .datagon-vanilla-shell .app-sidebar > .d-flex.flex-column,
+    .datagon-vanilla-shell .app-sidebar .dg-sidebar-nav-wrap,
+    .datagon-vanilla-shell .app-sidebar .app-sidebar__inner {
+      min-width: 0;
+      max-width: 100%;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    .datagon-vanilla-shell .app-sidebar .dg-sidebar-nav-wrap {
+      overflow-x: hidden;
+      /* тема даёт z-index:15 — при сбое ширины слой мог торчать поверх контента */
+      z-index: auto;
+    }
+    /*
+      Разделители: сам li — полоска (как ArchitectUI .nav-item-divider),
+      inset 0.5rem по бокам как у ссылок. Внутренний .nav-item-divider скрыт —
+      в flex-меню пустой 1px-div нестабильно рисуется.
+    */
+    .vertical-nav-menu .metismenu-item.dg-sidebar-nav-divider {
+      list-style: none;
+      pointer-events: none;
+      display: block !important;
+      margin: 0.5rem 0.5rem !important;
+      padding: 0 !important;
+      /* как ArchitectUI .nav-item-divider: тонкая 1px */
+      height: 1px !important;
+      min-height: 1px !important;
+      max-height: 1px !important;
+      line-height: 0 !important;
+      overflow: hidden !important;
+      flex: 0 0 auto !important;
+      border: 0 !important;
+      background: #dee2e6 !important;
+      box-shadow: none !important;
+    }
+    .vertical-nav-menu .metismenu-item.dg-sidebar-nav-divider .nav-item-divider {
+      display: none !important;
+    }
+    /*
+      Свёрнутый сайдбар: чёрточка по центру иконок (у темы icon ~x=50 в колонке 80px,
+      а не геометрический центр контента с padding 24px — auto-margin давал сдвиг влево).
+    */
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:not(:hover)
+      .vertical-nav-menu
+      .metismenu-item.dg-sidebar-nav-divider {
+      width: 1.25rem !important;
+      max-width: 1.25rem !important;
+      margin-left: 1rem !important;
+      margin-right: auto !important;
+      margin-top: 0.45rem !important;
+      margin-bottom: 0.45rem !important;
+    }
+    .datagon-vanilla-shell .app-footer .app-footer__inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .datagon-vanilla-shell .app-footer-right {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 6px 12px;
+      padding: 4px 8px 4px 12px;
+      max-width: min(100%, 540px);
+      margin-left: auto;
+    }
+    .datagon-vanilla-shell .dg-footer-legal-link {
+      font-size: 11px;
+      line-height: 1.25;
+      color: #6c757d;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    .datagon-vanilla-shell .dg-footer-legal-link:hover {
+      color: #2f5de0;
+      text-decoration: underline;
+    }
+    @media (max-width: 991.98px) {
+      /* На мобильном layout не должен наследовать desktop-сдвиг fixed/closed sidebar. */
+      .datagon-vanilla-shell .app-main__outer {
+        margin-left: 0 !important;
+      }
+      .datagon-vanilla-shell .app-footer {
+        left: 0 !important;
+        width: 100% !important;
+      }
+      .datagon-vanilla-shell .app-footer .app-footer__inner {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-left: 0 !important;
+      }
+      /* На телефонах слой мобильного меню должен перекрывать фиксированный футер. */
+      .datagon-vanilla-shell .sidebar-mobile-overlay {
+        z-index: 1090;
+      }
+      .datagon-vanilla-shell .app-sidebar {
+        z-index: 1100;
+      }
+      .datagon-vanilla-shell .app-footer {
+        z-index: 1080;
+      }
+      .datagon-vanilla-shell.sidebar-mobile-open .app-footer {
+        pointer-events: none;
+        opacity: 0.25;
+      }
+    }
+    /* Source Sans 3 — opt-in из «Параметры макета» (все экраны, в т.ч. Windows). */
+    html.dg-font-source-sans-3 .datagon-vanilla-shell {
+      --bs-body-font-family: "Source Sans 3", -apple-system, BlinkMacSystemFont, "Segoe UI",
+        Roboto, "Helvetica Neue", Arial, sans-serif;
+      --bs-font-sans-serif: var(--bs-body-font-family);
+      font-family: var(--bs-body-font-family);
+    }
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .btn,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .form-control,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .form-select,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .table,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .card,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .page-title-heading,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .vertical-nav-menu a,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .app-header,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .app-sidebar,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .app-main,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .app-footer {
+      font-family: inherit;
+    }
+  </style>
+</head>
+<body class="datagon-vanilla-body" data-dg-active-nav="exports-ozon-merge">
+  <div class="app-container app-theme-white datagon-shell datagon-vanilla-shell fixed-header fixed-sidebar fixed-footer">
+    <div class="app-header header-shadow">
+      <div class="app-header__logo">
+        <button type="button" class="logo-src datagon-brand" onclick="location.href='/dashboard.html'" title="Открыть дашборд" style="border:0;background:transparent;padding:0;cursor:pointer">Датагон</button>
+        <div class="header__pane ms-auto">
+          <div>
+            <button type="button" class="hamburger hamburger--slider dg-toggle-sidebar" aria-label="Свернуть боковую панель" title="Свернуть боковую панель">
+              <span class="hamburger-box"><span class="hamburger-inner"></span></span>
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="app-header__mobile-menu">
+        <div>
+          <button type="button" class="hamburger hamburger--slider dg-toggle-mobile-sidebar" aria-label="Открыть меню">
+            <span class="hamburger-box"><span class="hamburger-inner"></span></span>
+          </button>
+        </div>
+      </div>
+      <div class="app-header__menu">
+        <span>
+          <button type="button" class="btn btn-primary btn-sm btn-icon btn-icon-only dg-toggle-header-small" aria-label="Доп. меню шапки">
+            <div class="btn-icon-wrapper">
+              <i class="pe-7s-more" style="font-size:1.1rem;line-height:1"></i>
+            </div>
+          </button>
+        </span>
+      </div>
+      <div class="app-header__content">
+        <div class="app-header-left">
+          <div class="dg-ws-clock-wrap me-2 flex-shrink-0">
+            <button
+              type="button"
+              id="dg-ws-clock-btn"
+              class="btn btn-sm btn-success dg-ws-clock-btn"
+              data-dg-notify-start="Отмечаем начало смены…"
+              title="Учёт рабочего времени (прототип)"
+            >
+              <i class="pe-7s-play me-1" aria-hidden="true"></i>
+              <span class="dg-ws-clock-label">Начать работать</span>
+              <span class="dg-ws-clock-timer d-none ms-1" aria-live="polite"></span>
+            </button>
+          </div>
+          <div class="search-wrapper">
+            <div class="input-holder">
+              <input type="text" class="search-input" placeholder="Type to search" autocomplete="off" />
+              <button type="button" class="search-icon dg-vanilla-search-docs" aria-label="Открыть документацию" title="Документация">
+                <span></span>
+              </button>
+            </div>
+            <button type="button" class="btn-close dg-vanilla-search-close" aria-label="Закрыть поиск"></button>
+          </div>
+        </div>
+        <div class="app-header-right">
+          <div class="ui-theme-settings ui-theme-settings--header">
+            <button type="button" class="btn btn-link btn-open-options btn-open-options--header" id="TooltipDemoVanilla" aria-label="Параметры темы" title="Параметры темы (полная версия в React-панели)">
+              <i class="pe-7s-config" style="font-size:1.35rem;color:#3f6ad8;line-height:1"></i>
+            </button>
+            <div class="theme-settings__inner">
+              <div class="theme-settings__options-wrapper">
+                <h3 class="themeoptions-heading">Параметры макета</h3>
+                <div class="list-group">
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Фиксированная шапка</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-fixed-header" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Тень шапки</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-header-shadow" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Фиксированный сайдбар</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-fixed-sidebar" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Тень сайдбара</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-sidebar-shadow" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Фиксированный футер</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-fixed-footer" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Шрифт Source Sans 3</h5>
+                    <label class="switch mb-0" title="Удобнее на Windows; сохраняется для всех страниц панели"><input type="checkbox" id="dg-theme-font-source-sans-3"><span class="slider round"></span></label>
+                  </div>
+                </div>
+
+                <h3 class="themeoptions-heading">Параметры заголовка страницы</h3>
+                <div class="list-group">
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Иконка заголовка</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-title-icon" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Подзаголовок страницы</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-title-subheading" checked><span class="slider round"></span></label>
+                  </div>
+                </div>
+
+                <h3 class="themeoptions-heading">Цветовые схемы</h3>
+                <div class="list-group">
+                  <div class="list-group-item">
+                    <h5 class="mb-2">Цветовая схема макета</h5>
+                    <div class="theme-settings-swatches">
+                      <div class="swatch-holder-lg active dg-theme-color-scheme" data-color-scheme="white" style="background:#fff;border:1px solid #dee2e6"></div>
+                      <div class="swatch-holder-lg dg-theme-color-scheme" data-color-scheme="gray" style="background:#868e96"></div>
+                    </div>
+                  </div>
+                </div>
+
+                <h3 class="themeoptions-heading">Параметры сайдбара</h3>
+                <div class="list-group">
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Фоновое изображение сайдбара</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-sidebar-bg-image"><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item">
+                    <h5 class="mb-2">Цвета сайдбара</h5>
+                    <div class="theme-settings-swatches">
+                      <div class="swatch-holder bg-primary dg-theme-sidebar-color" data-color-class="bg-primary"></div><div class="swatch-holder bg-danger dg-theme-sidebar-color" data-color-class="bg-danger"></div><div class="swatch-holder bg-warning dg-theme-sidebar-color" data-color-class="bg-warning"></div><div class="swatch-holder bg-success dg-theme-sidebar-color" data-color-class="bg-success"></div>
+                      <div class="swatch-holder bg-info dg-theme-sidebar-color" data-color-class="bg-info"></div><div class="swatch-holder bg-secondary dg-theme-sidebar-color" data-color-class="bg-secondary"></div><div class="swatch-holder bg-dark dg-theme-sidebar-color" data-color-class="bg-dark"></div><div class="swatch-holder dg-theme-sidebar-color" data-color-class="bg-plum-plate" style="background:#667eea"></div>
+                      <div class="swatch-holder dg-theme-sidebar-color" data-color-class="bg-arielle-smile" style="background:#16d9e3"></div><div class="swatch-holder dg-theme-sidebar-color" data-color-class="bg-ripe-malin" style="background:#f093fb"></div><div class="swatch-holder dg-theme-sidebar-color" data-color-class="bg-night-fade" style="background:#a18cd1"></div><div class="swatch-holder dg-theme-sidebar-color" data-color-class="bg-malibu-beach" style="background:#4facfe"></div>
+                    </div>
+                  </div>
+                </div>
+
+                <h3 class="themeoptions-heading">Параметры шапки</h3>
+                <div class="list-group">
+                  <div class="list-group-item">
+                    <h5 class="mb-2">Цвета шапки</h5>
+                    <div class="theme-settings-swatches">
+                      <div class="swatch-holder bg-primary dg-theme-header-color" data-color-class="bg-primary"></div><div class="swatch-holder bg-danger dg-theme-header-color" data-color-class="bg-danger"></div><div class="swatch-holder bg-warning dg-theme-header-color" data-color-class="bg-warning"></div><div class="swatch-holder bg-success dg-theme-header-color" data-color-class="bg-success"></div>
+                      <div class="swatch-holder bg-info dg-theme-header-color" data-color-class="bg-info"></div><div class="swatch-holder bg-secondary dg-theme-header-color" data-color-class="bg-secondary"></div><div class="swatch-holder bg-dark dg-theme-header-color" data-color-class="bg-dark"></div><div class="swatch-holder dg-theme-header-color" data-color-class="bg-plum-plate" style="background:#667eea"></div>
+                    </div>
+                  </div>
+                </div>
+                <div class="p-2">
+                  <a href="/settings.html" class="btn btn-sm btn-outline-primary w-100">Настройки</a>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="header-dots">
+            <div class="dropdown">
+              <button type="button" class="btn btn-link p-0 me-2 dg-vanilla-dropdown-toggle" style="line-height:0" aria-expanded="false" aria-haspopup="true">
+                <div class="icon-wrapper icon-wrapper-alt rounded-circle">
+                  <div class="icon-wrapper-bg bg-success"></div>
+                  <i class="pe-7s-graph2" style="font-size:23px;color:#3ac47d"></i>
+                </div>
+              </button>
+              <div class="dropdown-menu dropdown-menu-xl rm-pointers p-0" style="min-width: 320px">
+                <div class="dropdown-menu-header">
+                  <div class="dropdown-menu-header-inner bg-premium-dark">
+                    <div class="menu-header-image" style="background-image:url('/assets/utils/images/dropdown-header/abstract4.jpg')"></div>
+                    <div class="menu-header-content text-white">
+                      <h5 class="menu-header-title">Вы в сети</h5>
+                      <h6 class="menu-header-subtitle">Онлайн за окно из настроек</h6>
+                    </div>
+                  </div>
+                </div>
+                <div class="widget-chart">
+                  <div class="widget-chart-content">
+                    <div class="icon-wrapper rounded-circle">
+                      <div class="icon-wrapper-bg opacity-9 bg-focus"></div>
+                      <i class="lnr-users text-white"></i>
+                    </div>
+                    <div class="widget-numbers d-flex flex-column align-items-center text-center" id="dg-vanilla-online-users-wrap">
+                      <span id="dg-vanilla-online-users">—</span>
+                      <span class="opacity-9 fw-normal" style="font-size: 0.72rem; line-height: 1.25; margin-top: 0.15rem" id="dg-vanilla-online-users-unit"></span>
+                    </div>
+                    <div class="widget-subheading pt-2 small text-muted" id="dg-vanilla-online-users-role"></div>
+                    <div class="text-center small px-2 pt-1 pb-1">
+                      <a href="/settings.html#dg-settings-online-presence" class="text-decoration-none">Окно минут</a>
+                    </div>
+                    <div class="widget-description text-muted small px-2 mt-1 mb-0" id="dg-vanilla-online-users-sessions" style="line-height: 1.35"></div>
+                    <div class="widget-description text-muted mt-2 mb-0">
+                      <span class="pe-1 small" id="dg-vanilla-online-users-note"></span>
+                    </div>
+                  </div>
+                  <div class="widget-chart-wrapper">
+                    <div style="height:40px;opacity:.35;background:linear-gradient(90deg,#f7b924 0%,#f7b92455 100%);border-radius:2px;"></div>
+                  </div>
+                </div>
+                <div class="nav-item-divider mt-0"></div>
+                <div class="nav-item-btn text-center pb-3 mb-2">
+                  <button type="button" class="btn btn-sm btn-shine btn-wide btn-pill btn-warning" id="dg-vanilla-online-users-refresh">
+                    <i class="pe-7s-refresh me-2"></i>Обновить
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="header-btn-lg pe-0">
+            <div class="widget-content p-0">
+              <div class="widget-content-wrapper">
+                <div class="widget-content-left d-flex align-items-center gap-1 pe-2">
+                  <span
+                    class="rounded-circle d-inline-flex align-items-center justify-content-center flex-shrink-0 bg-light text-secondary border"
+                    style="width: 42px; height: 42px; border-color: #e2e8f0"
+                    role="img"
+                    aria-label="Профиль"
+                  >
+                    <i class="pe-7s-user" style="font-size: 1.2rem; line-height: 1; opacity: 0.85" aria-hidden="true"></i>
+                  </span>
+                  <button type="button" class="btn btn-link p-0 dg-vanilla-logout d-inline-flex align-items-center justify-content-center text-danger" title="Выйти" aria-label="Выйти из профиля" style="min-width:34px;min-height:34px;line-height:1;border-radius:50%">
+                    <i class="lnr-exit" style="font-size:1.2rem"></i>
+                  </button>
+                </div>
+                <div class="widget-content-left ms-2 header-user-info">
+                  <div class="widget-heading" id="dg-vanilla-user-display-inline">Пользователь</div>
+                  <div class="widget-subheading" id="dg-vanilla-user-role-inline">Пользователь</div>
+                </div>
+                <div class="widget-content-right header-user-info ms-3">
+                  <button type="button" class="btn btn-shadow p-1 btn-sm btn-info" id="Tooltip-1" title="Click for notifications">
+                    <i class="pe-7s-date text-white" style="font-size:20px;line-height:1"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="app-main">
+      <div class="sidebar-mobile-overlay"></div>
+      <div class="app-sidebar sidebar-shadow">
+        <div class="d-flex flex-column h-100 min-h-0">
+          <div class="app-header__logo">
+            <button type="button" class="logo-src datagon-brand" onclick="location.href='/dashboard.html'" title="Открыть дашборд" style="border:0;background:transparent;padding:0;cursor:pointer">Датагон</button>
+            <div class="header__pane ms-auto">
+              <div>
+                <button type="button" class="hamburger hamburger--slider dg-toggle-sidebar" aria-label="Свернуть боковую панель" title="Свернуть боковую панель">
+                  <span class="hamburger-box"><span class="hamburger-inner"></span></span>
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="app-header__mobile-menu">
+            <div>
+              <button type="button" class="hamburger hamburger--slider dg-toggle-mobile-sidebar" aria-label="Открыть меню">
+                <span class="hamburger-box"><span class="hamburger-inner"></span></span>
+              </button>
+            </div>
+          </div>
+          <div class="app-header__menu">
+            <span>
+              <button type="button" class="btn btn-primary btn-sm btn-icon btn-icon-only dg-toggle-header-small" aria-label="Доп. меню шапки">
+                <div class="btn-icon-wrapper">
+                  <i class="pe-7s-more" style="font-size:1.1rem;line-height:1"></i>
+                </div>
+              </button>
+            </span>
+          </div>
+          <div class="custom-scrollbar dg-sidebar-nav-wrap d-flex flex-column min-h-0" style="flex:1 1 0%;min-height:0;max-height:calc(100vh - 80px);overflow-x:hidden">
+            <div class="app-sidebar__inner dg-sidebar-nav-scroll flex-grow-1 min-h-0" style="overflow-y:auto;overflow-x:hidden">
+              <div class="dg-sidebar-nav-measure">
+                <div class="datagon-nav-shell">
+                  <div class="vertical-nav-menu" style="pointer-events:auto;z-index:999;position:relative">
+                    <ul class="metismenu-container">
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="dashboard" href="/dashboard.html"><i class="metismenu-icon pe-7s-rocket"></i>Дашборд</a></li>
+                      <li class="metismenu-item dg-sidebar-nav-restricted" data-dg-nav-restricted="activity">
+                        <a
+                          class="metismenu-link"
+                          data-nav="db-admin"
+                          href="/db-admin.html"
+                          title="Управление БД: размеры таблиц, связи, превью, OPTIMIZE (доступ ограничен: администратор или право управления пользователями)"
+                        >
+                          <i class="metismenu-icon pe-7s-server"></i>Управление БД
+                          <i
+                            class="pe-7s-lock dg-nav-restricted-icon"
+                            aria-hidden="true"
+                            title="Пункт меню с ограниченным доступом"
+                          ></i>
+                        </a>
+                      </li>
+                      <li class="metismenu-item dg-sidebar-architect-item dg-sidebar-nav-restricted" data-dg-nav-restricted="admin">
+                        <a
+                          class="metismenu-link"
+                          data-nav="architectui-demo"
+                          href="/ref/react-demo-index.html"
+                          title="Каталог разделов React-шаблона ArchitectUI (только администратор)"
+                        >
+                          <i class="metismenu-icon pe-7s-plugin"></i>ArchitectUI
+                          <i
+                            class="pe-7s-lock dg-nav-restricted-icon"
+                            aria-hidden="true"
+                            title="Пункт меню с ограниченным доступом"
+                          ></i>
+                        </a>
+                      </li>
+                      <li class="metismenu-item dg-sidebar-nav-restricted" data-dg-nav-restricted="activity">
+                        <a
+                          class="metismenu-link"
+                          data-nav="processes"
+                          href="/processes.html"
+                          title="Активность/Логи: журнал команды и фоновые процессы (доступ ограничен: администратор или право управления пользователями)"
+                        >
+                          <i class="metismenu-icon pe-7s-timer"></i>Активность/Логи
+                          <i
+                            class="pe-7s-lock dg-nav-restricted-icon"
+                            aria-hidden="true"
+                            title="Пункт меню с ограниченным доступом"
+                          ></i>
+                        </a>
+                      </li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="settings" href="/settings.html"><i class="metismenu-icon pe-7s-config"></i>Настройки</a></li>
+                      <li class="metismenu-item dg-sidebar-nav-divider" aria-hidden="true">
+                        <div class="nav-item nav-item-divider"></div>
+                      </li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="finance" href="/finance.html" title="Балансы и движение по счетам Точки (только чтение)"><i class="metismenu-icon pe-7s-wallet"></i>Финансы</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="manager-sales" href="/manager-sales.html" title="Годовые таблицы менеджеров: оплаты, маржа, премия"><i class="metismenu-icon pe-7s-id"></i>Таблицы менеджеров</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="ops-sheet" href="/ops-sheet.html" title="Операционный лист: оборот, прибыль, премии и оклады по месяцам"><i class="metismenu-icon pe-7s-notebook"></i>Операционный лист</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="work-schedule" href="/work-schedule.html" title="График работы и учёт рабочего времени"><i class="metismenu-icon pe-7s-clock"></i>График работы</a></li>
+                      <!-- «График · настройки» скрыт из меню: вход с /work-schedule.html (ссылка) или прямой URL; доступ — матрица work-schedule-settings -->
+                      <!-- <li class="metismenu-item"><a class="metismenu-link" data-nav="work-schedule-settings" href="/work-schedule-settings.html" title="Организация, отделы, сотрудники графика"><i class="metismenu-icon pe-7s-config"></i>График · настройки</a></li> -->
+                      <li class="metismenu-item">
+                        <a
+                          href="#"
+                          class="metismenu-link dg-vanilla-submenu-toggle"
+                          aria-expanded="false"
+                          title="WORK: проекты и пароли SEO/контекст (legacy)"
+                        >
+                          <i class="metismenu-icon pe-7s-portfolio"></i>WORK
+                          <i class="metismenu-state-icon pe-7s-angle-down" aria-hidden="true"></i>
+                        </a>
+                        <ul class="metismenu-container dg-vanilla-work-submenu">
+                          <li class="metismenu-item">
+                            <a class="metismenu-link" data-nav="work-seo-projects" href="/work-seo-projects.html" title="Проекты SEO">
+                              <i class="metismenu-icon pe-7s-search"></i>Проекты SEO
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a class="metismenu-link" data-nav="work-seo-passwords" href="/work-seo-passwords.html" title="Пароли SEO">
+                              <i class="metismenu-icon pe-7s-lock"></i>Пароли SEO
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a class="metismenu-link" data-nav="work-dev-passwords" href="/work-dev-passwords.html" title="Пароли DEV">
+                              <i class="metismenu-icon pe-7s-lock"></i>Пароли DEV
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a class="metismenu-link" data-nav="work-context-projects" href="/work-context-projects.html" title="Проекты контекст">
+                              <i class="metismenu-icon pe-7s-note2"></i>Проекты контекст
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a class="metismenu-link" data-nav="work-context-passwords" href="/work-context-passwords.html" title="Пароли контекст">
+                              <i class="metismenu-icon pe-7s-lock"></i>Пароли контекст
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a class="metismenu-link" data-nav="work-services" href="/work-services.html" title="Сервисы и пароли">
+                              <i class="metismenu-icon pe-7s-key"></i>Сервисы &amp; Пароли
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a class="metismenu-link" data-nav="work-seo-staff" href="/work-seo-staff.html" title="Сотрудники SEO">
+                              <i class="metismenu-icon pe-7s-users"></i>Сотрудники SEO
+                            </a>
+                          </li>
+                        </ul>
+                      </li>
+                      <li class="metismenu-item dg-sidebar-nav-divider" aria-hidden="true">
+                        <div class="nav-item nav-item-divider"></div>
+                      </li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="my-sites" href="/my-sites.html"><i class="metismenu-icon pe-7s-global"></i>Мои сайты</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="network-prices" href="/network-prices.html"><i class="metismenu-icon pe-7s-shuffle"></i>Цены сети</a></li>
+                      <li class="metismenu-item dg-sidebar-nav-divider" aria-hidden="true">
+                        <div class="nav-item nav-item-divider"></div>
+                      </li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="my-products" href="/my-products.html"><i class="metismenu-icon pe-7s-box2"></i>Мои товары (сайты)</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="moysklad" href="/moysklad.html"><i class="metismenu-icon pe-7s-shopbag"></i>Мой Склад (товары)</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="ms-orders" href="/ms-orders.html" title="Заказы покупателей entity/customerorder из МойСклад (30 дней)"><i class="metismenu-icon pe-7s-note2"></i>Заказы в МС</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="ms-sales" href="/ms-sales.html" title="Продажи МС: отгрузки entity/demand, позиции с привязкой к товарам ms_export"><i class="metismenu-icon pe-7s-cash"></i>Продажи МС</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="medmarket" href="/medmarket.html" title="Стыковка кода МС с кодом товара для Медмаркета"><i class="metismenu-icon pe-7s-id"></i>Медмаркет</a></li>
+                      <li class="metismenu-item dg-sidebar-nav-divider" aria-hidden="true">
+                        <div class="nav-item nav-item-divider"></div>
+                      </li>
+                      <li class="metismenu-item">
+                        <a
+                          href="#"
+                          class="metismenu-link dg-vanilla-submenu-toggle"
+                          aria-expanded="false"
+                          title="Парсинг сайтов конкурентов: проекты, очередь, результаты, сопоставление"
+                        >
+                          <i class="metismenu-icon pe-7s-browser"></i>Парсинг
+                          <i class="metismenu-state-icon pe-7s-angle-down" aria-hidden="true"></i>
+                        </a>
+                        <ul class="metismenu-container dg-vanilla-parse-submenu">
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="projects"
+                              href="/projects.html"
+                              title="Проекты и сайты конкурентов"
+                            >
+                              <i class="metismenu-icon pe-7s-portfolio"></i>Конкуренты
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="queue"
+                              href="/queue.html"
+                              title="Очередь задач парсинга"
+                            >
+                              <i class="metismenu-icon pe-7s-network"></i>Очередь
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="results"
+                              href="/results.html"
+                              title="Результаты парсинга"
+                            >
+                              <i class="metismenu-icon pe-7s-note2"></i>Результаты
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="matches"
+                              href="/matches.html"
+                              title="Сопоставление товаров"
+                            >
+                              <i class="metismenu-icon pe-7s-link"></i>Сопоставление
+                            </a>
+                          </li>
+                        </ul>
+                      </li>
+                      <li class="metismenu-item">
+                        <a
+                          href="#"
+                          class="metismenu-link dg-vanilla-submenu-toggle"
+                          aria-expanded="false"
+                          title="Интеграции маркетплейсов: ключи и диагностика выгрузок"
+                        >
+                          <i class="metismenu-icon pe-7s-graph3"></i>Маркетплейсы
+                          <i class="metismenu-state-icon pe-7s-angle-down" aria-hidden="true"></i>
+                        </a>
+                        <ul class="metismenu-container dg-vanilla-mp-submenu">
+                          <!-- Подпункт «Настройки» (data-nav="exports-marketplaces", /exports-marketplaces.html)
+                               скрыт из меню по запросу: ключи API маркетплейсов задаются в /settings.html;
+                               страница остаётся доступной по прямому URL и через ссылки из гайдов
+                               (например, на /exports-marketplaces-issues.html). -->
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-ozon"
+                              href="/exports-marketplaces-ozon.html"
+                              title="Таблица и выгрузка Ozon"
+                            >
+                              <i class="metismenu-icon pe-7s-graph2"></i>Ozon
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-ozon-merge"
+                              href="/exports-ozon-merge.html"
+                              title="Быстрое объединение карточек товаров на Ozon через API"
+                            >
+                              <i class="metismenu-icon pe-7s-link"></i>Объединение Ozon
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-wildberries"
+                              href="/exports-marketplaces-wildberries.html"
+                              title="Таблица и выгрузка Wildberries"
+                            >
+                              <i class="metismenu-icon pe-7s-graph2"></i>Wildberries
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-yandex"
+                              href="/exports-marketplaces-yandex.html"
+                              title="Таблица и выгрузка Яндекс Маркет"
+                            >
+                              <i class="metismenu-icon pe-7s-graph2"></i>Яндекс Маркет
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-huckster"
+                              href="/exports-huckster.html"
+                              title="Интеграция Huckster / e-teleport — матрица UID по магазинам"
+                            >
+                              <i class="metismenu-icon pe-7s-cart"></i>Huckster
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-dimensions"
+                              href="/exports-dimensions.html"
+                              title="Реестр замеров габаритов товаров МойСклад"
+                            >
+                              <i class="metismenu-icon pe-7s-scissors"></i>Габариты
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-issues"
+                              href="/exports-marketplaces-issues.html"
+                              title="Товары МойСклад с проблемами публикации на маркетплейсах"
+                            >
+                              <i class="metismenu-icon pe-7s-attention"></i>Проблемы с товарами
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-new-products"
+                              href="/exports-new-products.html"
+                              title="Очередь новых товаров: Альмамед и Маркеты"
+                            >
+                              <i class="metismenu-icon pe-7s-plus"></i>Новые товары
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-photoshoot"
+                              href="/exports-photoshoot.html"
+                              title="Съёмка товаров из очереди «Размещение на маркеты»"
+                            >
+                              <i class="metismenu-icon pe-7s-camera"></i>Отснять товары
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-competitors"
+                              href="/exports-marketplaces-competitors.html"
+                              title="Поиск наших товаров на Ozon, Wildberries и Яндекс Маркет"
+                            >
+                              <i class="metismenu-icon pe-7s-search"></i>Конкуренты
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-reglament"
+                              href="/exports-marketplaces-reglament.html"
+                              title="Регламент МП: от поиска товара до поступления на склад"
+                            >
+                              <i class="metismenu-icon pe-7s-news-paper"></i>Инструкция
+                            </a>
+                          </li>
+                        </ul>
+                      </li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="purchase" href="/purchase.html" title="Закупки товары: планирование, неснижаемые остатки, кратность"><i class="metismenu-icon pe-7s-cart"></i>Закупки товары</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="suppliers" href="/suppliers.html" title="Поставщики: сводка по закупкам и настройки"><i class="metismenu-icon pe-7s-id"></i>Поставщики</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="supplier-analysis" href="/supplier-analysis.html" title="Продажи, оборот и тренды по поставщикам"><i class="metismenu-icon pe-7s-graph2"></i>Анализ поставщиков</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="product-analysis" href="/product-analysis.html" title="Продажи по SKU: топы, мёртвые, жизненный цикл и неснижаемый"><i class="metismenu-icon pe-7s-graph1"></i>Анализ товаров</a></li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="app-sidebar-bg opacity-06"></div>
+        </div>
+      </div>
+
+      <div class="app-main__outer">
+        <div class="app-main__inner">
+          <div class="app-page-title">
+            <div class="page-title-wrapper">
+              <div class="page-title-heading">
+                <div class="page-title-icon">
+                  <i class="pe-7s-link icon-gradient bg-happy-fisher"> </i>
+                </div>
+                <div>
+                  Маркетплейсы — Объединение карточек Ozon
+                  <div class="page-title-subheading">
+                    Пошаговый помощник: система сама находит похожие товары на Ozon (комплекты и линейки по размеру/фасовке) и предлагает склеить их в одну карточку в 1 клик.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Понятная инструкция в 3 простых шага -->
+          <div class="dg-ozm-step-banner p-3 mb-3">
+            <div class="row g-3 align-items-start">
+              <div class="col-md-4">
+                <div class="dg-ozm-step-title mb-1">1. Посмотрите готовое предложение</div>
+                <div class="dg-ozm-step-desc">
+                  Система уже проанализировала каталог Ozon + МойСклад и сама собрала похожие товары в группы ниже.
+                </div>
+              </div>
+              <div class="col-md-4">
+                <div class="dg-ozm-step-title mb-1">2. Проверьте отличие (размер / шт.)</div>
+                <div class="dg-ozm-step-desc">
+                  В колонке <strong>«Чем отличается этот вариант»</strong> уже подставлено значение (например, <span class="dg-ozm-code-pill">1 шт.</span>, <span class="dg-ozm-code-pill">5 шт.</span> или размер <span class="dg-ozm-code-pill">S / M / L</span>). При необходимости поправьте текст.
+                </div>
+              </div>
+              <div class="col-md-4">
+                <div class="dg-ozm-step-title mb-1">3. Нажмите 1 кнопку</div>
+                <div class="dg-ozm-step-desc">
+                  Если товары подходят — нажмите зелёную кнопку <strong>«Объединить на Ozon»</strong>. Если склеивать их не нужно — нажмите <strong>«Не объединять (скрыть)»</strong>, и они больше никогда не будут мешать.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- КАРТОЧКА 1: ФИЛЬТРЫ И ДЕЙСТВИЯ -->
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <span>Фильтры и действия</span>
+                <span id="dg-ozm-cache-badge" class="dg-ozm-pill dg-ozm-pill-neutral">Загрузка статистики…</span>
+              </div>
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <div class="dropdown d-inline-block">
+                  <button
+                    type="button"
+                    id="dg-ozm-filter-fields-btn"
+                    class="btn btn-sm btn-outline-secondary"
+                    aria-expanded="false"
+                  >
+                    ⚙ Поля фильтров
+                  </button>
+                  <div
+                    id="dg-ozm-filter-fields-menu"
+                    class="dropdown-menu dropdown-menu-end p-3"
+                    style="min-width: 280px"
+                  >
+                    <div class="fw-semibold mb-2">Поля фильтров</div>
+                    <div id="dg-ozm-filter-fields-toggles"></div>
+                  </div>
+                </div>
+                <button type="button" id="dg-ozm-filters-toggle" class="btn btn-sm btn-outline-secondary">
+                  Свернуть
+                </button>
+              </div>
+            </div>
+
+            <div class="card-body" id="dg-ozm-filters-body">
+              <!-- Очередь: 4 крупные контрастные карточки-кнопки -->
+              <div class="mb-3" data-dg-ozm-filter-field="queue_status" data-dg-filter-field-title="Очередь групп">
+                <label class="form-label fw-bold text-dark mb-2">Что сейчас показывать на экране:</label>
+                <div class="row g-3" id="dg-ozm-queue-radios">
+                  <div class="col-md-3">
+                    <button
+                      type="button"
+                      class="dg-ozm-queue-btn active"
+                      data-ozm-queue="suggested"
+                    >
+                      <div class="d-flex justify-content-between align-items-center gap-2">
+                        <span class="dg-ozm-q-title">Предложения к объединению</span>
+                        <span class="dg-ozm-q-count" id="dg-ozm-cnt-suggested">0</span>
+                      </div>
+                      <div class="dg-ozm-q-sub">Система рекомендует склеить эти товары в одну карточку</div>
+                    </button>
+                  </div>
+                  <div class="col-md-3">
+                    <button
+                      type="button"
+                      class="dg-ozm-queue-btn"
+                      data-ozm-queue="merged"
+                    >
+                      <div class="d-flex justify-content-between align-items-center gap-2">
+                        <span class="dg-ozm-q-title">Уже объединены на Ozon</span>
+                        <span class="dg-ozm-q-count" id="dg-ozm-cnt-merged">0</span>
+                      </div>
+                      <div class="dg-ozm-q-sub">Карточки уже склеены в одну (можно проверить или разъединить)</div>
+                    </button>
+                  </div>
+                  <div class="col-md-3">
+                    <button
+                      type="button"
+                      class="dg-ozm-queue-btn"
+                      data-ozm-queue="failed"
+                    >
+                      <div class="d-flex justify-content-between align-items-center gap-2">
+                        <span class="dg-ozm-q-title">Проблемные объединения</span>
+                        <span class="dg-ozm-q-count" id="dg-ozm-cnt-failed">0</span>
+                      </div>
+                      <div class="dg-ozm-q-sub">Не склеились на Ozon — нажмите, чтобы увидеть причину и проверить</div>
+                    </button>
+                  </div>
+                  <div class="col-md-3">
+                    <button
+                      type="button"
+                      class="dg-ozm-queue-btn"
+                      data-ozm-queue="ignored"
+                    >
+                      <div class="d-flex justify-content-between align-items-center gap-2">
+                        <span class="dg-ozm-q-title">Не объединять (скрытые)</span>
+                        <span class="dg-ozm-q-count" id="dg-ozm-cnt-ignored">0</span>
+                      </div>
+                      <div class="dg-ozm-q-sub">Отменённые группы — скрыты навсегда и не мешают в работе</div>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Строка фильтров: Тип находки, Менеджер товара, Умный поиск, Пошаговый режим -->
+              <div class="row g-3 align-items-end mb-3">
+                <div class="col-lg-3 col-md-6" data-dg-ozm-filter-field="kind" data-dg-filter-field-title="По какому признаку найдены">
+                  <label for="dg-ozm-f-kind" class="form-label fw-semibold text-dark">По какому признаку найдены:</label>
+                  <select id="dg-ozm-f-kind" class="form-select form-select-sm">
+                    <option value="all">Все типы групп</option>
+                    <option value="bundles">Товар + его комплекты МС (1 шт., 2 шт., 5 шт.…)</option>
+                    <option value="name_variants">Линейки одной модели (по коду МС / названию: размер, материал, объём, цвет)</option>
+                    <option value="partial_merged">Доклейка к уже существующей связке на Ozon</option>
+                    <option value="custom">Свои группы (добавленные вручную по кодам)</option>
+                  </select>
+                </div>
+
+                <div class="col-lg-3 col-md-6" data-dg-ozm-filter-field="manager" data-dg-filter-field-title="Менеджер товара">
+                  <label for="dg-ozm-f-manager" class="form-label fw-semibold text-dark">Менеджер товара:</label>
+                  <select id="dg-ozm-f-manager" class="form-select form-select-sm">
+                    <option value="all">Все менеджеры</option>
+                    <option value="Назерке Койман">Назерке Койман</option>
+                    <option value="Катерина Лычковская">Катерина Лычковская</option>
+                    <option value="Яна Ярцева">Яна Ярцева</option>
+                    <option value="Ирина Новикова">Ирина Новикова</option>
+                    <option value="__empty__">Без менеджера</option>
+                  </select>
+                </div>
+
+                <div class="col-lg-3 col-md-6" data-dg-ozm-filter-field="search" data-dg-filter-field-title="Умный поиск">
+                  <label for="dg-ozm-f-search" class="form-label fw-semibold text-dark">Умный поиск (код МС, название, поставщик):</label>
+                  <input
+                    type="search"
+                    id="dg-ozm-f-search"
+                    class="form-control form-control-sm"
+                    placeholder="Например: перчатки нитриловые, 00123, S, Benovy…"
+                  />
+                </div>
+
+                <div class="col-lg-3 col-md-6" data-dg-ozm-filter-field="step_mode" data-dg-filter-field-title="Режим показа">
+                  <div class="p-2 rounded border bg-light">
+                    <div class="form-check form-switch mb-0">
+                      <input
+                        class="form-check-input"
+                        type="checkbox"
+                        id="dg-ozm-step-mode"
+                        checked
+                      />
+                      <label class="form-check-label fw-bold text-dark" for="dg-ozm-step-mode">
+                        Пошаговый режим (по 1 группе на экране)
+                      </label>
+                    </div>
+                    <div class="small text-dark mt-1">
+                      Показывает 1 группу крупно: нажали кнопку — сразу открылась следующая.
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Кнопки действий -->
+              <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 pt-2 border-top">
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                  <button
+                    type="button"
+                    id="dg-ozm-apply-filters-btn"
+                    class="btn btn-primary btn-sm fw-semibold"
+                    data-dg-notify-start="Применяем фильтры групп Ozon…"
+                  >
+                    Применить
+                  </button>
+                  <button
+                    type="button"
+                    id="dg-ozm-reset-filters-btn"
+                    class="btn btn-outline-secondary btn-sm"
+                    data-dg-notify-start="Сбрасываем фильтры к значениям по умолчанию…"
+                  >
+                    По умолчанию
+                  </button>
+                </div>
+
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                  <button
+                    type="button"
+                    id="dg-ozm-open-all-log-btn"
+                    class="btn btn-outline-secondary btn-sm fw-semibold"
+                    data-dg-notify-start="Открываем журнал склеек и расклеек…"
+                  >
+                    📜 Журнал склеек (лог)
+                  </button>
+                  <button
+                    type="button"
+                    id="dg-ozm-open-custom-btn"
+                    class="btn btn-outline-primary btn-sm fw-semibold"
+                    data-dg-no-activity="1"
+                  >
+                    + Своя группа по кодам МС
+                  </button>
+                  <button
+                    type="button"
+                    id="dg-ozm-scan-ozon-btn"
+                    class="btn btn-outline-dark btn-sm fw-semibold"
+                    data-dg-notify-start="Сканируем атрибуты склейки 9048 из Ozon API…"
+                  >
+                    Обновить склейки из Ozon API
+                  </button>
+                </div>
+              </div>
+
+              <!-- Вспомогательный блок ручного добавления своей группы по кодам -->
+              <div id="dg-ozm-custom-box" class="alert alert-light border mt-3 mb-0 d-none">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  <div class="fw-bold text-dark">Создать свою группу по кодам МойСклад (offer_id)</div>
+                  <button type="button" id="dg-ozm-close-custom-btn" class="btn-close" aria-label="Закрыть"></button>
+                </div>
+                <div class="small text-dark mb-2">
+                  Если вы хотите склеить конкретные товары вручную — укажите их коды МС через пробел или запятую в одной строке (первый код станет главной карточкой):
+                </div>
+                <div class="row g-2 align-items-end">
+                  <div class="col-md-8">
+                    <textarea
+                      id="dg-ozm-custom-codes"
+                      class="form-control form-control-sm font-monospace"
+                      rows="2"
+                      placeholder="00123, 00124, 00125"
+                    ></textarea>
+                  </div>
+                  <div class="col-md-4 d-flex gap-2">
+                    <button
+                      type="button"
+                      id="dg-ozm-save-custom-btn"
+                      class="btn btn-primary btn-sm w-100 fw-semibold"
+                      data-dg-notify-start="Добавляем вашу группу в список предложений…"
+                    >
+                      Добавить группу в список
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Расширенный журнал действий (datagon-action-log-extended) -->
+              <div id="dg-ozm-action-log" class="alert mt-3 mb-0 d-none" role="status"></div>
+            </div>
+          </div>
+
+          <!-- КАРТОЧКА 2: КОНВЕЙЕР / СПИСОК ГРУПП ТОВАРОВ -->
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex justify-content-between align-items-center gap-2 flex-wrap">
+              <div class="d-flex align-items-center gap-3 flex-grow-1 flex-wrap" style="min-width: 0">
+                <div class="d-flex align-items-center gap-2 flex-shrink-0">
+                  <span id="dg-ozm-list-title" class="fw-bold text-dark">Предложения к объединению</span>
+                  <span id="dg-ozm-step-indicator" class="dg-ozm-pill dg-ozm-pill-step">Пошаговый режим: по 1 группе</span>
+                </div>
+                <div class="dg-ozm-header-search">
+                  <div class="input-group input-group-sm">
+                    <span class="input-group-text">🔎</span>
+                    <input
+                      type="search"
+                      id="dg-ozm-table-search-mirror"
+                      class="form-control"
+                      placeholder="Поиск по коду, названию, поставщику (Enter — найти)…"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <div class="dropdown d-inline-block">
+                  <button
+                    type="button"
+                    id="dg-ozm-cols-btn"
+                    class="btn btn-sm btn-outline-secondary"
+                    data-dg-no-activity="1"
+                  >
+                    🧩 Столбцы
+                  </button>
+                </div>
+                <div class="dropdown d-inline-block">
+                  <button
+                    type="button"
+                    id="dg-ozm-widths-btn"
+                    class="btn btn-sm btn-outline-secondary"
+                    data-dg-no-activity="1"
+                  >
+                    📏 Ширины
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  id="dg-ozm-table-toggle"
+                  class="btn btn-sm btn-outline-secondary"
+                  data-dg-no-activity="1"
+                >
+                  Свернуть
+                </button>
+              </div>
+            </div>
+
+            <div class="card-body" id="dg-ozm-table-body">
+              <!-- Панели Столбцы / Ширины (moysklad baseline) -->
+              <div id="dg-ozm-toolbox-panels" class="datagon-columns-toolbox mb-3 d-none">
+                <div id="dg-ozm-columns-panel" class="datagon-columns-panel p-3 border rounded bg-light mb-2 d-none"></div>
+                <div id="dg-ozm-widths-panel" class="datagon-columns-panel p-3 border rounded bg-light mb-2 d-none"></div>
+              </div>
+
+              <!-- Контейнер карточек групп -->
+              <div id="dg-ozm-groups-container"></div>
+
+              <!-- Нижняя панель пагинации -->
+              <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mt-3 pt-2 border-top">
+                <div class="d-flex align-items-center gap-3 flex-wrap">
+                  <div class="d-flex align-items-center gap-2">
+                    <label for="dg-ozm-page-size" class="small text-dark fw-semibold mb-0">На странице:</label>
+                    <select id="dg-ozm-page-size" class="form-select form-select-sm" style="width: auto">
+                      <option value="1" selected>1 (пошагово)</option>
+                      <option value="10">10</option>
+                      <option value="25">25</option>
+                      <option value="50">50</option>
+                      <option value="100">100</option>
+                    </select>
+                  </div>
+                  <span id="dg-ozm-pagination-status" class="small text-dark">
+                    Найдено: 0; страница 1/1; показано: 0
+                  </span>
+                </div>
+
+                <div class="d-flex align-items-center gap-2">
+                  <button
+                    type="button"
+                    id="dg-ozm-page-prev"
+                    class="btn btn-sm btn-outline-secondary"
+                    disabled
+                  >
+                    Назад
+                  </button>
+                  <button
+                    type="button"
+                    id="dg-ozm-page-next"
+                    class="btn btn-sm btn-outline-secondary"
+                    disabled
+                  >
+                    Вперёд
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Модальное окно подтверждения записи в Ozon (datagon-destructive-confirm-modal) -->
+          <div id="dg-ozm-confirm-overlay" class="dg-ozm-confirm-overlay d-none" role="dialog" aria-modal="true">
+            <div class="dg-ozm-confirm-dialog">
+              <div class="p-3 border-bottom bg-light d-flex justify-content-between align-items-center">
+                <h5 class="mb-0 fw-bold text-dark" id="dg-ozm-confirm-title">Подтверждение объединения карточек на Ozon</h5>
+                <button type="button" class="btn-close" id="dg-ozm-confirm-close" aria-label="Закрыть"></button>
+              </div>
+              <div class="p-3" id="dg-ozm-confirm-body"></div>
+              <div class="p-3 border-top bg-light d-flex justify-content-end gap-2">
+                <button type="button" class="btn btn-outline-secondary" id="dg-ozm-confirm-cancel">Отмена</button>
+                <button
+                  type="button"
+                  class="btn btn-success fw-semibold"
+                  id="dg-ozm-confirm-ok"
+                  data-dg-notify-start="Отправляем данные в Ozon…"
+                >
+                  Да, выполнить в Ozon
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Модальное окно журнала изменений (лог склеек/расклеек — как в /exports-new-products.html) -->
+          <div id="dg-ozm-log-overlay" class="dg-ozm-log-overlay" style="display: none" aria-hidden="true" role="dialog" aria-modal="true">
+            <div class="dg-ozm-log-backdrop" id="dg-ozm-log-backdrop"></div>
+            <div class="dg-ozm-log-panel card shadow-lg border-0">
+              <div class="card-header d-flex align-items-center justify-content-between gap-2">
+                <div class="d-flex flex-column" style="min-width: 0; text-transform: none !important">
+                  <div class="fw-bold text-dark" id="dg-ozm-log-title">Журнал изменений</div>
+                  <div class="text-muted small" id="dg-ozm-log-subtitle"></div>
+                </div>
+                <div class="d-flex align-items-center gap-2 flex-shrink-0">
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-secondary"
+                    id="dg-ozm-log-refresh"
+                    data-dg-notify-start="Обновляем журнал…"
+                  >
+                    Обновить
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-secondary"
+                    id="dg-ozm-log-close"
+                    data-dg-no-activity="1"
+                  >
+                    Закрыть
+                  </button>
+                </div>
+              </div>
+              <div class="card-body p-0">
+                <div class="dg-ozm-log-body" id="dg-ozm-log-body">
+                  <div class="text-muted small text-center py-4">Загрузка журнала…</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="app-footer">
+          <div class="app-footer__inner">
+            <div class="app-footer-left">
+              <div class="footer-dots">
+                <a
+                  href="#"
+                  class="dot-btn-wrapper dg-vanilla-footer-toggle"
+                  id="PopoverFooter-1"
+                  aria-expanded="false"
+                  aria-haspopup="true"
+                  title="Уведомления"
+                  aria-label="Уведомления"
+                >
+                  <i class="dot-btn-icon lnr-bullhorn icon-gradient bg-mean-fruit"></i>
+                  <div
+                    class="badge badge-dot badge-abs badge-dot-sm bg-danger d-none"
+                    id="dg-footer-notif-dot"
+                    aria-hidden="true"
+                  >
+                    ·
+                  </div>
+                </a>
+                <div class="dots-separator"></div>
+                <a href="#" class="dot-btn-wrapper dg-vanilla-footer-toggle" id="PopoverFooter-3" aria-expanded="false" aria-haspopup="true">
+                  <i class="dot-btn-icon lnr-pie-chart icon-gradient bg-love-kiss"></i>
+                  <div class="badge badge-dot badge-abs badge-dot-sm bg-warning">Notifications</div>
+                </a>
+                <div class="dropdown-menu popover-custom popover-custom-xl rm-pointers p-0 dg-vanilla-footer-popover" data-footer-popover="PopoverFooter-1" style="min-width:420px">
+                  <div class="dropdown-menu-header mb-0">
+                    <div class="dropdown-menu-header-inner bg-strong-bliss">
+                      <div class="menu-header-image opacity-1" style="background-image:url('./assets/utils/images/dropdown-header/city2.jpg')"></div>
+                      <div class="menu-header-content text-white">
+                        <h5 class="menu-header-title">Уведомления</h5>
+                        <h6 class="menu-header-subtitle" id="dg-footer-notif-subtitle">
+                          Нет непрочитанных
+                        </h6>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="card-tabs-animated card-tabs-animated-inner">
+                    <ul class="nav nav-justified">
+                      <li class="nav-item">
+                        <a href="#" class="nav-link active" id="dg-footer-notif-tab-approvals" data-dg-no-activity="1">Согласования</a>
+                      </li>
+                      <li class="nav-item">
+                        <a href="#" class="nav-link disabled text-muted" tabindex="-1" aria-disabled="true" data-dg-no-activity="1">События</a>
+                      </li>
+                      <li class="nav-item">
+                        <a href="#" class="nav-link disabled text-muted" tabindex="-1" aria-disabled="true" data-dg-no-activity="1">Ошибки</a>
+                      </li>
+                    </ul>
+                    <div class="p-0" id="dg-footer-notif-list" style="max-height: 16rem; overflow-y: auto">
+                      <div class="text-muted small p-3 mb-0">Пока нет согласований.</div>
+                    </div>
+                  </div>
+                  <div class="nav-item-btn text-center pt-3 pb-3">
+                    <a
+                      href="/work-schedule.html?tab=dept"
+                      class="btn btn-shadow btn-wide btn-pill btn-dark"
+                      id="dg-footer-notif-view-all"
+                      data-dg-notify-start="Открываем согласования…"
+                    >
+                      <span class="badge badge-dot badge-dot-lg bg-warning badge-pulse me-2" id="dg-footer-notif-view-pulse"></span>
+                      К согласованиям
+                    </a>
+                  </div>
+                </div>
+                <div class="dropdown-menu popover-custom popover-custom-lg rm-pointers p-0 dg-vanilla-footer-popover" data-footer-popover="PopoverFooter-3" style="min-width:380px">
+                  <div class="dropdown-menu-header">
+                    <div class="dropdown-menu-header-inner bg-malibu-beach">
+                      <div class="menu-header-image opacity-2" style="background-image:url('./assets/utils/images/dropdown-header/city2.jpg')"></div>
+                      <div class="menu-header-content text-white">
+                        <div class="avatar-icon-wrapper btn-hover-shine mb-3 avatar-icon-xl">
+                          <div class="avatar-icon rounded">
+                            <img src="./assets/utils/images/avatars/2.jpg" alt="Avatar 6" />
+                          </div>
+                        </div>
+                        <h5 class="menu-header-title">Fancy Statistics</h5>
+                        <h6 class="menu-header-subtitle">Just an example of a slider with some chart widgets inside.</h6>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="p-2">
+                    <div class="card no-shadow widget-chart widget-chart2 text-start p-2 m-1">
+                      <div class="widget-title opacity-6 text-muted text-uppercase">New accounts since 2018</div>
+                      <div class="widget-numbers text-success">78<small class="opacity-5 ps-1">%</small></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="app-footer-right">
+              <a class="dg-footer-legal-link" href="/legal/privacy.html" target="_blank" rel="noopener">Политика обработки персональных данных</a>
+              <a class="dg-footer-legal-link" href="/legal/cookies.html" target="_blank" rel="noopener">Политика использования cookie-файлов</a>
+              <a class="dg-footer-legal-link" href="/legal/recommendation.html" target="_blank" rel="noopener">Правила применения рекомендательных технологий</a>
+              <a class="dg-footer-legal-link" href="/legal/consent.html" target="_blank" rel="noopener">Согласие на обработку ПДн</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/datagon-legal.js"></script>
+  <script src="/datagon-vanilla.js?v=20261009-dates"></script>
+  <script>
+  (function () {
+    "use strict";
+
+    var FILTERS_COLLAPSED_KEY = "datagon_ozm_filters_collapsed_v2";
+    var TABLE_COLLAPSED_KEY = "dg.ozm.table-card.collapsed.v2";
+    var COLS_VISIBLE_KEY = "datagon_ozm_visible_cols_v3";
+    var COLS_WIDTH_KEY = "datagon_ozm_col_widths_v3";
+    var FILTER_STATE_KEY = "datagon_ozm_filter_state_v1";
+    var GROUP_DRAFTS_KEY = "datagon_ozm_group_drafts_v1";
+
+    // Единый источник истины для колонок таблицы внутри каждой группы (moysklad baseline)
+    var OZM_COLS = [
+      ["include", "Вкл."],
+      ["main", "Главная карточка"],
+      ["offer_id", "Код МС (offer_id)"],
+      ["name", "Наименование товара"],
+      ["supplier", "Поставщик / Бренд"],
+      ["manager", "Менеджер товара"],
+      ["stock", "Остаток Ozon"],
+      ["price", "Цена Ozon"],
+      ["current_merge", "Текущая склейка в Ozon"],
+      ["aspect_value", "Чем отличается этот вариант (размер / шт. / фасовка)"],
+      ["remove_action", "Убрать из группы"],
+    ];
+
+    var DEFAULT_WIDTHS = {
+      include: 56,
+      main: 145,
+      offer_id: 145,
+      name: 340,
+      supplier: 170,
+      manager: 165,
+      stock: 110,
+      price: 110,
+      current_merge: 170,
+      aspect_value: 290,
+      remove_action: 95,
+    };
+
+    var FIELD_GROUPS = [
+      {
+        title: "Основные фильтры",
+        fields: [
+          ["queue_status", "Очередь групп (Предложения / Объединены / Скрытые)"],
+          ["kind", "По какому признаку найдены"],
+          ["manager", "Менеджер товара"],
+          ["search", "Умный поиск"],
+          ["step_mode", "Пошаговый режим (по 1 группе)"],
+        ],
+      },
+    ];
+
+    // Двухслойное состояние: applied vs pending (по правилу datagon-table-filter-apply.mdc)
+    var state = {
+      status: "suggested",
+      kind: "all",
+      manager: "all",
+      search: "",
+      stepMode: true,
+      page: 1,
+      pageSize: 100,
+      pending: {
+        status: "suggested",
+        kind: "all",
+        manager: "all",
+        search: "",
+        stepMode: true,
+      },
+      managers: ["Назерке Койман", "Катерина Лычковская", "Яна Ярцева", "Ирина Новикова"],
+      counts: {
+        suggested: 0,
+        merged: 0,
+        failed: 0,
+        ignored: 0,
+      },
+      cacheStats: {
+        total_ozon_rows: 0,
+        cached_cards: 0,
+        cards_with_9048: 0,
+      },
+      total: 0,
+      rows: [],
+      visibleCols: OZM_COLS.map(function (c) { return c[0]; }),
+      colWidths: Object.assign({}, DEFAULT_WIDTHS),
+      confirmCallback: null,
+    };
+
+    function byId(id) {
+      return document.getElementById(id);
+    }
+
+    function esc(s) {
+      return String(s == null ? "" : s)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    function fmtNum(n) {
+      if (window.DatagonFmt && typeof window.DatagonFmt.formatInt === "function") {
+        return window.DatagonFmt.formatInt(n);
+      }
+      var num = Number(n);
+      return Number.isFinite(num) ? num.toLocaleString("ru-RU") : String(n == null ? "" : n);
+    }
+
+    function fmtDateTime(val) {
+      if (!val) return "—";
+      var raw = String(val).replace("T", " ").replace(/\.\d+Z?$/, "").trim();
+      var m = raw.match(/^(\d{4}-\d{2}-\d{2})(?:\s+(\d{2}:\d{2}(?::\d{2})?))?/);
+      if (m) {
+        var dPart =
+          window.DatagonFmt && typeof window.DatagonFmt.formatDate === "function"
+            ? window.DatagonFmt.formatDate(m[1])
+            : m[1].split("-").reverse().join("-");
+        return m[2] ? dPart + " " + m[2] : dPart;
+      }
+      return raw;
+    }
+
+    function toast(type, message) {
+      if (window.DatagonNotify && typeof window.DatagonNotify.toast === "function") {
+        window.DatagonNotify.toast({ type: type || "info", message: message });
+      }
+    }
+
+    function showActionLog(kind, html) {
+      var box = byId("dg-ozm-action-log");
+      if (!box) return;
+      box.className = "alert mt-3 mb-0 alert-" + (kind || "info");
+      box.innerHTML = html;
+      box.classList.remove("d-none");
+    }
+
+    function hideActionLog() {
+      var box = byId("dg-ozm-action-log");
+      if (!box) return;
+      box.classList.add("d-none");
+      box.innerHTML = "";
+    }
+
+    function isDirty() {
+      return (
+        state.pending.status !== state.status ||
+        state.pending.kind !== state.kind ||
+        state.pending.manager !== state.manager ||
+        state.pending.search.trim() !== state.search.trim() ||
+        Boolean(state.pending.stepMode) !== Boolean(state.stepMode)
+      );
+    }
+
+    function syncDirtyButton() {
+      var btn = byId("dg-ozm-apply-filters-btn");
+      if (!btn) return;
+      if (isDirty()) {
+        btn.textContent = "Применить •";
+        btn.classList.add("dg-flt-dirty");
+      } else {
+        btn.textContent = "Применить";
+        btn.classList.remove("dg-flt-dirty");
+      }
+    }
+
+    // Сохранение и восстановление колонок / ширин
+    function loadColsPrefs() {
+      try {
+        var rawVis = localStorage.getItem(COLS_VISIBLE_KEY);
+        if (rawVis) {
+          var parsed = JSON.parse(rawVis);
+          if (Array.isArray(parsed) && parsed.length) {
+            state.visibleCols = parsed;
+          }
+        }
+        var rawW = localStorage.getItem(COLS_WIDTH_KEY);
+        if (rawW) {
+          var parsedW = JSON.parse(rawW);
+          if (parsedW && typeof parsedW === "object") {
+            state.colWidths = Object.assign({}, DEFAULT_WIDTHS, parsedW);
+          }
+        }
+      } catch (_) {}
+    }
+
+    function renderColumnControls() {
+      var panel = byId("dg-ozm-columns-panel");
+      if (!panel) return;
+      var html = '<div class="fw-semibold mb-2">Отображаемые столбцы внутри группы</div><div class="d-flex flex-wrap gap-3">';
+      OZM_COLS.forEach(function (pair) {
+        var key = pair[0];
+        var label = pair[1];
+        var checked = state.visibleCols.indexOf(key) >= 0 ? "checked" : "";
+        html +=
+          '<label class="form-check form-check-inline mb-1">' +
+          '<input type="checkbox" class="form-check-input dg-ozm-col-vis-cb" data-col-key="' + esc(key) + '" ' + checked + " />" +
+          '<span class="form-check-label small">' + esc(label) + "</span>" +
+          "</label>";
+      });
+      html += "</div>";
+      panel.innerHTML = html;
+
+      panel.querySelectorAll(".dg-ozm-col-vis-cb").forEach(function (cb) {
+        cb.addEventListener("change", function () {
+          var next = [];
+          panel.querySelectorAll(".dg-ozm-col-vis-cb").forEach(function (el) {
+            if (el.checked) next.push(el.getAttribute("data-col-key"));
+          });
+          if (!next.length) next = ["offer_id", "name", "aspect_value"];
+          state.visibleCols = next;
+          try {
+            localStorage.setItem(COLS_VISIBLE_KEY, JSON.stringify(next));
+          } catch (_) {}
+          renderGroupsList();
+        });
+      });
+    }
+
+    function renderWidthControls() {
+      var panel = byId("dg-ozm-widths-panel");
+      if (!panel) return;
+      var html = '<div class="fw-semibold mb-2">Ширина столбцов (px)</div><div class="row g-2">';
+      OZM_COLS.forEach(function (pair) {
+        var key = pair[0];
+        var label = pair[1];
+        var w = Number(state.colWidths[key] || DEFAULT_WIDTHS[key] || 140);
+        html +=
+          '<div class="col-md-3 col-sm-6">' +
+          '<label class="form-label small mb-1">' + esc(label) + "</label>" +
+          '<input type="number" min="50" max="700" step="10" class="form-control form-control-sm dg-ozm-col-width-inp" data-col-key="' + esc(key) + '" value="' + w + '" />' +
+          "</div>";
+      });
+      html += "</div>";
+      panel.innerHTML = html;
+
+      panel.querySelectorAll(".dg-ozm-col-width-inp").forEach(function (inp) {
+        inp.addEventListener("change", function () {
+          var k = inp.getAttribute("data-col-key");
+          var val = Math.max(50, Math.min(700, Number(inp.value) || 140));
+          state.colWidths[k] = val;
+          try {
+            localStorage.setItem(COLS_WIDTH_KEY, JSON.stringify(state.colWidths));
+          } catch (_) {}
+          renderGroupsList();
+        });
+      });
+    }
+
+    function initToolboxPanels() {
+      var wrap = byId("dg-ozm-toolbox-panels");
+      var colsPanel = byId("dg-ozm-columns-panel");
+      var widthsPanel = byId("dg-ozm-widths-panel");
+      var colsBtn = byId("dg-ozm-cols-btn");
+      var widthsBtn = byId("dg-ozm-widths-btn");
+      if (!wrap || !colsPanel || !widthsPanel) return;
+
+      function syncWrap() {
+        var anyOpen = !colsPanel.classList.contains("d-none") || !widthsPanel.classList.contains("d-none");
+        wrap.classList.toggle("d-none", !anyOpen);
+      }
+
+      if (colsBtn) {
+        colsBtn.addEventListener("click", function (e) {
+          e.stopPropagation();
+          colsPanel.classList.toggle("d-none");
+          widthsPanel.classList.add("d-none");
+          syncWrap();
+        });
+      }
+      if (widthsBtn) {
+        widthsBtn.addEventListener("click", function (e) {
+          e.stopPropagation();
+          widthsPanel.classList.toggle("d-none");
+          colsPanel.classList.add("d-none");
+          syncWrap();
+        });
+      }
+      document.addEventListener("click", function (e) {
+        if (wrap.contains(e.target) || (colsBtn && colsBtn.contains(e.target)) || (widthsBtn && widthsBtn.contains(e.target))) {
+          return;
+        }
+        colsPanel.classList.add("d-none");
+        widthsPanel.classList.add("d-none");
+        syncWrap();
+      });
+    }
+
+    function initCardCollapses() {
+      var fBtn = byId("dg-ozm-filters-toggle");
+      var fBody = byId("dg-ozm-filters-body");
+      if (fBtn && fBody) {
+        var fCollapsed = localStorage.getItem(FILTERS_COLLAPSED_KEY) === "1";
+        fBody.classList.toggle("d-none", fCollapsed);
+        fBtn.textContent = fCollapsed ? "Развернуть" : "Свернуть";
+        fBtn.addEventListener("click", function () {
+          var next = !fBody.classList.contains("d-none");
+          fBody.classList.toggle("d-none", next);
+          fBtn.textContent = next ? "Развернуть" : "Свернуть";
+          try {
+            localStorage.setItem(FILTERS_COLLAPSED_KEY, next ? "1" : "0");
+          } catch (_) {}
+        });
+      }
+
+      var tBtn = byId("dg-ozm-table-toggle");
+      var tBody = byId("dg-ozm-table-body");
+      if (tBtn && tBody) {
+        var tCollapsed = localStorage.getItem(TABLE_COLLAPSED_KEY) === "1";
+        tBody.classList.toggle("d-none", tCollapsed);
+        tBtn.textContent = tCollapsed ? "Развернуть" : "Свернуть";
+        tBtn.addEventListener("click", function () {
+          var next = !tBody.classList.contains("d-none");
+          tBody.classList.toggle("d-none", next);
+          tBtn.textContent = next ? "Развернуть" : "Свернуть";
+          try {
+            localStorage.setItem(TABLE_COLLAPSED_KEY, next ? "1" : "0");
+          } catch (_) {}
+        });
+      }
+
+      if (window.DatagonFilterFieldsVisibility && typeof window.DatagonFilterFieldsVisibility.init === "function") {
+        window.DatagonFilterFieldsVisibility.init({
+          storageKey: "datagon_ozm_filter_fields_v2",
+          attr: "data-dg-ozm-filter-field",
+          btnId: "dg-ozm-filter-fields-btn",
+          menuId: "dg-ozm-filter-fields-menu",
+          togglesRootId: "dg-ozm-filter-fields-toggles",
+          fieldGroups: FIELD_GROUPS,
+        });
+      }
+    }
+
+    // Модальное окно подтверждения (datagon-destructive-confirm-modal)
+    function openConfirmModal(opts) {
+      var overlay = byId("dg-ozm-confirm-overlay");
+      var titleEl = byId("dg-ozm-confirm-title");
+      var bodyEl = byId("dg-ozm-confirm-body");
+      var okBtn = byId("dg-ozm-confirm-ok");
+      if (!overlay || !titleEl || !bodyEl || !okBtn) return;
+
+      titleEl.textContent = opts.title || "Подтверждение действия";
+      bodyEl.innerHTML = opts.bodyHtml || "";
+      okBtn.textContent = opts.okText || "Да, выполнить";
+      okBtn.className = "btn fw-semibold " + (opts.okClass || "btn-success");
+      state.confirmCallback = typeof opts.onConfirm === "function" ? opts.onConfirm : null;
+      overlay.classList.remove("d-none");
+    }
+
+    function closeConfirmModal() {
+      var overlay = byId("dg-ozm-confirm-overlay");
+      if (overlay) overlay.classList.add("d-none");
+      state.confirmCallback = null;
+    }
+
+    function initConfirmModalEvents() {
+      var closeBtn = byId("dg-ozm-confirm-close");
+      var cancelBtn = byId("dg-ozm-confirm-cancel");
+      var okBtn = byId("dg-ozm-confirm-ok");
+      var overlay = byId("dg-ozm-confirm-overlay");
+
+      if (closeBtn) closeBtn.addEventListener("click", closeConfirmModal);
+      if (cancelBtn) cancelBtn.addEventListener("click", closeConfirmModal);
+      if (overlay) {
+        overlay.addEventListener("click", function (e) {
+          if (e.target === overlay) closeConfirmModal();
+        });
+      }
+      document.addEventListener("keydown", function (e) {
+        if (e.key === "Escape" && overlay && !overlay.classList.contains("d-none")) {
+          closeConfirmModal();
+        }
+      });
+      if (okBtn) {
+        okBtn.addEventListener("click", function () {
+          var cb = state.confirmCallback;
+          closeConfirmModal();
+          if (cb) cb();
+        });
+      }
+    }
+
+    function syncQueueButtonsUI() {
+      var wrap = byId("dg-ozm-queue-radios");
+      if (!wrap) return;
+      wrap.querySelectorAll(".dg-ozm-queue-btn").forEach(function (btn) {
+        var q = btn.getAttribute("data-ozm-queue");
+        btn.classList.toggle("active", q === state.pending.status);
+      });
+
+      var cSug = byId("dg-ozm-cnt-suggested");
+      var cMer = byId("dg-ozm-cnt-merged");
+      var cFail = byId("dg-ozm-cnt-failed");
+      var cIgn = byId("dg-ozm-cnt-ignored");
+      if (cSug) cSug.textContent = fmtNum(state.counts.suggested || 0);
+      if (cMer) cMer.textContent = fmtNum(state.counts.merged || 0);
+      if (cFail) cFail.textContent = fmtNum(state.counts.failed || 0);
+      if (cIgn) cIgn.textContent = fmtNum(state.counts.ignored || 0);
+
+      var listTitle = byId("dg-ozm-list-title");
+      if (listTitle) {
+        if (state.status === "suggested") {
+          listTitle.textContent = "Предложения к объединению (" + fmtNum(state.total) + ")";
+        } else if (state.status === "merged") {
+          listTitle.textContent = "Уже объединены на Ozon (" + fmtNum(state.total) + ")";
+        } else if (state.status === "failed") {
+          listTitle.textContent = "Проблемные объединения (" + fmtNum(state.total) + ")";
+        } else {
+          listTitle.textContent = "Не объединять / Скрытые (" + fmtNum(state.total) + ")";
+        }
+      }
+
+      var stepBadge = byId("dg-ozm-step-indicator");
+      if (stepBadge) {
+        if (state.stepMode) {
+          stepBadge.className = "dg-ozm-pill dg-ozm-pill-step";
+          stepBadge.textContent = "Пошаговый режим: по 1 группе на экране";
+        } else {
+          stepBadge.className = "dg-ozm-pill dg-ozm-pill-neutral";
+          stepBadge.textContent = "Режим списка: до " + fmtNum(state.pageSize) + " групп";
+        }
+      }
+
+      var cacheBadge = byId("dg-ozm-cache-badge");
+      if (cacheBadge) {
+        var cs = state.cacheStats || {};
+        cacheBadge.textContent =
+          "Товаров Ozon: " +
+          fmtNum(cs.total_ozon_rows || 0) +
+          " · уже со склейкой 9048: " +
+          fmtNum(cs.cards_with_9048 || 0);
+      }
+    }
+
+    function updatePaginationUI() {
+      var effectivePageSize = state.stepMode ? 1 : state.pageSize;
+      var totalPages = Math.max(1, Math.ceil(state.total / effectivePageSize));
+      if (state.page > totalPages) state.page = totalPages;
+
+      var pageSizeSel = byId("dg-ozm-page-size");
+      if (pageSizeSel) {
+        pageSizeSel.value = state.stepMode ? "1" : String(state.pageSize || 100);
+      }
+      var stepCb = byId("dg-ozm-step-mode");
+      if (stepCb) {
+        stepCb.checked = Boolean(state.stepMode);
+      }
+
+      var statusEl = byId("dg-ozm-pagination-status");
+      if (statusEl) {
+        statusEl.textContent =
+          "Найдено: " +
+          fmtNum(state.total) +
+          "; страница " +
+          fmtNum(state.page) +
+          "/" +
+          fmtNum(totalPages) +
+          "; показано: " +
+          fmtNum(state.rows.length);
+      }
+
+      var prevBtn = byId("dg-ozm-page-prev");
+      var nextBtn = byId("dg-ozm-page-next");
+      if (prevBtn) prevBtn.disabled = state.page <= 1;
+      if (nextBtn) nextBtn.disabled = state.page >= totalPages;
+    }
+
+    // Сохранение и восстановление всех фильтров, «На странице», режима и черновиков групп при перезагрузке
+    function saveFilterState() {
+      try {
+        var payload = {
+          status: state.status,
+          kind: state.kind,
+          manager: state.manager,
+          search: state.search,
+          stepMode: Boolean(state.stepMode),
+          pageSize: Number(state.pageSize) || 100,
+          page: Number(state.page) || 1,
+          pending: {
+            status: state.pending.status,
+            kind: state.pending.kind,
+            manager: state.pending.manager,
+            search: state.pending.search,
+            stepMode: Boolean(state.pending.stepMode),
+          },
+        };
+        localStorage.setItem(FILTER_STATE_KEY, JSON.stringify(payload));
+      } catch (_) {}
+
+      try {
+        if (window.history && typeof window.history.replaceState === "function") {
+          var url = new URL(window.location.href);
+          url.searchParams.set("status", state.status || "suggested");
+          if (state.kind && state.kind !== "all") url.searchParams.set("kind", state.kind);
+          else url.searchParams.delete("kind");
+          if (state.manager && state.manager !== "all") url.searchParams.set("manager", state.manager);
+          else url.searchParams.delete("manager");
+          if (state.search) url.searchParams.set("search", state.search);
+          else url.searchParams.delete("search");
+          url.searchParams.set("step", state.stepMode ? "1" : "0");
+          if (!state.stepMode) url.searchParams.set("pageSize", String(state.pageSize || 100));
+          else url.searchParams.delete("pageSize");
+          if (state.page > 1) url.searchParams.set("page", String(state.page));
+          else url.searchParams.delete("page");
+          window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+        }
+      } catch (_) {}
+    }
+
+    function syncManagerSelectOptions() {
+      var mgrSel = byId("dg-ozm-f-manager");
+      if (!mgrSel) return;
+      var curVal = state.pending.manager || state.manager || "all";
+      var list = Array.isArray(state.managers) && state.managers.length
+        ? state.managers
+        : ["Назерке Койман", "Катерина Лычковская", "Яна Ярцева", "Ирина Новикова"];
+
+      var html = '<option value="all">Все менеджеры</option>';
+      list.forEach(function (m) {
+        if (!m) return;
+        html += '<option value="' + esc(m) + '">' + esc(m) + "</option>";
+      });
+      if (curVal !== "all" && curVal !== "__empty__" && list.indexOf(curVal) < 0) {
+        html += '<option value="' + esc(curVal) + '">' + esc(curVal) + "</option>";
+      }
+      html += '<option value="__empty__">Без менеджера</option>';
+      mgrSel.innerHTML = html;
+      mgrSel.value = curVal;
+    }
+
+    function loadFilterState() {
+      var saved = null;
+      try {
+        var raw = localStorage.getItem(FILTER_STATE_KEY);
+        if (raw) saved = JSON.parse(raw);
+      } catch (_) {}
+
+      var params = null;
+      try {
+        params = new URLSearchParams(window.location.search || "");
+      } catch (_) {}
+
+      var validStatuses = ["suggested", "merged", "failed", "ignored"];
+      var validKinds = ["all", "bundles", "name_variants", "partial_merged", "custom"];
+      var validPageSizes = [10, 25, 50, 100];
+
+      var st = (params && params.get("status")) || (saved && (saved.pending && saved.pending.status || saved.status)) || "suggested";
+      if (validStatuses.indexOf(st) < 0) st = "suggested";
+
+      var kd = (params && params.get("kind")) || (saved && (saved.pending && saved.pending.kind || saved.kind)) || "all";
+      if (validKinds.indexOf(kd) < 0) kd = "all";
+
+      var mgr =
+        (params && params.get("manager")) ||
+        (saved && ((saved.pending && saved.pending.manager) || saved.manager)) ||
+        "all";
+
+      var sr =
+        params && params.has("search")
+          ? params.get("search")
+          : saved && saved.pending && typeof saved.pending.search === "string"
+            ? saved.pending.search
+            : (saved && saved.search) || "";
+
+      var stepMode = true;
+      if (params && params.has("step")) {
+        stepMode = params.get("step") !== "0";
+      } else if (saved && typeof saved.stepMode === "boolean") {
+        stepMode = saved.stepMode;
+      }
+
+      var pageSize = 100;
+      var rawPs = Number((params && params.get("pageSize")) || (saved && saved.pageSize) || 100);
+      if (validPageSizes.indexOf(rawPs) >= 0) {
+        pageSize = rawPs;
+      }
+
+      var page = Math.max(1, Number((params && params.get("page")) || (saved && saved.page) || 1) || 1);
+
+      state.status = st;
+      state.kind = kd;
+      state.manager = mgr;
+      state.search = String(sr || "").trim();
+      state.stepMode = stepMode;
+      state.pageSize = pageSize;
+      state.page = page;
+      state.pending = {
+        status: st,
+        kind: kd,
+        manager: mgr,
+        search: String(sr || ""),
+        stepMode: stepMode,
+      };
+
+      var kindSel = byId("dg-ozm-f-kind");
+      var searchInp = byId("dg-ozm-f-search");
+      var mirrorInp = byId("dg-ozm-table-search-mirror");
+      var stepCb = byId("dg-ozm-step-mode");
+      var pageSizeSel = byId("dg-ozm-page-size");
+
+      if (kindSel) kindSel.value = kd;
+      syncManagerSelectOptions();
+      if (searchInp) searchInp.value = state.pending.search;
+      if (mirrorInp) mirrorInp.value = state.pending.search;
+      if (stepCb) stepCb.checked = stepMode;
+      if (pageSizeSel) pageSizeSel.value = stepMode ? "1" : String(pageSize);
+      syncDirtyButton();
+    }
+
+    function loadGroupDraftsMap() {
+      try {
+        var raw = localStorage.getItem(GROUP_DRAFTS_KEY);
+        if (raw) {
+          var parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === "object") return parsed;
+        }
+      } catch (_) {}
+      return {};
+    }
+
+    function saveGroupDraft(group) {
+      if (!group || !group.signature) return;
+      try {
+        var map = loadGroupDraftsMap();
+        var itemsMap = {};
+        (group.items || []).forEach(function (it) {
+          if (!it || !it.offer_id) return;
+          itemsMap[it.offer_id] = {
+            aspect_value: String(it.aspect_value == null ? "" : it.aspect_value),
+            unchecked: Boolean(it._unchecked),
+          };
+        });
+        map[group.signature] = {
+          main_offer_id: group.main_offer_id,
+          group_key: group.group_key,
+          items: itemsMap,
+          ts: Date.now(),
+        };
+        localStorage.setItem(GROUP_DRAFTS_KEY, JSON.stringify(map));
+      } catch (_) {}
+    }
+
+    function clearGroupDraft(signature) {
+      if (!signature) return;
+      try {
+        var map = loadGroupDraftsMap();
+        if (map[signature]) {
+          delete map[signature];
+          localStorage.setItem(GROUP_DRAFTS_KEY, JSON.stringify(map));
+        }
+      } catch (_) {}
+    }
+
+    function applySavedGroupDrafts(rows) {
+      var map = loadGroupDraftsMap();
+      (rows || []).forEach(function (g) {
+        if (!g || !g.signature) return;
+        var draft = map[g.signature];
+        if (!draft) return;
+        if (
+          draft.main_offer_id &&
+          Array.isArray(g.items) &&
+          g.items.some(function (it) { return it.offer_id === draft.main_offer_id; })
+        ) {
+          g.main_offer_id = draft.main_offer_id;
+          if (!g.all_merged_in_ozon && draft.group_key) {
+            g.group_key = draft.group_key;
+          }
+        }
+        if (draft.items && Array.isArray(g.items)) {
+          g.items.forEach(function (it) {
+            var dIt = draft.items[it.offer_id];
+            if (!dIt) return;
+            if (typeof dIt.aspect_value === "string") {
+              it.aspect_value = dIt.aspect_value;
+            }
+            if (typeof dIt.unchecked === "boolean") {
+              it._unchecked = dIt.unchecked;
+            }
+          });
+        }
+      });
+    }
+
+    // Загрузка списка групп с сервера
+    function loadGroupsList() {
+      saveFilterState();
+      var effectiveLimit = state.stepMode ? 1 : state.pageSize;
+      var offset = (state.page - 1) * effectiveLimit;
+      var qs =
+        "?status=" +
+        encodeURIComponent(state.status) +
+        "&kind=" +
+        encodeURIComponent(state.kind) +
+        "&manager=" +
+        encodeURIComponent(state.manager || "all") +
+        "&search=" +
+        encodeURIComponent(state.search) +
+        "&limit=" +
+        encodeURIComponent(effectiveLimit) +
+        "&offset=" +
+        encodeURIComponent(offset);
+
+      return fetch("/api/exports/marketplaces/ozon-merge/list" + qs, {
+        credentials: "same-origin",
+      })
+        .then(function (r) {
+          return r.json();
+        })
+        .then(function (data) {
+          if (!data || !data.success) {
+            throw new Error((data && data.error) || "Не удалось загрузить группы объединения Ozon");
+          }
+          state.counts = data.counts || { suggested: 0, merged: 0, ignored: 0 };
+          if (Array.isArray(data.managers) && data.managers.length) {
+            state.managers = data.managers;
+            syncManagerSelectOptions();
+          }
+          state.cacheStats = data.cache_stats || {};
+          state.total = Number(data.total || 0);
+          state.rows = Array.isArray(data.rows) ? data.rows : [];
+          applySavedGroupDrafts(state.rows);
+
+          // Если мы были на последней странице и после скрытия/объединения она опустела — шаг назад
+          if (state.rows.length === 0 && state.total > 0 && state.page > 1) {
+            state.page = Math.max(1, state.page - 1);
+            return loadGroupsList();
+          }
+
+          syncQueueButtonsUI();
+          updatePaginationUI();
+          renderGroupsList();
+        })
+        .catch(function (err) {
+          toast("danger", err.message || String(err));
+        });
+    }
+
+    function commitFilters() {
+      state.status = state.pending.status;
+      state.kind = state.pending.kind;
+      state.manager = state.pending.manager || "all";
+      state.search = state.pending.search.trim();
+      state.stepMode = Boolean(state.pending.stepMode);
+      state.page = 1;
+
+      var pageSizeSel = byId("dg-ozm-page-size");
+      if (pageSizeSel) {
+        if (state.stepMode) {
+          pageSizeSel.value = "1";
+        } else {
+          if (!state.pageSize || state.pageSize <= 1) state.pageSize = 100;
+          pageSizeSel.value = String(state.pageSize);
+        }
+      }
+
+      saveFilterState();
+      syncDirtyButton();
+      return loadGroupsList();
+    }
+
+    function resetFilters() {
+      try {
+        localStorage.removeItem(FILTER_STATE_KEY);
+        localStorage.removeItem(GROUP_DRAFTS_KEY);
+      } catch (_) {}
+      state.pending = {
+        status: "suggested",
+        kind: "all",
+        manager: "all",
+        search: "",
+        stepMode: true,
+      };
+      var kindSel = byId("dg-ozm-f-kind");
+      var mgrSel = byId("dg-ozm-f-manager");
+      var searchInp = byId("dg-ozm-f-search");
+      var mirrorInp = byId("dg-ozm-table-search-mirror");
+      var stepCb = byId("dg-ozm-step-mode");
+      var pageSizeSel = byId("dg-ozm-page-size");
+
+      if (kindSel) kindSel.value = "all";
+      if (mgrSel) mgrSel.value = "all";
+      if (searchInp) searchInp.value = "";
+      if (mirrorInp) mirrorInp.value = "";
+      if (stepCb) stepCb.checked = true;
+      if (pageSizeSel) pageSizeSel.value = "1";
+      state.pageSize = 100;
+
+      hideActionLog();
+      return commitFilters();
+    }
+
+    // Рендер карточек групп
+    function renderGroupsList() {
+      var container = byId("dg-ozm-groups-container");
+      if (!container) return;
+
+      if (!state.rows.length) {
+        var emptyMsg = "";
+        if (state.status === "suggested") {
+          emptyMsg =
+            '<div class="alert alert-success mb-0">' +
+            '<div class="fw-bold mb-1">Предложений к объединению по текущему фильтру больше нет!</div>' +
+            '<div class="small">Все найденные группы уже обработаны, объединены или скрыты. Вы можете переключиться на очередь «Уже объединены на Ozon» или сбросить фильтр поиска.</div>' +
+            "</div>";
+        } else if (state.status === "merged") {
+          emptyMsg =
+            '<div class="alert alert-light border mb-0">' +
+            '<div class="fw-bold mb-1">Список объединённых групп пуст</div>' +
+            '<div class="small text-muted">Нажмите кнопку <strong>«Обновить склейки из Ozon API»</strong> выше, чтобы загрузить текущие склейки 9048 из вашего личного кабинета Ozon.</div>' +
+            "</div>";
+        } else if (state.status === "failed") {
+          emptyMsg =
+            '<div class="alert alert-success mb-0">' +
+            '<div class="fw-bold mb-1">Проблемных объединений нет!</div>' +
+            '<div class="small">Все отправленные на Ozon склейки успешно применились.</div>' +
+            "</div>";
+        } else {
+          emptyMsg =
+            '<div class="alert alert-light border mb-0">' +
+            '<div class="fw-bold mb-1">В скрытых («Не объединять») пока нет групп</div>' +
+            '<div class="small text-muted">Сюда попадают группы, по которым вы нажали кнопку «Не объединять (скрыть)».</div>' +
+            "</div>";
+        }
+        container.innerHTML = emptyMsg;
+        return;
+      }
+
+      var visSet = new Set(state.visibleCols);
+      var html = "";
+
+      state.rows.forEach(function (g, gIdx) {
+        var absNumber = (state.page - 1) * (state.stepMode ? 1 : state.pageSize) + gIdx + 1;
+        var kindPillClass =
+          g.base_kind === "bundles"
+            ? "dg-ozm-pill-primary"
+            : g.partial_merged_in_ozon
+              ? "dg-ozm-pill-step"
+              : g.base_kind === "custom"
+                ? "dg-ozm-pill-dark"
+                : "dg-ozm-pill-info";
+
+        var actorMetaHtml = "";
+        if (g.updated_by_name || g.updated_at) {
+          var whoStr = esc(g.updated_by_name || "admin");
+          var whenStr = g.updated_at ? fmtDateTime(g.updated_at) : "";
+          var actionVerb =
+            g.queue_status === "merged"
+              ? "Склеил(а)"
+              : g.queue_status === "failed"
+                ? "Попытка склейки"
+                : g.queue_status === "ignored"
+                  ? "Скрыл(а)"
+                  : "Изменил(а)";
+          actorMetaHtml =
+            '<span class="dg-ozm-pill dg-ozm-pill-neutral" title="Кто и когда провёл действие по группе">' +
+            "👤 " +
+            actionVerb +
+            ": <strong>" +
+            whoStr +
+            "</strong>" +
+            (whenStr ? " · " + esc(whenStr) : "") +
+            "</span>";
+        }
+
+        var mgrMetaHtml = g.manager
+          ? '<span class="dg-ozm-pill dg-ozm-pill-neutral" title="Менеджер товара в МойСклад">Менеджер: <strong>' + esc(g.manager) + "</strong></span>"
+          : '<span class="dg-ozm-pill dg-ozm-pill-neutral text-muted" title="Менеджер товара в МойСклад не указан">Без менеджера</span>';
+
+        html +=
+          '<div class="dg-ozm-group-card dg-ozm-group-card-main mb-3" data-group-idx="' + gIdx + '">' +
+          '<div class="dg-ozm-group-header d-flex justify-content-between align-items-start flex-wrap gap-3">' +
+          "<div>" +
+          '<div class="d-flex align-items-center gap-2 flex-wrap mb-2">' +
+          '<span class="dg-ozm-pill dg-ozm-pill-dark">Группа #' + fmtNum(absNumber) + " из " + fmtNum(state.total) + "</span>" +
+          '<span class="dg-ozm-pill ' + kindPillClass + '">' + esc(g.kind_label) + "</span>" +
+          '<span class="dg-ozm-pill dg-ozm-pill-neutral">Товаров в связке: ' + fmtNum(g.items.length) + "</span>" +
+          mgrMetaHtml +
+          actorMetaHtml +
+          "</div>" +
+          '<div class="dg-ozm-group-title">' + esc(g.reason_title) + "</div>" +
+          '<div class="dg-ozm-group-meta mt-1">' +
+          "Чем отличаются карточки: <strong>" + esc(g.what_differs_label) + "</strong> · " +
+          'Общий код склейки на Ozon (9048): <span class="dg-ozm-code-pill">' + esc(g.group_key) + "</span>" +
+          "</div>" +
+          "</div>";
+
+        // Кнопки управления группой справа
+        html += '<div class="d-flex align-items-center gap-2 flex-wrap">';
+        html +=
+          '<button type="button" class="btn btn-outline-secondary btn-sm fw-semibold dg-ozm-log-btn" ' +
+          'data-log-sig="' + esc(g.signature) + '" ' +
+          'data-log-label="' + esc("Группа «" + g.group_key + "» — " + g.reason_title) + '" ' +
+          'data-dg-notify-start="Открываем журнал…">' +
+          "лог" +
+          "</button>";
+        if (g.queue_status === "suggested") {
+          html +=
+            '<button type="button" class="btn btn-success fw-semibold dg-ozm-btn-merge-group" data-group-idx="' + gIdx + '" data-dg-no-activity="1">' +
+            "Объединить на Ozon (" + fmtNum(g.items.length) + " тов.)" +
+            "</button>" +
+            '<button type="button" class="btn btn-outline-dark fw-semibold dg-ozm-btn-ignore-group" data-group-idx="' + gIdx + '" data-dg-notify-start="Скрываем группу в «Не объединять»…">' +
+            "Не объединять (скрыть)" +
+            "</button>";
+        } else if (g.queue_status === "merged") {
+          html +=
+            '<span class="dg-ozm-pill dg-ozm-pill-success">Уже объединены на Ozon</span>' +
+            '<button type="button" class="btn btn-outline-primary btn-sm fw-semibold dg-ozm-btn-merge-group" data-group-idx="' + gIdx + '" data-dg-no-activity="1">' +
+            "Перезаписать склейку на Ozon" +
+            "</button>" +
+            '<button type="button" class="btn btn-outline-danger btn-sm fw-semibold dg-ozm-btn-unmerge-group" data-group-idx="' + gIdx + '" data-dg-no-activity="1">' +
+            "Разъединить в Ozon" +
+            "</button>";
+        } else if (g.queue_status === "failed") {
+          html +=
+            '<span class="dg-ozm-pill dg-ozm-pill-danger">Не склеились на Ozon</span>' +
+            '<button type="button" class="btn btn-warning btn-sm fw-bold text-dark dg-ozm-btn-merge-group" data-group-idx="' + gIdx + '" data-dg-no-activity="1">' +
+            "Проверить и повторить склейку на Ozon" +
+            "</button>" +
+            '<button type="button" class="btn btn-outline-secondary btn-sm fw-semibold dg-ozm-btn-restore-group" data-group-idx="' + gIdx + '" data-dg-notify-start="Возвращаем группу в предложения…">' +
+            "Вернуть в предложения" +
+            "</button>" +
+            '<button type="button" class="btn btn-outline-dark btn-sm fw-semibold dg-ozm-btn-ignore-group" data-group-idx="' + gIdx + '" data-dg-notify-start="Скрываем группу в «Не объединять»…">' +
+            "Не объединять (скрыть)" +
+            "</button>";
+        } else if (g.queue_status === "ignored") {
+          html +=
+            '<span class="dg-ozm-pill dg-ozm-pill-neutral">Скрыто («Не объединять»)</span>' +
+            '<button type="button" class="btn btn-outline-primary btn-sm fw-semibold dg-ozm-btn-restore-group" data-group-idx="' + gIdx + '" data-dg-notify-start="Возвращаем группу в предложения…">' +
+            "Вернуть в предложения" +
+            "</button>";
+        }
+        html += "</div></div>";
+
+        if (g.queue_status === "failed" && g.problem_reason) {
+          html +=
+            '<div class="alert alert-danger mx-3 mt-3 mb-0 py-2 px-3 border-danger">' +
+            '<div class="fw-bold text-dark mb-1">⚠️ Почему не прошло объединение на Ozon:</div>' +
+            '<div class="small text-dark">' + esc(g.problem_reason) + "</div>" +
+            "</div>";
+        }
+
+        // Таблица товаров внутри группы
+        html +=
+          '<div class="p-3">' +
+          '<div class="table-responsive">' +
+          '<table class="table table-sm table-bordered align-middle mb-0">' +
+          "<colgroup>";
+
+        OZM_COLS.forEach(function (pair) {
+          var key = pair[0];
+          if (!visSet.has(key)) return;
+          var w = Number(state.colWidths[key] || DEFAULT_WIDTHS[key] || 140);
+          html += '<col style="width:' + w + 'px" />';
+        });
+        html += "</colgroup><thead class=\"table-light\"><tr>";
+
+        OZM_COLS.forEach(function (pair) {
+          var key = pair[0];
+          var label = pair[1];
+          if (!visSet.has(key)) return;
+          html += '<th class="dg-ozm-sortable">' + esc(label) + "</th>";
+        });
+        html += "</tr></thead><tbody>";
+
+        g.items.forEach(function (it, iIdx) {
+          var isChecked = it._unchecked !== true;
+          var isMain = it.offer_id === g.main_offer_id;
+          var rowClass = !isChecked ? "dg-ozm-row-unchecked" : isMain ? "dg-ozm-row-main" : "";
+
+          html += '<tr class="' + rowClass + '" data-group-idx="' + gIdx + '" data-item-idx="' + iIdx + '">';
+
+          if (visSet.has("include")) {
+            html +=
+              '<td class="text-center">' +
+              '<input type="checkbox" class="form-check-input dg-ozm-item-check" data-group-idx="' + gIdx + '" data-item-idx="' + iIdx + '" ' +
+              (isChecked ? "checked" : "") +
+              ' title="Включить товар в склейку" />' +
+              "</td>";
+          }
+
+          if (visSet.has("main")) {
+            html +=
+              "<td>" +
+              '<label class="d-flex align-items-center gap-2 mb-0" style="cursor:pointer">' +
+              '<input type="radio" name="dg-ozm-main-' + gIdx + '" class="form-check-input mt-0 dg-ozm-item-main-radio" data-group-idx="' + gIdx + '" data-offer-id="' + esc(it.offer_id) + '" ' +
+              (isMain ? "checked" : "") +
+              " />" +
+              (isMain
+                ? '<span class="dg-ozm-pill dg-ozm-pill-primary">Главная</span>'
+                : '<span class="small text-dark">Сделать главной</span>') +
+              "</label>" +
+              "</td>";
+          }
+
+          if (visSet.has("offer_id")) {
+            html +=
+              '<td class="font-monospace fw-bold text-dark">' +
+              "<div>" + esc(it.offer_id) + "</div>" +
+              '<div class="d-flex gap-2 mt-1 small fw-semibold font-sans-serif">' +
+              (it.cabinet_url
+                ? '<a href="' + esc(it.cabinet_url) + '" target="_blank" rel="noopener">ЛК Ozon ↗</a>'
+                : "") +
+              (it.buyer_url
+                ? '<a href="' + esc(it.buyer_url) + '" target="_blank" rel="noopener">Витрина ↗</a>'
+                : "") +
+              "</div>" +
+              "</td>";
+          }
+
+          if (visSet.has("name")) {
+            html +=
+              "<td>" +
+              '<div class="fw-semibold text-dark">' + esc(it.name || it.ms_name || "—") + "</div>" +
+              "</td>";
+          }
+
+          if (visSet.has("supplier")) {
+            html += '<td class="small text-dark">' + esc(it.supplier || it.brand || "—") + "</td>";
+          }
+
+          if (visSet.has("manager")) {
+            html += '<td class="small text-dark fw-semibold">' + esc(it.manager || g.manager || "—") + "</td>";
+          }
+
+          if (visSet.has("stock")) {
+            html += '<td class="text-end fw-semibold text-dark">' + (it.stock !== "" ? esc(it.stock) : "—") + "</td>";
+          }
+
+          if (visSet.has("price")) {
+            html += '<td class="text-end fw-semibold text-dark">' + (it.price !== "" ? esc(it.price) + " ₽" : "—") + "</td>";
+          }
+
+          if (visSet.has("current_merge")) {
+            html +=
+              "<td>" +
+              (it.current_merge_key
+                ? '<span class="dg-ozm-pill dg-ozm-pill-info">' + esc(it.current_merge_key) + "</span>"
+                : '<span class="small text-dark">Не склеен</span>') +
+              "</td>";
+          }
+
+          if (visSet.has("aspect_value")) {
+            html +=
+              "<td>" +
+              '<input type="text" class="form-control form-control-sm dg-ozm-aspect-input" data-group-idx="' + gIdx + '" data-item-idx="' + iIdx + '" value="' + esc(it.aspect_value || "") + '" placeholder="Например: 5 шт. или Размер M" />' +
+              "</td>";
+          }
+
+          if (visSet.has("remove_action")) {
+            html +=
+              '<td class="text-center">' +
+              '<button type="button" class="btn btn-sm btn-outline-danger dg-ozm-btn-exclude-item" data-group-idx="' + gIdx + '" data-offer-id="' + esc(it.offer_id) + '" title="Навсегда убрать этот товар из данной группы" data-dg-notify-start="Убираем товар из группы…">×</button>' +
+              "</td>";
+          }
+
+          html += "</tr>";
+        });
+
+        html += "</tbody></table></div></div></div>";
+      });
+
+      container.innerHTML = html;
+      bindGroupCardEvents();
+    }
+
+    function bindGroupCardEvents() {
+      var container = byId("dg-ozm-groups-container");
+      if (!container) return;
+
+      // Снятие/установка галочки участия товара
+      container.querySelectorAll(".dg-ozm-item-check").forEach(function (cb) {
+        cb.addEventListener("change", function () {
+          var gIdx = Number(cb.getAttribute("data-group-idx"));
+          var iIdx = Number(cb.getAttribute("data-item-idx"));
+          var g = state.rows[gIdx];
+          if (!g || !g.items[iIdx]) return;
+          g.items[iIdx]._unchecked = !cb.checked;
+          saveGroupDraft(g);
+          renderGroupsList();
+        });
+      });
+
+      // Смена главной карточки радио-кнопкой
+      container.querySelectorAll(".dg-ozm-item-main-radio").forEach(function (rb) {
+        rb.addEventListener("change", function () {
+          if (!rb.checked) return;
+          var gIdx = Number(rb.getAttribute("data-group-idx"));
+          var offerId = rb.getAttribute("data-offer-id");
+          var g = state.rows[gIdx];
+          if (!g || !offerId) return;
+          g.main_offer_id = offerId;
+          if (!g.all_merged_in_ozon) {
+            g.group_key = offerId;
+          }
+          saveGroupDraft(g);
+          renderGroupsList();
+        });
+      });
+
+      // Редактирование текста отличия («Чем отличается этот вариант»)
+      container.querySelectorAll(".dg-ozm-aspect-input").forEach(function (inp) {
+        inp.addEventListener("input", function () {
+          var gIdx = Number(inp.getAttribute("data-group-idx"));
+          var iIdx = Number(inp.getAttribute("data-item-idx"));
+          var g = state.rows[gIdx];
+          if (g && g.items[iIdx]) {
+            g.items[iIdx].aspect_value = inp.value;
+            saveGroupDraft(g);
+          }
+        });
+      });
+
+      // Кнопка «×» — навсегда убрать 1 лишний товар из группы
+      container.querySelectorAll(".dg-ozm-btn-exclude-item").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var gIdx = Number(btn.getAttribute("data-group-idx"));
+          var offerId = btn.getAttribute("data-offer-id");
+          var g = state.rows[gIdx];
+          if (!g || !offerId) return;
+
+          fetch("/api/exports/marketplaces/ozon-merge/decision", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "same-origin",
+            body: JSON.stringify({
+              action: "exclude_code",
+              signature: g.signature,
+              offer_id: offerId,
+            }),
+          })
+            .then(function (r) { return r.json(); })
+            .then(function (res) {
+              if (!res || !res.success) {
+                throw new Error((res && res.error) || "Не удалось исключить товар");
+              }
+              toast("info", "Товар " + offerId + " убран из этой группы");
+              loadGroupsList();
+            })
+            .catch(function (err) {
+              toast("danger", err.message || String(err));
+            });
+        });
+      });
+
+      // Кнопка «Не объединять (скрыть)»
+      container.querySelectorAll(".dg-ozm-btn-ignore-group").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var gIdx = Number(btn.getAttribute("data-group-idx"));
+          var g = state.rows[gIdx];
+          if (!g) return;
+
+          var runIgnore = function () {
+            return fetch("/api/exports/marketplaces/ozon-merge/decision", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              credentials: "same-origin",
+              body: JSON.stringify({
+                action: "ignore",
+                signature: g.signature,
+                title: g.reason_title,
+                main_offer_id: g.main_offer_id,
+                codes: g.items.map(function (it) { return it.offer_id; }),
+              }),
+            })
+              .then(function (r) { return r.json(); })
+              .then(function (res) {
+                if (!res || !res.success) {
+                  throw new Error((res && res.error) || "Ошибка сохранения решения");
+                }
+                clearGroupDraft(g.signature);
+                toast("secondary", "Группа скрыта в «Не объединять» и больше не побеспокоит");
+                return loadGroupsList();
+              })
+              .catch(function (err) {
+                toast("danger", err.message || String(err));
+              });
+          };
+
+          if (window.DatagonNotify && window.DatagonNotify.busyRun) {
+            window.DatagonNotify.busyRun(btn, runIgnore);
+          } else {
+            runIgnore();
+          }
+        });
+      });
+
+      // Кнопка «Вернуть в предложения» (из вкладки «Не объединять»)
+      container.querySelectorAll(".dg-ozm-btn-restore-group").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var gIdx = Number(btn.getAttribute("data-group-idx"));
+          var g = state.rows[gIdx];
+          if (!g) return;
+
+          fetch("/api/exports/marketplaces/ozon-merge/decision", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "same-origin",
+            body: JSON.stringify({
+              action: "restore",
+              signature: g.signature,
+            }),
+          })
+            .then(function (r) { return r.json(); })
+            .then(function (res) {
+              if (!res || !res.success) {
+                throw new Error((res && res.error) || "Не удалось вернуть группу");
+              }
+              toast("success", "Группа возвращена в очередь «Предложения к объединению»");
+              loadGroupsList();
+            })
+            .catch(function (err) {
+              toast("danger", err.message || String(err));
+            });
+        });
+      });
+
+      // Кнопка «Объединить на Ozon»
+      container.querySelectorAll(".dg-ozm-btn-merge-group").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var gIdx = Number(btn.getAttribute("data-group-idx"));
+          var g = state.rows[gIdx];
+          if (!g) return;
+
+          var activeItems = g.items.filter(function (it) { return it._unchecked !== true; });
+          if (activeItems.length < 2) {
+            toast("warning", "Для объединения нужно оставить отмеченными минимум 2 товара в группе");
+            return;
+          }
+
+          var emptyAspect = activeItems.filter(function (it) {
+            return !String(it.aspect_value || "").trim();
+          });
+          if (emptyAspect.length > 0) {
+            toast("warning", "Заполните поле «Чем отличается этот вариант» у всех отмеченных товаров");
+            return;
+          }
+
+          var summaryListHtml = activeItems
+            .map(function (it) {
+              return (
+                "<li><code>" +
+                esc(it.offer_id) +
+                "</code> — " +
+                esc((it.name || "").slice(0, 65)) +
+                " → отличие: <strong>" +
+                esc(it.aspect_value) +
+                "</strong>" +
+                (it.offer_id === g.main_offer_id ? ' <span class="badge bg-primary">Главная</span>' : "") +
+                "</li>"
+              );
+            })
+            .join("");
+
+          openConfirmModal({
+            title: "Объединить карточки на Ozon (" + fmtNum(activeItems.length) + " шт.)",
+            okText: "Да, объединить на Ozon",
+            okClass: "btn-success",
+            bodyHtml:
+              '<div class="mb-2">Будет выполнена склейка товаров в одну карточку на Ozon:</div>' +
+              '<ul class="small mb-3">' +
+              "<li>Общий код склейки (атрибут 9048): <code>" + esc(g.group_key) + "</code></li>" +
+              "<li>Главная карточка (откуда копируются категория и бренд): <code>" + esc(g.main_offer_id) + "</code></li>" +
+              "</ul>" +
+              '<div class="fw-semibold small mb-1">Состав склейки:</div>' +
+              '<ul class="small mb-0">' + summaryListHtml + "</ul>",
+            onConfirm: function () {
+              executeMergeGroup(g, activeItems, btn);
+            },
+          });
+        });
+      });
+
+      // Кнопка «Разъединить в Ozon»
+      container.querySelectorAll(".dg-ozm-btn-unmerge-group").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var gIdx = Number(btn.getAttribute("data-group-idx"));
+          var g = state.rows[gIdx];
+          if (!g) return;
+          var activeItems = g.items.filter(function (it) { return it._unchecked !== true; });
+
+          openConfirmModal({
+            title: "Разъединить карточки на Ozon (" + fmtNum(activeItems.length) + " шт.)",
+            okText: "Да, разъединить карточки",
+            okClass: "btn-danger",
+            bodyHtml:
+              '<div class="mb-2">У выбранных карточек будет очищен атрибут объединения <code>9048</code> в Ozon, и они станут отдельными карточками:</div>' +
+              '<div class="font-monospace small">' +
+              activeItems.map(function (i) { return esc(i.offer_id); }).join(", ") +
+              "</div>",
+            onConfirm: function () {
+              executeUnmergeGroup(g, activeItems, btn);
+            },
+          });
+        });
+      });
+    }
+
+    // Выполнение склейки группы с расширенным журналом (#dg-ozm-action-log)
+    function executeMergeGroup(group, activeItems, triggerBtn) {
+      var startTs = Date.now();
+      var timer = setInterval(function () {
+        var sec = Math.round((Date.now() - startTs) / 1000);
+        showActionLog(
+          "info",
+          "<strong>Отправляем склейку группы «" +
+            esc(group.group_key) +
+            "» в Ozon Seller API…</strong> Прошло " +
+            fmtNum(sec) +
+            " с."
+        );
+      }, 1000);
+
+      showActionLog(
+        "info",
+        "<div><strong>Старт объединения карточек на Ozon</strong></div>" +
+          '<div class="small mt-1">Группа: <code>' +
+          esc(group.group_key) +
+          "</code> · Главная карточка: <code>" +
+          esc(group.main_offer_id) +
+          "</code> · Товаров к склейке: <strong>" +
+          fmtNum(activeItems.length) +
+          "</strong></div>"
+      );
+
+      var payload = {
+        confirm: true,
+        copy_from_main: true,
+        groups: [
+          {
+            signature: group.signature,
+            group_key: group.group_key,
+            main_offer_id: group.main_offer_id,
+            copy_from_main: true,
+            recommended_aspect_hint: group.recommended_aspect_hint,
+            items: activeItems.map(function (it) {
+              return {
+                offer_id: it.offer_id,
+                aspect_value: String(it.aspect_value || "").trim(),
+              };
+            }),
+          },
+        ],
+      };
+
+      var doReq = function () {
+        return fetch("/api/exports/marketplaces/ozon-merge/apply", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify(payload),
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (res) {
+            clearInterval(timer);
+            if (!res || (!res.success && !res.ms_ok)) {
+              var errText = (res && res.error) || "Ошибка объединения карточек в Ozon";
+              var errList = "";
+              if (res && Array.isArray(res.errors) && res.errors.length) {
+                errList =
+                  '<ul class="small mb-0 mt-1">' +
+                  res.errors
+                    .slice(0, 20)
+                    .map(function (e) {
+                      return "<li><code>" + esc(e.code) + "</code>: " + esc(e.error) + "</li>";
+                    })
+                    .join("") +
+                  "</ul>";
+              }
+                  showActionLog(
+                "danger",
+                "<div><strong>Ошибка при объединении группы «" +
+                  esc(group.group_key) +
+                  "»:</strong> " +
+                  esc(errText) +
+                  "</div>" +
+                  '<div class="small mt-1 text-dark">Группа перенесена во вкладку <strong>«Проблемные объединения»</strong> с подробным описанием причины отказа Ozon.</div>' +
+                  errList
+              );
+              toast("danger", errText);
+              return loadGroupsList();
+            }
+
+            var errHtml = "";
+            if (Array.isArray(res.errors) && res.errors.length) {
+              errHtml =
+                '<div class="mt-2 fw-semibold small">Ошибки по отдельным карточкам:</div><ul class="small mb-0">' +
+                res.errors
+                  .slice(0, 20)
+                  .map(function (e) {
+                    return "<li><code>" + esc(e.code) + "</code>: " + esc(e.error) + "</li>";
+                  })
+                  .join("") +
+                "</ul>";
+            }
+
+            showActionLog(
+              res.ms_failed > 0 ? "warning" : "success",
+              "<div><strong>Объединение группы «" +
+                esc(group.group_key) +
+                "» завершено за " +
+                esc(res.duration_sec || 0) +
+                " с.</strong></div>" +
+                '<div class="small mt-1 text-dark">Эта группа перемещена во вкладку <strong>«Уже объединены на Ozon»</strong>, а ниже автоматически открыта следующая группа из очереди предложений.</div>' +
+                '<div class="small mt-1 text-dark">⏳ <em>Обратите внимание: в личном кабинете Ozon атрибуты уже записаны мгновенно, а на покупательской витрине ozon.ru склейка вариантов в одну карточку появляется после переиндексации Ozon (обычно от 2 до 15 минут).</em></div>' +
+                '<ul class="small mb-0 mt-2">' +
+                "<li>Обработано карточек: <strong>" + fmtNum(res.total || 0) + "</strong></li>" +
+                "<li>Успешно записано в Ozon ✓: <strong>" + fmtNum(res.ms_ok || 0) + "</strong> (новых склеек: " + fmtNum(res.filled || 0) + ", обновлено: " + fmtNum(res.corrected || 0) + ")</li>" +
+                "<li>Ошибок ×: <strong>" + fmtNum(res.ms_failed || 0) + "</strong></li>" +
+                "</ul>" +
+                errHtml
+            );
+
+            toast(
+              res.ms_failed > 0 ? "warning" : "success",
+              "Группа «" + group.group_key + "» отправлена в Ozon (" + fmtNum(res.ms_ok || 0) + " шт.)"
+            );
+            clearGroupDraft(group.signature);
+            return loadGroupsList();
+          })
+          .catch(function (err) {
+            clearInterval(timer);
+            showActionLog("danger", "<strong>Ошибка запроса:</strong> " + esc(err.message || String(err)));
+            toast("danger", err.message || String(err));
+          });
+      };
+
+      if (triggerBtn && window.DatagonNotify && window.DatagonNotify.busyRun) {
+        window.DatagonNotify.busyRun(triggerBtn, doReq);
+      } else {
+        doReq();
+      }
+    }
+
+    function executeUnmergeGroup(group, activeItems, triggerBtn) {
+      var offerIds = activeItems.map(function (it) { return it.offer_id; });
+      showActionLog(
+        "info",
+        "<strong>Разъединяем карточки в Ozon (" + fmtNum(offerIds.length) + " шт.)…</strong>"
+      );
+
+      var doReq = function () {
+        return fetch("/api/exports/marketplaces/ozon-merge/unmerge", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify({
+            confirm: true,
+            signature: group.signature,
+            offer_ids: offerIds,
+          }),
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (res) {
+            if (!res || !res.success) {
+              throw new Error((res && res.error) || "Ошибка разъединения карточек");
+            }
+            showActionLog(
+              "success",
+              "<div><strong>Карточки разъединены в Ozon за " +
+                esc(res.duration_sec || 0) +
+                " с.</strong> Успешно обновлено: <strong>" +
+                fmtNum(res.ms_ok || 0) +
+                "</strong> шт.</div>"
+            );
+            toast("success", "Карточки разъединены в Ozon");
+            clearGroupDraft(group.signature);
+            return loadGroupsList();
+          })
+          .catch(function (err) {
+            showActionLog("danger", "<strong>Ошибка разъединения:</strong> " + esc(err.message || String(err)));
+            toast("danger", err.message || String(err));
+          });
+      };
+
+      if (triggerBtn && window.DatagonNotify && window.DatagonNotify.busyRun) {
+        window.DatagonNotify.busyRun(triggerBtn, doReq);
+      } else {
+        doReq();
+      }
+    }
+
+    // Сканирование атрибута 9048 из Ozon API
+    function handleScanOzonCatalog(btn) {
+      var startTs = Date.now();
+      var timer = setInterval(function () {
+        var sec = Math.round((Date.now() - startTs) / 1000);
+        showActionLog(
+          "info",
+          "<strong>Сканируем атрибуты склейки 9048 из Ozon API по всему каталогу…</strong> Прошло " +
+            fmtNum(sec) +
+            " с."
+        );
+      }, 1000);
+
+      showActionLog(
+        "info",
+        "<strong>Запущено обновление кэша склеек Ozon (атрибут 9048)…</strong>"
+      );
+
+      var doScan = function () {
+        return fetch("/api/exports/marketplaces/ozon-merge/scan", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify({}),
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (res) {
+            clearInterval(timer);
+            if (!res || !res.success) {
+              throw new Error((res && res.error) || "Ошибка сканирования Ozon API");
+            }
+            showActionLog(
+              "success",
+              "<div><strong>Кэш атрибутов склейки Ozon обновлён за " +
+                esc(res.duration_sec || 0) +
+                " с.</strong></div>" +
+                '<ul class="small mb-0 mt-1">' +
+                "<li>Всего товаров Ozon в снапшоте: <strong>" + fmtNum(res.total || 0) + "</strong></li>" +
+                "<li>Проверено карточек через Ozon API ✓: <strong>" + fmtNum(res.scanned || 0) + "</strong></li>" +
+                "<li>Найдено карточек с заполненной склейкой 9048: <strong>" + fmtNum(res.with_9048 || 0) + "</strong></li>" +
+                "</ul>"
+            );
+            toast("success", "Склейки из Ozon API обновлены (" + fmtNum(res.with_9048 || 0) + " карточек с 9048)");
+            return loadGroupsList();
+          })
+          .catch(function (err) {
+            clearInterval(timer);
+            showActionLog("danger", "<strong>Ошибка сканирования Ozon API:</strong> " + esc(err.message || String(err)));
+            toast("danger", err.message || String(err));
+          });
+      };
+
+      if (btn && window.DatagonNotify && window.DatagonNotify.busyRun) {
+        window.DatagonNotify.busyRun(btn, doScan);
+      } else {
+        doScan();
+      }
+    }
+
+    function bindFilterAndHeaderEvents() {
+      // Переключение 3 очередей (одиночное явное действие пользователя — сразу применяем)
+      var qWrap = byId("dg-ozm-queue-radios");
+      if (qWrap) {
+        qWrap.querySelectorAll(".dg-ozm-queue-btn").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            var q = btn.getAttribute("data-ozm-queue") || "suggested";
+            state.pending.status = q;
+            commitFilters();
+          });
+        });
+      }
+
+      // Селект типа находки -> пишет в черновик pending (применяется по кнопке «Применить»)
+      var kindSel = byId("dg-ozm-f-kind");
+      if (kindSel) {
+        kindSel.addEventListener("change", function () {
+          state.pending.kind = kindSel.value || "all";
+          saveFilterState();
+          syncDirtyButton();
+        });
+      }
+
+      // Селект менеджера товара -> пишет в черновик pending (применяется по кнопке «Применить»)
+      var mgrSel = byId("dg-ozm-f-manager");
+      if (mgrSel) {
+        mgrSel.addEventListener("change", function () {
+          state.pending.manager = mgrSel.value || "all";
+          saveFilterState();
+          syncDirtyButton();
+        });
+      }
+
+      // Переключатель Пошагового режима (одиночное действие — сразу переключает вид)
+      var stepCb = byId("dg-ozm-step-mode");
+      if (stepCb) {
+        stepCb.addEventListener("change", function () {
+          state.pending.stepMode = Boolean(stepCb.checked);
+          commitFilters();
+        });
+      }
+
+      // Поиск + зеркало в шапке таблицы (moysklad baseline)
+      var searchInp = byId("dg-ozm-f-search");
+      var mirrorInp = byId("dg-ozm-table-search-mirror");
+      var syncingSearch = false;
+
+      function onSearchInput(val, source) {
+        if (syncingSearch) return;
+        syncingSearch = true;
+        state.pending.search = val;
+        if (source !== searchInp && searchInp) searchInp.value = val;
+        if (source !== mirrorInp && mirrorInp) mirrorInp.value = val;
+        syncingSearch = false;
+        saveFilterState();
+        syncDirtyButton();
+      }
+
+      [searchInp, mirrorInp].forEach(function (inp) {
+        if (!inp) return;
+        inp.addEventListener("input", function () {
+          onSearchInput(inp.value, inp);
+        });
+        inp.addEventListener("keydown", function (e) {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            commitFilters();
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            onSearchInput("", null);
+            commitFilters();
+          }
+        });
+        inp.addEventListener("search", function () {
+          if (inp.value === "" && state.search !== "") {
+            onSearchInput("", null);
+            commitFilters();
+          }
+        });
+      });
+
+      var applyBtn = byId("dg-ozm-apply-filters-btn");
+      if (applyBtn) {
+        applyBtn.addEventListener("click", function () {
+          if (window.DatagonNotify && window.DatagonNotify.busyRun) {
+            window.DatagonNotify.busyRun(applyBtn, commitFilters);
+          } else {
+            commitFilters();
+          }
+        });
+      }
+
+      var resetBtn = byId("dg-ozm-reset-filters-btn");
+      if (resetBtn) {
+        resetBtn.addEventListener("click", function () {
+          if (window.DatagonNotify && window.DatagonNotify.busyRun) {
+            window.DatagonNotify.busyRun(resetBtn, resetFilters);
+          } else {
+            resetFilters();
+          }
+        });
+      }
+
+      // Пагинация
+      var pageSizeSel = byId("dg-ozm-page-size");
+      if (pageSizeSel) {
+        pageSizeSel.addEventListener("change", function () {
+          var v = Number(pageSizeSel.value) || 100;
+          if (v === 1) {
+            state.stepMode = true;
+            state.pending.stepMode = true;
+            if (stepCb) stepCb.checked = true;
+          } else {
+            state.stepMode = false;
+            state.pending.stepMode = false;
+            state.pageSize = v;
+            if (stepCb) stepCb.checked = false;
+          }
+          state.page = 1;
+          saveFilterState();
+          loadGroupsList();
+        });
+      }
+
+      var prevBtn = byId("dg-ozm-page-prev");
+      var nextBtn = byId("dg-ozm-page-next");
+      if (prevBtn) {
+        prevBtn.addEventListener("click", function () {
+          if (state.page > 1) {
+            state.page -= 1;
+            saveFilterState();
+            loadGroupsList();
+          }
+        });
+      }
+      if (nextBtn) {
+        nextBtn.addEventListener("click", function () {
+          state.page += 1;
+          saveFilterState();
+          loadGroupsList();
+        });
+      }
+
+      // Кнопка «Обновить склейки из Ozon API»
+      var scanBtn = byId("dg-ozm-scan-ozon-btn");
+      if (scanBtn) {
+        scanBtn.addEventListener("click", function () {
+          handleScanOzonCatalog(scanBtn);
+        });
+      }
+
+      // Ручное добавление своей группы по кодам МС
+      var openCustomBtn = byId("dg-ozm-open-custom-btn");
+      var closeCustomBtn = byId("dg-ozm-close-custom-btn");
+      var customBox = byId("dg-ozm-custom-box");
+      var saveCustomBtn = byId("dg-ozm-save-custom-btn");
+      var customCodesInp = byId("dg-ozm-custom-codes");
+
+      if (openCustomBtn && customBox) {
+        openCustomBtn.addEventListener("click", function () {
+          customBox.classList.toggle("d-none");
+          if (!customBox.classList.contains("d-none") && customCodesInp) {
+            customCodesInp.focus();
+          }
+        });
+      }
+      if (closeCustomBtn && customBox) {
+        closeCustomBtn.addEventListener("click", function () {
+          customBox.classList.add("d-none");
+        });
+      }
+      if (saveCustomBtn && customCodesInp) {
+        saveCustomBtn.addEventListener("click", function () {
+          var raw = String(customCodesInp.value || "").trim();
+          if (!raw) {
+            toast("warning", "Введите минимум 2 кода МС через запятую или пробел");
+            return;
+          }
+          var doCreate = function () {
+            return fetch("/api/exports/marketplaces/ozon-merge/decision", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              credentials: "same-origin",
+              body: JSON.stringify({
+                action: "create_custom",
+                codes_text: raw,
+              }),
+            })
+              .then(function (r) { return r.json(); })
+              .then(function (res) {
+                if (!res || !res.success) {
+                  throw new Error((res && res.error) || "Не удалось создать группу");
+                }
+                customCodesInp.value = "";
+                if (customBox) customBox.classList.add("d-none");
+                state.pending.status = "suggested";
+                state.pending.kind = "custom";
+                if (kindSel) kindSel.value = "custom";
+                toast("success", "Ваша группа добавлена в список предложений");
+                return commitFilters();
+              })
+              .catch(function (err) {
+                toast("danger", err.message || String(err));
+              });
+          };
+          if (window.DatagonNotify && window.DatagonNotify.busyRun) {
+            window.DatagonNotify.busyRun(saveCustomBtn, doCreate);
+          } else {
+            doCreate();
+          }
+        });
+      }
+    }
+
+    // =========================================================================
+    // Журнал изменений (лог склеек и расклеек — по эталону /exports-new-products.html)
+    // =========================================================================
+    var logState = {
+      signature: "",
+      offerId: "",
+      label: "",
+      limit: 100,
+      offset: 0,
+      total: 0,
+    };
+
+    function ozmLogActionLabel(action) {
+      var map = {
+        merge: "Склейка на Ozon",
+        merge_failed: "Ошибка склейки",
+        unmerge: "Расклейка (разъединение)",
+        ignore: "Не объединять (скрыто)",
+        restore: "Возврат в предложения",
+        exclude_code: "Исключён товар",
+        create_custom: "Создана группа",
+      };
+      return map[action] || action || "Изменение";
+    }
+
+    function ozmLogActionBadgeClass(action) {
+      if (action === "merge") return "bg-success text-white";
+      if (action === "merge_failed") return "bg-danger text-white";
+      if (action === "unmerge") return "bg-warning text-dark";
+      if (action === "ignore") return "bg-secondary text-white";
+      if (action === "restore" || action === "create_custom") return "bg-primary text-white";
+      return "bg-light text-dark border";
+    }
+
+    function syncOzmLogTitle() {
+      var titleEl = byId("dg-ozm-log-title");
+      var subEl = byId("dg-ozm-log-subtitle");
+      if (titleEl) {
+        if (logState.offerId) {
+          titleEl.textContent = "Журнал изменений: товар " + logState.offerId;
+        } else if (logState.signature) {
+          titleEl.textContent = "Журнал изменений группы";
+        } else {
+          titleEl.textContent = "Общий журнал склеек и расклеек Ozon";
+        }
+      }
+      if (subEl) {
+        subEl.textContent =
+          logState.label ||
+          (logState.signature ? "Группа: " + logState.signature : "Все операции объединения и разъединения карточек");
+      }
+    }
+
+    function openOzmLog(opts) {
+      var o = opts || {};
+      logState.signature = String(o.signature || "").trim();
+      logState.offerId = String(o.offerId || "").trim();
+      logState.label = String(o.label || "").trim();
+      logState.offset = 0;
+      syncOzmLogTitle();
+      var overlay = byId("dg-ozm-log-overlay");
+      if (overlay) {
+        overlay.style.display = "flex";
+        overlay.setAttribute("aria-hidden", "false");
+      }
+      loadOzmLog();
+    }
+
+    function closeOzmLog() {
+      var overlay = byId("dg-ozm-log-overlay");
+      if (!overlay) return;
+      overlay.style.display = "none";
+      overlay.setAttribute("aria-hidden", "true");
+    }
+
+    function renderOzmLogPager() {
+      var pages = Math.max(1, Math.ceil((logState.total || 0) / logState.limit) || 1);
+      var page = Math.floor(logState.offset / logState.limit) + 1;
+      var prevDisabled = logState.offset <= 0 ? " disabled" : "";
+      var nextDisabled = logState.offset + logState.limit >= logState.total ? " disabled" : "";
+      var showAllBtn =
+        logState.signature || logState.offerId
+          ? '<button type="button" class="btn btn-sm btn-outline-primary dg-ozm-log-show-all" data-dg-notify-start="Открываем весь журнал…">Показать весь журнал</button>'
+          : "";
+      return (
+        '<div class="d-flex align-items-center justify-content-between gap-2 px-3 py-2 border-top flex-wrap bg-light">' +
+        '<span class="small text-dark">Найдено: ' +
+        fmtNum(logState.total) +
+        "; страница " +
+        fmtNum(page) +
+        "/" +
+        fmtNum(pages) +
+        "</span>" +
+        '<div class="d-flex align-items-center gap-2 flex-wrap">' +
+        showAllBtn +
+        '<div class="btn-group">' +
+        '<button type="button" class="btn btn-sm btn-outline-secondary dg-ozm-log-prev"' +
+        prevDisabled +
+        ">Назад</button>" +
+        '<button type="button" class="btn btn-sm btn-outline-secondary dg-ozm-log-next"' +
+        nextDisabled +
+        ">Вперёд</button>" +
+        "</div></div></div>"
+      );
+    }
+
+    function loadOzmLog() {
+      var body = byId("dg-ozm-log-body");
+      if (!body) return;
+      body.innerHTML = '<div class="text-muted small text-center py-4">Загрузка журнала…</div>';
+
+      var qs =
+        "?limit=" +
+        encodeURIComponent(logState.limit) +
+        "&offset=" +
+        encodeURIComponent(logState.offset);
+      if (logState.offerId) {
+        qs += "&offer_id=" + encodeURIComponent(logState.offerId);
+      } else if (logState.signature) {
+        qs += "&signature=" + encodeURIComponent(logState.signature);
+      }
+
+      fetch("/api/exports/marketplaces/ozon-merge/log" + qs, {
+        credentials: "same-origin",
+      })
+        .then(function (r) {
+          return r.json();
+        })
+        .then(function (j) {
+          if (!j || j.success === false) {
+            throw new Error((j && j.error) || "Не удалось загрузить журнал");
+          }
+          logState.total = Number(j.total || 0);
+          var rows = Array.isArray(j.rows) ? j.rows : [];
+          var filterBar =
+            logState.signature || logState.offerId
+              ? '<div class="alert alert-info py-2 px-3 mb-0 rounded-0 small d-flex justify-content-between align-items-center flex-wrap gap-2">' +
+                "<span>Фильтр журнала: <strong>" +
+                esc(logState.offerId ? "Товар " + logState.offerId : logState.label || logState.signature) +
+                "</strong></span>" +
+                '<button type="button" class="btn btn-link btn-sm p-0 align-baseline fw-semibold dg-ozm-log-show-all" data-dg-notify-start="Открываем весь журнал…">Показать все записи по всем группам</button>' +
+                "</div>"
+              : "";
+
+          if (!rows.length) {
+            body.innerHTML =
+              filterBar +
+              '<div class="text-muted small text-center py-4">' +
+              "По выбранному фильтру записей в журнале пока нет." +
+              "</div>" +
+              renderOzmLogPager();
+            return;
+          }
+
+          var html =
+            filterBar +
+            '<div class="table-responsive"><table class="table table-sm table-bordered align-middle mb-0"><thead><tr>' +
+            "<th>Когда</th>" +
+            "<th>Кто проводил</th>" +
+            "<th>Действие</th>" +
+            "<th>Товар / Группа</th>" +
+            "<th>Было → Стало</th>" +
+            "</tr></thead><tbody>";
+
+          rows.forEach(function (r) {
+            var when = fmtDateTime(r.changed_at);
+            var who = esc(r.changed_by_name || "admin");
+            var actLabel = esc(ozmLogActionLabel(r.action));
+            var actCls = ozmLogActionBadgeClass(r.action);
+            var targetStr = r.offer_id
+              ? "<code>" + esc(r.offer_id) + "</code>"
+              : "<code>" + esc(r.group_signature || "—") + "</code>";
+            if (r.field_label) {
+              targetStr += '<div class="small text-muted">' + esc(r.field_label) + "</div>";
+            }
+            var oldVal =
+              r.old_value == null || r.old_value === ""
+                ? '<span class="text-muted">∅</span>'
+                : '<span class="dg-ozm-log-old">' + esc(r.old_value) + "</span>";
+            var newVal =
+              r.new_value == null || r.new_value === ""
+                ? '<span class="text-muted">∅</span>'
+                : '<span class="dg-ozm-log-new">' + esc(r.new_value) + "</span>";
+            var note =
+              r.note && String(r.note).trim()
+                ? '<div class="small text-dark mt-1">' + esc(r.note) + "</div>"
+                : "";
+
+            html +=
+              "<tr>" +
+              '<td class="text-nowrap small text-dark">' + esc(when) + "</td>" +
+              '<td class="fw-semibold text-dark">' + who + "</td>" +
+              '<td><span class="badge ' + actCls + ' dg-ozm-log-action">' + actLabel + "</span></td>" +
+              "<td>" + targetStr + "</td>" +
+              "<td>" +
+              oldVal +
+              '<span class="dg-ozm-log-arrow">→</span>' +
+              newVal +
+              note +
+              "</td>" +
+              "</tr>";
+          });
+
+          html += "</tbody></table></div>" + renderOzmLogPager();
+          body.innerHTML = html;
+        })
+        .catch(function (e) {
+          body.innerHTML =
+            '<div class="text-danger small text-center py-4">' +
+            esc(e.message || "Ошибка загрузки журнала") +
+            "</div>";
+        });
+    }
+
+    function bindOzmLogUi() {
+      var allLogBtn = byId("dg-ozm-open-all-log-btn");
+      if (allLogBtn) {
+        allLogBtn.addEventListener("click", function () {
+          openOzmLog({ signature: "", offerId: "", label: "Все операции склейки и расклейки карточек Ozon" });
+        });
+      }
+
+      document.addEventListener("click", function (ev) {
+        var btn = ev.target && ev.target.closest && ev.target.closest(".dg-ozm-log-btn");
+        if (btn) {
+          ev.preventDefault();
+          var sig = btn.getAttribute("data-log-sig") || "";
+          var offer = btn.getAttribute("data-log-offer") || "";
+          var label = btn.getAttribute("data-log-label") || "";
+          openOzmLog({ signature: sig, offerId: offer, label: label });
+          return;
+        }
+
+        var showAll = ev.target && ev.target.closest && ev.target.closest(".dg-ozm-log-show-all");
+        if (showAll) {
+          ev.preventDefault();
+          logState.signature = "";
+          logState.offerId = "";
+          logState.label = "Все операции склейки и расклейки карточек Ozon";
+          logState.offset = 0;
+          syncOzmLogTitle();
+          loadOzmLog();
+          return;
+        }
+
+        var prev = ev.target && ev.target.closest && ev.target.closest(".dg-ozm-log-prev");
+        if (prev) {
+          logState.offset = Math.max(0, logState.offset - logState.limit);
+          loadOzmLog();
+          return;
+        }
+
+        var next = ev.target && ev.target.closest && ev.target.closest(".dg-ozm-log-next");
+        if (next) {
+          if (logState.offset + logState.limit < logState.total) {
+            logState.offset += logState.limit;
+            loadOzmLog();
+          }
+        }
+      });
+
+      var closeBtn = byId("dg-ozm-log-close");
+      if (closeBtn) closeBtn.addEventListener("click", closeOzmLog);
+      var refreshBtn = byId("dg-ozm-log-refresh");
+      if (refreshBtn) refreshBtn.addEventListener("click", loadOzmLog);
+      var backdrop = byId("dg-ozm-log-backdrop");
+      if (backdrop) backdrop.addEventListener("click", closeOzmLog);
+
+      document.addEventListener("keydown", function (ev) {
+        if (ev.key !== "Escape") return;
+        var overlay = byId("dg-ozm-log-overlay");
+        if (overlay && overlay.style.display !== "none") closeOzmLog();
+      });
+    }
+
+    function init() {
+      loadColsPrefs();
+      loadFilterState();
+      renderColumnControls();
+      renderWidthControls();
+      initToolboxPanels();
+      initCardCollapses();
+      initConfirmModalEvents();
+      bindOzmLogUi();
+      bindFilterAndHeaderEvents();
+      loadGroupsList();
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
+  })();
+</script>
+
+</body>
+</html>
