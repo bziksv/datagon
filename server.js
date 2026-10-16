@@ -608,6 +608,45 @@ async function initDB() {
         });
         console.log('[Settings] Loaded', appSettings);
 
+        /**
+         * Глобальная синхронизация appSettings из БД (MySQL app_settings),
+         * чтобы все воркеры (parser-app, parser-autosync-w2, parser-autosync-w3) и все модули/роуты
+         * всегда видели актуальные ключи и настройки со страницы /settings.html без перезапуска.
+         */
+        let _lastAppSettingsSyncAt = 0;
+        const reloadAppSettingsFromDb = async (force = false) => {
+            const now = Date.now();
+            if (!force && now - _lastAppSettingsSyncAt < 3000) return appSettings;
+            try {
+                const [freshRows] = await db.query('SELECT setting_key, setting_value FROM app_settings');
+                for (const r of freshRows || []) {
+                    if (!r || !r.setting_key) continue;
+                    const asInt =
+                        !r.setting_key.endsWith('_time') &&
+                        !r.setting_key.endsWith('_weekdays') &&
+                        (
+                            r.setting_key.endsWith('_enabled') ||
+                            r.setting_key.includes('limit') ||
+                            r.setting_key.includes('size') ||
+                            r.setting_key.includes('delay') ||
+                            r.setting_key.includes('days') ||
+                            r.setting_key.includes('minutes') ||
+                            r.setting_key.endsWith('_interval_min') ||
+                            r.setting_key === 'fetch_proxy_enabled'
+                        );
+                    appSettings[r.setting_key] = asInt ? parseInt(r.setting_value, 10) : r.setting_value;
+                }
+                _lastAppSettingsSyncAt = Date.now();
+            } catch (e) {
+                console.warn('[Settings] reloadAppSettingsFromDb warn:', e.message || e);
+            }
+            return appSettings;
+        };
+        appSettings._reloadFromDb = reloadAppSettingsFromDb;
+        setInterval(() => {
+            reloadAppSettingsFromDb(true).catch(() => {});
+        }, 15000).unref?.();
+
         // Разовое разбиение «Маркетплейсы» → Ozon / WB / Я.Маркет: если старое
         // расписание было включено, а новые ключи ещё дефолтные (0) — переносим
         // enabled и разносим слоты по времени, чтобы не бить API одновременно.
@@ -2154,6 +2193,9 @@ async function processAutoSyncQueue() {
     try {
         await reconcileAutoSyncRunIdsInMemory();
         while (autoSyncQueue.length > 0) {
+            if (typeof appSettings._reloadFromDb === 'function') {
+                await appSettings._reloadFromDb(true);
+            }
             const item = autoSyncQueue.shift();
             const task = typeof item === 'string' ? item : item?.type;
             const triggerType = typeof item === 'string' ? 'schedule' : (item?.triggerType || 'schedule');

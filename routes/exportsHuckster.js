@@ -1544,6 +1544,9 @@ function createExportsHucksterRouter(_db, appSettings) {
     }
 
     createExportsHucksterRouter.triggerSync = async function triggerHucksterSyncFromSchedule() {
+        if (typeof appSettings?._reloadFromDb === 'function') {
+            await appSettings._reloadFromDb(true);
+        }
         const r = tryStartHucksterSync({});
         if (!r.ok) {
             if (r.code === 'ALREADY_RUNNING') return { started: false, reason: 'already_running' };
@@ -1587,6 +1590,9 @@ function createExportsHucksterRouter(_db, appSettings) {
 
     router.post('/sync', async (req, res) => {
         try {
+            if (typeof appSettings?._reloadFromDb === 'function') {
+                await appSettings._reloadFromDb(true);
+            }
             try {
                 await persistMsBridgeArchiveFilters(_db, req.body || {}, appSettings);
             } catch (pe) {

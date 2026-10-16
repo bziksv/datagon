@@ -38,7 +38,11 @@ module.exports = (db, appSettings) => {
     }
 
     router.get('/', async (req, res) => {
+        if (typeof appSettings._reloadFromDb === 'function') {
+            await appSettings._reloadFromDb(true);
+        }
         const out = Object.assign({}, appSettings);
+        delete out._reloadFromDb;
         delete out.finance_tochka_jwt;
         delete out.finance_tochka_credentials;
         delete out.finance_raiffeisen_credentials;
