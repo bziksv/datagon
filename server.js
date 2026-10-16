@@ -3048,9 +3048,10 @@ async function processAutoSyncQueue() {
                             ', новых комментариев ' + (r.instant_posted || 0) +
                             ' (' + (r.instant_products || 0) + ' товаров)' +
                             ', сводок ' + (r.digest_posted || 0) +
+                            ', на доработке ' + (r.revision_posted || 0) +
                             (r.error_count ? ', ошибок ' + r.error_count : '')
                         ).slice(0, 480);
-                        if (r.error_count && !r.instant_posted && !r.digest_posted && !r.did_baseline) {
+                        if (r.error_count && !r.instant_posted && !r.digest_posted && !r.revision_posted && !r.did_baseline) {
                             statusCrm = 'failed';
                         }
                     }
