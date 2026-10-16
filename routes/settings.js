@@ -178,6 +178,12 @@ module.exports = (db, appSettings) => {
             auto_sync_marketplaces_ozon_enabled, auto_sync_marketplaces_ozon_time,
             auto_sync_marketplaces_wb_enabled, auto_sync_marketplaces_wb_time,
             auto_sync_marketplaces_ym_enabled, auto_sync_marketplaces_ym_time,
+            auto_sync_mp_fix_ozon_dims_enabled, auto_sync_mp_fix_ozon_dims_time, auto_sync_mp_fix_ozon_dims_weekdays,
+            auto_sync_mp_fix_wb_dims_enabled, auto_sync_mp_fix_wb_dims_time, auto_sync_mp_fix_wb_dims_weekdays,
+            auto_sync_mp_fix_ym_dims_enabled, auto_sync_mp_fix_ym_dims_time, auto_sync_mp_fix_ym_dims_weekdays,
+            auto_sync_mp_fix_ozon_vat_enabled, auto_sync_mp_fix_ozon_vat_time, auto_sync_mp_fix_ozon_vat_weekdays,
+            auto_sync_mp_fix_wb_vat_enabled, auto_sync_mp_fix_wb_vat_time, auto_sync_mp_fix_wb_vat_weekdays,
+            auto_sync_mp_fix_ym_vat_enabled, auto_sync_mp_fix_ym_vat_time, auto_sync_mp_fix_ym_vat_weekdays,
             auto_sync_huckster_enabled, auto_sync_huckster_time,
             auto_sync_np_ms_enrich_enabled, auto_sync_np_ms_enrich_interval_min, auto_sync_np_ms_enrich_weekdays,
             auto_sync_np_crm_notify_enabled, auto_sync_np_crm_notify_interval_min, auto_sync_np_crm_notify_weekdays,
@@ -369,6 +375,24 @@ module.exports = (db, appSettings) => {
             if (auto_sync_marketplaces_wb_time !== undefined) queries.push(['auto_sync_marketplaces_wb_time', auto_sync_marketplaces_wb_time || '06:25']);
             if (auto_sync_marketplaces_ym_enabled !== undefined) queries.push(['auto_sync_marketplaces_ym_enabled', auto_sync_marketplaces_ym_enabled ? 1 : 0]);
             if (auto_sync_marketplaces_ym_time !== undefined) queries.push(['auto_sync_marketplaces_ym_time', auto_sync_marketplaces_ym_time || '06:50']);
+            if (auto_sync_mp_fix_ozon_dims_enabled !== undefined) queries.push(['auto_sync_mp_fix_ozon_dims_enabled', auto_sync_mp_fix_ozon_dims_enabled ? 1 : 0]);
+            if (auto_sync_mp_fix_ozon_dims_time !== undefined) queries.push(['auto_sync_mp_fix_ozon_dims_time', auto_sync_mp_fix_ozon_dims_time || '07:10']);
+            if (auto_sync_mp_fix_ozon_dims_weekdays !== undefined) queries.push(['auto_sync_mp_fix_ozon_dims_weekdays', normalizeAutoSyncWeekdaysCsv(auto_sync_mp_fix_ozon_dims_weekdays)]);
+            if (auto_sync_mp_fix_wb_dims_enabled !== undefined) queries.push(['auto_sync_mp_fix_wb_dims_enabled', auto_sync_mp_fix_wb_dims_enabled ? 1 : 0]);
+            if (auto_sync_mp_fix_wb_dims_time !== undefined) queries.push(['auto_sync_mp_fix_wb_dims_time', auto_sync_mp_fix_wb_dims_time || '07:20']);
+            if (auto_sync_mp_fix_wb_dims_weekdays !== undefined) queries.push(['auto_sync_mp_fix_wb_dims_weekdays', normalizeAutoSyncWeekdaysCsv(auto_sync_mp_fix_wb_dims_weekdays)]);
+            if (auto_sync_mp_fix_ym_dims_enabled !== undefined) queries.push(['auto_sync_mp_fix_ym_dims_enabled', auto_sync_mp_fix_ym_dims_enabled ? 1 : 0]);
+            if (auto_sync_mp_fix_ym_dims_time !== undefined) queries.push(['auto_sync_mp_fix_ym_dims_time', auto_sync_mp_fix_ym_dims_time || '07:30']);
+            if (auto_sync_mp_fix_ym_dims_weekdays !== undefined) queries.push(['auto_sync_mp_fix_ym_dims_weekdays', normalizeAutoSyncWeekdaysCsv(auto_sync_mp_fix_ym_dims_weekdays)]);
+            if (auto_sync_mp_fix_ozon_vat_enabled !== undefined) queries.push(['auto_sync_mp_fix_ozon_vat_enabled', auto_sync_mp_fix_ozon_vat_enabled ? 1 : 0]);
+            if (auto_sync_mp_fix_ozon_vat_time !== undefined) queries.push(['auto_sync_mp_fix_ozon_vat_time', auto_sync_mp_fix_ozon_vat_time || '07:40']);
+            if (auto_sync_mp_fix_ozon_vat_weekdays !== undefined) queries.push(['auto_sync_mp_fix_ozon_vat_weekdays', normalizeAutoSyncWeekdaysCsv(auto_sync_mp_fix_ozon_vat_weekdays)]);
+            if (auto_sync_mp_fix_wb_vat_enabled !== undefined) queries.push(['auto_sync_mp_fix_wb_vat_enabled', auto_sync_mp_fix_wb_vat_enabled ? 1 : 0]);
+            if (auto_sync_mp_fix_wb_vat_time !== undefined) queries.push(['auto_sync_mp_fix_wb_vat_time', auto_sync_mp_fix_wb_vat_time || '07:50']);
+            if (auto_sync_mp_fix_wb_vat_weekdays !== undefined) queries.push(['auto_sync_mp_fix_wb_vat_weekdays', normalizeAutoSyncWeekdaysCsv(auto_sync_mp_fix_wb_vat_weekdays)]);
+            if (auto_sync_mp_fix_ym_vat_enabled !== undefined) queries.push(['auto_sync_mp_fix_ym_vat_enabled', auto_sync_mp_fix_ym_vat_enabled ? 1 : 0]);
+            if (auto_sync_mp_fix_ym_vat_time !== undefined) queries.push(['auto_sync_mp_fix_ym_vat_time', auto_sync_mp_fix_ym_vat_time || '08:00']);
+            if (auto_sync_mp_fix_ym_vat_weekdays !== undefined) queries.push(['auto_sync_mp_fix_ym_vat_weekdays', normalizeAutoSyncWeekdaysCsv(auto_sync_mp_fix_ym_vat_weekdays)]);
             if (auto_sync_huckster_enabled !== undefined) queries.push(['auto_sync_huckster_enabled', auto_sync_huckster_enabled ? 1 : 0]);
             if (auto_sync_huckster_time !== undefined) queries.push(['auto_sync_huckster_time', auto_sync_huckster_time || '06:00']);
             if (auto_sync_np_ms_enrich_enabled !== undefined) {

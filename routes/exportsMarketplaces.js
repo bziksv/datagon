@@ -3021,6 +3021,498 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
     });
 
     /**
+     * Фоновый и ручной автосинк для 6 кнопок страницы /exports-marketplaces-issues.html:
+     *  - mp_fix_ozon_dims  (Исправить габариты на Ozon)
+     *  - mp_fix_wb_dims    (Исправить габариты на WB)
+     *  - mp_fix_ym_dims    (Исправить габариты на Я.М)
+     *  - mp_fix_ozon_vat   (Исправить НДС на Ozon)
+     *  - mp_fix_wb_vat     (Исправить НДС на WB)
+     *  - mp_fix_ym_vat     (Исправить НДС на Я.М)
+     */
+    const issuesFixSyncStates = Object.create(null);
+
+    function getIssuesFixSyncState(taskKey) {
+        const k = String(taskKey || '').trim();
+        const st = issuesFixSyncStates[k];
+        if (!st) {
+            return {
+                active: false,
+                processed: 0,
+                total: 0,
+                updated: 0,
+                skipped: 0,
+                failed: 0,
+                summary: '',
+                error: null,
+            };
+        }
+        return JSON.parse(JSON.stringify(st));
+    }
+
+    function isRowEligibleForMpDimsFix(row, mpPrefix) {
+        if (!row || !String(row.code || '').trim()) return false;
+        if (!String(row[`${mpPrefix}_code`] || '').trim()) return false;
+        const msL = parseExportDimNumber(row.ms_length);
+        const msW = parseExportDimNumber(row.ms_width);
+        const msHbox = parseExportDimNumber(row.ms_height_box);
+        const msHbag = parseExportDimNumber(row.ms_height_bag);
+        const msWeight = parseExportDimNumber(row.ms_weight);
+        if (msL == null || msW == null || msWeight == null || (msHbox == null && msHbag == null)) {
+            return false;
+        }
+        const mpL = parseExportDimNumber(row[`${mpPrefix}_length`]);
+        const mpW = parseExportDimNumber(row[`${mpPrefix}_width`]);
+        const mpH = parseExportDimNumber(row[`${mpPrefix}_height`]);
+        const mpWeight = parseExportDimNumber(row[`${mpPrefix}_weight`]);
+        if (mpL != null && !issuesDimSizeEqual(msL, mpL, mpPrefix)) return true;
+        if (mpW != null && !issuesDimSizeEqual(msW, mpW, mpPrefix)) return true;
+        if (mpWeight != null && Math.abs(msWeight - mpWeight) > ISSUES_DIM_EPS) return true;
+        if (mpH != null) {
+            const matchBox = msHbox != null && issuesDimSizeEqual(msHbox, mpH, mpPrefix);
+            const matchBag = msHbag != null && issuesDimSizeEqual(msHbag, mpH, mpPrefix);
+            if (!matchBox && !matchBag) return true;
+        }
+        return false;
+    }
+
+    function isRowEligibleForMpVatFix(row, mpPrefix) {
+        if (!row || !String(row.code || '').trim()) return false;
+        if (!String(row[`${mpPrefix}_code`] || '').trim()) return false;
+        const msVatRaw = String(row.ms_vat == null ? '' : row.ms_vat).trim();
+        if (!msVatRaw) return false;
+        const vatParsed = parseMsVat(msVatRaw);
+        if (!vatParsed || !vatParsed.ok) return false;
+        const prettyMp = String(row[`${mpPrefix}_vat`] || '');
+        if (mpPrefix === 'wb' && /не\s*указан/i.test(prettyMp)) return false;
+        const msCanon = canonicalIssueVatMs(msVatRaw);
+        const mpCanon = canonicalIssueVatMpAfterPrettify(mpPrefix, prettyMp);
+        if (!msCanon && !mpCanon) return false;
+        return msCanon !== mpCanon;
+    }
+
+    async function runScheduledIssuesFix(taskKey, hooks = {}) {
+        const key = String(taskKey || '').trim();
+        const TASK_META = {
+            mp_fix_ozon_dims: { mp: 'ozon', mode: 'dims', label: 'Ozon: габариты', batchSize: 100 },
+            mp_fix_wb_dims:   { mp: 'wb',   mode: 'dims', label: 'WB: габариты',   batchSize: 100 },
+            mp_fix_ym_dims:   { mp: 'ym',   mode: 'dims', label: 'Я.М: габариты',  batchSize: 100 },
+            mp_fix_ozon_vat:  { mp: 'ozon', mode: 'vat',  label: 'Ozon: НДС',      batchSize: 100 },
+            mp_fix_wb_vat:    { mp: 'wb',   mode: 'vat',  label: 'WB: НДС',        batchSize: 100 },
+            mp_fix_ym_vat:    { mp: 'ym',   mode: 'vat',  label: 'Я.М: НДС',       batchSize: 100 },
+        };
+        const meta = TASK_META[key];
+        if (!meta) {
+            throw new Error(`Неизвестная задача автосинка маркетплейсов: ${key}`);
+        }
+        if (issuesFixSyncStates[key] && issuesFixSyncStates[key].active) {
+            return { started: false, reason: 'already_running' };
+        }
+        const state = {
+            active: true,
+            startedAt: new Date().toISOString(),
+            finishedAt: null,
+            processed: 0,
+            total: 0,
+            updated: 0,
+            skipped: 0,
+            failed: 0,
+            summary: `${meta.label}: поиск расхождений…`,
+            error: null,
+        };
+        issuesFixSyncStates[key] = state;
+        const reportProgress = async (msg) => {
+            state.summary = String(msg || '').slice(0, 480);
+            if (hooks && typeof hooks.onRunMessage === 'function') {
+                try {
+                    await hooks.onRunMessage(state.summary);
+                } catch (_) {}
+            }
+        };
+
+        const t0 = Date.now();
+        try {
+            if (!db || typeof db.query !== 'function') {
+                throw new Error('БД недоступна');
+            }
+            await refreshMarketplaceCredsFromDb(db, appSettings);
+
+            if (meta.mp === 'ozon') {
+                const creds = getOzonCreds(appSettings || {});
+                if (!creds.clientId || !creds.apiKey) {
+                    throw new Error('Не заданы ozon_client_id / ozon_api_key в настройках (/settings.html)');
+                }
+            } else if (meta.mp === 'wb') {
+                const creds = getWbCreds(appSettings || {});
+                if (!creds.apiKey) {
+                    throw new Error('Не задан wb_api_key в настройках (/settings.html)');
+                }
+            } else if (meta.mp === 'ym') {
+                const creds = getYmCreds(appSettings || {});
+                if (meta.mode === 'dims' && (!creds.apiKey || !creds.businessId)) {
+                    throw new Error('Не заданы ym_api_key / ym_business_id в настройках (/settings.html)');
+                }
+                if (meta.mode === 'vat' && (!creds.apiKey || !creds.campaignId)) {
+                    throw new Error('Не заданы ym_api_key / ym_campaign_id в настройках (/settings.html)');
+                }
+            }
+
+            await reportProgress(`${meta.label}: загрузка выборки расхождений…`);
+            const scope = meta.mode === 'dims' ? 'dims_mismatch' : 'vat_mismatch';
+            const { rows } = await loadIssuesRowsCore(db, {
+                scope,
+                maxItems: 100000,
+                excludeBundleComponents: true,
+            });
+            const eligibleRows = (rows || []).filter((r) =>
+                meta.mode === 'dims'
+                    ? isRowEligibleForMpDimsFix(r, meta.mp)
+                    : isRowEligibleForMpVatFix(r, meta.mp)
+            );
+            const codes = Array.from(new Set(eligibleRows.map((r) => String(r.code || '').trim()).filter(Boolean)));
+            state.total = codes.length;
+
+            if (!codes.length) {
+                const msg = `${meta.label}: расхождений не найдено (0 товаров к исправлению)`;
+                state.active = false;
+                state.finishedAt = new Date().toISOString();
+                state.summary = msg;
+                return { started: true, total: 0, updated: 0, skipped: 0, failed: 0, summary: msg };
+            }
+
+            await reportProgress(`${meta.label}: найдено ${codes.length} поз. к исправлению…`);
+            const logger = createMarketplaceLogger(`${meta.mp}-${meta.mode}-auto`);
+            const firstErrors = [];
+
+            const byCode = new Map();
+            for (const r of eligibleRows) {
+                byCode.set(String(r.code || '').trim(), r);
+            }
+
+            if (meta.mp === 'ozon' && meta.mode === 'dims') {
+                const creds = getOzonCreds(appSettings || {});
+                const delayMs = Math.max(
+                    MP_MIN_DELAY_MS.ozon || 200,
+                    Number((appSettings && appSettings.mp_ozon_delay_ms) || 400) || 400
+                );
+                for (let i = 0; i < codes.length; i += 1) {
+                    const code = codes[i];
+                    const row = byCode.get(code);
+                    const dims = row ? resolveMsDimsForOzonPush(row) : null;
+                    if (!row || !row.ozon_code || !dims) {
+                        state.skipped += 1;
+                        state.processed += 1;
+                        continue;
+                    }
+                    const out = await updateOzonOfferDimensions(creds, {
+                        offerId: row.ozon_code,
+                        dims,
+                        delayMs,
+                        logger,
+                        waitTask: true,
+                    });
+                    state.processed += 1;
+                    if (out.success) {
+                        state.updated += 1;
+                        try {
+                            await patchLocalOzonDims(db, row.ozon_code, out.dims);
+                        } catch (_) {}
+                    } else {
+                        state.failed += 1;
+                        if (firstErrors.length < 5) firstErrors.push(`${code}: ${out.error || 'ошибка Ozon'}`);
+                    }
+                    if (state.processed % 5 === 0 || state.processed === state.total) {
+                        await reportProgress(
+                            `${meta.label}: ${state.processed}/${state.total} (✓ ${state.updated}, × ${state.failed}, пропуск ${state.skipped})`
+                        );
+                    }
+                }
+            } else if (meta.mp === 'ozon' && meta.mode === 'vat') {
+                const creds = getOzonCreds(appSettings || {});
+                const delayMs = Math.max(
+                    MP_MIN_DELAY_MS.ozon || 200,
+                    Number((appSettings && appSettings.mp_ozon_delay_ms) || 400) || 400
+                );
+                for (let i = 0; i < codes.length; i += 1) {
+                    const code = codes[i];
+                    const row = byCode.get(code);
+                    const vatParsed = row ? parseMsVat(row.ms_vat) : { ok: false };
+                    if (!row || !row.ozon_code || !vatParsed.ok) {
+                        state.skipped += 1;
+                        state.processed += 1;
+                        continue;
+                    }
+                    const out = await updateOzonOfferVat(creds, {
+                        offerId: row.ozon_code,
+                        msVat: row.ms_vat,
+                        delayMs,
+                        logger,
+                        waitTask: true,
+                    });
+                    state.processed += 1;
+                    if (out.success) {
+                        state.updated += 1;
+                        try {
+                            await patchLocalOzonVat(db, row.ozon_code, out.vat || vatParsed.pretty);
+                        } catch (_) {}
+                    } else if (out.skipped) {
+                        state.skipped += 1;
+                    } else {
+                        state.failed += 1;
+                        if (firstErrors.length < 5) firstErrors.push(`${code}: ${out.error || 'ошибка Ozon'}`);
+                    }
+                    if (state.processed % 5 === 0 || state.processed === state.total) {
+                        await reportProgress(
+                            `${meta.label}: ${state.processed}/${state.total} (✓ ${state.updated}, × ${state.failed}, пропуск ${state.skipped})`
+                        );
+                    }
+                }
+            } else if (meta.mp === 'wb' && meta.mode === 'dims') {
+                const creds = getWbCreds(appSettings || {});
+                const delayListMs = Math.max(
+                    MP_MIN_DELAY_MS.wbCards || 600,
+                    Number((appSettings && appSettings.mp_wb_delay_cards_ms) || 600) || 600
+                );
+                for (let offset = 0; offset < codes.length; offset += meta.batchSize) {
+                    const chunkCodes = codes.slice(offset, offset + meta.batchSize);
+                    const batchItems = [];
+                    for (const code of chunkCodes) {
+                        const row = byCode.get(code);
+                        const dims = row ? resolveMsDimsForWbPush(row) : null;
+                        if (!row || !row.wb_code || !dims) {
+                            state.skipped += 1;
+                            state.processed += 1;
+                            continue;
+                        }
+                        batchItems.push({
+                            code,
+                            vendorCode: row.wb_code,
+                            dims,
+                            nmIdHint: nmIdFromUrls(row.wb_cabinet_url, row.wb_buyer_url),
+                        });
+                    }
+                    if (batchItems.length) {
+                        const batchOut = await updateWbOffersDimensionsBatch(
+                            creds.apiKey,
+                            batchItems.map((it) => ({
+                                vendorCode: it.vendorCode,
+                                dims: it.dims,
+                                nmIdHint: it.nmIdHint,
+                            })),
+                            {
+                                logger,
+                                delayListMs,
+                                delayUpdateMs: 6500,
+                                updateChunk: 50,
+                                dryRun: false,
+                            }
+                        );
+                        for (const out of batchOut || []) {
+                            state.processed += 1;
+                            if (out.success) {
+                                state.updated += 1;
+                                try {
+                                    await patchLocalWbDims(db, out.vendor_code, out.dims);
+                                } catch (_) {}
+                            } else if (out.skipped) {
+                                state.skipped += 1;
+                            } else {
+                                state.failed += 1;
+                                if (firstErrors.length < 5) firstErrors.push(`${out.vendor_code}: ${out.error || 'ошибка WB'}`);
+                            }
+                        }
+                    }
+                    await reportProgress(
+                        `${meta.label}: ${state.processed}/${state.total} (✓ ${state.updated}, × ${state.failed}, пропуск ${state.skipped})`
+                    );
+                }
+            } else if (meta.mp === 'wb' && meta.mode === 'vat') {
+                const creds = getWbCreds(appSettings || {});
+                const delayListMs = Math.max(
+                    MP_MIN_DELAY_MS.wbCards || 600,
+                    Number((appSettings && appSettings.mp_wb_delay_cards_ms) || 600) || 600
+                );
+                for (let offset = 0; offset < codes.length; offset += meta.batchSize) {
+                    const chunkCodes = codes.slice(offset, offset + meta.batchSize);
+                    const batchItems = [];
+                    for (const code of chunkCodes) {
+                        const row = byCode.get(code);
+                        const vatParsed = row ? parseMsVat(row.ms_vat) : { ok: false };
+                        if (!row || !row.wb_code || !vatParsed.ok) {
+                            state.skipped += 1;
+                            state.processed += 1;
+                            continue;
+                        }
+                        batchItems.push({
+                            code,
+                            vendorCode: row.wb_code,
+                            msVat: row.ms_vat,
+                            nmIdHint: nmIdFromUrls(row.wb_cabinet_url, row.wb_buyer_url),
+                        });
+                    }
+                    if (batchItems.length) {
+                        const batchOut = await updateWbOffersVatBatch(
+                            creds.apiKey,
+                            batchItems.map((it) => ({
+                                vendorCode: it.vendorCode,
+                                msVat: it.msVat,
+                                nmIdHint: it.nmIdHint,
+                            })),
+                            {
+                                logger,
+                                delayListMs,
+                                delayUpdateMs: 6500,
+                                updateChunk: 50,
+                                dryRun: false,
+                            }
+                        );
+                        for (const out of batchOut || []) {
+                            state.processed += 1;
+                            if (out.success) {
+                                state.updated += 1;
+                                try {
+                                    await patchLocalWbVat(db, out.vendor_code, out.vat);
+                                } catch (_) {}
+                            } else if (out.skipped) {
+                                state.skipped += 1;
+                            } else {
+                                state.failed += 1;
+                                if (firstErrors.length < 5) firstErrors.push(`${out.vendor_code}: ${out.error || 'ошибка WB'}`);
+                            }
+                        }
+                    }
+                    await reportProgress(
+                        `${meta.label}: ${state.processed}/${state.total} (✓ ${state.updated}, × ${state.failed}, пропуск ${state.skipped})`
+                    );
+                }
+            } else if (meta.mp === 'ym' && meta.mode === 'dims') {
+                const creds = getYmCreds(appSettings || {});
+                const delayMs = Math.max(
+                    MP_MIN_DELAY_MS.yandex || 200,
+                    Number((appSettings && appSettings.mp_yandex_delay_ms) || 280) || 280
+                );
+                for (let offset = 0; offset < codes.length; offset += meta.batchSize) {
+                    const chunkCodes = codes.slice(offset, offset + meta.batchSize);
+                    const batchItems = [];
+                    for (const code of chunkCodes) {
+                        const row = byCode.get(code);
+                        const dims = row ? resolveMsDimsForYmPush(row) : null;
+                        if (!row || !row.ym_code || !dims) {
+                            state.skipped += 1;
+                            state.processed += 1;
+                            continue;
+                        }
+                        batchItems.push({
+                            code,
+                            offerId: row.ym_code,
+                            dims,
+                        });
+                    }
+                    if (batchItems.length) {
+                        const batchOut = await updateYmOffersDimensionsBatch(
+                            { apiKey: creds.apiKey, businessId: creds.businessId },
+                            batchItems.map((it) => ({ offerId: it.offerId, dims: it.dims })),
+                            { logger, delayMs, chunkSize: 100, dryRun: false }
+                        );
+                        for (const out of batchOut || []) {
+                            state.processed += 1;
+                            if (out.success) {
+                                state.updated += 1;
+                                try {
+                                    await patchLocalYmDims(db, out.offer_id, out.dims);
+                                } catch (_) {}
+                            } else if (out.skipped) {
+                                state.skipped += 1;
+                            } else {
+                                state.failed += 1;
+                                if (firstErrors.length < 5) firstErrors.push(`${out.offer_id}: ${out.error || 'ошибка Я.М'}`);
+                            }
+                        }
+                    }
+                    await reportProgress(
+                        `${meta.label}: ${state.processed}/${state.total} (✓ ${state.updated}, × ${state.failed}, пропуск ${state.skipped})`
+                    );
+                }
+            } else if (meta.mp === 'ym' && meta.mode === 'vat') {
+                const creds = getYmCreds(appSettings || {});
+                const delayMs = Math.max(
+                    MP_MIN_DELAY_MS.yandex || 200,
+                    Number((appSettings && appSettings.mp_yandex_delay_ms) || 280) || 280
+                );
+                for (let offset = 0; offset < codes.length; offset += meta.batchSize) {
+                    const chunkCodes = codes.slice(offset, offset + meta.batchSize);
+                    const batchItems = [];
+                    for (const code of chunkCodes) {
+                        const row = byCode.get(code);
+                        const vatParsed = row ? parseMsVat(row.ms_vat) : { ok: false };
+                        if (!row || !row.ym_code || !vatParsed.ok) {
+                            state.skipped += 1;
+                            state.processed += 1;
+                            continue;
+                        }
+                        batchItems.push({
+                            code,
+                            offerId: row.ym_code,
+                            msVat: row.ms_vat,
+                        });
+                    }
+                    if (batchItems.length) {
+                        const batchOut = await updateYmOffersVatBatch(
+                            { apiKey: creds.apiKey, campaignId: creds.campaignId },
+                            batchItems.map((it) => ({ offerId: it.offerId, msVat: it.msVat })),
+                            { logger, delayMs, chunkSize: 100, dryRun: false }
+                        );
+                        for (const out of batchOut || []) {
+                            state.processed += 1;
+                            if (out.success) {
+                                state.updated += 1;
+                                try {
+                                    await patchLocalYmVat(db, out.offer_id, out.vat);
+                                } catch (_) {}
+                            } else if (out.skipped) {
+                                state.skipped += 1;
+                            } else {
+                                state.failed += 1;
+                                if (firstErrors.length < 5) firstErrors.push(`${out.offer_id}: ${out.error || 'ошибка Я.М'}`);
+                            }
+                        }
+                    }
+                    await reportProgress(
+                        `${meta.label}: ${state.processed}/${state.total} (✓ ${state.updated}, × ${state.failed}, пропуск ${state.skipped})`
+                    );
+                }
+            }
+
+            const durSec = Math.round((Date.now() - t0) / 1000);
+            const errSuffix = firstErrors.length ? ` · Ошибки: ${firstErrors.join('; ')}` : '';
+            const finalMsg = `${meta.label}: всего ${state.total}, обновлено ✓ ${state.updated}, пропущено ${state.skipped}, ошибок × ${state.failed} (${durSec} с)${errSuffix}`.slice(
+                0,
+                480
+            );
+            state.active = false;
+            state.finishedAt = new Date().toISOString();
+            state.summary = finalMsg;
+            return {
+                started: true,
+                total: state.total,
+                updated: state.updated,
+                skipped: state.skipped,
+                failed: state.failed,
+                summary: finalMsg,
+            };
+        } catch (e) {
+            const errText = e && e.message ? e.message : String(e);
+            state.active = false;
+            state.finishedAt = new Date().toISOString();
+            state.error = errText;
+            state.summary = `${meta.label}: ошибка — ${errText}`.slice(0, 480);
+            throw e;
+        }
+    }
+
+    exportsMarketplacesRouter.runScheduledIssuesFix = runScheduledIssuesFix;
+    exportsMarketplacesRouter.getIssuesFixSyncState = getIssuesFixSyncState;
+
+    /**
      * Журнал автоснимков «проблемы (scope=any), исключить комплекты» после синхронизации маркетплейсов.
      * Query: days (1–730, default 90), limit (1–500, default 200).
      */

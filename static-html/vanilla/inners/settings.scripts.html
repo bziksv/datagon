@@ -81,6 +81,24 @@
         auto_sync_marketplaces_wb_time: "06:25",
         auto_sync_marketplaces_ym_enabled: 0,
         auto_sync_marketplaces_ym_time: "06:50",
+        auto_sync_mp_fix_ozon_dims_enabled: 0,
+        auto_sync_mp_fix_ozon_dims_time: "07:10",
+        auto_sync_mp_fix_ozon_dims_weekdays: "",
+        auto_sync_mp_fix_wb_dims_enabled: 0,
+        auto_sync_mp_fix_wb_dims_time: "07:20",
+        auto_sync_mp_fix_wb_dims_weekdays: "",
+        auto_sync_mp_fix_ym_dims_enabled: 0,
+        auto_sync_mp_fix_ym_dims_time: "07:30",
+        auto_sync_mp_fix_ym_dims_weekdays: "",
+        auto_sync_mp_fix_ozon_vat_enabled: 0,
+        auto_sync_mp_fix_ozon_vat_time: "07:40",
+        auto_sync_mp_fix_ozon_vat_weekdays: "",
+        auto_sync_mp_fix_wb_vat_enabled: 0,
+        auto_sync_mp_fix_wb_vat_time: "07:50",
+        auto_sync_mp_fix_wb_vat_weekdays: "",
+        auto_sync_mp_fix_ym_vat_enabled: 0,
+        auto_sync_mp_fix_ym_vat_time: "08:00",
+        auto_sync_mp_fix_ym_vat_weekdays: "",
         auto_sync_huckster_enabled: 0,
         auto_sync_huckster_time: "06:00",
         auto_sync_np_ms_enrich_enabled: 0,
@@ -1207,6 +1225,30 @@
         set("dg-set-auto_market_wb_time", merged.auto_sync_marketplaces_wb_time || "06:25");
         document.getElementById("dg-set-auto_market_ym_en").checked = Number(merged.auto_sync_marketplaces_ym_enabled) === 1;
         set("dg-set-auto_market_ym_time", merged.auto_sync_marketplaces_ym_time || "06:50");
+        var mpFixOzonDimsEn = document.getElementById("dg-set-auto_mp_fix_ozon_dims_en");
+        if (mpFixOzonDimsEn) mpFixOzonDimsEn.checked = Number(merged.auto_sync_mp_fix_ozon_dims_enabled) === 1;
+        set("dg-set-auto_mp_fix_ozon_dims_time", merged.auto_sync_mp_fix_ozon_dims_time || "07:10");
+        applyAutoSyncWeekdayChecks("dg-set-auto_mp_fix_ozon_dims_wd", merged.auto_sync_mp_fix_ozon_dims_weekdays);
+        var mpFixWbDimsEn = document.getElementById("dg-set-auto_mp_fix_wb_dims_en");
+        if (mpFixWbDimsEn) mpFixWbDimsEn.checked = Number(merged.auto_sync_mp_fix_wb_dims_enabled) === 1;
+        set("dg-set-auto_mp_fix_wb_dims_time", merged.auto_sync_mp_fix_wb_dims_time || "07:20");
+        applyAutoSyncWeekdayChecks("dg-set-auto_mp_fix_wb_dims_wd", merged.auto_sync_mp_fix_wb_dims_weekdays);
+        var mpFixYmDimsEn = document.getElementById("dg-set-auto_mp_fix_ym_dims_en");
+        if (mpFixYmDimsEn) mpFixYmDimsEn.checked = Number(merged.auto_sync_mp_fix_ym_dims_enabled) === 1;
+        set("dg-set-auto_mp_fix_ym_dims_time", merged.auto_sync_mp_fix_ym_dims_time || "07:30");
+        applyAutoSyncWeekdayChecks("dg-set-auto_mp_fix_ym_dims_wd", merged.auto_sync_mp_fix_ym_dims_weekdays);
+        var mpFixOzonVatEn = document.getElementById("dg-set-auto_mp_fix_ozon_vat_en");
+        if (mpFixOzonVatEn) mpFixOzonVatEn.checked = Number(merged.auto_sync_mp_fix_ozon_vat_enabled) === 1;
+        set("dg-set-auto_mp_fix_ozon_vat_time", merged.auto_sync_mp_fix_ozon_vat_time || "07:40");
+        applyAutoSyncWeekdayChecks("dg-set-auto_mp_fix_ozon_vat_wd", merged.auto_sync_mp_fix_ozon_vat_weekdays);
+        var mpFixWbVatEn = document.getElementById("dg-set-auto_mp_fix_wb_vat_en");
+        if (mpFixWbVatEn) mpFixWbVatEn.checked = Number(merged.auto_sync_mp_fix_wb_vat_enabled) === 1;
+        set("dg-set-auto_mp_fix_wb_vat_time", merged.auto_sync_mp_fix_wb_vat_time || "07:50");
+        applyAutoSyncWeekdayChecks("dg-set-auto_mp_fix_wb_vat_wd", merged.auto_sync_mp_fix_wb_vat_weekdays);
+        var mpFixYmVatEn = document.getElementById("dg-set-auto_mp_fix_ym_vat_en");
+        if (mpFixYmVatEn) mpFixYmVatEn.checked = Number(merged.auto_sync_mp_fix_ym_vat_enabled) === 1;
+        set("dg-set-auto_mp_fix_ym_vat_time", merged.auto_sync_mp_fix_ym_vat_time || "08:00");
+        applyAutoSyncWeekdayChecks("dg-set-auto_mp_fix_ym_vat_wd", merged.auto_sync_mp_fix_ym_vat_weekdays);
         document.getElementById("dg-set-auto_huckster_en").checked = Number(merged.auto_sync_huckster_enabled) === 1;
         set("dg-set-auto_huckster_time", merged.auto_sync_huckster_time || "06:00");
         var npEn = document.getElementById("dg-set-auto_np_ms_enrich_en");
@@ -2427,6 +2469,36 @@
           auto_sync_marketplaces_wb_time: getStr("dg-set-auto_market_wb_time") || "06:25",
           auto_sync_marketplaces_ym_enabled: document.getElementById("dg-set-auto_market_ym_en").checked,
           auto_sync_marketplaces_ym_time: getStr("dg-set-auto_market_ym_time") || "06:50",
+          auto_sync_mp_fix_ozon_dims_enabled: document.getElementById("dg-set-auto_mp_fix_ozon_dims_en")
+            ? document.getElementById("dg-set-auto_mp_fix_ozon_dims_en").checked
+            : false,
+          auto_sync_mp_fix_ozon_dims_time: getStr("dg-set-auto_mp_fix_ozon_dims_time") || "07:10",
+          auto_sync_mp_fix_ozon_dims_weekdays: collectAutoSyncWeekdayCsv("dg-set-auto_mp_fix_ozon_dims_wd"),
+          auto_sync_mp_fix_wb_dims_enabled: document.getElementById("dg-set-auto_mp_fix_wb_dims_en")
+            ? document.getElementById("dg-set-auto_mp_fix_wb_dims_en").checked
+            : false,
+          auto_sync_mp_fix_wb_dims_time: getStr("dg-set-auto_mp_fix_wb_dims_time") || "07:20",
+          auto_sync_mp_fix_wb_dims_weekdays: collectAutoSyncWeekdayCsv("dg-set-auto_mp_fix_wb_dims_wd"),
+          auto_sync_mp_fix_ym_dims_enabled: document.getElementById("dg-set-auto_mp_fix_ym_dims_en")
+            ? document.getElementById("dg-set-auto_mp_fix_ym_dims_en").checked
+            : false,
+          auto_sync_mp_fix_ym_dims_time: getStr("dg-set-auto_mp_fix_ym_dims_time") || "07:30",
+          auto_sync_mp_fix_ym_dims_weekdays: collectAutoSyncWeekdayCsv("dg-set-auto_mp_fix_ym_dims_wd"),
+          auto_sync_mp_fix_ozon_vat_enabled: document.getElementById("dg-set-auto_mp_fix_ozon_vat_en")
+            ? document.getElementById("dg-set-auto_mp_fix_ozon_vat_en").checked
+            : false,
+          auto_sync_mp_fix_ozon_vat_time: getStr("dg-set-auto_mp_fix_ozon_vat_time") || "07:40",
+          auto_sync_mp_fix_ozon_vat_weekdays: collectAutoSyncWeekdayCsv("dg-set-auto_mp_fix_ozon_vat_wd"),
+          auto_sync_mp_fix_wb_vat_enabled: document.getElementById("dg-set-auto_mp_fix_wb_vat_en")
+            ? document.getElementById("dg-set-auto_mp_fix_wb_vat_en").checked
+            : false,
+          auto_sync_mp_fix_wb_vat_time: getStr("dg-set-auto_mp_fix_wb_vat_time") || "07:50",
+          auto_sync_mp_fix_wb_vat_weekdays: collectAutoSyncWeekdayCsv("dg-set-auto_mp_fix_wb_vat_wd"),
+          auto_sync_mp_fix_ym_vat_enabled: document.getElementById("dg-set-auto_mp_fix_ym_vat_en")
+            ? document.getElementById("dg-set-auto_mp_fix_ym_vat_en").checked
+            : false,
+          auto_sync_mp_fix_ym_vat_time: getStr("dg-set-auto_mp_fix_ym_vat_time") || "08:00",
+          auto_sync_mp_fix_ym_vat_weekdays: collectAutoSyncWeekdayCsv("dg-set-auto_mp_fix_ym_vat_wd"),
           auto_sync_huckster_enabled: document.getElementById("dg-set-auto_huckster_en").checked,
           auto_sync_huckster_time: getStr("dg-set-auto_huckster_time") || "06:00",
           auto_sync_np_ms_enrich_enabled: document.getElementById("dg-set-auto_np_ms_enrich_en")
@@ -2513,6 +2585,24 @@
             "auto_sync_marketplaces_ozon_time",
             "auto_sync_marketplaces_wb_time",
             "auto_sync_marketplaces_ym_time",
+            "auto_sync_mp_fix_ozon_dims_enabled",
+            "auto_sync_mp_fix_ozon_dims_time",
+            "auto_sync_mp_fix_ozon_dims_weekdays",
+            "auto_sync_mp_fix_wb_dims_enabled",
+            "auto_sync_mp_fix_wb_dims_time",
+            "auto_sync_mp_fix_wb_dims_weekdays",
+            "auto_sync_mp_fix_ym_dims_enabled",
+            "auto_sync_mp_fix_ym_dims_time",
+            "auto_sync_mp_fix_ym_dims_weekdays",
+            "auto_sync_mp_fix_ozon_vat_enabled",
+            "auto_sync_mp_fix_ozon_vat_time",
+            "auto_sync_mp_fix_ozon_vat_weekdays",
+            "auto_sync_mp_fix_wb_vat_enabled",
+            "auto_sync_mp_fix_wb_vat_time",
+            "auto_sync_mp_fix_wb_vat_weekdays",
+            "auto_sync_mp_fix_ym_vat_enabled",
+            "auto_sync_mp_fix_ym_vat_time",
+            "auto_sync_mp_fix_ym_vat_weekdays",
             "auto_sync_huckster_time",
             "auto_sync_np_ms_enrich_enabled",
             "auto_sync_np_ms_enrich_interval_min",
@@ -2547,6 +2637,12 @@
         marketplaces_ozon: "Ozon",
         marketplaces_wb: "Wildberries",
         marketplaces_ym: "Яндекс Маркет",
+        mp_fix_ozon_dims: "Исправить габариты на Ozon",
+        mp_fix_wb_dims: "Исправить габариты на WB",
+        mp_fix_ym_dims: "Исправить габариты на Я.М",
+        mp_fix_ozon_vat: "Исправить НДС на Ozon",
+        mp_fix_wb_vat: "Исправить НДС на WB",
+        mp_fix_ym_vat: "Исправить НДС на Я.М",
         huckster: "Huckster",
         np_ms_enrich: "Новые товары: поля МС",
         db_size: "Размер БД и диска",
@@ -4072,6 +4168,21 @@
       document.getElementById("dg-set-auto_market_ozon_run").addEventListener("click", function () { runAutoSyncNow("marketplaces_ozon", "Ozon", "dg-set-auto_market_ozon_run"); });
       document.getElementById("dg-set-auto_market_wb_run").addEventListener("click", function () { runAutoSyncNow("marketplaces_wb", "Wildberries", "dg-set-auto_market_wb_run"); });
       document.getElementById("dg-set-auto_market_ym_run").addEventListener("click", function () { runAutoSyncNow("marketplaces_ym", "Яндекс Маркет", "dg-set-auto_market_ym_run"); });
+      [
+        ["dg-set-auto_mp_fix_ozon_dims_run", "mp_fix_ozon_dims", "Исправить габариты на Ozon"],
+        ["dg-set-auto_mp_fix_wb_dims_run", "mp_fix_wb_dims", "Исправить габариты на WB"],
+        ["dg-set-auto_mp_fix_ym_dims_run", "mp_fix_ym_dims", "Исправить габариты на Я.М"],
+        ["dg-set-auto_mp_fix_ozon_vat_run", "mp_fix_ozon_vat", "Исправить НДС на Ozon"],
+        ["dg-set-auto_mp_fix_wb_vat_run", "mp_fix_wb_vat", "Исправить НДС на WB"],
+        ["dg-set-auto_mp_fix_ym_vat_run", "mp_fix_ym_vat", "Исправить НДС на Я.М"],
+      ].forEach(function (entry) {
+        var btn = document.getElementById(entry[0]);
+        if (btn) {
+          btn.addEventListener("click", function () {
+            runAutoSyncNow(entry[1], entry[2], entry[0]);
+          });
+        }
+      });
       document.getElementById("dg-set-auto_huckster_run").addEventListener("click", function () { runAutoSyncNow("huckster", "Huckster", "dg-set-auto_huckster_run"); });
       var npMsEnrichRun = document.getElementById("dg-set-auto_np_ms_enrich_run");
       if (npMsEnrichRun) {

@@ -187,6 +187,24 @@ let appSettings = {
     auto_sync_marketplaces_wb_time: '06:25',
     auto_sync_marketplaces_ym_enabled: 0,
     auto_sync_marketplaces_ym_time: '06:50',
+    auto_sync_mp_fix_ozon_dims_enabled: 0,
+    auto_sync_mp_fix_ozon_dims_time: '07:10',
+    auto_sync_mp_fix_ozon_dims_weekdays: '',
+    auto_sync_mp_fix_wb_dims_enabled: 0,
+    auto_sync_mp_fix_wb_dims_time: '07:20',
+    auto_sync_mp_fix_wb_dims_weekdays: '',
+    auto_sync_mp_fix_ym_dims_enabled: 0,
+    auto_sync_mp_fix_ym_dims_time: '07:30',
+    auto_sync_mp_fix_ym_dims_weekdays: '',
+    auto_sync_mp_fix_ozon_vat_enabled: 0,
+    auto_sync_mp_fix_ozon_vat_time: '07:40',
+    auto_sync_mp_fix_ozon_vat_weekdays: '',
+    auto_sync_mp_fix_wb_vat_enabled: 0,
+    auto_sync_mp_fix_wb_vat_time: '07:50',
+    auto_sync_mp_fix_wb_vat_weekdays: '',
+    auto_sync_mp_fix_ym_vat_enabled: 0,
+    auto_sync_mp_fix_ym_vat_time: '08:00',
+    auto_sync_mp_fix_ym_vat_weekdays: '',
     auto_sync_huckster_enabled: 0,
     auto_sync_huckster_time: '06:00',
     /** Дозаполнение кода/штрихкода/НДС/РУ в «Новые товары → маркеты» из кэша МС (интервал + дни недели). */
@@ -533,6 +551,24 @@ async function initDB() {
             ['auto_sync_marketplaces_wb_time','06:25'],
             ['auto_sync_marketplaces_ym_enabled','0'],
             ['auto_sync_marketplaces_ym_time','06:50'],
+            ['auto_sync_mp_fix_ozon_dims_enabled','0'],
+            ['auto_sync_mp_fix_ozon_dims_time','07:10'],
+            ['auto_sync_mp_fix_ozon_dims_weekdays',''],
+            ['auto_sync_mp_fix_wb_dims_enabled','0'],
+            ['auto_sync_mp_fix_wb_dims_time','07:20'],
+            ['auto_sync_mp_fix_wb_dims_weekdays',''],
+            ['auto_sync_mp_fix_ym_dims_enabled','0'],
+            ['auto_sync_mp_fix_ym_dims_time','07:30'],
+            ['auto_sync_mp_fix_ym_dims_weekdays',''],
+            ['auto_sync_mp_fix_ozon_vat_enabled','0'],
+            ['auto_sync_mp_fix_ozon_vat_time','07:40'],
+            ['auto_sync_mp_fix_ozon_vat_weekdays',''],
+            ['auto_sync_mp_fix_wb_vat_enabled','0'],
+            ['auto_sync_mp_fix_wb_vat_time','07:50'],
+            ['auto_sync_mp_fix_wb_vat_weekdays',''],
+            ['auto_sync_mp_fix_ym_vat_enabled','0'],
+            ['auto_sync_mp_fix_ym_vat_time','08:00'],
+            ['auto_sync_mp_fix_ym_vat_weekdays',''],
             ['auto_sync_huckster_enabled','0'],
             ['auto_sync_huckster_time','06:00'],
             ['auto_sync_np_ms_enrich_enabled','0'],
@@ -1904,6 +1940,34 @@ function buildAutoSyncTasksLiveForOverview() {
     fillMpLive('marketplaces_wb', 'Ожидание обновления Wildberries…');
     fillMpLive('marketplaces_ym', 'Ожидание обновления Я.Маркет…');
 
+    const MP_FIX_LIVE_TASKS = [
+        ['mp_fix_ozon_dims', 'Ozon: исправление габаритов…'],
+        ['mp_fix_wb_dims', 'WB: исправление габаритов…'],
+        ['mp_fix_ym_dims', 'Я.М: исправление габаритов…'],
+        ['mp_fix_ozon_vat', 'Ozon: исправление НДС…'],
+        ['mp_fix_wb_vat', 'WB: исправление НДС…'],
+        ['mp_fix_ym_vat', 'Я.М: исправление НДС…'],
+    ];
+    for (const [fixKey, pendingMsg] of MP_FIX_LIVE_TASKS) {
+        if (!hasRun(fixKey)) continue;
+        const st =
+            typeof exportsMarketplacesRouterFactory.getIssuesFixSyncState === 'function'
+                ? exportsMarketplacesRouterFactory.getIssuesFixSyncState(fixKey)
+                : null;
+        if (st && st.active) {
+            out[fixKey] = {
+                active: true,
+                processed: Number(st.processed || 0),
+                total: Number(st.total || 0),
+                ok: Number(st.updated || 0),
+                err: Number(st.failed || 0),
+                message: String(st.summary || pendingMsg),
+            };
+        } else {
+            out[fixKey] = { active: true, pending: true, message: pendingMsg };
+        }
+    }
+
     if (hasRun('huckster')) {
         const st =
             typeof exportsHucksterRouterFactory.getSyncState === 'function'
@@ -2148,6 +2212,8 @@ async function closeAncientRunningAutoSyncRuns() {
                AND finished_at IS NULL
                AND task_type IN (
                  'marketplaces', 'marketplaces_ozon', 'marketplaces_wb', 'marketplaces_ym',
+                 'mp_fix_ozon_dims', 'mp_fix_wb_dims', 'mp_fix_ym_dims',
+                 'mp_fix_ozon_vat', 'mp_fix_wb_vat', 'mp_fix_ym_vat',
                  'huckster', 'medmarket', 'medmarket_fill', 'db_size', 'min_stock_export'
                )
                AND started_at < DATE_SUB(NOW(), INTERVAL 2 HOUR)`
@@ -2321,6 +2387,30 @@ async function processAutoSyncQueue() {
                         || (status === 'completed' ? 'Завершено' : 'Ошибка обновления маркетплейса');
                 }
                 await finishAutoSyncRun(task, status, message.slice(0, 480));
+                console.log(`[AUTO SYNC] Queue done: ${task} — ${status} (${message})`);
+            } else if (
+                task === 'mp_fix_ozon_dims' ||
+                task === 'mp_fix_wb_dims' ||
+                task === 'mp_fix_ym_dims' ||
+                task === 'mp_fix_ozon_vat' ||
+                task === 'mp_fix_wb_vat' ||
+                task === 'mp_fix_ym_vat'
+            ) {
+                console.log(`[AUTO SYNC] Queue start: ${task}`);
+                await startAutoSyncRun(task, triggerType);
+                if (typeof exportsMarketplacesRouterFactory.runScheduledIssuesFix !== 'function') {
+                    throw new Error('exportsMarketplacesRouterFactory.runScheduledIssuesFix не инициализирован');
+                }
+                const fixRes = await exportsMarketplacesRouterFactory.runScheduledIssuesFix(task, {
+                    onRunMessage: async (msg) => {
+                        await updateAutoSyncRunMessage(task, msg);
+                    },
+                });
+                const status = fixRes && Number(fixRes.failed || 0) > 0 && Number(fixRes.updated || 0) === 0
+                    ? 'failed'
+                    : 'completed';
+                const message = String((fixRes && fixRes.summary) || 'Завершено').slice(0, 480);
+                await finishAutoSyncRun(task, status, message);
                 console.log(`[AUTO SYNC] Queue done: ${task} — ${status} (${message})`);
             } else if (task === 'huckster') {
                 console.log('[AUTO SYNC] Queue start: huckster');
@@ -3125,6 +3215,18 @@ async function processAutoSyncQueue() {
         if (autoSyncRunIds.has('marketplaces_ym')) {
             await finishAutoSyncRun('marketplaces_ym', 'failed', e.message || 'Ошибка очереди');
         }
+        for (const mpFixKey of [
+            'mp_fix_ozon_dims',
+            'mp_fix_wb_dims',
+            'mp_fix_ym_dims',
+            'mp_fix_ozon_vat',
+            'mp_fix_wb_vat',
+            'mp_fix_ym_vat',
+        ]) {
+            if (autoSyncRunIds.has(mpFixKey)) {
+                await finishAutoSyncRun(mpFixKey, 'failed', e.message || 'Ошибка очереди');
+            }
+        }
         if (autoSyncRunIds.has('huckster')) {
             await finishAutoSyncRun('huckster', 'failed', e.message || 'Ошибка очереди');
         }
@@ -3215,6 +3317,42 @@ function startAutoSyncScheduler() {
                     type: 'marketplaces_ym',
                     enabled: Number(appSettings.auto_sync_marketplaces_ym_enabled || 0) === 1,
                     time: String(appSettings.auto_sync_marketplaces_ym_time || '06:50').slice(0, 5),
+                },
+                {
+                    type: 'mp_fix_ozon_dims',
+                    enabled: Number(appSettings.auto_sync_mp_fix_ozon_dims_enabled || 0) === 1,
+                    time: String(appSettings.auto_sync_mp_fix_ozon_dims_time || '07:10').slice(0, 5),
+                    weekdays: parseAutoSyncWeekdaysMon17(appSettings.auto_sync_mp_fix_ozon_dims_weekdays),
+                },
+                {
+                    type: 'mp_fix_wb_dims',
+                    enabled: Number(appSettings.auto_sync_mp_fix_wb_dims_enabled || 0) === 1,
+                    time: String(appSettings.auto_sync_mp_fix_wb_dims_time || '07:20').slice(0, 5),
+                    weekdays: parseAutoSyncWeekdaysMon17(appSettings.auto_sync_mp_fix_wb_dims_weekdays),
+                },
+                {
+                    type: 'mp_fix_ym_dims',
+                    enabled: Number(appSettings.auto_sync_mp_fix_ym_dims_enabled || 0) === 1,
+                    time: String(appSettings.auto_sync_mp_fix_ym_dims_time || '07:30').slice(0, 5),
+                    weekdays: parseAutoSyncWeekdaysMon17(appSettings.auto_sync_mp_fix_ym_dims_weekdays),
+                },
+                {
+                    type: 'mp_fix_ozon_vat',
+                    enabled: Number(appSettings.auto_sync_mp_fix_ozon_vat_enabled || 0) === 1,
+                    time: String(appSettings.auto_sync_mp_fix_ozon_vat_time || '07:40').slice(0, 5),
+                    weekdays: parseAutoSyncWeekdaysMon17(appSettings.auto_sync_mp_fix_ozon_vat_weekdays),
+                },
+                {
+                    type: 'mp_fix_wb_vat',
+                    enabled: Number(appSettings.auto_sync_mp_fix_wb_vat_enabled || 0) === 1,
+                    time: String(appSettings.auto_sync_mp_fix_wb_vat_time || '07:50').slice(0, 5),
+                    weekdays: parseAutoSyncWeekdaysMon17(appSettings.auto_sync_mp_fix_wb_vat_weekdays),
+                },
+                {
+                    type: 'mp_fix_ym_vat',
+                    enabled: Number(appSettings.auto_sync_mp_fix_ym_vat_enabled || 0) === 1,
+                    time: String(appSettings.auto_sync_mp_fix_ym_vat_time || '08:00').slice(0, 5),
+                    weekdays: parseAutoSyncWeekdaysMon17(appSettings.auto_sync_mp_fix_ym_vat_weekdays),
                 },
                 // legacy `marketplaces` (все три сразу) — не в расписании; остаётся только
                 // для ручного POST auto-sync-run / старых клиентов.
