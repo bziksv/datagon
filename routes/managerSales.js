@@ -27,6 +27,7 @@ const {
     flattenSuppliers,
     splitNonEmptyLines,
 } = require('../lib/managerSalesCalc');
+const { buildManagerSalesInsights } = require('../lib/managerSalesInsights');
 
 const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 500;
@@ -2270,6 +2271,26 @@ module.exports = function managerSalesRouterFactory(db) {
                     steps: scaledPlanSteps(plan.plan_amount, plan.steps),
                 };
             }
+            const totalsObj = {
+                amount_ex_delivery: Number(tot && tot.amount_ex_delivery) || 0,
+                amount_incl_stock: Number(tot && tot.amount_incl_stock) || 0,
+                delivery_to_us: Number(tot && tot.delivery_to_us) || 0,
+                diff: Number(tot && tot.diff) || 0,
+                bonus: Math.round(bonusSum * 100) / 100,
+            };
+            let insights = null;
+            try {
+                insights = await buildManagerSalesInsights(db, {
+                    year: built.year,
+                    month: built.month,
+                    managerId: built.managerId,
+                    totals: totalsObj,
+                    planInfo,
+                    includeLeaderNames: canSeeAll(req),
+                });
+            } catch (insErr) {
+                console.warn('[manager-sales/insights]', insErr && insErr.message ? insErr.message : insErr);
+            }
             res.json({
                 success: true,
                 year: built.year,
@@ -2283,13 +2304,8 @@ module.exports = function managerSalesRouterFactory(db) {
                 can_pick_manager: canSeeAll(req),
                 can_edit_plans: canEditPlans(req),
                 plan: planInfo,
-                totals: {
-                    amount_ex_delivery: Number(tot && tot.amount_ex_delivery) || 0,
-                    amount_incl_stock: Number(tot && tot.amount_incl_stock) || 0,
-                    delivery_to_us: Number(tot && tot.delivery_to_us) || 0,
-                    diff: Number(tot && tot.diff) || 0,
-                    bonus: Math.round(bonusSum * 100) / 100,
-                },
+                totals: totalsObj,
+                insights,
                 rows: mapped,
             });
         } catch (e) {

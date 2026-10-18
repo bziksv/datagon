@@ -42,6 +42,7 @@
   };
 
   var FILTERS_KEY = "datagon_manager_sales_filters_collapsed_v1";
+  var ANALYTICS_COLLAPSE_KEY = "dg.manager-sales.analytics-card.collapsed.v1";
   var TABLE_COLLAPSE_KEY = "dg.manager-sales.table-card.collapsed.v1";
   var COLS_KEY = "dg.msl.colvisible.v2";
   var WIDTHS_KEY = "dg.msl.colwidths.v1";
@@ -811,19 +812,27 @@
   }
 
   function syncTableOwnerTitle() {
-    var title = el("dg-msl-table-card-title");
-    if (!title) return;
-    var base;
+    var ownerLabel;
     if (!state.can_pick_manager) {
-      base = "Выгрузка: " + (state.actor_full_name || "моя таблица");
+      ownerLabel = state.actor_full_name || "моя таблица";
     } else {
       var mid = state.manager_user_id;
-      if (!mid || mid === "all") base = "Выгрузка: все менеджеры";
-      else base = "Выгрузка: " + managerLabelById(mid);
+      if (!mid || mid === "all") ownerLabel = "все менеджеры";
+      else ownerLabel = managerLabelById(mid);
     }
-    if (state.archived === "1") base += " · архив";
-    else if (state.archived === "all") base += " · все строки";
-    title.textContent = base;
+    var suffix = "";
+    if (state.archived === "1") suffix = " · архив";
+    else if (state.archived === "all") suffix = " · все строки";
+
+    var analyticsTitle = el("dg-msl-analytics-card-title");
+    if (analyticsTitle) {
+      analyticsTitle.textContent = "Аналитика и итоги: " + ownerLabel + suffix;
+    }
+
+    var title = el("dg-msl-table-card-title");
+    if (title) {
+      title.textContent = "Лист продаж: " + ownerLabel + suffix;
+    }
   }
 
   function syncArchiveViewBtn() {
@@ -844,42 +853,417 @@
     return commitFilters();
   }
 
+  var OPS_PANEL_COLLAPSED_KEY = "dg.manager_sales.ops_insights_collapsed.v1";
+
+  function isOpsPanelCollapsed() {
+    try {
+      return localStorage.getItem(OPS_PANEL_COLLAPSED_KEY + ":" + currentUserKey()) === "1";
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function setOpsPanelCollapsed(flag) {
+    try {
+      localStorage.setItem(OPS_PANEL_COLLAPSED_KEY + ":" + currentUserKey(), flag ? "1" : "0");
+    } catch (e) {}
+  }
+
+  function formatBenchVal(b) {
+    if (!b || b.value == null) return "—";
+    if (b.unit === "₽") return moneyInt(b.value);
+    if (b.unit === "%") return num(b.value, 2) + "%";
+    return num(b.value, 1);
+  }
+
+  function formatBenchRef(val, unit) {
+    if (val == null) return "—";
+    if (unit === "₽") return moneyInt(val);
+    if (unit === "%") return num(val, 2) + "%";
+    return num(val, 1);
+  }
+
+  function formatBenchDelta(delta, unit, lowerIsBetter) {
+    if (!delta || delta.abs == null) return "";
+    var abs = Number(delta.abs);
+    if (!Number.isFinite(abs) || abs === 0) return '<span class="text-muted">0</span>';
+    var isGood = lowerIsBetter ? abs < 0 : abs > 0;
+    var cls = isGood ? "dg-msl-dyn-up" : "dg-msl-dyn-down";
+    var sign = abs > 0 ? "+" : "";
+    var txt;
+    if (unit === "%") {
+      txt = sign + num(abs, 2) + " п.п.";
+    } else if (unit === "₽") {
+      txt = delta.pct != null ? sign + num(delta.pct, 1) + "%" : sign + moneyInt(abs);
+    } else {
+      txt = sign + num(abs, 1);
+    }
+    return '<span class="' + cls + '">' + esc(txt) + "</span>";
+  }
+
+  function planSourceBadge(src) {
+    if (src === "month" || src === "manager_month") return "индивидуальный план месяца";
+    if (src === "manager_year") return "индивидуальный план года";
+    if (src === "year_base" || src === "year") return "базовый план года";
+    return "базовый план";
+  }
+
+  function shortMillions(val) {
+    var n = Number(val);
+    if (!Number.isFinite(n)) return "—";
+    if (n === 0) return "0 ₽";
+    if (n >= 1000000) return num(n / 1000000, 1) + " млн";
+    if (n >= 1000) return Math.round(n / 1000) + " тыс.";
+    return String(n);
+  }
+
   function renderTotals() {
     var t = state.totals || {};
+    var p = state.plan || null;
+    var ins = state.insights || null;
+    var fk = (ins && ins.filter_kpis) || {};
     var node = el("dg-msl-totals");
     if (!node) return;
-    var html =
-      "Итоги по фильтру: без доставки " +
-      money(t.amount_ex_delivery) +
-      "; с запасом " +
-      money(t.amount_incl_stock) +
-      "; доставка " +
-      money(t.delivery_to_us) +
-      "; разница " +
-      money(t.diff) +
-      "; премия " +
-      moneyInt(t.bonus);
-    var p = state.plan;
-    if (p && p.plan_amount) {
-      html +=
-        ". План " +
-        money(p.plan_amount) +
-        (p.source === "month"
-          ? " (мес.)"
-          : p.source === "manager_year"
-            ? " (инд. год)"
-            : p.source === "year_base"
-              ? " (план года)"
-              : " (базовый)") +
-        "; факт месяца " +
-        money(p.month_total) +
-        "; % МП. " +
-        num(p.pct_mp);
-      if (p.source === "month" && p.note) html += " — " + esc(p.note);
+
+    var exDel = t.amount_ex_delivery != null ? t.amount_ex_delivery : 0;
+    var inclStock = t.amount_incl_stock != null ? t.amount_incl_stock : 0;
+    var deliv = t.delivery_to_us != null ? t.delivery_to_us : 0;
+    var diff = t.diff != null ? t.diff : 0;
+    var bonus = t.bonus != null ? t.bonus : 0;
+    var pctR = fk.pct_r_avg != null ? fk.pct_r_avg : exDel > 0 ? (diff / exDel) * 100 : null;
+    var stockShare = fk.stock_share_pct != null ? fk.stock_share_pct : exDel > 0 ? (inclStock / exDel) * 100 : null;
+    var delivShare = fk.delivery_share_pct != null ? fk.delivery_share_pct : exDel > 0 ? (deliv / exDel) * 100 : null;
+
+    var ordersSub = "";
+    if (fk.paid_orders_count != null && fk.paid_orders_count > 0) {
+      ordersSub =
+        "Оплаченных счетов: <strong>" +
+        esc(String(fk.paid_orders_count)) +
+        "</strong> · ср. чек <strong>" +
+        esc(moneyInt(fk.avg_check)) +
+        "</strong>";
     } else {
-      html += ". % МП. считается по сумме месяца даты оплаты и плану";
+      ordersSub = "Итого по выбранному фильтру";
     }
-    node.innerHTML = html;
+
+    var bonusSub = "";
+    if (fk.unshipped_count > 0 && fk.unshipped_bonus > 0) {
+      bonusSub =
+        "Отгружено: <strong>" +
+        esc(moneyInt(fk.bonus_past_paid || 0)) +
+        "</strong> · ждёт отгрузки: <strong>" +
+        esc(moneyInt(fk.unshipped_bonus)) +
+        "</strong> (" +
+        esc(String(fk.unshipped_count)) +
+        " сч.)";
+    } else if (fk.bonus_past_paid != null && fk.bonus_past_paid > 0) {
+      bonusSub = "По отгруженным заказам: <strong>" + esc(moneyInt(fk.bonus_past_paid)) + "</strong>";
+    } else {
+      bonusSub = "Начислено со всех оплат периода";
+    }
+
+    // 1. Верхняя сводная лента с точными названиями колонок таблицы
+    var totalsStripHtml =
+      '<div class="dg-msl-totals-strip">' +
+      '<div class="dg-msl-tot-cell">' +
+      '<div><div class="dg-msl-tot-head"><span class="dg-msl-tot-title">Сумма оплаты без доставки</span>' +
+      (fk.conversion_pct != null
+        ? '<span class="dg-msl-tot-tag is-blue">конверсия ' + esc(num(fk.conversion_pct, 1)) + "%</span>"
+        : "") +
+      '</div><div class="dg-msl-tot-val">' +
+      esc(money(exDel)) +
+      "</div></div>" +
+      '<div class="dg-msl-tot-sub">' +
+      ordersSub +
+      "</div></div>" +
+      '<div class="dg-msl-tot-cell">' +
+      '<div><div class="dg-msl-tot-head"><span class="dg-msl-tot-title">Сумма оплаты (вкл. запасы)</span>' +
+      (stockShare != null
+        ? '<span class="dg-msl-tot-tag">' + esc(num(stockShare, 1)) + "%</span>"
+        : "") +
+      '</div><div class="dg-msl-tot-val">' +
+      esc(money(inclStock)) +
+      "</div></div>" +
+      '<div class="dg-msl-tot-sub">Сумма счетов поставщиков и склада</div></div>' +
+      '<div class="dg-msl-tot-cell">' +
+      '<div><div class="dg-msl-tot-head"><span class="dg-msl-tot-title">Доставка до нас</span>' +
+      (delivShare != null
+        ? '<span class="dg-msl-tot-tag">' + esc(num(delivShare, 2)) + "%</span>"
+        : "") +
+      '</div><div class="dg-msl-tot-val">' +
+      esc(money(deliv)) +
+      "</div></div>" +
+      '<div class="dg-msl-tot-sub">Расходы на доставку от поставщиков</div></div>' +
+      '<div class="dg-msl-tot-cell">' +
+      '<div><div class="dg-msl-tot-head"><span class="dg-msl-tot-title">Разница</span>' +
+      (pctR != null
+        ? '<span class="dg-msl-tot-tag is-green">% Р. ' + esc(num(pctR, 1)) + "%</span>"
+        : "") +
+      '</div><div class="dg-msl-tot-val">' +
+      esc(money(diff)) +
+      "</div></div>" +
+      '<div class="dg-msl-tot-sub">После вычета НДС, налога 16% и доставки</div></div>' +
+      '<div class="dg-msl-tot-cell is-accent-bonus">' +
+      '<div><div class="dg-msl-tot-head"><span class="dg-msl-tot-title">Премия</span>' +
+      (p && p.pct_mp != null
+        ? '<span class="dg-msl-tot-tag is-green">% МП. ' + esc(num(p.pct_mp, 0)) + "%</span>"
+        : "") +
+      '</div><div class="dg-msl-tot-val">' +
+      esc(moneyInt(bonus)) +
+      "</div></div>" +
+      '<div class="dg-msl-tot-sub">' +
+      bonusSub +
+      "</div></div>" +
+      "</div>";
+
+    // 2. Полоса выполнения плана и шкалы ступеней % МП.
+    var planStripHtml = "";
+    var pl = ins && ins.plan_ladder;
+    if (p && p.plan_amount) {
+      var compPct =
+        pl && pl.completion_pct != null
+          ? pl.completion_pct
+          : p.plan_amount > 0
+            ? Math.round((Number(p.month_total || 0) / Number(p.plan_amount)) * 1000) / 10
+            : 0;
+      var nextGoalHtml = "";
+      if (pl && pl.next_step) {
+        var ns = pl.next_step;
+        nextGoalHtml =
+          '<div class="dg-msl-plan-next">' +
+          "До ставки <strong>" +
+          esc(num(ns.target_pct_mp, 0)) +
+          "% МП.</strong> (от " +
+          esc(moneyInt(ns.target_amount)) +
+          ") осталось <strong>" +
+          esc(moneyInt(ns.remaining_amount)) +
+          "</strong>" +
+          (ns.orders_needed_by_avg_check
+            ? " (~" + esc(String(ns.orders_needed_by_avg_check)) + " сч.)"
+            : "") +
+          " · премия вырастет на <strong>+" +
+          esc(moneyInt(ns.bonus_gain_on_current_diff)) +
+          "</strong> (прогноз ~" +
+          esc(moneyInt(ns.projected_total_bonus)) +
+          ")</div>";
+      } else if (pl) {
+        nextGoalHtml =
+          '<div class="dg-msl-plan-next is-max">Выполнена максимальная ставка <strong>' +
+          esc(num(pl.current_pct_mp, 0)) +
+          "% МП.</strong></div>";
+      }
+
+      var trackHtml = "";
+      var barW = Math.max(0, Math.min(100, Number(compPct) || 0));
+      var progressHtml =
+        '<div class="dg-msl-plan-progress-bar">' +
+        '<div class="dg-msl-plan-progress-fill' +
+        (barW >= 100 ? " is-complete" : "") +
+        '" style="width:' +
+        barW +
+        '%"></div></div>';
+      if (pl && Array.isArray(pl.steps) && pl.steps.length) {
+        trackHtml =
+          progressHtml +
+          '<div class="dg-msl-step-ticks">' +
+          pl.steps
+            .map(function (st) {
+              var cls = "dg-msl-step-tick";
+              if (st.current) cls += " is-current";
+              else if (st.reached) cls += " is-reached";
+              var thrTxt =
+                st.min_amount === 0
+                  ? "до " + shortMillions(st.max_amount)
+                  : "от " + shortMillions(st.min_amount);
+              return (
+                '<span class="' +
+                cls +
+                '">' +
+                "<span>" +
+                esc(num(st.pct_mp, 0)) +
+                "% МП.</span>" +
+                '<span class="dg-msl-step-tick-thr">(' +
+                esc(thrTxt) +
+                ")</span></span>"
+              );
+            })
+            .join("") +
+          "</div>";
+      } else {
+        trackHtml = progressHtml;
+      }
+
+      planStripHtml =
+        '<div class="dg-msl-plan-strip">' +
+        '<div class="dg-msl-plan-top">' +
+        '<div class="dg-msl-plan-summary">' +
+        "<span>План месяца: <strong>" +
+        esc(money(p.month_total)) +
+        "</strong> из <strong>" +
+        esc(moneyInt(p.plan_amount)) +
+        "</strong></span>" +
+        '<span class="dg-msl-tot-tag is-blue">' +
+        esc(num(compPct, 1)) +
+        "%</span>" +
+        '<span class="text-muted">(' +
+        esc(p.note ? p.note : planSourceBadge(p.source)) +
+        ")</span>" +
+        "</div>" +
+        nextGoalHtml +
+        "</div>" +
+        trackHtml +
+        "</div>";
+    }
+
+    // 3. Табличное сравнение показателей Операционного листа и список рекомендаций
+    var opsSectionHtml = "";
+    var bench = ins && ins.ops_benchmarks;
+    var recs = (ins && ins.recommendations) || [];
+    if (bench) {
+      var collapsed = isOpsPanelCollapsed();
+      var benchKeys = ["apps_per_sale", "avg_check", "company_pct", "profit_pct"];
+      var prevPeriodColTitle = ins.month
+        ? esc((MONTH_NAMES[Number(ins.month)] || "период") + " " + String(ins.year - 1))
+        : esc(String(ins.year - 1) + " г.");
+
+      var tableRowsHtml = benchKeys
+        .map(function (k) {
+          var b = bench[k];
+          if (!b || b.value == null) return "";
+          var rankCls =
+            b.rank === 1
+              ? "dg-msl-rank-chip is-top1"
+              : b.rank === 2
+                ? "dg-msl-rank-chip is-top2"
+                : "dg-msl-rank-chip";
+          var rankTxt =
+            b.rank != null && b.peers_count
+              ? b.rank + " место из " + b.peers_count
+              : "—";
+          var leaderSuffix =
+            ins.include_leader_names && b.leader_name && !b.leader_is_me
+              ? " (" + esc(b.leader_name) + ")"
+              : "";
+          var peerSub =
+            b.team_avg != null
+              ? '<span class="dg-msl-ops-sub">ср. ' +
+                esc(formatBenchRef(b.team_avg, b.unit)) +
+                " · лидер " +
+                esc(formatBenchRef(b.leader_value, b.unit)) +
+                leaderSuffix +
+                "</span>"
+              : "";
+          var valSub =
+            k === "apps_per_sale" && fk.conversion_pct != null
+              ? '<span class="dg-msl-ops-sub">конверсия ' + esc(num(fk.conversion_pct, 1)) + "%</span>"
+              : "";
+          var yearAvgCell =
+            b.own_year_avg != null
+              ? esc(formatBenchRef(b.own_year_avg, b.unit)) +
+                '<span class="dg-msl-ops-sub">' +
+                formatBenchDelta(b.vs_year_avg_delta, b.unit, b.lower_is_better) +
+                "</span>"
+              : "—";
+          var pyVal = b.prev_year_same_period != null ? b.prev_year_same_period : b.prev_year_avg;
+          var prevYearCell =
+            pyVal != null
+              ? esc(formatBenchRef(pyVal, b.unit)) +
+                '<span class="dg-msl-ops-sub">' +
+                formatBenchDelta(b.yoy_delta, b.unit, b.lower_is_better) +
+                "</span>"
+              : "—";
+
+          return (
+            "<tr>" +
+            '<td class="dg-msl-ops-metric-name">' +
+            esc(b.label) +
+            "</td>" +
+            '<td class="dg-msl-ops-metric-val">' +
+            esc(formatBenchVal(b)) +
+            valSub +
+            "</td>" +
+            "<td>" +
+            '<span class="' +
+            rankCls +
+            '">' +
+            esc(rankTxt) +
+            "</span>" +
+            peerSub +
+            "</td>" +
+            "<td>" +
+            yearAvgCell +
+            "</td>" +
+            "<td>" +
+            prevYearCell +
+            "</td>" +
+            "</tr>"
+          );
+        })
+        .filter(Boolean)
+        .join("");
+
+      var recsListHtml = recs
+        .map(function (r) {
+          var tone = r.tone === "success" || r.tone === "warning" ? r.tone : "info";
+          return (
+            '<li class="dg-msl-rec-row">' +
+            '<div class="dg-msl-rec-row-title">' +
+            '<span class="dg-msl-rec-dot is-' +
+            tone +
+            '"></span>' +
+            "<span>" +
+            esc(r.title || "") +
+            "</span>" +
+            "</div>" +
+            "<div>" +
+            esc(r.text || "") +
+            "</div>" +
+            "</li>"
+          );
+        })
+        .join("");
+
+      opsSectionHtml =
+        '<div class="dg-msl-ops-content" id="dg-msl-ops-panel-body">' +
+        '<div class="dg-msl-ops-col-metrics">' +
+        '<table class="dg-msl-ops-table">' +
+        "<thead><tr>" +
+        "<th>Показатель Оперлиста</th>" +
+        "<th>Значение</th>" +
+        "<th>Место в отделе</th>" +
+        "<th>Ср. за " +
+        esc(String(ins.year)) +
+        " г.</th>" +
+        "<th class=\"text-capitalize\">" +
+        prevPeriodColTitle +
+        "</th>" +
+        "</tr></thead>" +
+        "<tbody>" +
+        tableRowsHtml +
+        "</tbody></table></div>" +
+        '<div class="dg-msl-ops-col-recs">' +
+        '<ul class="dg-msl-rec-list">' +
+        recsListHtml +
+        "</ul></div></div>";
+    }
+
+    var periodBadge = el("dg-msl-analytics-period-badge");
+    if (periodBadge) {
+      if (ins && ins.period_label) {
+        periodBadge.textContent = ins.period_label;
+        periodBadge.classList.remove("d-none");
+      } else {
+        periodBadge.textContent = "";
+        periodBadge.classList.add("d-none");
+      }
+    }
+
+    node.innerHTML =
+      '<div class="dg-msl-summary-panel">' +
+      totalsStripHtml +
+      planStripHtml +
+      opsSectionHtml +
+      "</div>";
   }
 
   function renderColumnControls() {
@@ -1677,6 +2061,7 @@
         state.total = data.total || 0;
         state.totals = data.totals || null;
         state.plan = data.plan || null;
+        state.insights = data.insights || null;
         state.can_write = !!data.can_write;
         state.can_pick_manager = !!data.can_pick_manager;
         state.can_edit_plans = !!data.can_edit_plans;
@@ -3028,6 +3413,28 @@
     apply();
   }
 
+  function analyticsCardCollapse() {
+    var body = el("dg-msl-analytics-body");
+    var btn = el("dg-msl-analytics-toggle");
+    if (!body || !btn) return;
+    function apply() {
+      var c = false;
+      try { c = localStorage.getItem(ANALYTICS_COLLAPSE_KEY) === "1"; } catch (e) {}
+      body.style.display = c ? "none" : "";
+      btn.textContent = c ? "Развернуть" : "Свернуть";
+      if (typeof scheduleMslFloatingHeaderRebase === "function") {
+        scheduleMslFloatingHeaderRebase();
+      }
+    }
+    btn.addEventListener("click", function () {
+      var c = false;
+      try { c = localStorage.getItem(ANALYTICS_COLLAPSE_KEY) === "1"; } catch (e) {}
+      try { localStorage.setItem(ANALYTICS_COLLAPSE_KEY, c ? "0" : "1"); } catch (e2) {}
+      apply();
+    });
+    apply();
+  }
+
   function tableCardCollapse() {
     var body = el("dg-msl-table-body");
     var btn = el("dg-msl-table-toggle");
@@ -3037,6 +3444,9 @@
       try { c = localStorage.getItem(TABLE_COLLAPSE_KEY) === "1"; } catch (e) {}
       body.style.display = c ? "none" : "";
       btn.textContent = c ? "Развернуть" : "Свернуть";
+      if (typeof scheduleMslFloatingHeaderRebase === "function") {
+        scheduleMslFloatingHeaderRebase();
+      }
     }
     btn.addEventListener("click", function () {
       var c = false;
@@ -3094,6 +3504,7 @@
   if (!fromUrl) state.pending.month = cm;
 
   filtersCollapse();
+  analyticsCardCollapse();
   tableCardCollapse();
   columnControls();
   bindHeaderSearchMirror();
