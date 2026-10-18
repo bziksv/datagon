@@ -1668,11 +1668,17 @@
         return Number.isFinite(x) ? x.toLocaleString("ru-RU") : "0";
       }
       function formatMoneyText(value) {
-        var raw = String(value || "").trim();
+        var raw = String(value == null ? "" : value).trim();
         if (!raw) return "";
         var parsed = Number(raw.replace(/[^\d.,-]/g, "").replace(",", "."));
         if (!Number.isFinite(parsed)) return raw;
-        return parsed.toLocaleString("ru-RU") + " ₽";
+        var hasCents = Math.abs(parsed - Math.round(parsed)) > 1e-6;
+        return (
+          parsed.toLocaleString("ru-RU", {
+            minimumFractionDigits: hasCents ? 2 : 0,
+            maximumFractionDigits: 2
+          }) + " ₽"
+        );
       }
       /** Ссылка на карточку в веб-интерфейсе МойСклад (по uuid из выгрузки). */
       function msOpenInWebHref(uuid, typeMs) {

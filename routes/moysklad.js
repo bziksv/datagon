@@ -152,7 +152,12 @@ function getAttrValue(item, attrsMap, attrName) {
 function formatMoneyRu(raw) {
     const n = Number(raw || 0);
     if (!Number.isFinite(n) || n === 0) return '';
-    return `${new Intl.NumberFormat('ru-RU').format(Math.round(n))} ₽`;
+    const rounded = Math.round(n * 100) / 100;
+    const hasCents = Math.abs(rounded - Math.round(rounded)) >= 0.005;
+    return `${new Intl.NumberFormat('ru-RU', {
+        minimumFractionDigits: hasCents ? 2 : 0,
+        maximumFractionDigits: 2,
+    }).format(rounded)} ₽`;
 }
 
 function formatMoneyFixed2(raw) {
@@ -818,6 +823,31 @@ async function ensureMsMedmarketProductCodeColumn(db) {
     msMedmarketColumnReady = true;
 }
 
+let msStockCostColumnsReady = false;
+/**
+ * Точная себестоимость единицы (`stock_cost` из `report/stock/all.price / 100`, с fallback на закупочную карточки)
+ * и доступный остаток (`stock_quantity` = `report/stock/all.quantity` = `stock - reserve + inTransit`) для 1-в-1
+ * совпадения «Сумма по товарам» с отчётом «Остатки» в МойСклад (`typeStock=POSITIVE_ONLY&typeQuantity=POSITIVE_ONLY`).
+ */
+async function ensureMsStockCostColumns(db) {
+    if (msStockCostColumnsReady) return;
+    const [rows] = await db.query(`
+        SELECT COLUMN_NAME
+        FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'ms_export'
+          AND COLUMN_NAME IN ('stock_cost', 'stock_quantity')
+    `);
+    const existing = new Set((rows || []).map((r) => String(r.COLUMN_NAME || '').toLowerCase()));
+    if (!existing.has('stock_cost')) {
+        await db.query('ALTER TABLE ms_export ADD COLUMN stock_cost DECIMAL(18,6) NULL DEFAULT NULL');
+    }
+    if (!existing.has('stock_quantity')) {
+        await db.query('ALTER TABLE ms_export ADD COLUMN stock_quantity DECIMAL(15,3) NULL DEFAULT NULL');
+    }
+    msStockCostColumnsReady = true;
+}
+
 function buildExportFilters(query, whereSql, whereParams) {
     const {
         search = '',
@@ -1155,6 +1185,7 @@ async function syncMsExport(db, config, settings = {}) {
     await ensureMsArchivedColumn(db);
     await ensureMsMinStockColumn(db);
     await ensureMsMedmarketProductCodeColumn(db);
+    await ensureMsStockCostColumns(db);
     pruneMsSyncLogOldRows(db).catch(() => {});
     addLog('Старт синхронизации');
     addLog('Этап 1/6: метаданные атрибутов');
@@ -1255,7 +1286,12 @@ async function syncMsExport(db, config, settings = {}) {
             const cp = Number(row.price) / 100;
             if (Number.isFinite(cp)) costPrice = cp;
         }
-        stockMap.set(code, { stock, stockDays, salePrice, inTransit, reserve, costPrice });
+        let quantity = null;
+        if (row.quantity != null && row.quantity !== '') {
+            const qn = Number(row.quantity);
+            if (Number.isFinite(qn)) quantity = qn;
+        }
+        stockMap.set(code, { stock, stockDays, salePrice, inTransit, reserve, costPrice, quantity });
     }
     addLog(`Остатков загружено: ${stockMap.size}`);
 
@@ -1285,12 +1321,18 @@ async function syncMsExport(db, config, settings = {}) {
     addLog('Этап 5/6: расчет полей и подготовка строк');
     jobState.message = `Подготовка строк: 0/${jobState.total}`;
 
-    // Карта закупочных цен по коду (только для товаров/компонентов).
+    // Карта закупочных цен по коду (только для товаров/компонентов):
+    // приоритет — себестоимость из отчёта остатков МС (`report/stock/all.price`), иначе `buyPrice` из карточки.
     const buyPriceByCode = new Map();
     for (const prod of products) {
         const prodCode = normalizeCode(prod.code);
         if (!prodCode) continue;
-        const buyNum = Number(prod?.buyPrice?.value || 0) / 100;
+        const sm = stockMap.get(prodCode);
+        const stockCostNum = sm && sm.costPrice != null && Number.isFinite(sm.costPrice) && sm.costPrice > 0
+            ? sm.costPrice
+            : null;
+        const cardBuyNum = Number(prod?.buyPrice?.value || 0) / 100;
+        const buyNum = stockCostNum != null ? stockCostNum : (Number.isFinite(cardBuyNum) && cardBuyNum > 0 ? cardBuyNum : 0);
         if (Number.isFinite(buyNum) && buyNum > 0) {
             buyPriceByCode.set(prodCode, buyNum);
         }
@@ -1327,10 +1369,28 @@ async function syncMsExport(db, config, settings = {}) {
         const stockPosValue = String(getAttrValue(item, attrsMap, 'Складская позиция') || '').toLowerCase();
         const hasStockPosition = stockPosValue === 'true' || stockPosValue === 'да' || stockPosValue === '1';
 
-        let stock = stockMap.get(code)?.stock || 0;
-        let stockDays = stockMap.get(code)?.stockDays ?? '';
-        let salePrice = stockMap.get(code)?.salePrice || '';
-        let buyPrice = item?.buyPrice?.value ? formatMoneyRu(Number(item.buyPrice.value) / 100) : '';
+        const smRow = stockMap.get(code);
+        let stock = smRow?.stock || 0;
+        let stockQuantity = smRow && smRow.quantity != null && Number.isFinite(smRow.quantity)
+            ? smRow.quantity
+            : stock - (smRow && Number.isFinite(smRow.reserve) ? smRow.reserve : 0) + (smRow && Number.isFinite(smRow.inTransit) ? smRow.inTransit : 0);
+        let stockDays = smRow?.stockDays ?? '';
+        let salePrice = smRow?.salePrice || '';
+        const cardBuyNum = Number(item?.buyPrice?.value || 0) / 100;
+        let stockCostValue =
+            smRow && smRow.stock > 0 && smRow.costPrice != null && Number.isFinite(smRow.costPrice)
+                ? smRow.costPrice
+                : smRow && smRow.costPrice != null && Number.isFinite(smRow.costPrice) && smRow.costPrice > 0
+                  ? smRow.costPrice
+                  : Number.isFinite(cardBuyNum) && cardBuyNum > 0
+                    ? cardBuyNum
+                    : null;
+        let buyPrice =
+            stockCostValue != null && stockCostValue > 0
+                ? formatMoneyRu(stockCostValue)
+                : Number.isFinite(cardBuyNum) && cardBuyNum > 0 && !(smRow && smRow.stock > 0)
+                  ? formatMoneyRu(cardBuyNum)
+                  : '';
         if (!salePrice) salePrice = extractSalePriceFromItem(item);
 
         if (type === 'Комплект' && bundleComponents.has(code)) {
@@ -1353,8 +1413,10 @@ async function syncMsExport(db, config, settings = {}) {
                 }
             }
             stock = Number.isFinite(minStock) ? Math.max(0, minStock) : 0;
+            stockQuantity = stock;
             stockDays = '';
             if (hasBundleBuyParts && bundleBuyTotal > 0) {
+                stockCostValue = bundleBuyTotal;
                 buyPrice = formatMoneyFixed2(bundleBuyTotal);
             }
             }
@@ -1398,8 +1460,10 @@ async function syncMsExport(db, config, settings = {}) {
             String(getAttrValue(item, attrsMap, '!-Вес товара с учетом коробки/пакета') || ''),
             salePrice,
             buyPrice,
+            stockCostValue,
             minStockValue,
             stock,
+            stockQuantity,
             String(stockDays),
             toBinaryFlag(item.archived),
             String(getAttrValue(item, attrsMap, 'Код товара для медмаркета') || ''),
@@ -1444,7 +1508,7 @@ async function syncMsExport(db, config, settings = {}) {
             INSERT INTO ms_export (
                 code, name, manager, content_manager, uuid, type, stock_position, no_longer_cooperation,
                 price_comment, vat, vat_on_product, supplier, supplier2, automation_price,
-                packing_standard, packing_own_box, packing_weight, sale_price, buy_price, min_stock, stock, stock_days, is_archived, medmarket_product_code, updated_label
+                packing_standard, packing_own_box, packing_weight, sale_price, buy_price, stock_cost, min_stock, stock, stock_quantity, stock_days, is_archived, medmarket_product_code, updated_label
             ) VALUES ?
         `;
         let insertedRows = 0;
@@ -1536,6 +1600,7 @@ function createMoyskladRouter(db, settings, config) {
     moyskladSyncLogDb = db;
     ensureMsArchivedColumn(db).catch(() => {});
     ensureMsMinStockColumn(db).catch(() => {});
+    ensureMsStockCostColumns(db).catch(() => {});
     ensureMsEntityDetailsTable(db).catch(() => {});
     async function triggerMsSyncNow() {
         if (jobState.active) return { started: false, reason: 'already_running' };
@@ -1594,21 +1659,36 @@ function createMoyskladRouter(db, settings, config) {
 
     async function recalcBundleStocksFromCache(onProgress) {
         await ensureMsEntityDetailsTable(db);
+        await ensureMsStockCostColumns(db);
 
         const token = getToken(config);
         const headers = token ? { Authorization: `Bearer ${token}` } : null;
         const assortmentCodeCache = new Map();
 
         const [stockRows] = await db.query(
-            `SELECT UPPER(TRIM(COALESCE(code, ''))) AS code_key, COALESCE(stock, 0) AS stock
+            `SELECT UPPER(TRIM(COALESCE(code, ''))) AS code_key,
+                    COALESCE(stock, 0) AS stock,
+                    stock_cost,
+                    buy_price
              FROM ms_export
              WHERE COALESCE(code, '') <> ''`
         );
         const stockByCode = new Map();
+        const costByCode = new Map();
         for (const row of stockRows || []) {
             const codeKey = String(row.code_key || '').trim();
             if (!codeKey) continue;
             stockByCode.set(codeKey, Number(row.stock || 0));
+            let cVal = row.stock_cost != null ? Number(row.stock_cost) : NaN;
+            if (!Number.isFinite(cVal) || cVal <= 0) {
+                const rawBp = String(row.buy_price || '')
+                    .replace(/[^\d.,-]/g, '')
+                    .replace(',', '.');
+                cVal = rawBp ? Number(rawBp) : NaN;
+            }
+            if (Number.isFinite(cVal) && cVal > 0) {
+                costByCode.set(codeKey, cVal);
+            }
         }
 
         const [bundleRows] = await db.query(
@@ -1648,6 +1728,8 @@ function createMoyskladRouter(db, settings, config) {
                 let minStock = Number.POSITIVE_INFINITY;
                 let allResolved = true;
                 let resolvedCount = 0;
+                let bundleBuyTotal = 0;
+                let hasBundleBuyParts = false;
 
                 for (const comp of compRows) {
                     const qty = Math.max(1, Number(comp?.quantity || 1));
@@ -1665,6 +1747,11 @@ function createMoyskladRouter(db, settings, config) {
                     const bundlesPossible = Math.floor(compStock / qty);
                     minStock = Math.min(minStock, bundlesPossible);
                     resolvedCount += 1;
+                    const compCost = Number(costByCode.get(compCode) || 0);
+                    if (Number.isFinite(compCost) && compCost > 0) {
+                        bundleBuyTotal += compCost * qty;
+                        hasBundleBuyParts = true;
+                    }
                 }
 
                 if (!allResolved || resolvedCount === 0 || !Number.isFinite(minStock)) {
@@ -1673,11 +1760,16 @@ function createMoyskladRouter(db, settings, config) {
                 }
 
                 const nextStock = Math.max(0, minStock);
+                const nextStockCost = hasBundleBuyParts && bundleBuyTotal > 0 ? bundleBuyTotal : null;
+                const nextBuyPrice = nextStockCost != null ? formatMoneyFixed2(nextStockCost) : null;
                 const [r] = await db.query(
                     `UPDATE ms_export
-                     SET stock = ?
+                     SET stock = ?,
+                         stock_quantity = ?,
+                         stock_cost = COALESCE(?, stock_cost),
+                         buy_price = COALESCE(?, buy_price)
                      WHERE code = ? AND type = 'Комплект'`,
-                    [nextStock, bundleCode]
+                    [nextStock, nextStock, nextStockCost, nextBuyPrice, bundleCode]
                 );
                 if (Number(r?.affectedRows || 0) > 0) {
                     updated += 1;
@@ -1941,6 +2033,7 @@ function createMoyskladRouter(db, settings, config) {
             if (cached && (Date.now() - cached.ts) < MS_STATS_CACHE_TTL_MS) {
                 return res.json(cached.data);
             }
+            await ensureMsStockCostColumns(db);
 
             const [[tot]] = await db.query(`
                 SELECT COUNT(*) AS total
@@ -1977,15 +2070,29 @@ function createMoyskladRouter(db, settings, config) {
                     '.'
                 ) AS DECIMAL(15,2)
             )`;
-            const lineVal = `CASE
-                WHEN buy_price IS NULL OR buy_price = '' THEN 0
-                ELSE stock * COALESCE(${buyToDec}, 0)
+            const unitCostExpr = `COALESCE(
+                stock_cost,
+                CASE WHEN buy_price IS NULL OR buy_price = '' THEN 0 ELSE COALESCE(${buyToDec}, 0) END,
+                0
+            )`;
+            const prodValExpr = `CASE
+                WHEN type = 'Товар'
+                     AND COALESCE(stock, 0) > 0
+                     AND COALESCE(stock_quantity, stock, 0) > 0
+                THEN stock * (${unitCostExpr})
+                ELSE 0
+            END`;
+            const bundleValExpr = `CASE
+                WHEN type = 'Комплект'
+                     AND COALESCE(stock, 0) > 0
+                THEN stock * (${unitCostExpr})
+                ELSE 0
             END`;
             const [[invSplit]] = await db.query(
                 `
                 SELECT
-                    COALESCE(SUM(CASE WHEN type = 'Товар' THEN ${lineVal} ELSE 0 END), 0) AS inventory_value_products,
-                    COALESCE(SUM(CASE WHEN type = 'Комплект' THEN ${lineVal} ELSE 0 END), 0) AS inventory_value_bundles
+                    ROUND(COALESCE(SUM(${prodValExpr}), 0), 2) AS inventory_value_products,
+                    ROUND(COALESCE(SUM(${bundleValExpr}), 0), 2) AS inventory_value_bundles
                 FROM ms_export${goodsWhereSql}
             `,
                 goodsWhereParams
