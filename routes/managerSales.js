@@ -233,6 +233,23 @@ function canEditPlans(req) {
     return EDIT_PLAN_SPECIALTIES.has(actorSpecialtyName(req));
 }
 
+/**
+ * Карточка «Аналитика и итоги»:
+ * - admin, «Полный доступ», «Бухгалтерия» — видят свод «Все менеджеры» и любого выбранного менеджера;
+ * - «Менеджер по продажам» — видит только свою собственную аналитику;
+ * - остальные роли (например «Делопроизводитель») аналитику и итоги не видят.
+ */
+function canViewAnalytics(req, targetManagerId) {
+    if (canEditPlans(req)) return true;
+    if (actorSpecialtyName(req) === SALES_SPECIALTY_NAME.toLowerCase()) {
+        const self = actorId(req);
+        if (!self) return false;
+        if (targetManagerId === undefined) return true;
+        return targetManagerId != null && Number(targetManagerId) === Number(self);
+    }
+    return false;
+}
+
 function actorId(req) {
     const id = req.datagonActor && req.datagonActor.id;
     const n = Number(id);
@@ -1738,6 +1755,8 @@ module.exports = function managerSalesRouterFactory(db) {
                 invoice_marks: INVOICE_MARKS,
                 can_write: canWrite(req),
                 can_pick_manager: seeAll,
+                can_edit_plans: canEditPlans(req),
+                can_view_analytics: canViewAnalytics(req),
                 actor_user_id: selfId,
                 actor_full_name: actor.full_name || actor.username || '',
                 actor_username: actor.username || '',
@@ -2271,25 +2290,30 @@ module.exports = function managerSalesRouterFactory(db) {
                     steps: scaledPlanSteps(plan.plan_amount, plan.steps),
                 };
             }
-            const totalsObj = {
-                amount_ex_delivery: Number(tot && tot.amount_ex_delivery) || 0,
-                amount_incl_stock: Number(tot && tot.amount_incl_stock) || 0,
-                delivery_to_us: Number(tot && tot.delivery_to_us) || 0,
-                diff: Number(tot && tot.diff) || 0,
-                bonus: Math.round(bonusSum * 100) / 100,
-            };
+            const allowAnalytics = canViewAnalytics(req, built.managerId);
+            const totalsObj = allowAnalytics
+                ? {
+                      amount_ex_delivery: Number(tot && tot.amount_ex_delivery) || 0,
+                      amount_incl_stock: Number(tot && tot.amount_incl_stock) || 0,
+                      delivery_to_us: Number(tot && tot.delivery_to_us) || 0,
+                      diff: Number(tot && tot.diff) || 0,
+                      bonus: Math.round(bonusSum * 100) / 100,
+                  }
+                : null;
             let insights = null;
-            try {
-                insights = await buildManagerSalesInsights(db, {
-                    year: built.year,
-                    month: built.month,
-                    managerId: built.managerId,
-                    totals: totalsObj,
-                    planInfo,
-                    includeLeaderNames: canSeeAll(req),
-                });
-            } catch (insErr) {
-                console.warn('[manager-sales/insights]', insErr && insErr.message ? insErr.message : insErr);
+            if (allowAnalytics) {
+                try {
+                    insights = await buildManagerSalesInsights(db, {
+                        year: built.year,
+                        month: built.month,
+                        managerId: built.managerId,
+                        totals: totalsObj,
+                        planInfo,
+                        includeLeaderNames: canEditPlans(req),
+                    });
+                } catch (insErr) {
+                    console.warn('[manager-sales/insights]', insErr && insErr.message ? insErr.message : insErr);
+                }
             }
             res.json({
                 success: true,
@@ -2303,7 +2327,8 @@ module.exports = function managerSalesRouterFactory(db) {
                 can_write: canWrite(req),
                 can_pick_manager: canSeeAll(req),
                 can_edit_plans: canEditPlans(req),
-                plan: planInfo,
+                can_view_analytics: allowAnalytics,
+                plan: allowAnalytics ? planInfo : null,
                 totals: totalsObj,
                 insights,
                 rows: mapped,

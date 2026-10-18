@@ -2230,7 +2230,7 @@
             </div>
           </div>
 
-          <div class="main-card mb-3 card" id="dg-msl-analytics-card">
+          <div class="main-card mb-3 card d-none" id="dg-msl-analytics-card">
             <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
               <div class="d-flex align-items-center gap-2 flex-wrap">
                 <i class="header-icon pe-7s-graph1 icon-gradient bg-mean-fruit me-2"></i>
@@ -2777,6 +2777,7 @@
     can_write: false,
     can_pick_manager: false,
     can_edit_plans: false,
+    can_view_analytics: false,
     actor_user_id: null,
     actor_full_name: "",
     managers: [],
@@ -3594,12 +3595,19 @@
   }
 
   function renderTotals() {
+    var analyticsCard = el("dg-msl-analytics-card");
+    var node = el("dg-msl-totals");
+    if (!state.can_view_analytics) {
+      if (analyticsCard) analyticsCard.classList.add("d-none");
+      if (node) node.innerHTML = "";
+      return;
+    }
+    if (analyticsCard) analyticsCard.classList.remove("d-none");
+    if (!node) return;
     var t = state.totals || {};
     var p = state.plan || null;
     var ins = state.insights || null;
     var fk = (ins && ins.filter_kpis) || {};
-    var node = el("dg-msl-totals");
-    if (!node) return;
 
     var exDel = t.amount_ex_delivery != null ? t.amount_ex_delivery : 0;
     var inclStock = t.amount_incl_stock != null ? t.amount_incl_stock : 0;
@@ -4741,6 +4749,10 @@
         state.can_write = !!data.can_write;
         state.can_pick_manager = !!data.can_pick_manager;
         state.can_edit_plans = !!data.can_edit_plans;
+        state.can_view_analytics = !!data.can_view_analytics;
+        if (el("dg-msl-analytics-card")) {
+          el("dg-msl-analytics-card").classList.toggle("d-none", !state.can_view_analytics);
+        }
         if (el("dg-msl-add")) el("dg-msl-add").classList.toggle("d-none", !state.can_write);
         if (el("dg-msl-import")) el("dg-msl-import").classList.toggle("d-none", !state.can_write);
         if (el("dg-msl-plans")) {
@@ -4874,6 +4886,11 @@
         state.managers = data.managers || [];
         state.can_write = !!data.can_write;
         state.can_pick_manager = !!data.can_pick_manager;
+        state.can_edit_plans = !!data.can_edit_plans;
+        state.can_view_analytics = !!data.can_view_analytics;
+        if (el("dg-msl-analytics-card")) {
+          el("dg-msl-analytics-card").classList.toggle("d-none", !state.can_view_analytics);
+        }
         state.actor_user_id = data.actor_user_id;
         state.actor_full_name = data.actor_full_name || "";
         if (Array.isArray(data.invoice_marks) && data.invoice_marks.length) {
