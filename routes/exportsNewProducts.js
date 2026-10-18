@@ -92,6 +92,7 @@ const FIELD_LOG_LABELS = {
     responsible_name: 'Ответственный (имя)',
     sell_on_markets: 'Маркеты',
     has_kits: 'Комплект',
+    main_not_for_sale: 'Основной товар не для продажи',
     article: 'Артикул',
     title: 'Название',
     price_almamed: 'Цена Альмамед',
@@ -216,6 +217,8 @@ async function ensureSchema(db) {
     await ensureColumn(db, 'dg_new_products', 'transferred_at', 'DATETIME NULL');
     await ensureColumn(db, 'dg_new_products', 'sell_on_markets', 'TINYINT(1) NOT NULL DEFAULT 0');
     await ensureColumn(db, 'dg_new_products', 'has_kits', 'TINYINT(1) NOT NULL DEFAULT 0');
+    await ensureColumn(db, 'dg_new_products', 'main_not_for_sale', 'TINYINT(1) NOT NULL DEFAULT 0');
+    await ensureColumn(db, 'dg_new_products', 'collision_detached', 'TINYINT(1) NOT NULL DEFAULT 0');
     await markets.ensureMarketsColumns(db);
     await db.query(`
         CREATE TABLE IF NOT EXISTS dg_new_products_log (
@@ -289,7 +292,12 @@ function formatFieldForLog(field, value, channel) {
     if (field === 'photo') {
         return markets.PHOTO_LABELS[value] || String(value);
     }
-    if (field === 'sell_on_markets' || field === 'has_kits' || String(field).startsWith('placement_')) {
+    if (
+        field === 'sell_on_markets' ||
+        field === 'has_kits' ||
+        field === 'main_not_for_sale' ||
+        String(field).startsWith('placement_')
+    ) {
         const on = value === true || value === 1 || String(value) === '1';
         return on ? 'да' : 'нет';
     }
@@ -334,6 +342,7 @@ function valuesEqualForLog(field, a, b) {
     if (
         field === 'sell_on_markets' ||
         field === 'has_kits' ||
+        field === 'main_not_for_sale' ||
         String(field).startsWith('placement_')
     ) {
         const an = a === true || a === 1 || String(a) === '1' ? 1 : 0;
@@ -521,6 +530,8 @@ function mapRow(r) {
         responsible_name: r.responsible_name || '',
         sell_on_markets: Number(r.sell_on_markets) === 1,
         has_kits: Number(r.has_kits) === 1,
+        main_not_for_sale: Number(r.main_not_for_sale) === 1,
+        collision_detached: Number(r.collision_detached) === 1,
         kits: Array.isArray(r.kits) ? r.kits : [],
         article: r.article || '',
         title: r.title || '',
@@ -1694,6 +1705,17 @@ module.exports = function exportsNewProductsRouterFactory(db, config, appSetting
             let almamedAddedAt = null;
             if (status === 'added') almamedAddedAt = new Date();
 
+            if (channel === 'marketplaces' && draft.product_code) {
+                const conflict = await findMarketsCodeConflict(draft.product_code);
+                if (conflict) {
+                    return res.status(409).json({
+                        error: conflict.message,
+                        code: 'DUPLICATE_PRODUCT_CODE',
+                        conflict,
+                    });
+                }
+            }
+
             const channelNum = await markets.allocChannelNum(db, channel);
             const [ins] = await db.query(
                 `INSERT INTO dg_new_products (
@@ -1940,7 +1962,12 @@ module.exports = function exportsNewProductsRouterFactory(db, config, appSetting
             const fields = {};
 
             if ('title' in body) fields.title = clip(body.title, 128);
-            if ('article' in body) fields.article = clip(body.article, 128) || null;
+            if ('article' in body) {
+                fields.article = clip(body.article, 128) || null;
+                if (String(fields.article || '') !== String(cur.article || '')) {
+                    fields.collision_detached = 0;
+                }
+            }
             if ('price_almamed' in body) fields.price_almamed = parsePrice(body.price_almamed);
             if ('supplier_url' in body) fields.supplier_url = clip(body.supplier_url, 2048) || null;
             if ('brand' in body) fields.brand = clip(body.brand, 255) || null;
@@ -1962,7 +1989,28 @@ module.exports = function exportsNewProductsRouterFactory(db, config, appSetting
                 fields.has_kits =
                     body.has_kits === true || body.has_kits === 1 || String(body.has_kits) === '1' ? 1 : 0;
             }
-            if ('product_code' in body) fields.product_code = clip(body.product_code, 128) || null;
+            if ('main_not_for_sale' in body) {
+                fields.main_not_for_sale =
+                    body.main_not_for_sale === true ||
+                    body.main_not_for_sale === 1 ||
+                    String(body.main_not_for_sale) === '1'
+                        ? 1
+                        : 0;
+            }
+            if ('product_code' in body) {
+                const nextCode = clip(body.product_code, 128) || null;
+                if (nextCode && channel === 'marketplaces') {
+                    const conflict = await findMarketsCodeConflict(nextCode, { excludeProductId: id });
+                    if (conflict) {
+                        return res.status(409).json({
+                            error: conflict.message,
+                            code: 'DUPLICATE_PRODUCT_CODE',
+                            conflict,
+                        });
+                    }
+                }
+                fields.product_code = nextCode;
+            }
             if ('barcode' in body) fields.barcode = clip(body.barcode, 512) || null;
             if ('price_markets' in body) fields.price_markets = parsePrice(body.price_markets);
             if ('dimensions_text' in body) fields.dimensions_text = clip(body.dimensions_text, 512) || null;
@@ -2184,7 +2232,9 @@ module.exports = function exportsNewProductsRouterFactory(db, config, appSetting
             let marketsSync = null;
             if (
                 channel === 'almamed' &&
-                (Number(row.sell_on_markets) === 1 || Number(row.has_kits) === 1)
+                (Number(row.sell_on_markets) === 1 ||
+                    Number(row.has_kits) === 1 ||
+                    Number(row.main_not_for_sale) === 1)
             ) {
                 try {
                     const forceCreate =
@@ -2193,31 +2243,94 @@ module.exports = function exportsNewProductsRouterFactory(db, config, appSetting
                         body.markets_force_create === true ||
                         body.markets_force_create === 1 ||
                         String(body.markets_force_create) === '1';
+                    if (forceCreate && Number(row.collision_detached) !== 1) {
+                        await db.query(
+                            `UPDATE dg_new_products SET collision_detached = 1 WHERE id = ?`,
+                            [id]
+                        );
+                        row.collision_detached = 1;
+                    }
                     marketsSync = await markets.upsertMarketsFromAlmamed(db, row, {
                         syncFields: true,
                         forceCreate,
                     });
-                    // Коллизия без подтверждения — галочку «Маркеты» не оставляем включённой.
+                    // Коллизия без подтверждения — галочки не оставляем включёнными (иначе следующий PATCH снова откроет модалку).
                     if (
                         marketsSync &&
                         marketsSync.needs_confirm &&
-                        marketsSync.reason === 'code_collision' &&
-                        Number(row.sell_on_markets) === 1 &&
-                        'sell_on_markets' in fields
+                        marketsSync.reason === 'code_collision'
                     ) {
-                        await db.query(
-                            `UPDATE dg_new_products SET sell_on_markets = 0 WHERE id = ?`,
-                            [id]
-                        );
-                        row.sell_on_markets = 0;
+                        if (Number(row.sell_on_markets) === 1 && 'sell_on_markets' in fields) {
+                            await db.query(
+                                `UPDATE dg_new_products SET sell_on_markets = 0 WHERE id = ?`,
+                                [id]
+                            );
+                            row.sell_on_markets = 0;
+                        }
+                        if (Number(row.has_kits) === 1 && 'has_kits' in fields) {
+                            await db.query(
+                                `UPDATE dg_new_products SET has_kits = 0 WHERE id = ?`,
+                                [id]
+                            );
+                            row.has_kits = 0;
+                        }
+                        if (Number(row.main_not_for_sale) === 1 && 'main_not_for_sale' in fields) {
+                            await db.query(
+                                `UPDATE dg_new_products SET main_not_for_sale = 0 WHERE id = ?`,
+                                [id]
+                            );
+                            row.main_not_for_sale = 0;
+                        }
                     }
                 } catch (se) {
                     marketsSync = { error: se.message || 'Ошибка постановки в маркеты' };
                     console.warn('[new-products] sell_on_markets/has_kits sync', se);
                 }
+            } else if (
+                channel === 'almamed' &&
+                ('main_not_for_sale' in fields || 'has_kits' in fields)
+            ) {
+                try {
+                    await db.query(
+                        `UPDATE dg_new_products
+                            SET main_not_for_sale = ?, has_kits = ?
+                          WHERE channel = 'marketplaces' AND source_almamed_id = ?`,
+                        [
+                            Number(row.main_not_for_sale) === 1 ? 1 : 0,
+                            Number(row.has_kits) === 1 ? 1 : 0,
+                            id,
+                        ]
+                    );
+                } catch (se) {
+                    console.warn('[new-products] main_not_for_sale/has_kits propagate', se);
+                }
             }
             const mapped = mapRow(row);
             if (channel === 'marketplaces') {
+                const prodCodeChanged =
+                    'product_code' in fields &&
+                    String(fields.product_code || '').trim() !== String(cur.product_code || '').trim();
+                if (prodCodeChanged && !('price_markets' in fields) && mapped.product_code) {
+                    try {
+                        const enr = await markets.enrichFromMsWithLiveFallback(db, mapped.product_code, {
+                            allowLive: true,
+                        });
+                        if (enr && enr.sale_price != null && Number(enr.sale_price) > 0) {
+                            const nextPrice = Number(enr.sale_price);
+                            await db.query(
+                                `UPDATE dg_new_products SET price_markets = ? WHERE id = ?`,
+                                [nextPrice, id]
+                            );
+                            mapped.price_markets = nextPrice;
+                        }
+                    } catch (_) {
+                        /* ignore */
+                    }
+                }
+                await markets.enrichMarketsRowsFromMs(db, [mapped], {
+                    allowLive: true,
+                    liveBudget: 1,
+                });
                 await markets.attachKitsToMapped(db, [mapped]);
             } else if (channel === 'almamed') {
                 // Чтобы сразу появилась ссылка «Марк #N» после галочки.
@@ -2244,6 +2357,61 @@ module.exports = function exportsNewProductsRouterFactory(db, config, appSetting
         }
     });
 
+    async function findMarketsCodeConflict(codeRaw, { excludeProductId, excludeKitId } = {}) {
+        const c = String(codeRaw || '').trim();
+        if (!c) return null;
+        const [prodRows] = await db.query(
+            `SELECT id, channel_num, title, article, product_code
+               FROM dg_new_products
+              WHERE channel = 'marketplaces'
+                AND status <> 'removed'
+                AND product_code = ?
+                ${excludeProductId ? 'AND id <> ?' : ''}
+              ORDER BY id ASC
+              LIMIT 1`,
+            excludeProductId ? [c, excludeProductId] : [c]
+        );
+        if (prodRows && prodRows[0]) {
+            const p = prodRows[0];
+            const num = p.channel_num != null ? `Марк #${p.channel_num}` : `id=${p.id}`;
+            const t = String(p.title || '').trim();
+            return {
+                kind: 'product',
+                product_id: Number(p.id),
+                channel_num: p.channel_num != null ? Number(p.channel_num) : null,
+                title: t || null,
+                message: `Код «${c}» уже занят в «Размещение на маркеты» (${num}${t ? `, «${t.slice(0, 60)}»` : ''}). Повторяющиеся коды сохранять нельзя.`,
+            };
+        }
+        const [kitRows] = await db.query(
+            `SELECT k.id AS kit_id, k.title AS kit_title, k.product_code, k.parent_product_id,
+                    p.channel_num AS parent_channel_num, p.title AS parent_title
+               FROM dg_new_product_kits k
+               JOIN dg_new_products p ON p.id = k.parent_product_id
+              WHERE p.channel = 'marketplaces'
+                AND p.status <> 'removed'
+                AND k.product_code = ?
+                ${excludeKitId ? 'AND k.id <> ?' : ''}
+              ORDER BY k.id ASC
+              LIMIT 1`,
+            excludeKitId ? [c, excludeKitId] : [c]
+        );
+        if (kitRows && kitRows[0]) {
+            const k = kitRows[0];
+            const num = k.parent_channel_num != null ? `Марк #${k.parent_channel_num}` : `id=${k.parent_product_id}`;
+            const kt = String(k.kit_title || k.parent_title || '').trim();
+            return {
+                kind: 'kit',
+                kit_id: Number(k.kit_id),
+                product_id: Number(k.parent_product_id),
+                channel_num: k.parent_channel_num != null ? Number(k.parent_channel_num) : null,
+                title: kt || null,
+                message: `Код «${c}» уже используется в комплекте у строки ${num}${kt ? ` («${kt.slice(0, 60)}»)` : ''}. Повторяющиеся коды сохранять нельзя.`,
+            };
+        }
+        return null;
+    }
+
     router.post('/:id/kits', async (req, res) => {
         try {
             await ensureSchema(db);
@@ -2258,9 +2426,9 @@ module.exports = function exportsNewProductsRouterFactory(db, config, appSetting
             if (parent.channel !== 'marketplaces') {
                 return res.status(400).json({ error: 'Комплекты только для вкладки «Размещение на маркеты»' });
             }
-            if (Number(parent.has_kits) !== 1) {
+            if (Number(parent.has_kits) !== 1 && Number(parent.main_not_for_sale) !== 1) {
                 return res.status(400).json({
-                    error: 'Сначала отметьте «Товар с комплектами» на вкладке Альмамед',
+                    error: 'Сначала отметьте «Комплект» или «Основной товар не для продажи» на вкладке Альмамед',
                 });
             }
             const body = req.body && typeof req.body === 'object' ? req.body : {};
@@ -2270,7 +2438,18 @@ module.exports = function exportsNewProductsRouterFactory(db, config, appSetting
                    FROM dg_new_product_kits WHERE parent_product_id = ?`,
                 [parentId]
             );
-            const seedCode = clip(body.product_code != null ? body.product_code : parent.product_code, 128) || null;
+            const seedCodeRaw = body.product_code != null ? clip(body.product_code, 128) : null;
+            if (seedCodeRaw) {
+                const conflict = await findMarketsCodeConflict(seedCodeRaw);
+                if (conflict) {
+                    return res.status(409).json({
+                        error: conflict.message,
+                        code: 'DUPLICATE_PRODUCT_CODE',
+                        conflict,
+                    });
+                }
+            }
+            const seedCode = seedCodeRaw || null;
             const seedArticle = clip(body.article != null ? body.article : parent.article, 128) || null;
             const seedRu = clip(parent.ru_url, 2048) || null;
             const [ins] = await db.query(
@@ -2350,7 +2529,20 @@ module.exports = function exportsNewProductsRouterFactory(db, config, appSetting
             const body = req.body && typeof req.body === 'object' ? req.body : {};
             const fields = {};
             if ('title' in body) fields.title = clip(body.title, 255);
-            if ('product_code' in body) fields.product_code = clip(body.product_code, 128) || null;
+            if ('product_code' in body) {
+                const nextCode = clip(body.product_code, 128) || null;
+                if (nextCode) {
+                    const conflict = await findMarketsCodeConflict(nextCode, { excludeKitId: kitId });
+                    if (conflict) {
+                        return res.status(409).json({
+                            error: conflict.message,
+                            code: 'DUPLICATE_PRODUCT_CODE',
+                            conflict,
+                        });
+                    }
+                }
+                fields.product_code = nextCode;
+            }
             // article / barcode / vat / ru_url у комплекта не редактируются:
             // артикул/штрихкод/НДС — только просмотр; РУ всегда с родительского товара в Датагоне.
             if ('price_markets' in body) fields.price_markets = parsePrice(body.price_markets);
@@ -2419,7 +2611,10 @@ module.exports = function exportsNewProductsRouterFactory(db, config, appSetting
             const needMs =
                 codeChanged ||
                 !String((updated && updated.barcode) || '').trim() ||
-                !String((updated && updated.vat) || '').trim();
+                !String((updated && updated.vat) || '').trim() ||
+                !updated ||
+                updated.price_markets == null ||
+                Number(updated.price_markets) <= 0;
             if (needMs && updated && String(updated.product_code || '').trim()) {
                 try {
                     const enr = await markets.enrichAndPersistKitFromMs(db, updated, {
@@ -2645,7 +2840,9 @@ module.exports = function exportsNewProductsRouterFactory(db, config, appSetting
             if (
                 row &&
                 row.channel === 'almamed' &&
-                (Number(row.sell_on_markets) === 1 || Number(row.has_kits) === 1)
+                (Number(row.sell_on_markets) === 1 ||
+                    Number(row.has_kits) === 1 ||
+                    Number(row.main_not_for_sale) === 1)
             ) {
                 try {
                     marketsSync = await markets.upsertMarketsFromAlmamed(db, row, { syncFields: true });

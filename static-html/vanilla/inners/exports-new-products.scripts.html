@@ -145,6 +145,7 @@
     { key: "responsible_name", label: "Ответственный", sort: true, minWidth: 120, defWidth: 160 },
     { key: "sell_on_markets", label: "Маркеты", sort: false, minWidth: 70, defWidth: 80 },
     { key: "has_kits", label: "Комплект", sort: false, minWidth: 70, defWidth: 80 },
+    { key: "main_not_for_sale", label: "Основной товар\nне для продажи", sort: false, minWidth: 110, defWidth: 125 },
     { key: "article", label: "Артикул", sort: true, minWidth: 90, defWidth: 120 },
     { key: "title", label: "Название", sort: true, minWidth: 140, defWidth: 200 },
     { key: "price_almamed", label: "Цена\nАльмамед", sort: true, minWidth: 88, defWidth: 100 },
@@ -289,6 +290,16 @@
       });
     }
     if (!next.size) next = new Set(defaultVisibleKeys());
+    if (state.channel === "almamed") {
+      try {
+        var migKey = "dg.np.visible-cols.migrated.main_nfs.v1";
+        if (!localStorage.getItem(migKey)) {
+          next.add("main_not_for_sale");
+          localStorage.setItem(migKey, "1");
+          localStorage.setItem(visibleColsKey(), JSON.stringify(Array.from(next)));
+        }
+      } catch (_) {}
+    }
     currentCols().forEach(function (c) {
       if (c.locked) next.add(c.key);
     });
@@ -651,6 +662,7 @@
     responsible_user_id: "Ответственный",
     sell_on_markets: "Маркеты",
     has_kits: "Комплект",
+    main_not_for_sale: "Основной товар не для продажи",
     article: "Артикул",
     title: "Название",
     price_almamed: "Цена Альмамед",
@@ -1123,6 +1135,14 @@
     }
 
     td.appendChild(wrap);
+    if (row.channel === "marketplaces" && row.main_not_for_sale) {
+      var nfsBadge = document.createElement("div");
+      nfsBadge.className = "dg-np-main-nfs-badge";
+      nfsBadge.textContent = "🚫 Не для продажи";
+      nfsBadge.title =
+        "Основной товар не для продажи на маркетах — размещать только комплектные позиции";
+      td.appendChild(nfsBadge);
+    }
     return td;
   }
 
@@ -1802,6 +1822,8 @@
 
   /** Очередь PATCH по id — галочки «Маркеты»+«Комплект» не улетают параллельно. */
   var patchQueues = Object.create(null);
+  var collisionApprovedByRow = Object.create(null);
+  var activeCollisionConfirmByRow = Object.create(null);
   function patchRowQueued(id, payload) {
     var key = String(id);
     var prev = patchQueues[key] || Promise.resolve();
@@ -1810,7 +1832,11 @@
         /* previous error already handled by caller */
       })
       .then(function () {
-        return patchRow(id, payload);
+        var body = Object.assign({}, payload || {});
+        if (collisionApprovedByRow[key] && !body.markets_collision_action) {
+          body.markets_collision_action = "create_new";
+        }
+        return patchRow(id, body);
       });
     patchQueues[key] = next;
     return next;
@@ -2007,6 +2033,9 @@
     inp.addEventListener("change", function () {
       var v = String(inp.value || "").trim();
       if (maxLen && v.length > maxLen) v = v.slice(0, maxLen);
+      if (field === "article") {
+        delete collisionApprovedByRow[String(row.id)];
+      }
       var payload = {};
       payload[field] = v;
       patchRow(row.id, payload)
@@ -2085,6 +2114,15 @@
   function makeStatusSelect(row) {
     var tdSt = document.createElement("td");
     tdSt.className = "dg-np-cell";
+    if (row.channel === "marketplaces" && row.main_not_for_sale) {
+      var nfsPill = document.createElement("div");
+      nfsPill.className = "dg-np-main-nfs-status-pill";
+      nfsPill.textContent = "Не для продажи (только комплекты)";
+      nfsPill.title =
+        "Основной товар не размещается на маркетах. Добавьте комплекты кнопкой «+ Комплект» и ведите статусы у комплектных строк.";
+      tdSt.appendChild(nfsPill);
+      return attachFieldLog(tdSt, row, "status");
+    }
     var selSt = document.createElement("select");
     selSt.className = "form-select form-select-sm";
     selSt.setAttribute("data-dg-notify-start", "Сохраняем статус…");
@@ -2321,7 +2359,14 @@
     });
   }
 
-  function openMarketsCollisionConfirm(ms) {
+  function openMarketsCollisionConfirm(ms, rowId) {
+    var rKey = rowId != null ? String(rowId) : "";
+    if (rKey && collisionApprovedByRow[rKey]) {
+      return Promise.resolve(true);
+    }
+    if (rKey && activeCollisionConfirmByRow[rKey]) {
+      return activeCollisionConfirmByRow[rKey];
+    }
     var c = (ms && ms.collision) || {};
     var lines = [];
     lines.push(
@@ -2351,14 +2396,22 @@
     lines.push(
       "Чужую строку <b>не перезаписываем</b>. Можно создать отдельную строку в маркетах или отменить."
     );
-    return openNpConfirm({
+    var p = openNpConfirm({
       title: "Такой код уже есть в маркетах",
       html: lines.join("<br>"),
       okLabel: "Создать как новый",
       okClass: "btn btn-primary",
       cancelLabel: "Отмена",
       notifyStart: "Создаём отдельную строку маркетов…",
+    }).then(function (ok) {
+      if (rKey) {
+        delete activeCollisionConfirmByRow[rKey];
+        if (ok) collisionApprovedByRow[rKey] = true;
+      }
+      return ok;
     });
+    if (rKey) activeCollisionConfirmByRow[rKey] = p;
+    return p;
   }
 
   function bindNpConfirmUi() {
@@ -2641,8 +2694,9 @@
               }
             } else if (ms && ms.reason === "code_collision" && ms.needs_confirm) {
               chkSell.checked = false;
-              return openMarketsCollisionConfirm(ms).then(function (ok) {
+              return openMarketsCollisionConfirm(ms, row.id).then(function (ok) {
                 if (!ok) return null;
+                row.collision_detached = true;
                 return patchRowQueued(row.id, {
                   sell_on_markets: 1,
                   markets_collision_action: "create_new",
@@ -2745,8 +2799,9 @@
               }
             } else if (ms && ms.reason === "code_collision" && ms.needs_confirm) {
               chkKits.checked = false;
-              return openMarketsCollisionConfirm(ms).then(function (ok) {
+              return openMarketsCollisionConfirm(ms, row.id).then(function (ok) {
                 if (!ok) return null;
+                row.collision_detached = true;
                 return patchRowQueued(row.id, {
                   has_kits: 1,
                   markets_collision_action: "create_new",
@@ -2784,6 +2839,87 @@
     tdKitsFlag.appendChild(chkKits);
     attachFieldLog(tdKitsFlag, row, "has_kits");
     tr.appendChild(tdKitsFlag);
+
+    var tdMainNfs = document.createElement("td");
+    tdMainNfs.className = "dg-np-cell text-center";
+    var chkMainNfs = document.createElement("input");
+    chkMainNfs.type = "checkbox";
+    chkMainNfs.className = "form-check-input";
+    chkMainNfs.checked = !!row.main_not_for_sale;
+    chkMainNfs.title =
+      "Основной товар не для продажи на маркетах (продажа идёт только с комплектов). На вкладке «Размещение на маркеты» основная позиция будет неактивной, но с кодом/штрихкодом и кнопкой «+ Комплект».";
+    chkMainNfs.setAttribute("data-dg-no-activity", "1");
+    chkMainNfs.addEventListener("change", function () {
+      var on = chkMainNfs.checked ? 1 : 0;
+      patchRowQueued(row.id, { main_not_for_sale: on })
+        .then(function (j) {
+          applyPatched(row, j);
+          var ms = j && j.markets_sync;
+          if (on) {
+            if (ms && ms.error) {
+              chkMainNfs.checked = false;
+              if (window.DatagonNotify && window.DatagonNotify.toast) {
+                window.DatagonNotify.toast({ type: "danger", message: ms.error });
+              }
+            } else if (ms && ms.reason === "no_code") {
+              chkMainNfs.checked = false;
+              if (window.DatagonNotify && window.DatagonNotify.toast) {
+                window.DatagonNotify.toast({
+                  type: "warning",
+                  message: "Сначала укажите артикул — без него строку маркетов не создать",
+                });
+              }
+            } else if (ms && ms.reason === "code_collision" && ms.needs_confirm) {
+              chkMainNfs.checked = false;
+              return openMarketsCollisionConfirm(ms, row.id).then(function (ok) {
+                if (!ok) return null;
+                row.collision_detached = true;
+                return patchRowQueued(row.id, {
+                  main_not_for_sale: 1,
+                  markets_collision_action: "create_new",
+                }).then(function (j2) {
+                  applyPatched(row, j2);
+                  chkMainNfs.checked = !!(j2.data && j2.data.main_not_for_sale);
+                  if (j2.markets_sync && j2.markets_sync.created) load();
+                  return j2;
+                });
+              });
+            } else if (ms && ms.reason === "code_collision") {
+              if (window.DatagonNotify && window.DatagonNotify.toast) {
+                window.DatagonNotify.toast({
+                  type: "warning",
+                  message: formatMarketsCollisionToast(ms),
+                });
+              }
+            } else if (ms && (ms.created || ms.updated)) {
+              if (window.DatagonNotify && window.DatagonNotify.toast) {
+                window.DatagonNotify.toast({
+                  type: "success",
+                  message:
+                    "Пометка «Основной товар не для продажи» перенесена на «Размещение на маркеты»",
+                });
+              }
+              if (ms.created) load();
+            }
+          } else {
+            if (window.DatagonNotify && window.DatagonNotify.toast) {
+              window.DatagonNotify.toast({
+                type: "info",
+                message: "Пометка «Основной товар не для продажи» снята",
+              });
+            }
+          }
+        })
+        .catch(function (e) {
+          chkMainNfs.checked = !on;
+          if (window.DatagonNotify && window.DatagonNotify.toast) {
+            window.DatagonNotify.toast({ type: "danger", message: e.message || "Ошибка" });
+          }
+        });
+    });
+    tdMainNfs.appendChild(chkMainNfs);
+    attachFieldLog(tdMainNfs, row, "main_not_for_sale");
+    tr.appendChild(tdMainNfs);
 
     var tdArt = document.createElement("td");
     tdArt.className = "dg-np-cell";
@@ -2862,8 +2998,13 @@
 
   function renderMarketsRow(row) {
     var tr = document.createElement("tr");
-    applyNpStatusRowClass(tr, row.status);
-    var missMap = missingKeys(row);
+    var isMainNfs = !!row.main_not_for_sale;
+    if (isMainNfs) {
+      tr.classList.add("dg-np-row-main-not-for-sale");
+    } else {
+      applyNpStatusRowClass(tr, row.status);
+    }
+    var missMap = isMainNfs ? {} : missingKeys(row);
 
     tr.appendChild(makeIdCell(row));
     tr.appendChild(makeLinksCell(row));
@@ -2928,12 +3069,24 @@
     var tdTitle = document.createElement("td");
     tdTitle.className = "dg-np-cell";
     markRequired(tdTitle, "title", missMap);
+    if (isMainNfs) {
+      var nfsBanner = document.createElement("div");
+      nfsBanner.className = "dg-np-main-nfs-banner";
+      nfsBanner.textContent = "🚫 Основной товар не для продажи — размещать только комплекты";
+      tdTitle.appendChild(nfsBanner);
+    }
     var inpTitle = document.createElement("textarea");
-    inpTitle.className = "form-control form-control-sm dg-np-title-field";
+    inpTitle.className = "form-control form-control-sm dg-np-title-field" + (isMainNfs ? " dg-np-main-nfs-muted-input" : "");
     inpTitle.rows = 2;
     inpTitle.maxLength = 128;
     inpTitle.value = row.title || "";
-    bindTextSave(inpTitle, row, "title", 128);
+    if (isMainNfs) {
+      inpTitle.readOnly = true;
+      inpTitle.title = "Основной товар не для продажи — название доступно для копирования в комплекты";
+    } else {
+      inpTitle.title = "Макс. 128 символов";
+      bindTextSave(inpTitle, row, "title", 128);
+    }
     tdTitle.appendChild(inpTitle);
     attachFieldLog(tdTitle, row, "title");
     tr.appendChild(tdTitle);
@@ -2952,17 +3105,39 @@
     markRequired(tdPrice, "price_markets", missMap);
     var inpPrice = document.createElement("input");
     inpPrice.type = "text";
-    inpPrice.className = "form-control form-control-sm text-end";
+    inpPrice.className = "form-control form-control-sm text-end" + (isMainNfs ? " dg-np-main-nfs-muted-input" : "");
     inpPrice.value = row.price_markets != null ? fmtMoney(row.price_markets) : "";
-    bindPriceSave(inpPrice, row, "price_markets");
+    if (isMainNfs) {
+      inpPrice.disabled = true;
+      inpPrice.placeholder = "Не для продажи";
+      inpPrice.title = "Основной товар не для продажи — цену указывайте у комплектных позиций";
+    } else {
+      bindPriceSave(inpPrice, row, "price_markets");
+    }
     tdPrice.appendChild(inpPrice);
     attachFieldLog(tdPrice, row, "price_markets");
     tr.appendChild(tdPrice);
 
     tr.appendChild(makeStatusSelect(row));
     tr.appendChild(makeCommentCell(row));
-    tr.appendChild(makeEnumSelect(row, "infographic", INFOGRAPHIC_OPTS, "—"));
-    tr.appendChild(makeEnumSelect(row, "photo", PHOTO_OPTS, "—"));
+    var tdInf = makeEnumSelect(row, "infographic", INFOGRAPHIC_OPTS, "—");
+    var tdPh = makeEnumSelect(row, "photo", PHOTO_OPTS, "—");
+    if (isMainNfs) {
+      var selInf = tdInf.querySelector("select");
+      if (selInf) {
+        selInf.disabled = true;
+        selInf.classList.add("dg-np-main-nfs-muted-input");
+        selInf.title = "Основной товар не для продажи — размещаются только комплекты";
+      }
+      var selPh = tdPh.querySelector("select");
+      if (selPh) {
+        selPh.disabled = true;
+        selPh.classList.add("dg-np-main-nfs-muted-input");
+        selPh.title = "Основной товар не для продажи — размещаются только комплекты";
+      }
+    }
+    tr.appendChild(tdInf);
+    tr.appendChild(tdPh);
     tr.appendChild(makePlacementDatesCell(row));
 
     // НДС / РУ / СС·ДС — пустое только «—», без подписи «не заполнено» (СС·ДС и так не в required).
@@ -2991,7 +3166,7 @@
 
     tr.appendChild(makeManagerCheckedCell(row));
     tr.appendChild(makeManagerCommentCell(row));
-    tr.appendChild(makeDeleteActions(row, { addKit: !!row.has_kits }));
+    tr.appendChild(makeDeleteActions(row, { addKit: !!(row.has_kits || row.main_not_for_sale) }));
     pruneHiddenCells(tr);
     return tr;
   }
@@ -3059,11 +3234,25 @@
       kitApi(parent.id, "PATCH", "/" + kit.id, payload)
         .then(function (j) {
           if (j.data) Object.assign(kit, j.data);
+          inp.classList.remove("is-invalid");
           if (window.DatagonNotify && window.DatagonNotify.toast) {
             window.DatagonNotify.toast({ type: "success", message: "Комплект сохранён" });
           }
         })
         .catch(function (e) {
+          if (o.price) {
+            inp.value = kit[field] != null ? fmtMoney(kit[field]) : "";
+          } else if (o.num) {
+            inp.value = kit[field] != null ? String(kit[field]) : "";
+          } else {
+            inp.value = kit[field] != null ? String(kit[field]) : "";
+          }
+          if (field === "product_code") {
+            inp.classList.add("is-invalid");
+            setTimeout(function () {
+              inp.classList.remove("is-invalid");
+            }, 3500);
+          }
           if (window.DatagonNotify && window.DatagonNotify.toast) {
             window.DatagonNotify.toast({ type: "danger", message: e.message || "Ошибка" });
           }
@@ -3280,7 +3469,7 @@
     state.rows.forEach(function (row) {
       if (state.channel === "marketplaces") {
         tbody.appendChild(renderMarketsRow(row));
-        if (row.has_kits && Array.isArray(row.kits)) {
+        if ((row.has_kits || row.main_not_for_sale || (row.kits && row.kits.length)) && Array.isArray(row.kits)) {
           row.kits.forEach(function (kit) {
             tbody.appendChild(renderMarketsKitRow(row, kit));
           });
