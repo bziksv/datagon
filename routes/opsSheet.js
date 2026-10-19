@@ -916,6 +916,146 @@ function buildYearSnapshot(managers, year, aggregates, plans, manualMap, planfix
     return months;
 }
 
+function round1(n) {
+    if (n == null || !Number.isFinite(n)) return null;
+    return Math.round(n * 10) / 10;
+}
+
+function calcDeltaPct(cur, prev) {
+    const c = toNum(cur);
+    const p = toNum(prev);
+    if (c == null || p == null || p === 0) return null;
+    return round1(((c - p) / Math.abs(p)) * 100);
+}
+
+function enrichRowWithEffectiveApps(row) {
+    if (!row) return row;
+    const appsLocal = toNum(row.applications_local);
+    const appsGoogle = toNum(row.applications_count);
+    const paid = toNum(row.paid_applications) || 0;
+    const effectiveApps =
+        appsLocal != null && appsLocal > 0
+            ? appsLocal
+            : appsGoogle != null && appsGoogle > 0
+              ? appsGoogle
+              : appsLocal != null && appsLocal === 0 && (appsGoogle == null || appsGoogle === 0)
+                ? 0
+                : null;
+    const effectiveAppsSource =
+        appsLocal != null && appsLocal > 0
+            ? 'planfix'
+            : appsGoogle != null && appsGoogle > 0
+              ? 'google'
+              : null;
+    const effectiveAppsPerSale =
+        effectiveApps != null && effectiveApps > 0 && paid > 0
+            ? Math.round(effectiveApps / paid)
+            : null;
+    const conversionPct =
+        effectiveApps != null && effectiveApps > 0 && paid > 0
+            ? round2((paid / effectiveApps) * 100)
+            : null;
+    return Object.assign({}, row, {
+        effective_applications: effectiveApps,
+        effective_apps_source: effectiveAppsSource,
+        effective_apps_per_sale: effectiveAppsPerSale,
+        conversion_pct: conversionPct,
+    });
+}
+
+function aggregateSliceRows(monthRowsList, meta) {
+    const base = buildTotals(monthRowsList || []);
+    const enriched = enrichRowWithEffectiveApps(base);
+    let activeMonths = 0;
+    let plansMet = 0;
+    let plansTotal = 0;
+    let bonusPastOrdersCount = 0;
+    (monthRowsList || []).forEach((r) => {
+        if (!r) return;
+        const hasActivity =
+            (toNum(r.turnover) || 0) > 0 ||
+            (toNum(r.paid_applications) || 0) > 0 ||
+            (toNum(r.applications_local) || 0) > 0 ||
+            (toNum(r.applications_count) || 0) > 0 ||
+            (toNum(r.salary) || 0) > 0 ||
+            (toNum(r.bonus_past) || 0) > 0;
+        if (hasActivity) activeMonths += 1;
+        if (r.plan_status === 'выполнен') {
+            plansMet += 1;
+            plansTotal += 1;
+        } else if (r.plan_status === 'не выполнен' && hasActivity) {
+            plansTotal += 1;
+        }
+        bonusPastOrdersCount += Number(r.bonus_past_orders_count) || 0;
+    });
+    const out = Object.assign({}, enriched, meta || {}, {
+        active_months: activeMonths,
+        plans_met: plansMet,
+        plans_total: plansTotal,
+        plan_status: plansTotal > 0 ? `${plansMet} из ${plansTotal}` : null,
+        bonus_past_orders_count: bonusPastOrdersCount,
+    });
+    return out;
+}
+
+function buildYoyDeltas(curRow, prevRow) {
+    if (!curRow || !prevRow) return null;
+    return {
+        turnover: calcDeltaPct(curRow.turnover, prevRow.turnover),
+        profit_before_tax: calcDeltaPct(curRow.profit_before_tax, prevRow.profit_before_tax),
+        profit_after_tax: calcDeltaPct(curRow.profit_after_tax, prevRow.profit_after_tax),
+        profit_pct_pp:
+            curRow.profit_pct != null && prevRow.profit_pct != null
+                ? round2(curRow.profit_pct - prevRow.profit_pct)
+                : null,
+        bonus_current: calcDeltaPct(curRow.bonus_current, prevRow.bonus_current),
+        applications_local: calcDeltaPct(curRow.applications_local, prevRow.applications_local),
+        applications_count: calcDeltaPct(curRow.applications_count, prevRow.applications_count),
+        effective_applications: calcDeltaPct(curRow.effective_applications, prevRow.effective_applications),
+        paid_applications: calcDeltaPct(curRow.paid_applications, prevRow.paid_applications),
+        apps_per_sale_local: calcDeltaPct(curRow.apps_per_sale_local, prevRow.apps_per_sale_local),
+        apps_per_sale: calcDeltaPct(curRow.apps_per_sale, prevRow.apps_per_sale),
+        effective_apps_per_sale: calcDeltaPct(
+            curRow.effective_apps_per_sale,
+            prevRow.effective_apps_per_sale
+        ),
+        conversion_pct_pp:
+            curRow.conversion_pct != null && prevRow.conversion_pct != null
+                ? round2(curRow.conversion_pct - prevRow.conversion_pct)
+                : null,
+        avg_check: calcDeltaPct(curRow.avg_check, prevRow.avg_check),
+        bonus_past: calcDeltaPct(curRow.bonus_past, prevRow.bonus_past),
+        salary: calcDeltaPct(curRow.salary, prevRow.salary),
+        fact_profit: calcDeltaPct(curRow.fact_profit, prevRow.fact_profit),
+        salary_paid: calcDeltaPct(curRow.salary_paid, prevRow.salary_paid),
+        company_profit: calcDeltaPct(curRow.company_profit, prevRow.company_profit),
+        company_pct_pp:
+            curRow.company_pct != null && prevRow.company_pct != null
+                ? round2(curRow.company_pct - prevRow.company_pct)
+                : null,
+    };
+}
+
+async function listAllOpsYears(db) {
+    const cy = currentYear();
+    const yearSet = new Set([cy]);
+    try {
+        const [r1] = await db.query('SELECT DISTINCT year FROM dg_manager_sales_rows WHERE year IS NOT NULL');
+        (r1 || []).forEach((r) => {
+            const y = Number(r.year);
+            if (Number.isFinite(y) && y >= MIN_YEAR && y <= MAX_YEAR) yearSet.add(y);
+        });
+    } catch (_) {}
+    try {
+        const [r2] = await db.query('SELECT DISTINCT year FROM dg_ops_sheet_manual WHERE year IS NOT NULL');
+        (r2 || []).forEach((r) => {
+            const y = Number(r.year);
+            if (Number.isFinite(y) && y >= MIN_YEAR && y <= MAX_YEAR) yearSet.add(y);
+        });
+    } catch (_) {}
+    return [...yearSet].sort((a, b) => b - a);
+}
+
 function parseManualBody(body) {
     const out = {};
     if (Object.prototype.hasOwnProperty.call(body, 'coefficient')) {
@@ -1370,6 +1510,7 @@ async function generateDealStatusReportRetry(appSettings, reportId, onProgress) 
 async function readDealStatusReportPairs(appSettings, reportId, save, onProgress) {
     const known = Number(save && save.chunksCount) || 0;
     const byTask = new Map();
+    const rowByTask = new Map();
     const unique = [];
     let hint = {};
     let c = 0;
@@ -1395,16 +1536,42 @@ async function readDealStatusReportPairs(appSettings, reportId, save, onProgress
             break;
         }
         const parsed = pf.parseDealStatusReportRows(payload, hint);
-        hint = { taskIdx: parsed.taskIdx, statusIdx: parsed.statusIdx };
+        hint = {
+            taskIdx: parsed.taskIdx,
+            assignerIdx: parsed.assignerIdx,
+            statusIdx: parsed.statusIdx,
+            dateIdx: parsed.dateIdx,
+        };
+        const fullRows = parsed.rows || [];
         const pairs = parsed.pairs || [];
-        if (!pairs.length) break;
+        if (!fullRows.length && !pairs.length) break;
+        fullRows.forEach((r) => {
+            const prev = rowByTask.get(r.task_id);
+            rowByTask.set(r.task_id, {
+                task_id: r.task_id,
+                assigner_id: r.assigner_id || (prev ? prev.assigner_id : null),
+                assigner_name: r.assigner_name || (prev ? prev.assigner_name : ''),
+                status_value: r.status_value || (prev ? prev.status_value : ''),
+                created_at: r.created_at || (prev ? prev.created_at : null),
+                year: r.year || (prev ? prev.year : 0),
+                month: r.month || (prev ? prev.month : 0),
+                day: r.day || (prev ? prev.day : 0),
+            });
+        });
         pairs.forEach((p) => {
             byTask.set(p.task_id, p.status_value);
             if (unique.indexOf(p.status_value) < 0) unique.push(p.status_value);
         });
         if (known > 0 && c + 1 >= known) break;
     }
-    return { byTask, unique, chunks: Math.max(1, c), save_id: save.id };
+    return {
+        byTask,
+        rowByTask,
+        rows: [...rowByTask.values()],
+        unique,
+        chunks: Math.max(1, c),
+        save_id: save.id,
+    };
 }
 
 function periodMonthNorm(month) {
@@ -1518,10 +1685,53 @@ async function upsertReportStatusCounts(db, byTask, meta, year, month) {
     return rows.length;
 }
 
-async function upsertReportTasks(db, byTask, meta, year, month) {
+async function rebuildReportStatusCountsFromTasks(db, meta, year, month) {
     const y = Number(year) || 0;
     const m = periodMonthNorm(month);
-    await db.query('DELETE FROM dg_ops_planfix_report_task WHERE year = ? AND month = ?', [y, m]);
+    const [grouped] = await db.query(
+        `SELECT status_value, COUNT(*) AS n
+           FROM dg_ops_planfix_report_task
+          WHERE year = ? AND month = ?
+            AND status_value <> ''
+          GROUP BY status_value`,
+        [y, m]
+    );
+    await db.query('DELETE FROM dg_ops_planfix_report_status_counts WHERE year = ? AND month = ?', [
+        y,
+        m,
+    ]);
+    const valid = (grouped || []).filter((r) => {
+        const s = String(r.status_value || '').trim();
+        return s && !pf.isPlanfixProcessStatusName(s) && !pf.isDealStatusSeparator(s);
+    });
+    if (!valid.length) return 0;
+    const ph = valid.map(() => '(?,?,?,?,?,?,?)').join(',');
+    const args = [];
+    const rid = meta && Number(meta.report_id) ? Number(meta.report_id) : 0;
+    const sid = meta && Number(meta.save_id) ? Number(meta.save_id) : 0;
+    const ts = mysqlNow();
+    valid.forEach((r) => {
+        args.push(y, m, String(r.status_value).trim().slice(0, 191), Number(r.n) || 0, rid, sid, ts);
+    });
+    await db.query(
+        `INSERT INTO dg_ops_planfix_report_status_counts
+            (year, month, status_value, n, report_id, save_id, synced_at)
+         VALUES ${ph}`,
+        args
+    );
+    return valid.length;
+}
+
+async function upsertReportTasks(db, byTask, meta, year, month, opts) {
+    const y = Number(year) || 0;
+    const m = periodMonthNorm(month);
+    const replacePeriod = !opts || opts.replacePeriod !== false;
+    if (replacePeriod) {
+        await db.query('DELETE FROM dg_ops_planfix_report_task WHERE year = ? AND month = ?', [
+            y,
+            m,
+        ]);
+    }
     const rows = [];
     (byTask || new Map()).forEach((status, tid) => {
         const s = String(status || '').trim();
@@ -1544,11 +1754,74 @@ async function upsertReportTasks(db, byTask, meta, year, month) {
         await db.query(
             `INSERT INTO dg_ops_planfix_report_task
                 (year, month, task_id, status_value, report_id, save_id, synced_at)
-             VALUES ${ph}`,
+             VALUES ${ph}
+             ON DUPLICATE KEY UPDATE
+                status_value = VALUES(status_value),
+                report_id = VALUES(report_id),
+                save_id = VALUES(save_id),
+                synced_at = VALUES(synced_at)`,
             args
         );
     }
     return rows.length;
+}
+
+async function upsertReportRowsIntoSheetTasks(db, reportRows) {
+    if (!Array.isArray(reportRows) || !reportRows.length) return { tasksUpserted: 0, datesUpserted: 0 };
+    const ts = mysqlNow();
+    const withDates = [];
+    const sheetTaskRows = [];
+    reportRows.forEach((r) => {
+        if (!r || !r.task_id || !r.created_at) return;
+        withDates.push({ task_id: Number(r.task_id), created_at: r.created_at });
+        const asgName = String(r.assigner_name || '').trim();
+        const rawStatus = String(r.status_value || '').trim();
+        const dealStatus =
+            rawStatus && !pf.isPlanfixProcessStatusName(rawStatus) && !pf.isDealStatusSeparator(rawStatus)
+                ? rawStatus.slice(0, 191)
+                : '';
+        sheetTaskRows.push({
+            task_id: Number(r.task_id),
+            assigner_id: r.assigner_id || null,
+            assigner_name: asgName.slice(0, 191),
+            status_value: dealStatus,
+            planfix_status: '',
+            created_at: r.created_at,
+            synced_at: ts,
+        });
+    });
+    if (withDates.length) {
+        await upsertTaskDates(db, withDates);
+    }
+    for (let i = 0; i < sheetTaskRows.length; i += 400) {
+        const slice = sheetTaskRows.slice(i, i + 400);
+        const ph = slice.map(() => '(?,?,?,?,?,?,?)').join(',');
+        const args = [];
+        slice.forEach((r) => {
+            args.push(
+                r.task_id,
+                r.assigner_id,
+                r.assigner_name,
+                r.status_value,
+                r.planfix_status,
+                r.created_at,
+                r.synced_at
+            );
+        });
+            await db.query(
+                `INSERT INTO dg_ops_planfix_tasks
+                    (task_id, assigner_id, assigner_name, status_value, planfix_status, created_at, synced_at)
+                 VALUES ${ph}
+                 ON DUPLICATE KEY UPDATE
+                    assigner_id = COALESCE(VALUES(assigner_id), assigner_id),
+                    assigner_name = IF(VALUES(assigner_name) <> '', VALUES(assigner_name), assigner_name),
+                    status_value = VALUES(status_value),
+                    created_at = VALUES(created_at),
+                    synced_at = VALUES(synced_at)`,
+                args
+            );
+    }
+    return { tasksUpserted: sheetTaskRows.length, datesUpserted: withDates.length };
 }
 
 async function upsertTaskDates(db, rows) {
@@ -1593,13 +1866,35 @@ async function indexAllTaskDatesForPeriod(appSettings, db, year, month, onProgre
  * Пересечение сейва отчёта с локальным периодом.
  * Раньше хватало 1 совпавшего task_id (LIMIT 1) — сейв за 2024 проходил как «весь 2025»,
  * гистограмма писалась, а статусы в заявки 2025 почти не попадали → нули в таблице.
+ * В отчёте 450694 каждая строка несёт точную дату создания (`created_at` в МСК):
+ * сначала считаем задачи периода прямо по датам строк сейва (иначе при скользящем 14-дневном
+ * отчёте без `/task/list` локальная `dg_ops_planfix_tasks` устаревает и даёт ложный 409).
  */
-async function reportPeriodCoverage(db, byTask, year, month) {
+async function reportPeriodCoverage(db, byTask, year, month, reportRows) {
     const ids = [...(byTask || new Map()).keys()];
     const reportN = ids.length;
     const empty = { report_n: reportN, in_period: 0, ok: false };
     if (!reportN || !year) return empty;
     const b = pf.periodBounds(year, month);
+    let inPeriodFromReport = 0;
+    let rowsWithDates = 0;
+    if (Array.isArray(reportRows) && reportRows.length) {
+        reportRows.forEach((r) => {
+            if (!r || !r.created_at) return;
+            rowsWithDates += 1;
+            if (r.created_at >= b.fromSql && r.created_at < b.toSql) {
+                inPeriodFromReport += 1;
+            }
+        });
+    }
+    if (rowsWithDates > 0) {
+        const denom = Math.max(reportN, rowsWithDates);
+        const ratio = inPeriodFromReport / denom;
+        const ok = inPeriodFromReport >= 50 && ratio >= 0.05;
+        if (ok) {
+            return { report_n: reportN, in_period: inPeriodFromReport, ratio, ok: true };
+        }
+    }
     let inPeriod = 0;
     for (let i = 0; i < ids.length; i += 400) {
         const slice = ids.slice(i, i + 400);
@@ -1611,10 +1906,11 @@ async function reportPeriodCoverage(db, byTask, year, month) {
         );
         inPeriod += Number(rows && rows[0] && rows[0].n) || 0;
     }
+    const bestInPeriod = Math.max(inPeriod, inPeriodFromReport);
     // ≥10% строк сейва и ≥100 задач в периоде (иначе чужой год с парой совпадений)
-    const ratio = inPeriod / reportN;
-    const ok = inPeriod >= 100 && ratio >= 0.1;
-    return { report_n: reportN, in_period: inPeriod, ratio, ok };
+    const ratio = bestInPeriod / reportN;
+    const ok = bestInPeriod >= 100 && ratio >= 0.1;
+    return { report_n: reportN, in_period: bestInPeriod, ratio, ok };
 }
 
 async function reportOverlapsLocalPeriod(db, byTask, year, month) {
@@ -1691,7 +1987,13 @@ async function enrichFromDealStatusReport(appSettings, db, onProgress, year, mon
         let coverage = { report_n: 0, in_period: 0, ok: !year };
         if (year) {
             for (let oi = 0; oi < overlapMonths.length; oi += 1) {
-                const cov = await reportPeriodCoverage(db, read.byTask, year, overlapMonths[oi]);
+                const cov = await reportPeriodCoverage(
+                    db,
+                    read.byTask,
+                    year,
+                    overlapMonths[oi],
+                    read.rows
+                );
                 if (cov.in_period > (coverage.in_period || 0)) coverage = cov;
                 if (cov.ok) {
                     coverage = cov;
@@ -1720,7 +2022,8 @@ async function enrichFromDealStatusReport(appSettings, db, onProgress, year, mon
                             db,
                             read.byTask,
                             year,
-                            overlapMonths[oi]
+                            overlapMonths[oi],
+                            read.rows
                         );
                         if (cov.in_period > (coverage.in_period || 0)) coverage = cov;
                         if (cov.ok) {
@@ -1774,6 +2077,7 @@ async function enrichFromDealStatusReport(appSettings, db, onProgress, year, mon
             save_id: read.save_id,
             chunks: read.chunks,
             report_rows: read.byTask.size,
+            rows: read.rows || [],
             score,
             covers_period: true,
         });
@@ -1791,13 +2095,123 @@ async function enrichFromDealStatusReport(appSettings, db, onProgress, year, mon
     if (typeof onProgress === 'function') {
         onProgress(`Пишем справочник «${pf.STATUS_FIELD_NAME}» (${merged.size} задач, ${unique.length} значений)`);
     }
+    const allReportRows = used[0].rows || [];
+    const managers = await listSalesManagers(db, { includeArchived: true });
+    const upsertedFromReport = await upsertReportRowsIntoSheetTasks(db, allReportRows, managers);
     const applied = await applyReportStatuses(db, merged);
     await upsertCatalog(db, unique, 'report');
     await refreshTaskDatesFromSheet(db);
-    if (splitMonths.length > 1) {
+
+    const rowsWithValidDates = allReportRows.filter(
+        (r) => r && r.task_id && r.year >= 2019 && r.month >= 1 && r.month <= 12
+    );
+    if (rowsWithValidDates.length > 0 && splitMonths.length <= 1 && periodMonth > 0) {
+        // В отчёте 450694 каждая строка содержит точную дату создания (`created_at`, `year`, `month`).
+        // Если в UI Planfix выставлен скользящий период («последние 14 дней»), сейв может захватывать
+        // конец предыдущего месяца и не включать первые числа текущего месяца (например 1–4 число после 18-го).
+        // Раскладываем строки сейва строго по их (year, month) и обновляем через UPSERT (без DELETE всего месяца!).
+        const byYm = new Map();
+        const minDayByYm = new Map();
+        const maxDayByYm = new Map();
+        const allIdsByYm = new Map();
+        rowsWithValidDates.forEach((r) => {
+            const ymKey = `${r.year}:${r.month}`;
+            if (!allIdsByYm.has(ymKey)) allIdsByYm.set(ymKey, new Set());
+            allIdsByYm.get(ymKey).add(Number(r.task_id));
+            const s = String(r.status_value || '').trim();
+            if (!s || pf.isPlanfixProcessStatusName(s) || pf.isDealStatusSeparator(s)) return;
+            if (!byYm.has(ymKey)) byYm.set(ymKey, new Map());
+            byYm.get(ymKey).set(r.task_id, s);
+            if (r.day > 0) {
+                const curMin = minDayByYm.get(ymKey) || 32;
+                const curMax = maxDayByYm.get(ymKey) || 0;
+                if (r.day < curMin) minDayByYm.set(ymKey, r.day);
+                if (r.day > curMax) maxDayByYm.set(ymKey, r.day);
+            }
+        });
+        // Если больше 95% задач сейва принадлежат целевому месяцу (year:periodMonth),
+        // включаем в его снимок отчёта и единичные задачи с датой в 4-й колонке из другого месяца
+        // (например 2–3 старые задачи, попавшие в месячный фильтр Planfix), чтобы гистограмма «В отчёте Planfix»
+        // совпадала с Planfix 1-в-1 до единицы.
+        const targetYmKey = `${Number(year)}:${Number(periodMonth)}`;
+        const targetMap = byYm.get(targetYmKey);
+        if (targetMap && merged.size > 0 && targetMap.size / merged.size >= 0.95) {
+            for (const [ymKey, partMap] of byYm.entries()) {
+                if (ymKey === targetYmKey) continue;
+                if (partMap.size < 30) {
+                    partMap.forEach((st, tid) => targetMap.set(tid, st));
+                }
+            }
+        }
+        for (const [ymKey, partMap] of byYm.entries()) {
+            const [yStr, mStr] = ymKey.split(':');
+            const yPart = Number(yStr) || 0;
+            const mPart = Number(mStr) || 0;
+            if (!yPart || !mPart || !partMap.size) continue;
+            // Игнорируем единичные задачи других месяцев (например 1 задача из прошлого/следующего месяца на стыке таймзон),
+            // чтобы они не перезаписывали метаданные сейва (dg_ops_planfix_report_meta) чужого месяца.
+            if (partMap.size < 30 && (yPart !== Number(year) || mPart !== Number(periodMonth))) {
+                continue;
+            }
+            const minD = minDayByYm.get(ymKey) || 32;
+            const maxD = maxDayByYm.get(ymKey) || 0;
+            const daysInMonth = new Date(yPart, mPart, 0).getDate();
+            // Полная замена месяца — только если сейв покрывает месяц с 1-го числа до конца месяца (или до сегодня для текущего месяца)
+            const nowMsk = moscowYearMonthNow();
+            const isFullMonthSave =
+                minD === 1 &&
+                (maxD >= daysInMonth - 1 || (yPart === nowMsk.year && mPart === nowMsk.month));
+            if (typeof onProgress === 'function') {
+                onProgress(
+                    `Снимок отчёта ${MONTH_LABELS[mPart]} ${yPart}: ${partMap.size} задач (${
+                        isFullMonthSave ? 'полный месяц' : `дни ${minD}–${maxD}, накопительный UPSERT`
+                    })`
+                );
+            }
+            await upsertReportTasks(db, partMap, used[0], yPart, mPart, {
+                replacePeriod: isFullMonthSave,
+            });
+            if (isFullMonthSave) {
+                const validMonthIds = [...(allIdsByYm.get(ymKey) || [])].filter((id) => id > 0);
+                if (validMonthIds.length >= 50) {
+                    const bMonth = pf.periodBounds(yPart, mPart);
+                    const [existingRows] = await db.query(
+                        `SELECT task_id FROM dg_ops_planfix_tasks WHERE created_at >= ? AND created_at < ?`,
+                        [bMonth.fromSql, bMonth.toSql]
+                    );
+                    const validSet = new Set(validMonthIds);
+                    const toPrune = (existingRows || [])
+                        .map((r) => Number(r.task_id))
+                        .filter((id) => id > 0 && !validSet.has(id));
+                    if (toPrune.length > 0 && toPrune.length < validMonthIds.length * 0.2) {
+                        for (let pi = 0; pi < toPrune.length; pi += 400) {
+                            const pSlice = toPrune.slice(pi, pi + 400);
+                            const pPh = pSlice.map(() => '?').join(',');
+                            await db.query(
+                                `DELETE FROM dg_ops_planfix_tasks WHERE task_id IN (${pPh})`,
+                                pSlice
+                            );
+                        }
+                    }
+                }
+            }
+            await rebuildReportStatusCountsFromTasks(db, used[0], yPart, mPart);
+            await upsertReportMeta(db, {
+                report_id: used[0].report_id,
+                save_id: used[0].save_id,
+                year: yPart,
+                month: mPart,
+                scope: 'period',
+                generated,
+            });
+        }
+    } else if (splitMonths.length > 1) {
         // Один generate за несколько месяцев → разложить снимки по month (не в month=0).
         const idsAll = [...merged.keys()];
         const dateBy = new Map();
+        rowsWithValidDates.forEach((r) => {
+            if (r.created_at) dateBy.set(Number(r.task_id), r.created_at);
+        });
         for (let i = 0; i < idsAll.length; i += 400) {
             const slice = idsAll.slice(i, i + 400);
             const ph = slice.map(() => '?').join(',');
@@ -1806,7 +2220,9 @@ async function enrichFromDealStatusReport(appSettings, db, onProgress, year, mon
                 slice
             );
             (drows || []).forEach((r) => {
-                dateBy.set(Number(r.task_id), r.created_at);
+                if (!dateBy.has(Number(r.task_id))) {
+                    dateBy.set(Number(r.task_id), r.created_at);
+                }
             });
         }
         for (let mi = 0; mi < splitMonths.length; mi += 1) {
@@ -1850,11 +2266,19 @@ async function enrichFromDealStatusReport(appSettings, db, onProgress, year, mon
     }
     return {
         report_id: used[0].report_id,
-        reports: used,
+        reports: used.map((u) => ({
+            report_id: u.report_id,
+            save_id: u.save_id,
+            chunks: u.chunks,
+            report_rows: u.report_rows,
+            score: u.score,
+            covers_period: u.covers_period,
+        })),
         save_id: used[0].save_id,
         chunks: used.reduce((n, r) => n + (r.chunks || 0), 0),
         report_rows: merged.size,
-        statuses_applied: applied,
+        statuses_applied: Math.max(applied, upsertedFromReport.tasksUpserted || 0),
+        tasks_upserted: upsertedFromReport.tasksUpserted || 0,
         unique_statuses: unique,
         generated,
         covers_period: true,
@@ -1895,7 +2319,7 @@ function mergeStatusManagers(sheetBy, reportBy, hasReportCounts) {
 async function loadStatusManagerBreakdown(
     db,
     ranges,
-    { periodScoped, hasReportCounts, snapYear, snapMonth, snapMonths }
+    { periodScoped, customScoped, hasReportCounts, snapYear, snapMonth, snapMonths }
 ) {
     const sheetBy = {};
     const sheetClause = pf.createdAtRangesSql('created_at', ranges);
@@ -1928,7 +2352,19 @@ async function loadStatusManagerBreakdown(
             const datesClause = pf.createdAtRangesSql('d.created_at', ranges);
             let sql;
             let args;
-            if (periodScoped && monthsIn.length > 1) {
+            if (customScoped) {
+                sql = `SELECT sub.status_value, ${nameExpr} AS assigner_name, COUNT(*) AS n
+                         FROM (
+                             SELECT r.task_id, MAX(r.status_value) AS status_value
+                               FROM dg_ops_planfix_report_task r
+                               INNER JOIN dg_ops_planfix_task_dates d ON d.task_id = r.task_id
+                              WHERE ${datesClause.sql}
+                              GROUP BY r.task_id
+                         ) sub
+                         LEFT JOIN dg_ops_planfix_tasks t ON t.task_id = sub.task_id
+                        GROUP BY sub.status_value, ${nameExpr}`;
+                args = [...datesClause.args];
+            } else if (periodScoped && monthsIn.length > 1) {
                 const ph = monthsIn.map(() => '?').join(',');
                 sql = `SELECT r.status_value, ${nameExpr} AS assigner_name, COUNT(*) AS n
                          FROM dg_ops_planfix_report_task r
@@ -1969,19 +2405,28 @@ async function loadStatusManagerBreakdown(
     return mergeStatusManagers(sheetBy, reportBy, hasReportCounts);
 }
 
-async function loadPlanfixPanel(db, year, managers, monthOrMonths) {
+async function loadPlanfixPanel(db, year, managers, monthOrMonths, opts) {
+    const o = opts && typeof opts === 'object' ? opts : {};
+    const customBounds = pf.customDateBounds(o.date_from, o.date_to);
     const monthsList = pf.normalizeMonthsList(
         monthOrMonths == null ? 0 : monthOrMonths,
         0
     );
-    const pr = pf.periodRanges(year, monthsList);
+    const pr = customBounds
+        ? {
+              months: customBounds.month ? [customBounds.month] : [0],
+              ranges: [customBounds],
+              labelMonth: customBounds.month || 0,
+          }
+        : pf.periodRanges(year, monthsList);
     const b = pr.ranges[0] || pf.periodBounds(year, 0);
-    const periodLabel =
-        monthsList[0] === 0
-            ? `весь ${year}`
-            : monthsList.length === 1
-              ? `${MONTH_LABELS[monthsList[0]]} ${year}`
-              : `${monthsList.map((m) => MONTH_LABELS[m]).join(', ')} ${year}`;
+    const periodLabel = customBounds
+        ? customBounds.label
+        : monthsList[0] === 0
+          ? `весь ${year}`
+          : monthsList.length === 1
+            ? `${MONTH_LABELS[monthsList[0]]} ${year}`
+            : `${monthsList.map((m) => MONTH_LABELS[m]).join(', ')} ${year}`;
     const createdClause = pf.createdAtRangesSql('created_at', pr.ranges);
     const [mapRows] = await db.query(
         `SELECT status_value, bucket, count_in_apps FROM dg_ops_planfix_status_map ORDER BY status_value`
@@ -2020,13 +2465,46 @@ async function loadPlanfixPanel(db, year, managers, monthOrMonths) {
     let snapMonths = null;
     const datesOnReport = pf.createdAtRangesSql('d.created_at', pr.ranges);
     try {
+        if (customBounds) {
+            const [rr] = await db.query(
+                `SELECT sub.status_value, COUNT(*) AS n
+                   FROM (
+                       SELECT r.task_id, MAX(r.status_value) AS status_value
+                         FROM dg_ops_planfix_report_task r
+                         INNER JOIN dg_ops_planfix_task_dates d ON d.task_id = r.task_id
+                        WHERE ${datesOnReport.sql}
+                        GROUP BY r.task_id
+                   ) sub
+                  GROUP BY sub.status_value`,
+                datesOnReport.args
+            );
+            reportCountRows = rr || [];
+            hasReportCounts = reportCountRows.length > 0;
+            if (hasReportCounts) {
+                const [[snap]] = await db.query(
+                    `SELECT MAX(r.report_id) AS report_id, MAX(r.save_id) AS save_id, MAX(r.synced_at) AS synced_at
+                       FROM dg_ops_planfix_report_task r
+                       INNER JOIN dg_ops_planfix_task_dates d ON d.task_id = r.task_id
+                      WHERE ${datesOnReport.sql}`,
+                    datesOnReport.args
+                );
+                reportMeta = {
+                    report_id: Number(snap && snap.report_id) || 0,
+                    save_id: Number(snap && snap.save_id) || 0,
+                    synced_at: snap && snap.synced_at ? snap.synced_at : null,
+                    scope: 'custom_dates',
+                    date_from: customBounds.fromYmd,
+                    date_to: customBounds.toYmd,
+                };
+            }
+        }
         const reqMonth = monthsList.length === 1 ? monthsList[0] : 0;
         const multiMonths =
-            monthsList[0] !== 0 && monthsList.length > 1
+            !customBounds && monthsList[0] !== 0 && monthsList.length > 1
                 ? monthsList.filter((m) => m >= 1 && m <= 12)
                 : null;
         let multiSumOk = false;
-        if (multiMonths && multiMonths.length > 1) {
+        if (!customBounds && multiMonths && multiMonths.length > 1) {
             // Сумма помесячных снимков = гистограмма Planfix за эти месяцы (1+2 → 1605+1581=3186).
             // Раньше резали годовой month=0 по датам → Поставщик 3134 вместо 3186.
             const metas = [];
@@ -2077,17 +2555,18 @@ async function loadPlanfixPanel(db, year, managers, monthOrMonths) {
                 };
             }
         }
-        const metaRow = !multiSumOk ? await loadReportMeta(db, year, reqMonth) : null;
+        const metaRow = !customBounds && !multiSumOk ? await loadReportMeta(db, year, reqMonth) : null;
         periodScoped =
             periodScoped ||
             !!(
+                !customBounds &&
                 monthsList.length === 1 &&
                 metaRow &&
                 String(metaRow.scope || '') === 'period' &&
                 Number(metaRow.year) === Number(year) &&
                 Number(metaRow.month) === reqMonth
             );
-        if (!multiSumOk && periodScoped) {
+        if (!customBounds && !multiSumOk && periodScoped) {
             snapYear = Number(metaRow.year) || 0;
             snapMonth = Number(metaRow.month) || 0;
             // Сейв этого (year, month) — гистограмма 1:1 с Planfix.
@@ -2139,7 +2618,7 @@ async function loadPlanfixPanel(db, year, managers, monthOrMonths) {
                     month: snapMonth,
                 };
             }
-        } else if (!multiSumOk) {
+        } else if (!customBounds && !multiSumOk) {
             // Нет точного снимка: пробуем полный год того же year (month=0), иначе даты.
             const yearMeta = await loadReportMeta(db, year, 0);
             if (yearMeta && Number(yearMeta.year) === Number(year) && Number(yearMeta.month) === 0) {
@@ -2223,6 +2702,7 @@ async function loadPlanfixPanel(db, year, managers, monthOrMonths) {
     });
     const mgrByStatus = await loadStatusManagerBreakdown(db, pr.ranges, {
         periodScoped,
+        customScoped: !!customBounds,
         hasReportCounts,
         snapYear,
         snapMonth,
@@ -2301,6 +2781,8 @@ async function loadPlanfixPanel(db, year, managers, monthOrMonths) {
         unmapped: statuses.filter((s) => !s.is_separator && !s.mapped && s.status_value).length,
         month: monthsList.length === 1 ? monthsList[0] : 0,
         months: monthsList,
+        date_from: customBounds ? customBounds.fromYmd : null,
+        date_to: customBounds ? customBounds.toYmd : null,
         period: periodLabel,
         empty_status: emptyStatus,
         with_status: Math.max(0, (Number(tot.n) || 0) - emptyStatus),
@@ -2551,14 +3033,21 @@ function opsSheetRouterFactory(db, appSettings) {
             const year = normYear(req.query.year, currentYear());
             const months = monthsFromRequest(req, null);
             const month = months.length === 1 ? months[0] : 0;
+            const dateFrom = String(req.query.date_from || '').trim();
+            const dateTo = String(req.query.date_to || '').trim();
             const managers = await listSalesManagers(db);
-            const panel = await loadPlanfixPanel(db, year, managers, months);
+            const panel = await loadPlanfixPanel(db, year, managers, months, {
+                date_from: dateFrom,
+                date_to: dateTo,
+            });
             const { token, account, base } = credsFromSettings(settings);
             res.json({
                 success: true,
                 year,
                 month,
                 months,
+                date_from: dateFrom || null,
+                date_to: dateTo || null,
                 configured: !!token,
                 account,
                 base,
@@ -2579,7 +3068,16 @@ function opsSheetRouterFactory(db, appSettings) {
             await ensureSchema(db);
             const year = normYear(req.query.year, currentYear());
             const months = monthsFromRequest(req, null);
-            const pr = pf.periodRanges(year, months);
+            const dateFrom = String(req.query.date_from || '').trim();
+            const dateTo = String(req.query.date_to || '').trim();
+            const customBounds = pf.customDateBounds(dateFrom, dateTo);
+            const pr = customBounds
+                ? {
+                      months: customBounds.month ? [customBounds.month] : [0],
+                      ranges: [customBounds],
+                      labelMonth: customBounds.month || 0,
+                  }
+                : pf.periodRanges(year, months);
             const createdClause = pf.createdAtRangesSql('created_at', pr.ranges);
             const q = String(req.query.q || req.query.search || '').trim();
             let limit = Number(req.query.limit);
@@ -2613,17 +3111,20 @@ function opsSheetRouterFactory(db, appSettings) {
                 [...args, limit, offset]
             );
             const { account } = credsFromSettings(settings);
-            const periodLabel =
-                months[0] === 0
-                    ? `весь ${year}`
-                    : months.length === 1
-                      ? `${MONTH_LABELS[months[0]]} ${year}`
-                      : `${months.map((m) => MONTH_LABELS[m]).join(', ')} ${year}`;
+            const periodLabel = customBounds
+                ? customBounds.label
+                : months[0] === 0
+                  ? `весь ${year}`
+                  : months.length === 1
+                    ? `${MONTH_LABELS[months[0]]} ${year}`
+                    : `${months.map((m) => MONTH_LABELS[m]).join(', ')} ${year}`;
             res.json({
                 success: true,
                 months,
                 year,
                 month: pr.labelMonth != null ? pr.labelMonth : months.length === 1 ? months[0] : 0,
+                date_from: customBounds ? customBounds.fromYmd : null,
+                date_to: customBounds ? customBounds.toYmd : null,
                 period: periodLabel,
                 account: account || 'almamed',
                 q,
@@ -3317,9 +3818,14 @@ function opsSheetRouterFactory(db, appSettings) {
                 catArgs
             );
             const year = normYear(req.body && req.body.year, currentYear());
-            const month = normSyncMonth(req.body && req.body.month, 0);
+            const months = monthsFromRequest(req, req.body);
+            const dateFrom = String((req.body && req.body.date_from) || '').trim();
+            const dateTo = String((req.body && req.body.date_to) || '').trim();
             const managers = await listSalesManagers(db);
-            const panel = await loadPlanfixPanel(db, year, managers, month);
+            const panel = await loadPlanfixPanel(db, year, managers, months, {
+                date_from: dateFrom,
+                date_to: dateTo,
+            });
             const verify = {};
             cleaned.forEach((r) => {
                 verify[r.status_value] = { bucket: r.bucket, count_in_apps: !!r.count_in_apps };
@@ -3347,6 +3853,264 @@ function opsSheetRouterFactory(db, appSettings) {
             const status = e.status || 500;
             if (status >= 500) console.error('[ops-sheet/planfix-status-map]', e);
             res.status(status).json({ success: false, error: e.message || 'save map failed' });
+        }
+    });
+
+    router.get('/yearly', async (req, res) => {
+        try {
+            await ensureSchema(db);
+            const yearsDesc = await listAllOpsYears(db);
+            const yearsAsc = yearsDesc.slice().sort((a, b) => a - b);
+            const managers = await listSalesManagers(db, { includeArchived: true });
+            const mids = managers.map((m) => m.id);
+            const plans = await loadPlans(db);
+
+            const focusMidRaw = Number(req.query.manager_user_id);
+            const focusManager =
+                Number.isFinite(focusMidRaw) && focusMidRaw > 0
+                    ? managers.find((m) => Number(m.id) === focusMidRaw) || null
+                    : null;
+            const focusMid = focusManager ? Number(focusManager.id) : 0;
+
+            const mskNow = moscowYearMonthNow();
+            const rawYtd = Number(req.query.ytd_month);
+            const ytdMonth =
+                Number.isFinite(rawYtd) && rawYtd >= 1 && rawYtd <= 12
+                    ? Math.round(rawYtd)
+                    : mskNow.month || 12;
+
+            // Load per-year snapshots in parallel
+            const snapshotsByYear = {};
+            await Promise.all(
+                yearsDesc.map(async (y) => {
+                    const [aggregates, manualMap, pfApps, bonusPastMap] = await Promise.all([
+                        fetchMonthAggregates(db, y, mids),
+                        loadManualMap(db, y),
+                        fetchPlanfixAppCounts(db, y, managers),
+                        fetchBonusPastByShipped(db, y, mids),
+                    ]);
+                    snapshotsByYear[y] = buildYearSnapshot(
+                        managers,
+                        y,
+                        aggregates,
+                        plans,
+                        manualMap,
+                        pfApps.countsLocal || {},
+                        bonusPastMap
+                    );
+                })
+            );
+
+            // 1. Summary per year (both full_year and ytd 1..ytdMonth) for focus (company or selected manager)
+            const summaryByYearObj = {};
+            yearsAsc.forEach((y) => {
+                const mBlocks = snapshotsByYear[y] || [];
+                const pickBlockRow = (mb) => {
+                    if (focusMid > 0) {
+                        const r = (mb.rows || []).find((x) => Number(x.manager_user_id) === focusMid);
+                        return r || null;
+                    }
+                    return mb.totals || null;
+                };
+                const fullRows = mBlocks.map(pickBlockRow).filter(Boolean);
+                const ytdRows = mBlocks
+                    .filter((mb) => Number(mb.month) >= 1 && Number(mb.month) <= ytdMonth)
+                    .map(pickBlockRow)
+                    .filter(Boolean);
+
+                const fullAgg = aggregateSliceRows(fullRows, {
+                    year: y,
+                    scope: 'full_year',
+                    manager_user_id: focusMid || null,
+                    manager_name: focusManager ? focusManager.full_name || focusManager.username : 'ИТОГО (компания)',
+                });
+                const ytdAgg = aggregateSliceRows(ytdRows, {
+                    year: y,
+                    scope: 'ytd',
+                    ytd_month: ytdMonth,
+                    manager_user_id: focusMid || null,
+                    manager_name: focusManager ? focusManager.full_name || focusManager.username : 'ИТОГО (компания)',
+                });
+                summaryByYearObj[y] = {
+                    year: y,
+                    is_current_year: y === mskNow.year,
+                    full_year: fullAgg,
+                    ytd: ytdAgg,
+                    yoy_full_delta: null,
+                    yoy_ytd_delta: null,
+                };
+            });
+
+            yearsAsc.forEach((y, idx) => {
+                const prevYear = idx > 0 ? yearsAsc[idx - 1] : null;
+                const prev = prevYear && summaryByYearObj[prevYear] ? summaryByYearObj[prevYear] : null;
+                if (prev) {
+                    summaryByYearObj[y].prev_year = prevYear;
+                    summaryByYearObj[y].yoy_full_delta = buildYoyDeltas(
+                        summaryByYearObj[y].full_year,
+                        prev.full_year
+                    );
+                    summaryByYearObj[y].yoy_ytd_delta = buildYoyDeltas(
+                        summaryByYearObj[y].ytd,
+                        prev.ytd
+                    );
+                } else {
+                    summaryByYearObj[y].prev_year = null;
+                }
+            });
+
+            const yearsSummary = yearsDesc.map((y) => summaryByYearObj[y]);
+
+            // 2. Monthly YoY matrix (months 1..12 across years) for focus (company or selected manager)
+            const monthlyYoy = [];
+            for (let m = 1; m <= 12; m += 1) {
+                const byYear = {};
+                yearsAsc.forEach((y, idx) => {
+                    const mBlocks = snapshotsByYear[y] || [];
+                    const mb = mBlocks.find((b) => Number(b.month) === m);
+                    let rawRow = null;
+                    if (mb) {
+                        if (focusMid > 0) {
+                            rawRow = (mb.rows || []).find((x) => Number(x.manager_user_id) === focusMid) || null;
+                        } else {
+                            rawRow = mb.totals || null;
+                        }
+                    }
+                    const enriched = enrichRowWithEffectiveApps(rawRow || {});
+                    const prevYear = idx > 0 ? yearsAsc[idx - 1] : null;
+                    const prevCell = prevYear && byYear[prevYear] ? byYear[prevYear] : null;
+                    byYear[y] = Object.assign({}, enriched, {
+                        year: y,
+                        month: m,
+                        prev_year: prevYear,
+                        yoy_delta: prevCell ? buildYoyDeltas(enriched, prevCell) : null,
+                    });
+                });
+                monthlyYoy.push({
+                    month: m,
+                    label: MONTH_LABELS[m],
+                    by_year: byYear,
+                });
+            }
+
+            // 3. Managers breakdown by year (all managers for each year, with full OPS_COLS + YoY deltas + monthly rows)
+            const mgrYearLookup = {};
+            yearsAsc.forEach((y) => {
+                const mBlocks = snapshotsByYear[y] || [];
+                managers.forEach((mgr) => {
+                    const mgrMonthRows = [];
+                    const mgrYtdRows = [];
+                    mBlocks.forEach((mb) => {
+                        const r = (mb.rows || []).find((x) => Number(x.manager_user_id) === Number(mgr.id));
+                        if (r) {
+                            const er = Object.assign({}, enrichRowWithEffectiveApps(r), {
+                                month: mb.month,
+                                month_label: mb.label,
+                            });
+                            mgrMonthRows.push(er);
+                            if (Number(mb.month) >= 1 && Number(mb.month) <= ytdMonth) {
+                                mgrYtdRows.push(er);
+                            }
+                        }
+                    });
+                    const fullRow = aggregateSliceRows(mgrMonthRows, {
+                        year: y,
+                        manager_user_id: mgr.id,
+                        manager_name: mgr.full_name || mgr.username || '',
+                        username: mgr.username || '',
+                        is_archived: !!mgr.is_archived,
+                        is_total: false,
+                    });
+                    const ytdRow = aggregateSliceRows(mgrYtdRows, {
+                        year: y,
+                        ytd_month: ytdMonth,
+                        manager_user_id: mgr.id,
+                        manager_name: mgr.full_name || mgr.username || '',
+                        username: mgr.username || '',
+                        is_archived: !!mgr.is_archived,
+                        is_total: false,
+                    });
+                    mgrYearLookup[`${mgr.id}:${y}`] = {
+                        full: fullRow,
+                        ytd: ytdRow,
+                        months: mgrMonthRows,
+                    };
+                });
+            });
+
+            const managersByYear = yearsDesc.map((y) => {
+                const prevYear = yearsAsc.indexOf(y) > 0 ? yearsAsc[yearsAsc.indexOf(y) - 1] : null;
+                const mBlocks = snapshotsByYear[y] || [];
+                const companyFullRows = mBlocks.map((mb) => mb.totals).filter(Boolean);
+                const companyYtdRows = mBlocks
+                    .filter((mb) => Number(mb.month) >= 1 && Number(mb.month) <= ytdMonth)
+                    .map((mb) => mb.totals)
+                    .filter(Boolean);
+                const totalsFull = aggregateSliceRows(companyFullRows, {
+                    year: y,
+                    manager_user_id: null,
+                    manager_name: 'ИТОГО',
+                    is_total: true,
+                });
+                const totalsYtd = aggregateSliceRows(companyYtdRows, {
+                    year: y,
+                    ytd_month: ytdMonth,
+                    manager_user_id: null,
+                    manager_name: 'ИТОГО',
+                    is_total: true,
+                });
+                const prevCompanyFull =
+                    prevYear && summaryByYearObj[prevYear] ? summaryByYearObj[prevYear].full_year : null;
+                const prevCompanyYtd =
+                    prevYear && summaryByYearObj[prevYear] ? summaryByYearObj[prevYear].ytd : null;
+                totalsFull.yoy_delta = prevCompanyFull ? buildYoyDeltas(totalsFull, prevCompanyFull) : null;
+                totalsYtd.yoy_delta = prevCompanyYtd ? buildYoyDeltas(totalsYtd, prevCompanyYtd) : null;
+
+                const rows = managers.map((mgr) => {
+                    const cur = mgrYearLookup[`${mgr.id}:${y}`];
+                    const prev = prevYear ? mgrYearLookup[`${mgr.id}:${prevYear}`] : null;
+                    const fullWithDelta = Object.assign({}, cur.full, {
+                        prev_year: prevYear,
+                        yoy_delta: prev ? buildYoyDeltas(cur.full, prev.full) : null,
+                        ytd: Object.assign({}, cur.ytd, {
+                            prev_year: prevYear,
+                            yoy_delta: prev ? buildYoyDeltas(cur.ytd, prev.ytd) : null,
+                        }),
+                        months: cur.months,
+                    });
+                    return fullWithDelta;
+                });
+
+                return {
+                    year: y,
+                    prev_year: prevYear,
+                    is_current_year: y === mskNow.year,
+                    ytd_month: ytdMonth,
+                    rows,
+                    totals: totalsFull,
+                    totals_ytd: totalsYtd,
+                };
+            });
+
+            res.json({
+                success: true,
+                years: yearsDesc,
+                current_year: mskNow.year,
+                current_month: mskNow.month,
+                ytd_month: ytdMonth,
+                focus_manager_id: focusMid,
+                focus_manager_name: focusManager
+                    ? focusManager.full_name || focusManager.username || ''
+                    : 'Все менеджеры (компания)',
+                managers,
+                years_summary: yearsSummary,
+                monthly_yoy: monthlyYoy,
+                managers_by_year: managersByYear,
+                ops_auto_from: OPS_AUTO_FROM,
+            });
+        } catch (e) {
+            console.error('[ops-sheet/yearly]', e);
+            res.status(500).json({ success: false, error: e.message || 'yearly load failed' });
         }
     });
 

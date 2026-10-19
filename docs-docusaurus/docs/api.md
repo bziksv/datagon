@@ -2307,6 +2307,19 @@ CSV UTF-8 с BOM по текущему фильтру.
 
 Query: `year` (по умолчанию текущий). Ответ: `months[{ month, label, rows, totals, ops_auto_era }]`, `managers` (включая **архивных** менеджеров продаж), `can_write`, `planfix_unmatched`, `ops_auto_from`. В строке менеджера дополнительно: `bonus_past_auto`, `bonus_past_is_manual`, `bonus_past_source` (`auto`|`manual`|`archive`), `bonus_past_orders_count`, `ops_auto_era`. На `/ops-sheet.html` строка скрыта, если все суммы / заявки / оплаты / ручные поля нули или пустые. У архивного в ФИО пометка «(архив)». Синк Planfix по-прежнему берёт только неархивных постановщиков. У строки менеджера — стрелка: разворот статусов заявок (`GET /manager-app-statuses`).
 
+### GET `/api/ops-sheet/yearly`
+
+Многолетняя динамика операционного листа (для вкладки **«Операционный лист по годам»** на `/ops-sheet.html`, `?tab=years`).
+Query:
+- `manager_user_id` (опционально, `0` = вся компания, `>0` = фокус на выбранном менеджере в KPI, сводной таблице по годам и помесячной YoY-матрице).
+- `ytd_month` (опционально, `1..12` — месяц отсечки для сопоставимого сравнения YTD `Янв..M` между годами; по умолчанию текущий месяц МСК).
+
+Ответ:
+- `years[]` — список годов по убыванию;
+- `years_summary[]` — свод по каждому году (`full_year` за 12 мес. и `ytd` за `1..ytd_month`) со всеми 18 колонками листа, эффективными заявками (`effective_applications`: Planfix* если > 0, иначе Google), конверсией (`conversion_pct`, `effective_apps_per_sale`) и дельтами к предыдущему году (`yoy_full_delta`, `yoy_ytd_delta`);
+- `monthly_yoy[]` — матрица `1..12` месяцев по всем годам (`by_year[year]` + `yoy_delta`);
+- `managers_by_year[]` — годовые блоки со строками всех менеджеров (`rows[]` с годовыми итогами, `ytd`, `yoy_delta` и вложенным массивом `months[]` для раскрытия помесячной динамики менеджера внутри года) и строками `totals` / `totals_ytd`.
+
 ### GET `/api/ops-sheet/manager-app-statuses`
 
 Query: `year`, `month` (1–12), `manager_user_id`. Разбивка задач Planfix постановщика за месяц по `status_value`: `statuses[{ status_value, n, excluded }]`, `included_total` (входит в «Кол-во заявок*»), `excluded_total` (серые / «не вошло»), `all_total`. Исключения — `APP_COUNT_EXCLUDED_STATUSES` (опечатка Planfix «мориторинг» → «мониторинг» при сравнении; `\b` для кириллицы не используется).
@@ -2323,11 +2336,11 @@ Query: `year`, `month`, `manager_user_id`. Список заказов, вход
 
 ### GET `/api/ops-sheet/planfix`
 
-Query: `year`, `month` (`0` = весь год, `1–12` = месяц) и/или `months` (список `1,3,5` / JSON-массив — несколько месяцев; приоритет у `months`). При нескольких месяцах «В отчёте Planfix» = **сумма помесячных снимков** (если все есть), не срез годового сейва по датам. Локальная панель статусов **за период**: `statuses[]` (`status_value`, `tasks_n` / `tasks_in_year` — заявки листа: постановщик=менеджер продаж, без фильтра шаблона КП; `managers[]` — разворот по постановщику `{ name, tasks_n, tasks_n_report }`; `bucket`, `suggested_bucket`, `count_in_apps`, `mapped`), `buckets`, `unmatched_assigners`, `local_total`, `empty_status`, `with_status`, `period`, `last_synced_at`, `sync_script`. Поля `tasks_n_report` / `report_total` / `report_meta` — гистограмма отчёта.
+Query: `year`, `month` (`0` = весь год, `1–12` = месяц) и/или `months` (список `1,3,5` / JSON-массив — несколько месяцев; приоритет у `months`), опционально `date_from` / `date_to` (`YYYY-MM-DD`, произвольный диапазон дат включительно — если задан, переопределяет выбор месяцев и считает как «По задачам листа», так и «В отчёте Planfix» по дате создания задачи). При нескольких месяцах «В отчёте Planfix» = **сумма помесячных снимков** (если все есть), не срез годового сейва по датам. Локальная панель статусов **за период**: `statuses[]` (`status_value`, `tasks_n` / `tasks_in_year` — заявки листа: постановщик=менеджер продаж, без фильтра шаблона КП; `managers[]` — разворот по постановщику `{ name, tasks_n, tasks_n_report }`; `bucket`, `suggested_bucket`, `count_in_apps`, `mapped`), `buckets`, `unmatched_assigners`, `local_total`, `empty_status`, `with_status`, `period`, `date_from`, `date_to`, `last_synced_at`, `sync_script`. Поля `tasks_n_report` / `report_total` / `report_meta` — гистограмма отчёта.
 
 ### GET `/api/ops-sheet/planfix-tasks`
 
-Query: `year`, `month` и/или `months` (как у панели), `q` (номер / постановщик / статус), `page`, `limit` (по умолчанию 100, макс. 200). Строки из `dg_ops_planfix_tasks` за период: `rows[]` (`task_id`, `assigner_name`, `status_value`, `created_at`, `synced_at`), `account` (для ссылки `https://{account}.planfix.ru/task/{id}`), `total`, `pages`, `shown`, `empty_status`, `with_status`.
+Query: `year`, `month` и/или `months` (как у панели), опционально `date_from` / `date_to` (`YYYY-MM-DD`), `q` (номер / постановщик / статус), `page`, `limit` (по умолчанию 100, макс. 200). Строки из `dg_ops_planfix_tasks` за период: `rows[]` (`task_id`, `assigner_name`, `status_value`, `created_at`, `synced_at`), `account` (для ссылки `https://{account}.planfix.ru/task/{id}`), `total`, `pages`, `shown`, `empty_status`, `with_status`.
 
 ### GET `/api/ops-sheet/planfix-sync-status`
 

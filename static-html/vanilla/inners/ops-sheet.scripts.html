@@ -88,8 +88,10 @@
     year: cy,
     search: "",
     pf_months: [curMonth],
+    pf_date_from: "",
+    pf_date_to: "",
     jump_month: 0,
-    pending: { year: cy, search: "", pf_months: [curMonth] },
+    pending: { year: cy, search: "", pf_months: [curMonth], pf_date_from: "", pf_date_to: "" },
     months: [],
     managers: [],
     years: [],
@@ -185,7 +187,7 @@
   }
 
   var urlSyncTimer = null;
-  var SHARE_KEYS = ["year", "month", "search", "q", "page", "jump"];
+  var SHARE_KEYS = ["year", "month", "months", "date_from", "date_to", "search", "q", "page", "jump"];
 
   function hasShareQuery() {
     try {
@@ -196,6 +198,26 @@
     } catch (e) {
       return false;
     }
+  }
+
+  function normYmdInput(raw) {
+    var s = String(raw || "").trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return "";
+    return s;
+  }
+
+  function hasPendingCustomDates() {
+    return !!(normYmdInput(state.pending.pf_date_from) || normYmdInput(state.pending.pf_date_to));
+  }
+
+  function hasAppliedCustomDates() {
+    return !!(normYmdInput(state.pf_date_from) || normYmdInput(state.pf_date_to));
+  }
+
+  function syncPfDatesClearBtn() {
+    var btn = el("dg-ops-pf-dates-clear");
+    if (!btn) return;
+    btn.classList.toggle("d-none", !hasPendingCustomDates());
   }
 
   function normalizeMonthsList(raw, fallback) {
@@ -244,6 +266,8 @@
       var pm = parseShareMonths(p.get("months") || p.get("month"));
       if (pm) state.pending.pf_months = pm;
     }
+    if (p.has("date_from")) state.pending.pf_date_from = normYmdInput(p.get("date_from"));
+    if (p.has("date_to")) state.pending.pf_date_to = normYmdInput(p.get("date_to"));
     if (p.has("search")) state.pending.search = p.get("search") || "";
     if (p.has("q")) state.pf.task_q = String(p.get("q") || "").trim();
     var page = Number(p.get("page"));
@@ -252,6 +276,11 @@
       var jm = Number(p.get("jump"));
       state.jump_month = Number.isFinite(jm) && jm >= 1 && jm <= 12 ? Math.round(jm) : 0;
     }
+    state.year = state.pending.year;
+    state.pf_months = state.pending.pf_months.slice();
+    state.pf_date_from = state.pending.pf_date_from;
+    state.pf_date_to = state.pending.pf_date_to;
+    state.search = state.pending.search;
     return true;
   }
 
@@ -267,6 +296,8 @@
       params.set("months", months.join(","));
       params.set("month", months.join(","));
     }
+    if (state.pf_date_from) params.set("date_from", state.pf_date_from);
+    if (state.pf_date_to) params.set("date_to", state.pf_date_to);
     if (state.search) params.set("search", state.search);
     if (state.pf.task_q) params.set("q", state.pf.task_q);
     if (Number(state.pf.task_page) > 1) params.set("page", String(state.pf.task_page));
@@ -289,8 +320,13 @@
     var y = el("dg-ops-f-year");
     var mirr = el("dg-ops-table-search-mirror");
     var tq = el("dg-ops-pf-tasks-search");
+    var df = el("dg-ops-pf-date-from");
+    var dt = el("dg-ops-pf-date-to");
     if (y) y.value = String(state.pending.year || cy);
     if (mirr) mirr.value = String(state.pending.search || "");
+    if (df) df.value = String(state.pending.pf_date_from || "");
+    if (dt) dt.value = String(state.pending.pf_date_to || "");
+    syncPfDatesClearBtn();
     paintPfMonthSelect(state.pending.pf_months);
     if (tq) tq.value = String(state.pf.task_q || "");
   }
@@ -395,6 +431,8 @@
     var dirty =
       Number(state.pending.year) !== Number(state.year) ||
       monthsListKey(state.pending.pf_months) !== monthsListKey(state.pf_months) ||
+      normYmdInput(state.pending.pf_date_from) !== normYmdInput(state.pf_date_from) ||
+      normYmdInput(state.pending.pf_date_to) !== normYmdInput(state.pf_date_to) ||
       String(state.pending.search || "") !== String(state.search || "");
     btn.classList.toggle("dg-flt-dirty", dirty);
     btn.textContent = dirty ? "Применить •" : "Применить";
@@ -1185,6 +1223,11 @@
   }
 
   function pfMonthsLabel(arr) {
+    if (arr == null && hasAppliedCustomDates()) {
+      var f = state.pf_date_from || state.pf_date_to;
+      var t = state.pf_date_to || state.pf_date_from;
+      return f === t ? f : f + " — " + t;
+    }
     var a = normalizeMonthsList(arr != null ? arr : state.pf_months, curMonth);
     if (a[0] === 0) return "весь год";
     return a
@@ -1201,11 +1244,14 @@
   function paintPfMonthSelect(months) {
     var host = el("dg-ops-pf-months");
     if (!host) return;
+    var customActive = hasPendingCustomDates();
     var want = normalizeMonthsList(months, curMonth);
     var wantSet = {};
-    want.forEach(function (m) {
-      wantSet[String(m)] = 1;
-    });
+    if (!customActive) {
+      want.forEach(function (m) {
+        wantSet[String(m)] = 1;
+      });
+    }
     var btns = host.querySelectorAll("button[data-ops-pf-month]");
     for (var i = 0; i < btns.length; i += 1) {
       var b = btns[i];
@@ -1220,9 +1266,21 @@
   function togglePfMonth(rawMonth) {
     var clicked = Math.round(Number(rawMonth));
     if (!Number.isFinite(clicked) || clicked < 0 || clicked > 12) return;
+    var hadCustom = hasPendingCustomDates();
+    if (hadCustom) {
+      state.pending.pf_date_from = "";
+      state.pending.pf_date_to = "";
+      var df = el("dg-ops-pf-date-from");
+      var dt = el("dg-ops-pf-date-to");
+      if (df) df.value = "";
+      if (dt) dt.value = "";
+      syncPfDatesClearBtn();
+    }
     var prev = normalizeMonthsList(state.pending.pf_months, curMonth);
     var next;
-    if (clicked === 0) {
+    if (hadCustom) {
+      next = [clicked];
+    } else if (clicked === 0) {
       next = [0];
     } else if (prev.indexOf(0) >= 0) {
       next = [clicked];
@@ -1597,14 +1655,20 @@
 
   function planfixYearMonthQs() {
     var months = pfMonthsFromUi();
-    return (
+    var qs =
       "year=" +
       encodeURIComponent(String(state.year)) +
       "&months=" +
       encodeURIComponent(months.join(",")) +
       "&month=" +
-      encodeURIComponent(String(months.length === 1 ? months[0] : 0))
-    );
+      encodeURIComponent(String(months.length === 1 ? months[0] : 0));
+    if (state.pf_date_from) {
+      qs += "&date_from=" + encodeURIComponent(String(state.pf_date_from));
+    }
+    if (state.pf_date_to) {
+      qs += "&date_to=" + encodeURIComponent(String(state.pf_date_to));
+    }
+    return qs;
   }
 
   function fmtPfDt(v) {
@@ -1808,6 +1872,14 @@
                 reject(new Error(j.last_error || j.message || "Синк Planfix завершился с ошибкой"));
                 return;
               }
+              if (seenActive && j.stage === "idle") {
+                reject(
+                  new Error(
+                    "Процесс сервера был перезапущен во время синхронизации Planfix — нажмите кнопку ещё раз"
+                  )
+                );
+                return;
+              }
               // Не patchLiveProgress(active:false) — затрёт прогресс пустой плашкой.
               showActionLog(
                 "info",
@@ -2006,6 +2078,8 @@
           year: state.year,
           month: pfMonthFromUi(),
           months: pfMonthsFromUi(),
+          date_from: state.pf_date_from || "",
+          date_to: state.pf_date_to || "",
           items: items,
         }),
       }).then(function (r) {
@@ -2099,13 +2173,30 @@
   function commitFilters(opts) {
     var ySel = el("dg-ops-f-year");
     var mirr = el("dg-ops-table-search-mirror");
+    var df = el("dg-ops-pf-date-from");
+    var dt = el("dg-ops-pf-date-to");
     if (ySel) state.pending.year = Number(ySel.value) || cy;
     if (mirr) state.pending.search = mirr.value;
+    if (df) state.pending.pf_date_from = normYmdInput(df.value);
+    if (dt) state.pending.pf_date_to = normYmdInput(dt.value);
     state.pending.pf_months = readPfMonthsFromSelect();
     state.year = Number(state.pending.year) || cy;
     state.search = String(state.pending.search || "").trim();
     state.pf_months = normalizeMonthsList(state.pending.pf_months, curMonth);
     state.pending.pf_months = state.pf_months.slice();
+    state.pf_date_from = normYmdInput(state.pending.pf_date_from);
+    state.pf_date_to = normYmdInput(state.pending.pf_date_to);
+    if (state.pf_date_from && state.pf_date_to && state.pf_date_from > state.pf_date_to) {
+      var tmpD = state.pf_date_from;
+      state.pf_date_from = state.pf_date_to;
+      state.pf_date_to = tmpD;
+      state.pending.pf_date_from = state.pf_date_from;
+      state.pending.pf_date_to = state.pf_date_to;
+      if (df) df.value = state.pf_date_from;
+      if (dt) dt.value = state.pf_date_to;
+    }
+    syncPfDatesClearBtn();
+    paintPfMonthSelect(state.pending.pf_months);
     if (!(opts && opts.keepTaskPage)) state.pf.task_page = 1;
     syncDirtyMarker();
     scheduleUrlSync();
@@ -2123,6 +2214,8 @@
     state.pending.year = cy;
     state.pending.search = "";
     state.pending.pf_months = [curMonth];
+    state.pending.pf_date_from = "";
+    state.pending.pf_date_to = "";
     state.jump_month = 0;
     state.pf.task_q = "";
     state.pf.task_page = 1;
@@ -2576,6 +2669,47 @@
         syncDirtyMarker();
       });
     }
+    var df = el("dg-ops-pf-date-from");
+    var dt = el("dg-ops-pf-date-to");
+    function onDateInput() {
+      state.pending.pf_date_from = df ? normYmdInput(df.value) : "";
+      state.pending.pf_date_to = dt ? normYmdInput(dt.value) : "";
+      syncPfDatesClearBtn();
+      paintPfMonthSelect(state.pending.pf_months);
+      syncDirtyMarker();
+    }
+    if (df) {
+      df.addEventListener("change", onDateInput);
+      df.addEventListener("input", onDateInput);
+      df.addEventListener("keydown", function (ev) {
+        if (ev.key === "Enter") {
+          ev.preventDefault();
+          if (el("dg-ops-apply")) el("dg-ops-apply").click();
+        }
+      });
+    }
+    if (dt) {
+      dt.addEventListener("change", onDateInput);
+      dt.addEventListener("input", onDateInput);
+      dt.addEventListener("keydown", function (ev) {
+        if (ev.key === "Enter") {
+          ev.preventDefault();
+          if (el("dg-ops-apply")) el("dg-ops-apply").click();
+        }
+      });
+    }
+    var clearDates = el("dg-ops-pf-dates-clear");
+    if (clearDates) {
+      clearDates.addEventListener("click", function () {
+        state.pending.pf_date_from = "";
+        state.pending.pf_date_to = "";
+        if (df) df.value = "";
+        if (dt) dt.value = "";
+        syncPfDatesClearBtn();
+        paintPfMonthSelect(state.pending.pf_months);
+        commitFilters();
+      });
+    }
     if (el("dg-ops-apply")) {
       el("dg-ops-apply").addEventListener("click", function () {
         commitFilters();
@@ -2893,6 +3027,7 @@
     bindBonusOrdersModal();
     bindMgrAppsExpand();
     bindPlanfix();
+    bindYearlyTabAndControls();
     fillPfMonthSelect();
     paintFilterForm();
     syncDirtyMarker();
@@ -2904,6 +3039,11 @@
         fillYearSelect(state.years);
         fillPfMonthSelect();
         paintFilterForm();
+        fillYearlyFilterControls();
+        var initialTab = resolveInitialOpsTab();
+        if (initialTab === "years") {
+          switchOpsTab("years", { skipUrlSync: false });
+        }
         return commitFilters({ keepTaskPage: fromUrl }).then(function () {
           return fetch("/api/ops-sheet/planfix-sync-status", { credentials: "same-origin" })
             .then(function (r) {
@@ -2922,6 +3062,906 @@
         setHint("Ошибка: " + (e.message || e));
         toast("danger", e.message || "Не удалось загрузить meta");
       });
+  }
+
+  /* ==========================================================================
+   * Вкладка «Операционный лист по годам»
+   * ========================================================================== */
+  var OPS_TAB_STORAGE_KEY = "dg.ops-sheet.active-tab.v1";
+  var YR_FILTERS_COLLAPSE_KEY = "dg.ops-sheet.yr-filters.collapsed.v1";
+  var YR_SUMMARY_COLLAPSE_KEY = "dg.ops-sheet.yr-summary.collapsed.v1";
+  var YR_MATRIX_COLLAPSE_KEY = "dg.ops-sheet.yr-matrix.collapsed.v1";
+  var YR_MANAGERS_COLLAPSE_KEY = "dg.ops-sheet.yr-managers.collapsed.v1";
+
+  var yrState = {
+    tab: "months",
+    loaded: false,
+    loading: false,
+    manager_user_id: 0,
+    scope: "ytd",
+    ytd_month: curMonth,
+    metric: "funnel",
+    mgr_search: "",
+    only_active: true,
+    pending: {
+      manager_user_id: 0,
+      scope: "ytd",
+      ytd_month: curMonth,
+      metric: "funnel",
+      mgr_search: "",
+    },
+    data: null,
+    expandedMgrYear: {},
+  };
+
+  function resolveInitialOpsTab() {
+    try {
+      var p = new URLSearchParams(window.location.search || "");
+      var t = String(p.get("tab") || "").trim().toLowerCase();
+      if (t === "years" || t === "months") return t;
+      var saved = localStorage.getItem(OPS_TAB_STORAGE_KEY);
+      if (saved === "years" || saved === "months") return saved;
+    } catch (_) {}
+    return "months";
+  }
+
+  function switchOpsTab(tab, opts) {
+    var next = tab === "years" ? "years" : "months";
+    yrState.tab = next;
+    var btnMonths = el("dg-ops-tab-months");
+    var btnYears = el("dg-ops-tab-years");
+    var paneMonths = el("dg-ops-pane-months");
+    var paneYears = el("dg-ops-pane-years");
+    if (btnMonths) {
+      btnMonths.classList.toggle("active", next === "months");
+      btnMonths.setAttribute("aria-selected", next === "months" ? "true" : "false");
+    }
+    if (btnYears) {
+      btnYears.classList.toggle("active", next === "years");
+      btnYears.setAttribute("aria-selected", next === "years" ? "true" : "false");
+    }
+    if (paneMonths) paneMonths.classList.toggle("d-none", next !== "months");
+    if (paneYears) paneYears.classList.toggle("d-none", next !== "years");
+    try {
+      localStorage.setItem(OPS_TAB_STORAGE_KEY, next);
+      if (!(opts && opts.skipUrlSync)) {
+        var u = new URL(window.location.href);
+        if (next === "years") u.searchParams.set("tab", "years");
+        else u.searchParams.delete("tab");
+        window.history.replaceState({}, "", u.pathname + u.search + u.hash);
+      }
+    } catch (_) {}
+    if (next === "years" && !yrState.loaded && !yrState.loading) {
+      loadYearlyData();
+    }
+  }
+
+  function bindCardCollapseSimple(btnId, bodyId, storageKey) {
+    var btn = el(btnId);
+    var body = el(bodyId);
+    if (!btn || !body) return;
+    var collapsed = false;
+    try {
+      collapsed = localStorage.getItem(storageKey) === "1";
+    } catch (_) {}
+    function apply() {
+      body.style.display = collapsed ? "none" : "";
+      btn.textContent = collapsed ? "Развернуть" : "Свернуть";
+    }
+    apply();
+    btn.addEventListener("click", function () {
+      collapsed = !collapsed;
+      try {
+        localStorage.setItem(storageKey, collapsed ? "1" : "0");
+      } catch (_) {}
+      apply();
+    });
+  }
+
+  function fillYearlyFilterControls() {
+    var mgrSel = el("dg-ops-yr-f-manager");
+    if (mgrSel) {
+      var optsHtml = '<option value="0">Все менеджеры (компания)</option>';
+      (state.managers || []).forEach(function (m) {
+        var name = m.full_name || m.username || ("#" + m.id);
+        var arch = m.is_archived ? " (архив)" : "";
+        optsHtml +=
+          '<option value="' +
+          escapeHtml(String(m.id)) +
+          '">' +
+          escapeHtml(name + arch) +
+          "</option>";
+      });
+      mgrSel.innerHTML = optsHtml;
+      mgrSel.value = String(yrState.pending.manager_user_id || 0);
+    }
+    var mSel = el("dg-ops-yr-f-ytd-month");
+    if (mSel) {
+      var mHtml = "";
+      for (var m = 1; m <= 12; m += 1) {
+        mHtml +=
+          '<option value="' +
+          m +
+          '">Янв — ' +
+          escapeHtml(MONTH_SHORT[m] || String(m)) +
+          " (" +
+          m +
+          " мес.)</option>";
+      }
+      mSel.innerHTML = mHtml;
+      mSel.value = String(yrState.pending.ytd_month || curMonth);
+    }
+    var scSel = el("dg-ops-yr-f-scope");
+    if (scSel) scSel.value = yrState.pending.scope || "ytd";
+    var metSel = el("dg-ops-yr-f-metric");
+    if (metSel) metSel.value = yrState.pending.metric || "funnel";
+  }
+
+  function syncYrDirty() {
+    var dirty =
+      Number(yrState.pending.manager_user_id) !== Number(yrState.manager_user_id) ||
+      String(yrState.pending.scope) !== String(yrState.scope) ||
+      Number(yrState.pending.ytd_month) !== Number(yrState.ytd_month) ||
+      String(yrState.pending.metric) !== String(yrState.metric) ||
+      String(yrState.pending.mgr_search) !== String(yrState.mgr_search);
+    var btn = el("dg-ops-yr-apply");
+    if (btn) {
+      btn.textContent = dirty ? "Применить •" : "Применить";
+      btn.classList.toggle("dg-flt-dirty", dirty);
+    }
+  }
+
+  function formatDeltaBadge(val, opts) {
+    if (val == null || !Number.isFinite(Number(val))) return "";
+    var n = Number(val);
+    var o = opts || {};
+    var invertGood = !!o.invertGood;
+    var suffix = o.suffix || "%";
+    var abs = Math.abs(n);
+    if (abs < 0.05) {
+      return '<span class="dg-ops-delta-badge dg-ops-delta-flat" title="Без изменений к прошлому году">0' + escapeHtml(suffix) + "</span>";
+    }
+    var isPositive = n > 0;
+    var isGood = invertGood ? !isPositive : isPositive;
+    var cls = isGood ? "dg-ops-delta-up" : "dg-ops-delta-down";
+    var sign = isPositive ? "+" : "−";
+    var formatted = formatNum(abs, o.digits != null ? o.digits : 1);
+    return (
+      '<span class="dg-ops-delta-badge ' +
+      cls +
+      '" title="Динамика к предыдущему году">' +
+      sign +
+      escapeHtml(formatted) +
+      escapeHtml(suffix) +
+      "</span>"
+    );
+  }
+
+  function loadYearlyData() {
+    if (yrState.loading) return Promise.resolve();
+    yrState.loading = true;
+    var kpiHost = el("dg-ops-yr-kpi-host");
+    if (kpiHost && !yrState.data) {
+      kpiHost.innerHTML = '<div class="alert alert-light border text-muted mb-0">Загружаем многолетнюю динамику операционного листа…</div>';
+    }
+    var qs =
+      "?manager_user_id=" +
+      encodeURIComponent(String(yrState.manager_user_id || 0)) +
+      "&ytd_month=" +
+      encodeURIComponent(String(yrState.ytd_month || curMonth));
+    return fetch("/api/ops-sheet/yearly" + qs, { credentials: "same-origin" })
+      .then(function (r) {
+        return r.json().then(function (j) {
+          return { ok: r.ok, j: j };
+        });
+      })
+      .then(function (x) {
+        yrState.loading = false;
+        if (!x.ok || !x.j || !x.j.success) {
+          throw new Error((x.j && x.j.error) || "Ошибка загрузки данных по годам");
+        }
+        yrState.loaded = true;
+        yrState.data = x.j;
+        renderYearlyAll();
+      })
+      .catch(function (e) {
+        yrState.loading = false;
+        toast("danger", e.message || "Не удалось загрузить динамику по годам");
+      });
+  }
+
+  function renderYearlyAll() {
+    var d = yrState.data;
+    if (!d) return;
+    var isYtd = yrState.scope === "ytd";
+    var mCut = Number(d.ytd_month || yrState.ytd_month || curMonth);
+    var periodText = isYtd
+      ? "Сопоставимый период: Янв — " + (MONTH_SHORT[mCut] || mCut) + " (" + mCut + " мес.) каждого года"
+      : "Полный год (Янв — Дек, все 12 месяцев)";
+
+    var hintEl = el("dg-ops-yr-scope-hint");
+    if (hintEl) hintEl.textContent = periodText;
+    var focusEl = el("dg-ops-yr-focus-title");
+    if (focusEl) focusEl.textContent = d.focus_manager_name || "Все менеджеры (компания)";
+    var badgeEl = el("dg-ops-yr-summary-badge");
+    if (badgeEl) badgeEl.textContent = isYtd ? ("YTD: Янв–" + (MONTH_SHORT[mCut] || mCut)) : "Полный год (12 мес.)";
+
+    renderYearlyKpis(d, isYtd, mCut);
+    renderYearlySummaryTable(d, isYtd, mCut);
+    renderYearlyMonthlyMatrix(d, isYtd, mCut);
+    renderYearlyManagersBlocks(d, isYtd, mCut);
+  }
+
+  function renderYearlyKpis(d, isYtd, mCut) {
+    var host = el("dg-ops-yr-kpi-host");
+    var banner = el("dg-ops-yr-insights-banner");
+    if (!host) return;
+    var list = d.years_summary || [];
+    if (!list.length) {
+      host.innerHTML = "";
+      if (banner) banner.innerHTML = "";
+      return;
+    }
+    var cur = list[0];
+    var prev = list.length > 1 ? list[1] : null;
+    var curSlice = isYtd ? cur.ytd : cur.full_year;
+    var prevSlice = prev ? (isYtd ? prev.ytd : prev.full_year) : null;
+    var deltas = isYtd ? cur.yoy_ytd_delta : cur.yoy_full_delta;
+    var periodTag = isYtd ? ("Янв–" + (MONTH_SHORT[mCut] || mCut)) : "весь год";
+
+    var cards = [
+      {
+        label: "Входящие заявки (" + cur.year + " · " + periodTag + ")",
+        val: curSlice.effective_applications != null ? formatInt(curSlice.effective_applications) : "—",
+        delta: deltas ? formatDeltaBadge(deltas.effective_applications) : "",
+        sub:
+          prevSlice && prevSlice.effective_applications != null
+            ? "В " + prev.year + ": " + formatInt(prevSlice.effective_applications) + " (" + (curSlice.effective_apps_source === "planfix" ? "Planfix*" : "с Гугла") + ")"
+            : "Источник: " + (curSlice.effective_apps_source === "planfix" ? "Planfix*" : "с Гугла"),
+      },
+      {
+        label: "Оплаченные заявки* (" + cur.year + " · " + periodTag + ")",
+        val: formatInt(curSlice.paid_applications || 0),
+        delta: deltas ? formatDeltaBadge(deltas.paid_applications) : "",
+        sub:
+          prevSlice
+            ? "В " + prev.year + ": " + formatInt(prevSlice.paid_applications || 0) + " счетов"
+            : "Уникальные оплаченные счета",
+      },
+      {
+        label: "Заявок на 1 продажу / Конверсия",
+        val:
+          (curSlice.effective_apps_per_sale != null ? formatInt(curSlice.effective_apps_per_sale) + " заяв./прод." : "—") +
+          (curSlice.conversion_pct != null ? " (" + formatNum(curSlice.conversion_pct, 2) + "%)" : ""),
+        delta: deltas ? formatDeltaBadge(deltas.effective_apps_per_sale, { invertGood: true }) : "",
+        sub:
+          prevSlice && prevSlice.effective_apps_per_sale != null
+            ? "В " + prev.year + ": " + formatInt(prevSlice.effective_apps_per_sale) + " заяв./прод. (" + formatNum(prevSlice.conversion_pct, 2) + "%)"
+            : "Меньше заявок на 1 продажу = выше конверсия",
+      },
+      {
+        label: "Оборот (" + cur.year + " · " + periodTag + ")",
+        val: formatMoney(curSlice.turnover),
+        delta: deltas ? formatDeltaBadge(deltas.turnover) : "",
+        sub:
+          prevSlice
+            ? "В " + prev.year + ": " + formatMoney(prevSlice.turnover) + " · Ср. чек: " + formatMoney(curSlice.avg_check)
+            : "Средний чек: " + formatMoney(curSlice.avg_check),
+      },
+      {
+        label: "Прибыль после налога 16%",
+        val: formatMoney(curSlice.profit_after_tax),
+        delta: deltas ? formatDeltaBadge(deltas.profit_after_tax) : "",
+        sub:
+          "Маржа: " +
+          (curSlice.profit_pct != null ? formatNum(curSlice.profit_pct, 2) + "%" : "—") +
+          (prevSlice ? " (в " + prev.year + ": " + formatMoney(prevSlice.profit_after_tax) + ")" : ""),
+      },
+      {
+        label: "Чистая прибыль фирмы (после ЗП)",
+        val: formatMoney(curSlice.company_profit),
+        delta: deltas ? formatDeltaBadge(deltas.company_profit) : "",
+        sub:
+          "% от оборота: " +
+          (curSlice.company_pct != null ? formatNum(curSlice.company_pct, 2) + "%" : "—") +
+          " · ЗП+премии: " +
+          formatMoney(curSlice.salary_paid),
+      },
+    ];
+
+    host.innerHTML =
+      '<div class="row g-3">' +
+      cards
+        .map(function (c) {
+          return (
+            '<div class="col-md-6 col-xl-4">' +
+            '<div class="dg-ops-yr-kpi-card">' +
+            '<div class="dg-ops-yr-kpi-label">' +
+            escapeHtml(c.label) +
+            "</div>" +
+            '<div class="dg-ops-yr-kpi-val d-flex align-items-center flex-wrap">' +
+            "<span>" +
+            escapeHtml(c.val) +
+            "</span>" +
+            (c.delta || "") +
+            "</div>" +
+            '<div class="dg-ops-yr-kpi-sub">' +
+            escapeHtml(c.sub) +
+            "</div>" +
+            "</div></div>"
+          );
+        })
+        .join("") +
+      "</div>";
+
+    if (banner) {
+      var notes = [];
+      if (deltas && deltas.effective_applications != null) {
+        if (deltas.effective_applications < -3) {
+          notes.push(
+            "Поток входящих заявок в " +
+              cur.year +
+              " (" +
+              periodTag +
+              ") <strong>снизился на " +
+              escapeHtml(formatNum(Math.abs(deltas.effective_applications), 1)) +
+              "%</strong> к " +
+              prev.year +
+              " (" +
+              formatInt(curSlice.effective_applications) +
+              " против " +
+              formatInt(prevSlice.effective_applications) +
+              ")."
+          );
+        } else if (deltas.effective_applications > 3) {
+          notes.push(
+            "Поток входящих заявок в " +
+              cur.year +
+              " (" +
+              periodTag +
+              ") <strong>вырос на +" +
+              escapeHtml(formatNum(deltas.effective_applications, 1)) +
+              "%</strong> к " +
+              prev.year +
+              " (" +
+              formatInt(curSlice.effective_applications) +
+              " против " +
+              formatInt(prevSlice.effective_applications) +
+              ")."
+          );
+        }
+      }
+      if (deltas && deltas.paid_applications != null) {
+        notes.push(
+          "Оплаченные счета: <strong>" +
+            formatInt(curSlice.paid_applications) +
+            "</strong> vs <strong>" +
+            formatInt(prevSlice ? prevSlice.paid_applications : 0) +
+            "</strong> в " +
+            (prev ? prev.year : "") +
+            " (" +
+            (deltas.paid_applications >= 0 ? "+" : "−") +
+            escapeHtml(formatNum(Math.abs(deltas.paid_applications), 1)) +
+            "%)."
+        );
+      }
+      if (curSlice.effective_apps_per_sale != null && prevSlice && prevSlice.effective_apps_per_sale != null) {
+        var diffApps = curSlice.effective_apps_per_sale - prevSlice.effective_apps_per_sale;
+        if (diffApps > 0) {
+          notes.push(
+            "На 1 оплаченный счёт теперь требуется <strong>" +
+              formatInt(curSlice.effective_apps_per_sale) +
+              " заявок</strong> (в " +
+              prev.year +
+              " было " +
+              formatInt(prevSlice.effective_apps_per_sale) +
+              ") — конверсия стала тяжелее."
+          );
+        } else if (diffApps < 0) {
+          notes.push(
+            "Конверсия заявок в оплату улучшилась: <strong>" +
+              formatInt(curSlice.effective_apps_per_sale) +
+              " заявок на 1 продажу</strong> против " +
+              formatInt(prevSlice.effective_apps_per_sale) +
+              " в " +
+              prev.year +
+              "."
+          );
+        }
+      }
+      if (notes.length) {
+        banner.innerHTML =
+          '<div class="alert alert-info py-2 px-3 mb-0 small"><i class="pe-7s-info me-1"></i><strong>Вывод по динамике (' +
+          escapeHtml(d.focus_manager_name || "Компания") +
+          "):</strong> " +
+          notes.join(" ") +
+          "</div>";
+      } else {
+        banner.innerHTML = "";
+      }
+    }
+  }
+
+  function formatOpsSummaryCell(row, deltaObj, key) {
+    if (!row) return "—";
+    var val = row[key];
+    var html = "—";
+    if (MONEY_KEYS[key]) {
+      html = val != null ? escapeHtml(formatMoney(val)) : "—";
+    } else if (PCT_KEYS[key]) {
+      html = val != null ? escapeHtml(formatNum(val, 2) + "%") : "—";
+    } else if (INT_KEYS[key]) {
+      html = val != null ? escapeHtml(formatInt(val)) : "—";
+    } else if (key === "plan_status") {
+      html = val ? '<span class="badge bg-light text-dark border">' + escapeHtml(String(val)) + "</span>" : "—";
+    } else {
+      html = val != null && val !== "" ? escapeHtml(String(val)) : "—";
+    }
+
+    if (deltaObj) {
+      if (key === "profit_pct" && deltaObj.profit_pct_pp != null) {
+        html += formatDeltaBadge(deltaObj.profit_pct_pp, { suffix: " п.п.", digits: 2 });
+      } else if (key === "company_pct" && deltaObj.company_pct_pp != null) {
+        html += formatDeltaBadge(deltaObj.company_pct_pp, { suffix: " п.п.", digits: 2 });
+      } else if (key === "apps_per_sale_local" || key === "apps_per_sale") {
+        html += formatDeltaBadge(deltaObj[key], { invertGood: true });
+      } else if (deltaObj[key] != null) {
+        html += formatDeltaBadge(deltaObj[key]);
+      }
+    }
+    return html;
+  }
+
+  function renderYearlySummaryTable(d, isYtd, mCut) {
+    var host = el("dg-ops-yr-summary-table-host");
+    if (!host) return;
+    var list = d.years_summary || [];
+    if (!list.length) {
+      host.innerHTML = '<p class="text-muted mb-0">Нет данных по годам.</p>';
+      return;
+    }
+    var cols = OPS_COLS.filter(function (c) {
+      return c[0] !== "manager_name";
+    });
+    var thead =
+      '<thead><tr><th class="dg-ops-sticky-name">Год / Период</th>' +
+      cols
+        .map(function (c) {
+          var tip = FORMULA_HINTS[c[0]] ? ' title="' + escapeHtml(FORMULA_HINTS[c[0]]) + '"' : "";
+          return "<th" + tip + ">" + labelHtml(c[1]) + "</th>";
+        })
+        .join("") +
+      "</tr></thead>";
+
+    var tbody = list
+      .map(function (item) {
+        var row = isYtd ? item.ytd : item.full_year;
+        var deltas = isYtd ? item.yoy_ytd_delta : item.yoy_full_delta;
+        var periodBadge = isYtd
+          ? '<span class="text-muted small ms-1">(Янв–' + escapeHtml(MONTH_SHORT[mCut] || String(mCut)) + ")</span>"
+          : '<span class="text-muted small ms-1">(' + escapeHtml(String(row.active_months || 0)) + " активынх мес.)</span>";
+        var tds = cols
+          .map(function (c) {
+            var k = c[0];
+            return '<td class="dg-ops-num">' + formatOpsSummaryCell(row, deltas, k) + "</td>";
+          })
+          .join("");
+        return (
+          "<tr>" +
+          '<td class="dg-ops-sticky-name"><strong>' +
+          escapeHtml(String(item.year)) +
+          "</strong>" +
+          periodBadge +
+          "</td>" +
+          tds +
+          "</tr>"
+        );
+      })
+      .join("");
+
+    host.innerHTML =
+      '<div class="dg-ops-table-scroll-outer"><div class="table-responsive">' +
+      '<table class="table table-sm dg-ops-month-table mb-0">' +
+      thead +
+      "<tbody>" +
+      tbody +
+      "</tbody></table></div></div>";
+  }
+
+  function renderYearlyMonthlyMatrix(d, isYtd, mCut) {
+    var host = el("dg-ops-yr-matrix-host");
+    var titleEl = el("dg-ops-yr-matrix-title");
+    if (!host) return;
+    var metric = yrState.metric || "funnel";
+    var yearsDesc = (d.years || []).slice().sort(function (a, b) {
+      return b - a;
+    });
+    var metricLabels = {
+      funnel: "Воронка заявок (Заявки → Оплачено → Заявок на 1 продажу)",
+      effective_applications: "Входящие заявки (Planfix* / с Гугла)",
+      paid_applications: "Оплаченные заявки* (счета)",
+      effective_apps_per_sale: "Отношение продаж к заявкам (заявок на 1 продажу)",
+      conversion_pct: "Конверсия из заявки в оплату (%)",
+      turnover: "Оборот (без доставки)",
+      profit_after_tax: "Прибыль с вычетом налога (16%)",
+      company_profit: "Чистая прибыль фирмы (после оклада и премий)",
+      avg_check: "Средний чек",
+    };
+    if (titleEl) {
+      titleEl.textContent = (metricLabels[metric] || metric) + " · " + (d.focus_manager_name || "Компания");
+    }
+
+    var thYears = yearsDesc
+      .map(function (y) {
+        if (metric === "funnel") {
+          return (
+            '<th class="text-end">' +
+            escapeHtml(String(y)) +
+            '<br><span class="text-muted fw-normal" style="font-size:0.66rem">Заявки / Оплач. / Отнош.</span></th>'
+          );
+        }
+        return '<th class="text-end">' + escapeHtml(String(y)) + "</th>";
+      })
+      .join("");
+
+    var rowsHtml = (d.monthly_yoy || [])
+      .map(function (mRow) {
+        var isCutoff = isYtd && Number(mRow.month) === Number(mCut);
+        var trCls = isCutoff ? ' class="dg-ops-yr-ytd-cutoff"' : "";
+        var cells = yearsDesc
+          .map(function (y) {
+            var cell = (mRow.by_year && mRow.by_year[y]) || {};
+            var delta = cell.yoy_delta || null;
+            if (metric === "funnel") {
+              var apps = cell.effective_applications != null ? formatInt(cell.effective_applications) : "—";
+              var paid = cell.paid_applications != null && cell.paid_applications > 0 ? formatInt(cell.paid_applications) : "0";
+              var ratio = cell.effective_apps_per_sale != null ? formatInt(cell.effective_apps_per_sale) : "—";
+              var badge = delta && delta.effective_applications != null ? formatDeltaBadge(delta.effective_applications) : "";
+              var paidBadge = delta && delta.paid_applications != null ? formatDeltaBadge(delta.paid_applications) : "";
+              if (apps === "—" && paid === "0") {
+                return '<td class="text-end text-muted">—</td>';
+              }
+              return (
+                '<td class="text-end">' +
+                "<div><strong>" +
+                escapeHtml(apps) +
+                "</strong> заяв." +
+                badge +
+                "</div>" +
+                '<div class="small text-muted">оплач.: <strong>' +
+                escapeHtml(paid) +
+                "</strong>" +
+                paidBadge +
+                " · отнош.: <strong>" +
+                escapeHtml(ratio) +
+                "</strong></div></td>"
+              );
+            }
+            var rawVal = cell[metric];
+            var formatted = "—";
+            if (rawVal != null && rawVal !== 0) {
+              if (MONEY_KEYS[metric]) formatted = formatMoney(rawVal);
+              else if (metric === "conversion_pct" || PCT_KEYS[metric]) formatted = formatNum(rawVal, 2) + "%";
+              else formatted = formatInt(rawVal);
+            }
+            var dBadge = "";
+            if (delta && rawVal != null && rawVal !== 0) {
+              if (metric === "conversion_pct") {
+                dBadge = formatDeltaBadge(delta.conversion_pct_pp, { suffix: " п.п.", digits: 2 });
+              } else if (metric === "effective_apps_per_sale") {
+                dBadge = formatDeltaBadge(delta.effective_apps_per_sale, { invertGood: true });
+              } else {
+                dBadge = formatDeltaBadge(delta[metric]);
+              }
+            }
+            return '<td class="text-end">' + escapeHtml(formatted) + dBadge + "</td>";
+          })
+          .join("");
+
+        return (
+          "<tr" +
+          trCls +
+          ">" +
+          "<td><strong>" +
+          escapeHtml(mRow.label || String(mRow.month)) +
+          "</strong></td>" +
+          cells +
+          "</tr>"
+        );
+      })
+      .join("");
+
+    host.innerHTML =
+      '<div class="table-responsive">' +
+      '<table class="table table-sm table-hover dg-ops-yr-matrix-table mb-0">' +
+      "<thead><tr><th>Месяц</th>" +
+      thYears +
+      "</tr></thead><tbody>" +
+      rowsHtml +
+      "</tbody></table></div>";
+  }
+
+  function renderYearlyManagersBlocks(d, isYtd, mCut) {
+    var host = el("dg-ops-yr-managers-host");
+    if (!host) return;
+    var blocks = d.managers_by_year || [];
+    if (!blocks.length) {
+      host.innerHTML = '<p class="text-muted mb-0">Нет данных по менеджерам.</p>';
+      return;
+    }
+    var q = String(yrState.mgr_search || "").trim().toLowerCase();
+    var cols = OPS_COLS;
+    var thead =
+      "<thead><tr>" +
+      cols
+        .map(function (c) {
+          var key = c[0];
+          var cls = key === "manager_name" ? ' class="dg-ops-sticky-name"' : "";
+          var tip = FORMULA_HINTS[key] ? ' title="' + escapeHtml(FORMULA_HINTS[key]) + '"' : "";
+          return "<th" + cls + tip + ">" + labelHtml(c[1]) + "</th>";
+        })
+        .join("") +
+      "</tr></thead>";
+
+    var htmlParts = [];
+    blocks.forEach(function (yb) {
+      var y = yb.year;
+      var totalsRow = isYtd ? yb.totals_ytd : yb.totals;
+      var rows = (yb.rows || []).filter(function (r) {
+        var slice = isYtd && r.ytd ? r.ytd : r;
+        if (yrState.only_active && (Number(slice.active_months) || 0) === 0) return false;
+        if (q) {
+          var nm = String(r.manager_name || "").toLowerCase();
+          if (nm.indexOf(q) < 0) return false;
+        }
+        return true;
+      });
+
+      var periodTitle = isYtd
+        ? y + " — СОПОСТАВИМЫЙ ПЕРИОД (ЯНВ–" + (MONTH_SHORT[mCut] || mCut).toUpperCase() + ")"
+        : y + " — ГОДОВОЙ ОПЕРАЦИОННЫЙ ЛИСТ (12 МЕС.)";
+
+      var metaParts = [];
+      if (totalsRow && totalsRow.turnover != null) metaParts.push("оборот " + formatMoney(totalsRow.turnover));
+      if (totalsRow && totalsRow.profit_after_tax != null) metaParts.push("прибыль " + formatMoney(totalsRow.profit_after_tax));
+      if (totalsRow && totalsRow.effective_applications != null) metaParts.push("заявки " + formatInt(totalsRow.effective_applications));
+      if (totalsRow && totalsRow.paid_applications != null) metaParts.push("оплачено " + formatInt(totalsRow.paid_applications));
+
+      var tbodyHtml = rows
+        .map(function (r) {
+          var slice = isYtd && r.ytd ? r.ytd : r;
+          var deltas = slice.yoy_delta || null;
+          var expKey = r.manager_user_id + ":" + y;
+          var isExp = !!yrState.expandedMgrYear[expKey];
+          var cellsHtml = cols
+            .map(function (c) {
+              var k = c[0];
+              if (k === "manager_name") {
+                var archBadge = r.is_archived ? ' <span class="badge bg-secondary ms-1" style="font-size:0.62rem">архив</span>' : "";
+                return (
+                  '<td class="dg-ops-sticky-name">' +
+                  '<button type="button" class="dg-ops-yr-expand-btn" data-yr-mgr-expand="' +
+                  escapeHtml(expKey) +
+                  '" title="Показать помесячную раскладку менеджера за ' +
+                  escapeHtml(String(y)) +
+                  '" data-dg-no-activity="1">' +
+                  (isExp ? "▾" : "▸") +
+                  "</button>" +
+                  escapeHtml(r.manager_name || "") +
+                  archBadge +
+                  "</td>"
+                );
+              }
+              return '<td class="dg-ops-num">' + formatOpsSummaryCell(slice, deltas, k) + "</td>";
+            })
+            .join("");
+
+          var mainTr = "<tr>" + cellsHtml + "</tr>";
+          if (!isExp) return mainTr;
+
+          var monthRows = (r.months || []).filter(function (mr) {
+            if (isYtd && Number(mr.month) > Number(mCut)) return false;
+            return (
+              (Number(mr.turnover) || 0) > 0 ||
+              (Number(mr.paid_applications) || 0) > 0 ||
+              (Number(mr.applications_local) || 0) > 0 ||
+              (Number(mr.applications_count) || 0) > 0 ||
+              (Number(mr.salary) || 0) > 0 ||
+              (Number(mr.bonus_past) || 0) > 0
+            );
+          });
+          if (!monthRows.length) {
+            return (
+              mainTr +
+              '<tr class="dg-ops-yr-child-row"><td colspan="' +
+              cols.length +
+              '" class="ps-4 text-muted">Нет активных месяцев за выбранный период ' +
+              escapeHtml(String(y)) +
+              " г.</td></tr>"
+            );
+          }
+          var childTrs = monthRows
+            .map(function (mr) {
+              var mCells = cols
+                .map(function (c) {
+                  var k = c[0];
+                  if (k === "manager_name") {
+                    return (
+                      '<td class="dg-ops-sticky-name ps-4 fw-normal text-muted">↳ ' +
+                      escapeHtml(mr.month_label || MONTH_SHORT[mr.month] || String(mr.month)) +
+                      " " +
+                      escapeHtml(String(y)) +
+                      "</td>"
+                    );
+                  }
+                  return '<td class="dg-ops-num">' + formatOpsSummaryCell(mr, null, k) + "</td>";
+                })
+                .join("");
+              return '<tr class="dg-ops-yr-child-row">' + mCells + "</tr>";
+            })
+            .join("");
+          return mainTr + childTrs;
+        })
+        .join("");
+
+      if (totalsRow) {
+        var totCells = cols
+          .map(function (c) {
+            var k = c[0];
+            if (k === "manager_name") {
+              return '<td class="dg-ops-sticky-name">ИТОГО (' + escapeHtml(String(y)) + ")</td>";
+            }
+            return '<td class="dg-ops-num">' + formatOpsSummaryCell(totalsRow, totalsRow.yoy_delta, k) + "</td>";
+          })
+          .join("");
+        tbodyHtml += '<tr class="dg-ops-row-total">' + totCells + "</tr>";
+      }
+
+      htmlParts.push(
+        '<div class="dg-ops-month-block">' +
+          '<div class="dg-ops-month-banner"><span>' +
+          escapeHtml(periodTitle) +
+          '</span><span class="dg-ops-month-meta">' +
+          escapeHtml(metaParts.join(" · ")) +
+          "</span></div>" +
+          '<div class="dg-ops-table-scroll-outer"><div class="table-responsive">' +
+          '<table class="table table-sm dg-ops-month-table mb-0">' +
+          thead +
+          "<tbody>" +
+          tbodyHtml +
+          "</tbody></table></div></div></div>"
+      );
+    });
+
+    host.innerHTML = htmlParts.join("");
+  }
+
+  function commitYearlyFilters() {
+    var prevMgr = yrState.manager_user_id;
+    var prevYtdMonth = yrState.ytd_month;
+    yrState.manager_user_id = Number(yrState.pending.manager_user_id) || 0;
+    yrState.scope = yrState.pending.scope || "ytd";
+    yrState.ytd_month = Number(yrState.pending.ytd_month) || curMonth;
+    yrState.metric = yrState.pending.metric || "funnel";
+    yrState.mgr_search = String(yrState.pending.mgr_search || "").trim();
+    syncYrDirty();
+    if (!yrState.loaded || prevMgr !== yrState.manager_user_id || prevYtdMonth !== yrState.ytd_month) {
+      return loadYearlyData();
+    }
+    renderYearlyAll();
+    return Promise.resolve();
+  }
+
+  function resetYearlyFilters() {
+    yrState.pending = {
+      manager_user_id: 0,
+      scope: "ytd",
+      ytd_month: curMonth,
+      metric: "funnel",
+      mgr_search: "",
+    };
+    fillYearlyFilterControls();
+    var sInp = el("dg-ops-yr-mgr-search");
+    if (sInp) sInp.value = "";
+    return commitYearlyFilters();
+  }
+
+  function bindYearlyTabAndControls() {
+    var btnMonths = el("dg-ops-tab-months");
+    var btnYears = el("dg-ops-tab-years");
+    if (btnMonths) {
+      btnMonths.addEventListener("click", function () {
+        switchOpsTab("months");
+      });
+    }
+    if (btnYears) {
+      btnYears.addEventListener("click", function () {
+        switchOpsTab("years");
+      });
+    }
+
+    bindCardCollapseSimple("dg-ops-yr-filters-toggle", "dg-ops-yr-filters-body", YR_FILTERS_COLLAPSE_KEY);
+    bindCardCollapseSimple("dg-ops-yr-summary-toggle", "dg-ops-yr-summary-body", YR_SUMMARY_COLLAPSE_KEY);
+    bindCardCollapseSimple("dg-ops-yr-matrix-toggle", "dg-ops-yr-matrix-body", YR_MATRIX_COLLAPSE_KEY);
+    bindCardCollapseSimple("dg-ops-yr-managers-toggle", "dg-ops-yr-managers-body", YR_MANAGERS_COLLAPSE_KEY);
+
+    var mgrSel = el("dg-ops-yr-f-manager");
+    if (mgrSel) {
+      mgrSel.addEventListener("change", function () {
+        yrState.pending.manager_user_id = Number(mgrSel.value) || 0;
+        syncYrDirty();
+      });
+    }
+    var scSel = el("dg-ops-yr-f-scope");
+    if (scSel) {
+      scSel.addEventListener("change", function () {
+        yrState.pending.scope = scSel.value || "ytd";
+        syncYrDirty();
+      });
+    }
+    var mSel = el("dg-ops-yr-f-ytd-month");
+    if (mSel) {
+      mSel.addEventListener("change", function () {
+        yrState.pending.ytd_month = Number(mSel.value) || curMonth;
+        syncYrDirty();
+      });
+    }
+    var metSel = el("dg-ops-yr-f-metric");
+    if (metSel) {
+      metSel.addEventListener("change", function () {
+        yrState.pending.metric = metSel.value || "funnel";
+        syncYrDirty();
+      });
+    }
+    var sInp = el("dg-ops-yr-mgr-search");
+    if (sInp) {
+      sInp.addEventListener("input", function () {
+        yrState.pending.mgr_search = String(sInp.value || "").trim();
+        syncYrDirty();
+      });
+      sInp.addEventListener("keydown", function (ev) {
+        if (ev.key === "Enter") {
+          ev.preventDefault();
+          commitYearlyFilters();
+        } else if (ev.key === "Escape") {
+          sInp.value = "";
+          yrState.pending.mgr_search = "";
+          commitYearlyFilters();
+        }
+      });
+    }
+    var chkActive = el("dg-ops-yr-only-active");
+    if (chkActive) {
+      chkActive.addEventListener("change", function () {
+        yrState.only_active = !!chkActive.checked;
+        if (yrState.data) renderYearlyManagersBlocks(yrState.data, yrState.scope === "ytd", yrState.ytd_month);
+      });
+    }
+    var btnApply = el("dg-ops-yr-apply");
+    if (btnApply) {
+      btnApply.addEventListener("click", function () {
+        commitYearlyFilters();
+      });
+    }
+    var btnReset = el("dg-ops-yr-reset");
+    if (btnReset) {
+      btnReset.addEventListener("click", function () {
+        resetYearlyFilters();
+      });
+    }
+    var mgrHost = el("dg-ops-yr-managers-host");
+    if (mgrHost) {
+      mgrHost.addEventListener("click", function (ev) {
+        var btn = ev.target && ev.target.closest ? ev.target.closest("[data-yr-mgr-expand]") : null;
+        if (!btn) return;
+        ev.preventDefault();
+        var k = btn.getAttribute("data-yr-mgr-expand");
+        if (!k) return;
+        if (yrState.expandedMgrYear[k]) delete yrState.expandedMgrYear[k];
+        else yrState.expandedMgrYear[k] = 1;
+        if (yrState.data) renderYearlyManagersBlocks(yrState.data, yrState.scope === "ytd", yrState.ytd_month);
+      });
+    }
   }
 
   if (document.readyState === "loading") {

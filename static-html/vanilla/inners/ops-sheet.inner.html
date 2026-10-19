@@ -1,5 +1,5 @@
           <div class="app-page-title">
-            <div class="page-title-wrapper">
+            <div class="page-title-wrapper d-flex flex-wrap align-items-center justify-content-between gap-3">
               <div class="page-title-heading">
                 <div class="page-title-icon">
                   <i class="pe-7s-notebook icon-gradient bg-happy-itmeo"> </i>
@@ -7,15 +7,46 @@
                 <div>
                   Операционный лист
                   <div class="page-title-subheading">
-                    Свод по менеджерам продаж: оборот, прибыль, премии и оклады по месяцам года.
+                    Свод по менеджерам продаж: оборот, прибыль, премии и оклады по месяцам и годам.
                     Источник сделок —
                     <a href="/manager-sales.html">Таблицы менеджеров</a>.
                   </div>
                 </div>
               </div>
+              <div class="page-title-actions">
+                <ul class="nav nav-pills dg-ops-mode-tabs" id="dg-ops-mode-tabs" role="tablist">
+                  <li class="nav-item" role="presentation">
+                    <button
+                      type="button"
+                      class="nav-link active"
+                      id="dg-ops-tab-months"
+                      data-ops-tab="months"
+                      role="tab"
+                      aria-selected="true"
+                      data-dg-no-activity="1"
+                    >
+                      <i class="pe-7s-date me-1"></i>По месяцам года
+                    </button>
+                  </li>
+                  <li class="nav-item" role="presentation">
+                    <button
+                      type="button"
+                      class="nav-link"
+                      id="dg-ops-tab-years"
+                      data-ops-tab="years"
+                      role="tab"
+                      aria-selected="false"
+                      data-dg-no-activity="1"
+                    >
+                      <i class="pe-7s-graph1 me-1"></i>Операционный лист по годам
+                    </button>
+                  </li>
+                </ul>
+              </div>
             </div>
           </div>
 
+          <div id="dg-ops-pane-months">
           <div class="main-card mb-3 card">
             <div class="card-header d-flex align-items-center justify-content-between gap-2">
               <div class="d-flex align-items-center">
@@ -27,13 +58,13 @@
               </div>
             </div>
             <div class="card-body" id="dg-ops-filters-body">
-              <div class="row g-2 align-items-end">
-                <div class="col-auto" data-dg-ops-filter-field="year">
-                  <label class="form-label" for="dg-ops-f-year">Год</label>
-                  <select class="form-select" id="dg-ops-f-year" style="min-width: 6.5rem"></select>
+              <div class="dg-ops-filters-grid">
+                <div class="dg-ops-filter-item" data-dg-ops-filter-field="year">
+                  <label class="dg-ops-filter-label" for="dg-ops-f-year">Год</label>
+                  <select class="form-select form-select-sm dg-ops-filter-ctrl" id="dg-ops-f-year" style="min-width: 5.8rem"></select>
                 </div>
-                <div class="col" data-dg-ops-filter-field="planfix_month">
-                  <label class="form-label mb-1" id="dg-ops-pf-months-label">Период Planfix</label>
+                <div class="dg-ops-filter-item" data-dg-ops-filter-field="planfix_month">
+                  <label class="dg-ops-filter-label" id="dg-ops-pf-months-label">Период Planfix</label>
                   <div
                     class="dg-ops-pf-months"
                     id="dg-ops-pf-months"
@@ -42,20 +73,55 @@
                     data-dg-tooltip="Клик — месяц. Ещё клик — добавить/снять. «Весь год» снимает отдельные месяцы."
                   ></div>
                 </div>
-                <div class="col-auto">
-                  <div class="small text-muted mb-1">Легенда</div>
-                  <div class="d-flex flex-wrap gap-3 small">
-                    <span><span class="dg-ops-legend-dot dg-ops-legend-auto"></span>из таблиц</span>
-                    <span><span class="dg-ops-legend-dot dg-ops-legend-manual"></span>ручной / карандаш</span>
-                    <span><span class="dg-ops-legend-dot dg-ops-legend-derived"></span>считается</span>
-                    <span title="Колонки с * считаются динамически из локальной БД Planfix; наведите на заголовок — формула">*</span> динамич.
-                    <span class="text-muted" title="С октября 2026 премия с прошлыми месяцами — авто по отгрузкам; раньше — архив">окт.2026+ авто</span>
+                <div class="dg-ops-filter-item" data-dg-ops-filter-field="planfix_dates" data-dg-filter-field-title="Произвольные даты Planfix">
+                  <div class="d-flex align-items-end gap-2">
+                    <div>
+                      <label class="dg-ops-filter-label" for="dg-ops-pf-date-from">С даты (Planfix)</label>
+                      <input
+                        type="date"
+                        class="form-control form-control-sm dg-ops-filter-ctrl dg-ops-date-input"
+                        id="dg-ops-pf-date-from"
+                        title="Дата начала (включительно). Если задана — переопределяет кнопки месяцев"
+                      />
+                    </div>
+                    <div>
+                      <label class="dg-ops-filter-label" for="dg-ops-pf-date-to">По дату (Planfix)</label>
+                      <div class="d-flex align-items-center gap-1">
+                        <input
+                          type="date"
+                          class="form-control form-control-sm dg-ops-filter-ctrl dg-ops-date-input"
+                          id="dg-ops-pf-date-to"
+                          title="Дата окончания (включительно)"
+                        />
+                        <button
+                          type="button"
+                          class="btn btn-sm btn-outline-secondary dg-ops-filter-ctrl dg-ops-dates-clear-btn d-none"
+                          id="dg-ops-pf-dates-clear"
+                          data-dg-no-activity="1"
+                          title="Сбросить произвольные даты и вернуться к выбору месяцев"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
-              <div class="mt-3" data-dg-ops-filter-field="month_jump">
-                <div class="small text-muted mb-1">Перейти к месяцу в листе ниже</div>
-                <div class="dg-ops-month-jump" id="dg-ops-month-jump"></div>
+              <div class="dg-ops-filters-grid mt-3">
+                <div class="dg-ops-filter-item" data-dg-ops-filter-field="month_jump">
+                  <label class="dg-ops-filter-label">Перейти к месяцу в листе ниже</label>
+                  <div class="dg-ops-month-jump" id="dg-ops-month-jump"></div>
+                </div>
+                <div class="dg-ops-filter-item">
+                  <label class="dg-ops-filter-label">Легенда</label>
+                  <div class="d-flex flex-wrap align-items-center gap-3 small dg-ops-legend-bar">
+                    <span><span class="dg-ops-legend-dot dg-ops-legend-auto"></span>из таблиц</span>
+                    <span><span class="dg-ops-legend-dot dg-ops-legend-manual"></span>ручной / карандаш</span>
+                    <span><span class="dg-ops-legend-dot dg-ops-legend-derived"></span>считается</span>
+                    <span><strong title="Колонки с * считаются динамически из локальной БД Planfix; наведите на заголовок — формула">*</strong> динамич.</span>
+                    <span class="text-muted" title="С октября 2026 премия с прошлыми месяцами — авто по отгрузкам; раньше — архив">окт.2026+ авто</span>
+                  </div>
+                </div>
               </div>
               <div class="d-flex flex-wrap gap-2 mt-3">
                 <button
@@ -249,6 +315,146 @@
               </div>
               <div id="dg-ops-months-host"></div>
               <div id="dg-ops-empty" class="text-muted py-4 text-center d-none">Нет данных за выбранный год.</div>
+            </div>
+          </div>
+          </div>
+
+          <div id="dg-ops-pane-years" class="d-none">
+            <div class="main-card mb-3 card">
+              <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+                <div class="d-flex align-items-center">
+                  <i class="header-icon pe-7s-filter icon-gradient bg-happy-fisher me-2"> </i>
+                  <span>Фильтры и режим сравнения по годам</span>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-ops-yr-filters-toggle" data-dg-no-activity="1">Свернуть</button>
+                </div>
+              </div>
+              <div class="card-body" id="dg-ops-yr-filters-body">
+                <div class="row g-2 align-items-end">
+                  <div class="col-md-4 col-lg-3">
+                    <label class="form-label" for="dg-ops-yr-f-manager">Менеджер (фокус динамики и YoY)</label>
+                    <select class="form-select" id="dg-ops-yr-f-manager">
+                      <option value="0">Все менеджеры (компания)</option>
+                    </select>
+                  </div>
+                  <div class="col-md-4 col-lg-3">
+                    <label class="form-label" for="dg-ops-yr-f-scope">Режим сравнения годов</label>
+                    <select class="form-select" id="dg-ops-yr-f-scope">
+                      <option value="ytd">Сопоставимый период YTD (Янв–тек. мес.)</option>
+                      <option value="full">Полный год (Янв–Дек, 12 мес.)</option>
+                    </select>
+                  </div>
+                  <div class="col-md-4 col-lg-2">
+                    <label class="form-label" for="dg-ops-yr-f-ytd-month">Месяц отсечки YTD</label>
+                    <select class="form-select" id="dg-ops-yr-f-ytd-month"></select>
+                  </div>
+                  <div class="col-md-6 col-lg-4">
+                    <label class="form-label" for="dg-ops-yr-f-metric">Показатель в помесячной матрице YoY</label>
+                    <select class="form-select" id="dg-ops-yr-f-metric">
+                      <option value="funnel">Воронка заявок: Заявки → Оплачено → Заявок на 1 продажу</option>
+                      <option value="effective_applications">Входящие заявки (Planfix* / с Гугла)</option>
+                      <option value="paid_applications">Оплаченные заявки* (счета)</option>
+                      <option value="effective_apps_per_sale">Отношение продаж к заявкам (заявок на 1 продажу)</option>
+                      <option value="conversion_pct">Конверсия из заявки в оплату (%)</option>
+                      <option value="turnover">Оборот (без доставки)</option>
+                      <option value="profit_after_tax">Прибыль с вычетом налога (16%)</option>
+                      <option value="company_profit">Чистая прибыль фирмы (после оклада и премий)</option>
+                      <option value="avg_check">Средний чек</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-3">
+                  <div class="d-flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      class="btn btn-primary"
+                      id="dg-ops-yr-apply"
+                      data-dg-notify-start="Пересчитываем динамику по годам…"
+                    >
+                      Применить
+                    </button>
+                    <button
+                      type="button"
+                      class="btn btn-outline-secondary"
+                      id="dg-ops-yr-reset"
+                      data-dg-notify-start="Сбрасываем фильтры динамики по годам…"
+                    >
+                      По умолчанию
+                    </button>
+                  </div>
+                  <div class="small text-muted" id="dg-ops-yr-scope-hint"></div>
+                </div>
+              </div>
+            </div>
+
+            <div id="dg-ops-yr-kpi-host" class="mb-3"></div>
+
+            <div class="main-card mb-3 card" id="dg-ops-yr-summary-card">
+              <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                  <i class="header-icon pe-7s-graph2 icon-gradient bg-tempting-azure me-2"> </i>
+                  <span>Динамика по годам: <span id="dg-ops-yr-focus-title">Все менеджеры (компания)</span></span>
+                  <span class="badge bg-light text-dark border" id="dg-ops-yr-summary-badge"></span>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-ops-yr-summary-toggle" data-dg-no-activity="1">Свернуть</button>
+              </div>
+              <div class="card-body" id="dg-ops-yr-summary-body">
+                <div id="dg-ops-yr-insights-banner" class="mb-3"></div>
+                <div id="dg-ops-yr-summary-table-host"></div>
+              </div>
+            </div>
+
+            <div class="main-card mb-3 card" id="dg-ops-yr-matrix-card">
+              <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                  <i class="header-icon pe-7s- gleam pe-7s-way icon-gradient bg-plum-plate me-2"> </i>
+                  <span>Помесячная матрица год-к-году (Январь — Декабрь): <span id="dg-ops-yr-matrix-title">Воронка заявок</span></span>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-ops-yr-matrix-toggle" data-dg-no-activity="1">Свернуть</button>
+              </div>
+              <div class="card-body" id="dg-ops-yr-matrix-body">
+                <p class="small text-muted mb-2">
+                  Сравнение каждого месяца между годами: позволяет сразу увидеть, растут или падают входящие заявки, конверсия в оплату и оборот относительно того же месяца прошлого года.
+                </p>
+                <div id="dg-ops-yr-matrix-host"></div>
+              </div>
+            </div>
+
+            <div class="main-card mb-3 card" id="dg-ops-yr-managers-card">
+              <div class="card-header d-flex justify-content-between gap-2 flex-wrap align-items-center">
+                <div class="d-flex align-items-center gap-3 flex-grow-1" style="min-width: 0">
+                  <div class="d-flex align-items-center flex-shrink-0">
+                    <i class="header-icon pe-7s-users icon-gradient bg-happy-itmeo me-2"> </i>
+                    <span>Операционный лист в разрезе годов по менеджерам</span>
+                  </div>
+                  <div class="dg-ops-header-search">
+                    <div class="input-group input-group-sm">
+                      <span class="input-group-text"><i class="pe-7s-search" aria-hidden="true"></i></span>
+                      <input
+                        type="search"
+                        class="form-control"
+                        id="dg-ops-yr-mgr-search"
+                        placeholder="Поиск менеджера (Enter — применить)…"
+                        autocomplete="off"
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                  <div class="form-check form-switch mb-0 me-2 small">
+                    <input class="form-check-input" type="checkbox" id="dg-ops-yr-only-active" checked />
+                    <label class="form-check-label" for="dg-ops-yr-only-active">Скрыть пустые строки года</label>
+                  </div>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-ops-yr-managers-toggle" data-dg-no-activity="1">Свернуть</button>
+                </div>
+              </div>
+              <div class="card-body" id="dg-ops-yr-managers-body">
+                <p class="small text-muted mb-2">
+                  Годовые итоги каждого менеджера со всеми расчётными колонками операционного листа и приростом <strong>Δ% YoY</strong> к предыдущему году. Нажмите на стрелку <strong>▸</strong> рядом с именем менеджера, чтобы развернуть его помесячную динамику внутри года.
+                </p>
+                <div id="dg-ops-yr-managers-host"></div>
+              </div>
             </div>
           </div>
 
