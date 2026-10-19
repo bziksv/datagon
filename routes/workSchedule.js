@@ -2755,7 +2755,7 @@ function createWorkScheduleRouter(db) {
         const from = `${ym}-01`;
         const to = `${ym}-${String(dim).padStart(2, '0')}`;
         const [logs] = await db.query(
-            `SELECT DATE_FORMAT(work_date, '%Y-%m-%d') AS work_ymd, type, rate, hours_worked, status,
+            `SELECT DATE_FORMAT(work_date, '%Y-%m-%d') AS work_ymd, type, rate, hours_worked, hours_bitcop, status,
                     check_in, check_out, segments_json
              FROM ws_work_log
              WHERE employee_id=? AND work_date BETWEEN ? AND ?`,
@@ -2773,10 +2773,12 @@ function createWorkScheduleRouter(db) {
             if (L.check_in && !L.check_out) {
                 hours += calc.hoursBetween(L.check_in, calc.moscowNowSql());
             }
+            const bitH = Number(L.hours_bitcop) || 0;
             cells[day] = {
                 type: L.type,
                 rate: Number(L.rate) || 0,
                 hours: Math.round(hours * 10000) / 10000,
+                hours_bitcop: bitH > 0 ? Math.round(bitH * 10000) / 10000 : null,
                 status: L.status,
                 logged: true,
                 closed: !!L.check_out,
@@ -2794,8 +2796,10 @@ function createWorkScheduleRouter(db) {
             [emp.id]
         );
         let hoursMonth = 0;
+        const hourlyPay = payroll && payroll.pay_type === 'hourly';
         Object.keys(cells).forEach((k) => {
-            hoursMonth += Number(cells[k].hours) || 0;
+            const cell = cells[k];
+            hoursMonth += hourlyPay ? Number(cell.hours_bitcop) || 0 : Number(cell.hours) || 0;
         });
         hoursMonth = Math.round(hoursMonth * 10000) / 10000;
         const calendar = await rfCalendar.getMonthCalendarMap(db, ym);
@@ -2806,7 +2810,11 @@ function createWorkScheduleRouter(db) {
             payroll,
             hours_month: hoursMonth,
             vacations: (vacs || []).map(mapVacationRow),
-            employee: { id: emp.id, name: emp.user_full_name },
+            employee: {
+                id: emp.id,
+                name: emp.user_full_name,
+                pay_type: hourlyPay ? 'hourly' : calc.normalizePayType(emp.pay_type),
+            },
             calendar,
         });
     });

@@ -663,14 +663,16 @@
     var firstWd = new Date(pm.y, pm.m - 1, 1).getDay();
     var startPad = (firstWd + 6) % 7;
     var cells = (state.meMonth && state.meMonth.cells) || {};
+    var payHourly =
+      state.meMonth && state.meMonth.employee && String(state.meMonth.employee.pay_type) === "hourly";
     var busy = state.calMode === "free" ? busyDaysForFreeCalendar(monthStr) : [];
     var hoursMonth = 0;
     var daysWorked = 0;
     Object.keys(cells).forEach(function (k) {
       var c = cells[k];
       if (!c) return;
-      var h = Number(c.hours) || 0;
-      if (h > 0 || c.logged || c.closed || c.open) {
+      var h = payHourly ? Number(c.hours_bitcop) || 0 : Number(c.hours) || 0;
+      if (h > 0 || (!payHourly && (c.logged || c.closed || c.open))) {
         hoursMonth += h;
         daysWorked += 1;
       }
@@ -701,7 +703,8 @@
       if (isNonWork) cls.push("nonwork");
       else if (weekend) cls.push("muted");
       if (shortDays[d]) cls.push("short-day");
-      var hasHours = Number(cell.hours) > 0 || cell.open || cell.closed || cell.logged;
+      var shownH = payHourly && !cell.open ? Number(cell.hours_bitcop) || 0 : Number(cell.hours) || 0;
+      var hasHours = shownH > 0 || cell.open || (!payHourly && (cell.closed || cell.logged));
       if (cell.type === "vacation") cls.push("type-vacation");
       else if (cell.type === "sick") cls.push("type-sick");
       else if (cell.type === "dayoff") cls.push("type-dayoff");
@@ -736,10 +739,10 @@
               '<span class="dg-ws-cal-hours open">' +
               (Number(cell.hours) > 0 ? fmtHours(cell.hours) + " · идёт" : "идёт…") +
               "</span>";
-          } else if (Number(cell.hours) > 0) {
+          } else if (shownH > 0) {
             hoursLabel =
               '<span class="dg-ws-cal-hours">' +
-              fmtHours(cell.hours) +
+              fmtHours(shownH) +
               "</span>" +
               '<span class="dg-ws-cal-rate">ставка ' +
               cell.rate +
