@@ -197,7 +197,7 @@ description: Подменю Маркетплейсы — Ozon, WB, Я.Марке
 | Статистика контент-отдела | `#stats` | **`exports-new-products-stats`** (`matrixOnly`) | `GET …/content-stats`; CRM links `scope=almamed\|marketplaces` |
 | Постоянные задачи | `#standing` | **`exports-new-products-standing`** | `GET …/standing-stats`; CRM `scope=infographic` |
 | Обновление товаров | `#updates` | **`exports-new-products-updates`** | `/api/exports/product-updates`; состав комплектов; комментарии «+»; кнопка **«Пройти обучение»** в шапке страницы (интерактивный тур по вкладке) |
-| Уведомления датагон-crm | `#crm-notify` | **`exports-new-products-crm-notify`** | `GET/POST …/crm-notify` (`script` v1.0.3 · rev.4) |
+| Уведомления датагон-crm | `#crm-notify` | **`exports-new-products-crm-notify`** | `GET/POST …/crm-notify` (`script` v1.0.4 · rev.5) |
 
 `hidden` у вкладки скрывает её и API; `view` — без записи CRM-привязок / notify. Parent `exports-marketplaces` = `hidden` — как у shop (override `view`/`full` у дочернего).
 
