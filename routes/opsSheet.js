@@ -2135,15 +2135,43 @@ async function enrichFromDealStatusReport(appSettings, db, onProgress, year, mon
         // совпадала с Planfix 1-в-1 до единицы.
         const targetYmKey = `${Number(year)}:${Number(periodMonth)}`;
         const targetMap = byYm.get(targetYmKey);
-        if (targetMap && merged.size > 0 && targetMap.size / merged.size >= 0.95) {
-            for (const [ymKey, partMap] of byYm.entries()) {
-                if (ymKey === targetYmKey) continue;
-                if (partMap.size < 30) {
-                    partMap.forEach((st, tid) => targetMap.set(tid, st));
-                }
+        const datedNonEmpty = [...byYm.values()].reduce((n, m) => n + m.size, 0);
+        const dominantMonth =
+            targetMap && datedNonEmpty > 0 && targetMap.size / datedNonEmpty >= 0.95;
+        if (dominantMonth) {
+            // Период отчёта Planfix — не колонка «дата создания». В январском сейве
+            // остаются задачи с created_at в соседних месяцах; их нельзя выкидывать
+            // из гистограммы и нельзя писать отдельным снимком (это затирает декабрь/февраль).
+            const whole = new Map();
+            allReportRows.forEach((r) => {
+                if (!r || !r.task_id) return;
+                let s = String(r.status_value || '').trim();
+                if (pf.isPlanfixProcessStatusName(s) || pf.isDealStatusSeparator(s)) return;
+                if (!s) s = '<Нет значения>';
+                whole.set(r.task_id, s.slice(0, 191));
+            });
+            byYm.clear();
+            minDayByYm.clear();
+            maxDayByYm.clear();
+            allIdsByYm.clear();
+            byYm.set(targetYmKey, whole);
+            minDayByYm.set(targetYmKey, 1);
+            maxDayByYm.set(targetYmKey, 31);
+            allIdsByYm.set(targetYmKey, new Set(whole.keys()));
+        }
+        if (!dominantMonth) {
+            // «Последние 14/90 дней» и любой сейв на несколько месяцев: статусы заявок
+            // уже обновлены выше. Помесячные гистограммы не трогаем — их пишет только
+            // синк, в котором этот месяц составляет ≥95% сейва.
+            if (typeof onProgress === 'function') {
+                onProgress(
+                    'Сейв Planfix — не один календарный месяц (скользящие 14/90 дней или несколько месяцев). ' +
+                        'Гистограммы «В отчёте» не меняем. Статусы заявок в листе обновлены.'
+                );
             }
         }
         for (const [ymKey, partMap] of byYm.entries()) {
+            if (!dominantMonth) break;
             const [yStr, mStr] = ymKey.split(':');
             const yPart = Number(yStr) || 0;
             const mPart = Number(mStr) || 0;
@@ -2206,63 +2234,39 @@ async function enrichFromDealStatusReport(appSettings, db, onProgress, year, mon
             });
         }
     } else if (splitMonths.length > 1) {
-        // Один generate за несколько месяцев → разложить снимки по month (не в month=0).
-        const idsAll = [...merged.keys()];
-        const dateBy = new Map();
-        rowsWithValidDates.forEach((r) => {
-            if (r.created_at) dateBy.set(Number(r.task_id), r.created_at);
-        });
-        for (let i = 0; i < idsAll.length; i += 400) {
-            const slice = idsAll.slice(i, i + 400);
-            const ph = slice.map(() => '?').join(',');
-            const [drows] = await db.query(
-                `SELECT task_id, created_at FROM dg_ops_planfix_task_dates WHERE task_id IN (${ph})`,
-                slice
+        // Один generate нельзя честно разложить по нескольким месяцам: период в Planfix
+        // один (часто «последние 90 дней»). Помесячные снимки остаются от синка каждого месяца.
+        if (typeof onProgress === 'function') {
+            onProgress(
+                'Несколько месяцев в Datagon и один generate Planfix: гистограммы месяцев не перезаписываем. ' +
+                    'Статусы заявок обновлены. Снимок месяца — отдельным синком этого месяца.'
             );
-            (drows || []).forEach((r) => {
-                if (!dateBy.has(Number(r.task_id))) {
-                    dateBy.set(Number(r.task_id), r.created_at);
-                }
-            });
         }
-        for (let mi = 0; mi < splitMonths.length; mi += 1) {
-            const m = splitMonths[mi];
-            const b = pf.periodBounds(year, m);
-            const part = new Map();
-            merged.forEach((val, tid) => {
-                const raw = dateBy.get(Number(tid));
-                if (raw == null) return;
-                // created_at в БД — наивное МСК (как NOW() сервера MSK)
-                const wall = String(raw).replace('T', ' ').slice(0, 19);
-                if (wall >= b.fromSql && wall < b.toSql) part.set(tid, val);
-            });
+    } else {
+        const monthsHit = new Set();
+        rowsWithValidDates.forEach((r) => {
+            if (r.year >= 2019 && r.month >= 1 && r.month <= 12) {
+                monthsHit.add(`${r.year}:${r.month}`);
+            }
+        });
+        if (monthsHit.size < 6) {
             if (typeof onProgress === 'function') {
                 onProgress(
-                    `Снимок отчёта ${MONTH_LABELS[m]} ${year}: ${part.size} задач из generate`
+                    'Сейв не похож на весь год (меньше 6 месяцев) — годовую гистограмму не затираем. Статусы заявок обновлены.'
                 );
             }
-            await upsertReportStatusCounts(db, part, used[0], year, m);
-            await upsertReportTasks(db, part, used[0], year, m);
+        } else {
+            await upsertReportStatusCounts(db, merged, used[0], year, periodMonth);
+            await upsertReportTasks(db, merged, used[0], year, periodMonth);
             await upsertReportMeta(db, {
                 report_id: used[0].report_id,
                 save_id: used[0].save_id,
                 year: Number(year) || 0,
-                month: m,
+                month: periodMonth,
                 scope: 'period',
                 generated,
             });
         }
-    } else {
-        await upsertReportStatusCounts(db, merged, used[0], year, periodMonth);
-        await upsertReportTasks(db, merged, used[0], year, periodMonth);
-        await upsertReportMeta(db, {
-            report_id: used[0].report_id,
-            save_id: used[0].save_id,
-            year: Number(year) || 0,
-            month: periodMonth,
-            scope: 'period',
-            generated,
-        });
     }
     return {
         report_id: used[0].report_id,
