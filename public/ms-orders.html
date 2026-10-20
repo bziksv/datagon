@@ -616,15 +616,37 @@
       display: none !important;
     }
     /*
-      Свёрнутый сайдбар: чёрточка по центру иконок (у темы icon ~x=50 в колонке 80px,
-      а не геометрический центр контента с padding 24px — auto-margin давал сдвиг влево).
+      Свёрнутый сайдбар (80px): у темы left:50% на иконке считается от узкой ссылки
+      (~24px), а не от колонки → иконки смещены вправо, слева пусто больше, чем справа.
+      Растягиваем пункт на всю ширину и центрируем иконку / разделитель.
     */
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:not(:hover)
+      .app-sidebar__inner
+      .vertical-nav-menu
+      > .metismenu-container
+      > .metismenu-item
+      > .metismenu-link {
+      width: 100% !important;
+      margin-left: 0 !important;
+      margin-right: 0 !important;
+    }
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:not(:hover)
+      .app-sidebar__inner
+      .vertical-nav-menu
+      > .metismenu-container
+      > .metismenu-item
+      > .metismenu-link
+      > .metismenu-icon {
+      left: 50% !important;
+      margin-left: 0 !important;
+      transform: translateX(-50%) !important;
+    }
     .datagon-vanilla-shell.closed-sidebar .app-sidebar:not(:hover)
       .vertical-nav-menu
       .metismenu-item.dg-sidebar-nav-divider {
       width: 1.25rem !important;
       max-width: 1.25rem !important;
-      margin-left: 1rem !important;
+      margin-left: auto !important;
       margin-right: auto !important;
       margin-top: 0.45rem !important;
       margin-bottom: 0.45rem !important;
