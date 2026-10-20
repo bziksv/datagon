@@ -15,7 +15,9 @@ const {
 } = require('../lib/datagonCmsPriceWrite');
 let myProductsPerfReady = false;
 let myProductsSyncAuditReady = false;
+let myProductsPriceHoldReady = false;
 let myProductsSourceEnabledReady = false;
+const PRICE_HOLD_ALLOWED_DAYS = new Set([30, 60, 90, 180]);
 const MY_PRODUCTS_CACHE_TTL_MS = 120000;
 const MY_PRODUCTS_STATS_CACHE_TTL_MS = 15000;
 const myProductsResponseCache = new Map();
@@ -47,6 +49,7 @@ function buildMyProductsGapSetKey(parts) {
         stock_max: stockMax,
         ms_linked: p.ms_linked != null ? p.ms_linked : 'all',
         match_audit: String(p.match_audit || 'all').toLowerCase(),
+        price_hold: String(p.price_hold || 'all').toLowerCase(),
         gap_exclude_zero: String(p.gap_exclude_zero || '1') !== '0' ? '1' : '0',
         gap_competitor: String(p.gap_competitor || 'all'),
         gap_min_pct: Number(p.gap_min_pct),
@@ -56,6 +59,65 @@ function buildMyProductsGapSetKey(parts) {
         usd_to_rub: Number(Number(p.usd_to_rub).toFixed(6)),
         eur_to_rub: Number(Number(p.eur_to_rub).toFixed(6))
     });
+}
+
+function formatMysqlDatetime(d) {
+    const pad = (n) => String(n).padStart(2, '0');
+    return (
+        `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ` +
+        `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+    );
+}
+
+/** Активная заморозка цены: price_hold_until в будущем. */
+function isPriceHoldActive(row) {
+    if (!row || row.price_hold_until == null || row.price_hold_until === '') return false;
+    const t = new Date(row.price_hold_until).getTime();
+    return Number.isFinite(t) && t > Date.now();
+}
+
+/**
+ * @returns {{ until: string, days: number|null } | { error: string }}
+ */
+function resolvePriceHoldUntil(body) {
+    const b = body || {};
+    if (b.hold_until != null && String(b.hold_until).trim() !== '') {
+        const raw = String(b.hold_until).trim();
+        let d;
+        if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+            d = new Date(`${raw}T23:59:59`);
+        } else {
+            d = new Date(raw);
+        }
+        if (!Number.isFinite(d.getTime())) {
+            return { error: 'Некорректная hold_until' };
+        }
+        if (d.getTime() <= Date.now()) {
+            return { error: 'hold_until должна быть в будущем' };
+        }
+        const maxMs = Date.now() + 366 * 86400000;
+        if (d.getTime() > maxMs) {
+            return { error: 'hold_until не более 366 дней вперёд' };
+        }
+        return { until: formatMysqlDatetime(d), days: null };
+    }
+    const days = Number(b.hold_days != null ? b.hold_days : 90);
+    if (!PRICE_HOLD_ALLOWED_DAYS.has(days)) {
+        return { error: 'hold_days: 30, 60, 90 или 180' };
+    }
+    const d = new Date(Date.now() + days * 86400000);
+    return { until: formatMysqlDatetime(d), days };
+}
+
+function sqlPriceHoldWhere(priceHoldFilter) {
+    const f = String(priceHoldFilter || 'all').toLowerCase();
+    if (f === '1' || f === 'held' || f === 'yes') {
+        return ' AND mp.price_hold_until IS NOT NULL AND mp.price_hold_until > NOW()';
+    }
+    if (f === '0' || f === 'free' || f === 'no') {
+        return ' AND (mp.price_hold_until IS NULL OR mp.price_hold_until <= NOW())';
+    }
+    return '';
 }
 
 /** Пара Δ% (от/до). Пустая → null (диапазон не участвует). Иначе { min, max } с нормализацией. */
@@ -256,6 +318,61 @@ function myProductsRouterFactory(db, settings) {
             } catch (_) {}
         }
         myProductsSyncAuditReady = true;
+    }
+
+    async function ensureMyProductsPriceHoldColumns() {
+        if (myProductsPriceHoldReady) return;
+        const columns = [
+            { name: 'price_hold_until', ddl: 'ALTER TABLE my_products ADD COLUMN price_hold_until DATETIME NULL' },
+            { name: 'price_hold_by', ddl: 'ALTER TABLE my_products ADD COLUMN price_hold_by VARCHAR(255) NULL' },
+            { name: 'price_hold_note', ddl: 'ALTER TABLE my_products ADD COLUMN price_hold_note VARCHAR(255) NULL' }
+        ];
+        for (const col of columns) {
+            try {
+                const [rows] = await db.query(
+                    `SELECT 1
+                     FROM information_schema.columns
+                     WHERE table_schema = DATABASE()
+                       AND table_name = 'my_products'
+                       AND column_name = ?
+                     LIMIT 1`,
+                    [col.name]
+                );
+                if (!rows.length) await db.query(col.ddl);
+            } catch (_) {}
+        }
+        try {
+            const [idx] = await db.query(
+                `SELECT 1
+                 FROM information_schema.statistics
+                 WHERE table_schema = DATABASE()
+                   AND table_name = 'my_products'
+                   AND index_name = 'idx_my_products_price_hold_until'
+                 LIMIT 1`
+            );
+            if (!idx.length) {
+                await db.query(
+                    'CREATE INDEX idx_my_products_price_hold_until ON my_products (price_hold_until)'
+                );
+            }
+        } catch (_) {}
+        myProductsPriceHoldReady = true;
+    }
+
+    async function loadMyProductBySiteKey(siteIdNum, sourceId, sku) {
+        let rows;
+        if (sourceId) {
+            [rows] = await db.query(
+                'SELECT * FROM my_products WHERE site_id = ? AND source_id = ? LIMIT 1',
+                [siteIdNum, String(sourceId)]
+            );
+        } else {
+            [rows] = await db.query(
+                'SELECT * FROM my_products WHERE site_id = ? AND sku = ? LIMIT 1',
+                [siteIdNum, sku]
+            );
+        }
+        return rows && rows[0] ? rows[0] : null;
     }
 
     async function ensureMyProductsSourceEnabledColumn() {
@@ -469,6 +586,7 @@ function myProductsRouterFactory(db, settings) {
                 gap_exclude_zero = '1',
                 gap_competitor = 'all',
                 match_audit = 'all',
+                price_hold = 'all',
                 gap_min_pct,
                 gap_max_pct,
                 gap_min_pct_2,
@@ -524,6 +642,7 @@ function myProductsRouterFactory(db, settings) {
                 gap_exclude_zero: gapExcludeZero ? '1' : '0',
                 gap_competitor,
                 match_audit,
+                price_hold,
                 gap_min_pct: Number.isFinite(Number(gap_min_pct)) ? Number(gap_min_pct) : null,
                 gap_max_pct: Number.isFinite(Number(gap_max_pct)) ? Number(gap_max_pct) : null,
                 gap_min_pct_2: gapRange2 ? gapRange2.min : null,
@@ -546,8 +665,10 @@ function myProductsRouterFactory(db, settings) {
 
             await ensureMyProductsPerfIndexes();
             await ensureMyProductsCmsProductIdColumn();
+            await ensureMyProductsPriceHoldColumns();
 
             const matchAuditSql = sqlMatchAuditJoinAndWhere(matchAuditFilter);
+            const priceHoldSql = sqlPriceHoldWhere(price_hold);
             let q = `
                 SELECT 
                     mp.*
@@ -555,8 +676,9 @@ function myProductsRouterFactory(db, settings) {
                 ${matchAuditSql.joinSql}
                 WHERE 1=1
                 ${matchAuditSql.whereSql}
+                ${priceHoldSql}
             `;
-            let qc = `SELECT COUNT(*) as total FROM my_products mp ${matchAuditSql.joinSql} WHERE 1=1${matchAuditSql.whereSql}`;
+            let qc = `SELECT COUNT(*) as total FROM my_products mp ${matchAuditSql.joinSql} WHERE 1=1${matchAuditSql.whereSql}${priceHoldSql}`;
             let p = [], pc = [];
 
             if (site_id && site_id !== 'all') { 
@@ -672,6 +794,7 @@ function myProductsRouterFactory(db, settings) {
                     stock_max: Number.isFinite(Number(stock_max)) ? Number(stock_max) : null,
                     ms_linked,
                     match_audit,
+                    price_hold,
                     gap_exclude_zero: gapExcludeZero ? '1' : '0',
                     gap_competitor: String(gap_competitor || 'all'),
                     gap_min_pct: Number(gapMin),
@@ -1491,6 +1614,7 @@ function myProductsRouterFactory(db, settings) {
         const gap_exclude_zero = q.gap_exclude_zero != null ? q.gap_exclude_zero : '1';
         const gap_competitor = q.gap_competitor != null ? q.gap_competitor : 'all';
         const match_audit = q.match_audit != null ? q.match_audit : 'all';
+        const price_hold = q.price_hold != null ? q.price_hold : 'all';
         const gap_min_pct = q.gap_min_pct;
         const gap_max_pct = q.gap_max_pct;
         const gap_min_pct_2 = q.gap_min_pct_2;
@@ -1499,6 +1623,7 @@ function myProductsRouterFactory(db, settings) {
         const eur_to_rub = q.eur_to_rub;
 
         const matchAuditFilter = String(match_audit || 'all').toLowerCase();
+        const priceHoldFilter = String(price_hold || 'all').toLowerCase();
         const isGapFilterEnabled = String(gap_filter_enabled || '0') === '1';
         const gapExcludeZero = String(gap_exclude_zero || '1') !== '0';
         const fxSnap = snapshotFx();
@@ -1520,9 +1645,11 @@ function myProductsRouterFactory(db, settings) {
 
         await ensureMyProductsPerfIndexes();
         await ensureMyProductsCmsProductIdColumn();
+        await ensureMyProductsPriceHoldColumns();
 
         const matchAuditSql = sqlMatchAuditJoinAndWhere(matchAuditFilter);
-        let whereSql = `WHERE 1=1${matchAuditSql.whereSql}`;
+        const priceHoldSql = sqlPriceHoldWhere(priceHoldFilter);
+        let whereSql = `WHERE 1=1${matchAuditSql.whereSql}${priceHoldSql}`;
         const params = [];
 
         if (site_id && site_id !== 'all') {
@@ -1575,6 +1702,7 @@ function myProductsRouterFactory(db, settings) {
             search: String(search || ''),
             ms_linked,
             match_audit: matchAuditFilter,
+            price_hold: priceHoldFilter,
             gap_enabled: isGapFilterEnabled ? 1 : 0,
             gap_exclude_zero: gapExcludeZero ? 1 : 0,
             gap_competitor: String(gap_competitor || 'all'),
@@ -1626,6 +1754,7 @@ function myProductsRouterFactory(db, settings) {
             stock_max: ctx.stock_max,
             ms_linked: af.ms_linked,
             match_audit: af.match_audit,
+            price_hold: af.price_hold || 'all',
             gap_exclude_zero: af.gap_exclude_zero ? '1' : '0',
             gap_competitor: af.gap_competitor,
             gap_min_pct: af.gap_min_pct,
@@ -1801,6 +1930,7 @@ function myProductsRouterFactory(db, settings) {
         cms_failed: 0,
         skipped_gap: 0,
         skipped_no_competitor: 0,
+        skipped_hold: 0,
         errors: []
     };
 
@@ -1811,7 +1941,10 @@ function myProductsRouterFactory(db, settings) {
     }
 
     function priceSyncJobPayload() {
-        const skipped = Number(priceSyncJob.skipped_gap || 0) + Number(priceSyncJob.skipped_no_competitor || 0);
+        const skipped =
+            Number(priceSyncJob.skipped_gap || 0) +
+            Number(priceSyncJob.skipped_no_competitor || 0) +
+            Number(priceSyncJob.skipped_hold || 0);
         return {
             active: !!priceSyncJob.active,
             cancel_requested: !!priceSyncJob.cancelRequested,
@@ -1827,6 +1960,7 @@ function myProductsRouterFactory(db, settings) {
             cms_failed: Number(priceSyncJob.cms_failed || 0),
             skipped_gap: Number(priceSyncJob.skipped_gap || 0),
             skipped_no_competitor: Number(priceSyncJob.skipped_no_competitor || 0),
+            skipped_hold: Number(priceSyncJob.skipped_hold || 0),
             no_dm_mk_price: Number(priceSyncJob.skipped_no_competitor || 0),
             skipped,
             no_competitor: Number(priceSyncJob.skipped_no_competitor || 0),
@@ -1863,6 +1997,7 @@ function myProductsRouterFactory(db, settings) {
         priceSyncJob.cms_failed = 0;
         priceSyncJob.skipped_gap = 0;
         priceSyncJob.skipped_no_competitor = 0;
+        priceSyncJob.skipped_hold = 0;
         priceSyncJob.errors = [];
     }
 
@@ -1886,6 +2021,7 @@ function myProductsRouterFactory(db, settings) {
                 `; записано ✓ ${priceSyncJob.cms_ok.toLocaleString('ru-RU')}` +
                 `, ошибок × ${priceSyncJob.cms_failed.toLocaleString('ru-RU')}` +
                 `, без цены ДМ/МК ${priceSyncJob.skipped_no_competitor.toLocaleString('ru-RU')}` +
+                `, заморозка ${priceSyncJob.skipped_hold.toLocaleString('ru-RU')}` +
                 (showGapSkips ? `, отсеяно по Δ ${priceSyncJob.skipped_gap.toLocaleString('ru-RU')}` : '')
             );
         }
@@ -2021,6 +2157,11 @@ function myProductsRouterFactory(db, settings) {
                     // Без prefilter: Δ проверяем на лету. С prefilter — только страховка.
                     if (ctx.isGapFilterEnabled && !rowMatchesGapFilter(product, ctx.gapCfg)) {
                         if (!workIds) priceSyncJob.skipped_gap += 1;
+                        continue;
+                    }
+
+                    if (isPriceHoldActive(product)) {
+                        priceSyncJob.skipped_hold += 1;
                         continue;
                     }
 
@@ -2162,6 +2303,339 @@ function myProductsRouterFactory(db, settings) {
         }
     }
 
+    // 4a. Ручная цена + заморозка / только заморозка / снятие
+    router.post('/set-manual-price', async (req, res) => {
+        const body = req.body || {};
+        const { site_id, sku, source_id, price } = body;
+        if (!site_id || (!sku && !source_id)) {
+            return res.status(400).json({ error: 'Не указан site_id и идентификатор товара (source_id/sku)' });
+        }
+        const priceNum = Number(String(price).replace(',', '.'));
+        if (!Number.isFinite(priceNum) || priceNum < 0) {
+            return res.status(400).json({ error: 'Некорректная цена' });
+        }
+        const hold = resolvePriceHoldUntil(body);
+        if (hold.error) {
+            return res.status(400).json({ error: hold.error });
+        }
+        try {
+            await ensureMyProductsPriceHoldColumns();
+            const siteIdNum = Number(site_id);
+            const product = await loadMyProductBySiteKey(siteIdNum, source_id, sku);
+            if (!product) {
+                return res.status(404).json({ error: 'Товар не найден' });
+            }
+            const [sites] = await db.query('SELECT * FROM my_sites WHERE id = ?', [siteIdNum]);
+            if (!sites.length) {
+                return res.status(404).json({ error: 'Сайт не найден' });
+            }
+            const s = sites[0];
+            const conn = await mysql.createConnection({
+                host: s.db_host,
+                user: s.db_user,
+                password: s.db_pass,
+                database: s.db_name,
+                connectTimeout: 10000
+            });
+            try {
+                await applyPriceToCms(conn, s, product, priceNum);
+            } finally {
+                await conn.end();
+            }
+            const actorLogin = resolveActorName(req);
+            const actorDisplayName = await resolveActorDisplayName(actorLogin);
+            const note =
+                hold.days != null ? `manual;days=${hold.days}` : `manual;until=${hold.until.slice(0, 10)}`;
+            await db.query(
+                `UPDATE my_products
+                 SET price = ?, price_hold_until = ?, price_hold_by = ?, price_hold_note = ?, updated_at = NOW()
+                 WHERE site_id = ? AND source_id = ?`,
+                [priceNum, hold.until, actorDisplayName, note, siteIdNum, String(product.source_id || '')]
+            );
+            myProductsResponseCache.clear();
+            myProductsGapSetCache.clear();
+            const [[meta]] = await db.query(
+                `SELECT price, currency, price_hold_until, price_hold_by, price_hold_note, updated_at
+                 FROM my_products WHERE site_id = ? AND source_id = ? LIMIT 1`,
+                [siteIdNum, String(product.source_id || '')]
+            );
+            return res.json({
+                success: true,
+                message: 'Цена записана в CMS, синк с конкурентов заморожен',
+                data: meta || {}
+            });
+        } catch (e) {
+            console.error('Error set-manual-price:', e);
+            return res.status(500).json({ error: e.message });
+        }
+    });
+
+    router.post('/set-price-hold', async (req, res) => {
+        const body = req.body || {};
+        const { site_id, sku, source_id } = body;
+        if (!site_id || (!sku && !source_id)) {
+            return res.status(400).json({ error: 'Не указан site_id и идентификатор товара (source_id/sku)' });
+        }
+        const hold = resolvePriceHoldUntil(body);
+        if (hold.error) {
+            return res.status(400).json({ error: hold.error });
+        }
+        try {
+            await ensureMyProductsPriceHoldColumns();
+            const siteIdNum = Number(site_id);
+            const product = await loadMyProductBySiteKey(siteIdNum, source_id, sku);
+            if (!product) {
+                return res.status(404).json({ error: 'Товар не найден' });
+            }
+            const actorLogin = resolveActorName(req);
+            const actorDisplayName = await resolveActorDisplayName(actorLogin);
+            const note =
+                hold.days != null ? `hold;days=${hold.days}` : `hold;until=${hold.until.slice(0, 10)}`;
+            await db.query(
+                `UPDATE my_products
+                 SET price_hold_until = ?, price_hold_by = ?, price_hold_note = ?, updated_at = NOW()
+                 WHERE site_id = ? AND source_id = ?`,
+                [hold.until, actorDisplayName, note, siteIdNum, String(product.source_id || '')]
+            );
+            myProductsResponseCache.clear();
+            myProductsGapSetCache.clear();
+            const [[meta]] = await db.query(
+                `SELECT price, currency, price_hold_until, price_hold_by, price_hold_note, updated_at
+                 FROM my_products WHERE site_id = ? AND source_id = ? LIMIT 1`,
+                [siteIdNum, String(product.source_id || '')]
+            );
+            return res.json({
+                success: true,
+                message: 'Синк цены с конкурентов заморожен',
+                data: meta || {}
+            });
+        } catch (e) {
+            console.error('Error set-price-hold:', e);
+            return res.status(500).json({ error: e.message });
+        }
+    });
+
+    router.post('/clear-price-hold', async (req, res) => {
+        const body = req.body || {};
+        const { site_id, sku, source_id } = body;
+        if (!site_id || (!sku && !source_id)) {
+            return res.status(400).json({ error: 'Не указан site_id и идентификатор товара (source_id/sku)' });
+        }
+        try {
+            await ensureMyProductsPriceHoldColumns();
+            const siteIdNum = Number(site_id);
+            const product = await loadMyProductBySiteKey(siteIdNum, source_id, sku);
+            if (!product) {
+                return res.status(404).json({ error: 'Товар не найден' });
+            }
+            await db.query(
+                `UPDATE my_products
+                 SET price_hold_until = NULL, price_hold_by = NULL, price_hold_note = NULL, updated_at = NOW()
+                 WHERE site_id = ? AND source_id = ?`,
+                [siteIdNum, String(product.source_id || '')]
+            );
+            myProductsResponseCache.clear();
+            myProductsGapSetCache.clear();
+            return res.json({
+                success: true,
+                message: 'Заморозка снята — следующий синк с конкурента снова применится'
+            });
+        } catch (e) {
+            console.error('Error clear-price-hold:', e);
+            return res.status(500).json({ error: e.message });
+        }
+    });
+
+    async function runBulkPriceHoldMutation(req, res, mode) {
+        const startedAt = Date.now();
+        const body = req.body || {};
+        const q = { ...req.query, ...body };
+        const dryRun =
+            String(q.dry_run || '') === '1' || q.dry_run === true || q.dry_run === 1;
+        const confirm =
+            String(q.confirm || '') === '1' || q.confirm === true || q.confirm === 1;
+        if (!dryRun && !confirm) {
+            return res.status(400).json({
+                error: 'confirm required (или dry_run=1)',
+                code: 'CONFIRM_REQUIRED'
+            });
+        }
+        let hold = null;
+        if (mode === 'set') {
+            hold = resolvePriceHoldUntil(body);
+            if (hold.error) {
+                return res.status(400).json({ error: hold.error });
+            }
+        }
+        try {
+            await ensureMyProductsPriceHoldColumns();
+            const ctx = await buildPriceSyncFilterContext(q);
+            let ids = null;
+            let total = 0;
+            if (ctx.isGapFilterEnabled) {
+                const workset = await collectPriceSyncGapMatchedIds(ctx, {});
+                ids = workset.matchedIds || [];
+                total = ids.length;
+            } else {
+                total = await countPriceSyncCandidates(ctx);
+            }
+            if (total > PRICE_SYNC_HARD_MAX) {
+                return res.status(400).json({
+                    success: false,
+                    error: `Слишком большая выборка (${total} > ${PRICE_SYNC_HARD_MAX}). Сузьте фильтры.`,
+                    code: 'SELECTION_TOO_LARGE',
+                    total,
+                    hard_max: PRICE_SYNC_HARD_MAX,
+                    applied_filters: ctx.applied_filters,
+                    duration_sec: Number(((Date.now() - startedAt) / 1000).toFixed(2))
+                });
+            }
+
+            let alreadyHeld = 0;
+            let freeCount = 0;
+            if (ids) {
+                if (ids.length) {
+                    const chunk = 500;
+                    for (let i = 0; i < ids.length; i += chunk) {
+                        const part = ids.slice(i, i + chunk);
+                        const ph = part.map(() => '?').join(',');
+                        // eslint-disable-next-line no-await-in-loop
+                        const [cntRows] = await db.query(
+                            `SELECT
+                               SUM(CASE WHEN price_hold_until IS NOT NULL AND price_hold_until > NOW() THEN 1 ELSE 0 END) AS held,
+                               SUM(CASE WHEN price_hold_until IS NULL OR price_hold_until <= NOW() THEN 1 ELSE 0 END) AS free_n
+                             FROM my_products WHERE id IN (${ph})`,
+                            part
+                        );
+                        alreadyHeld += Number(cntRows?.[0]?.held || 0);
+                        freeCount += Number(cntRows?.[0]?.free_n || 0);
+                    }
+                }
+            } else {
+                const [cntRows] = await db.query(
+                    `SELECT
+                       SUM(CASE WHEN mp.price_hold_until IS NOT NULL AND mp.price_hold_until > NOW() THEN 1 ELSE 0 END) AS held,
+                       SUM(CASE WHEN mp.price_hold_until IS NULL OR mp.price_hold_until <= NOW() THEN 1 ELSE 0 END) AS free_n
+                     FROM my_products mp
+                     ${ctx.joinSql}
+                     ${ctx.whereSql}`,
+                    ctx.params
+                );
+                alreadyHeld = Number(cntRows?.[0]?.held || 0);
+                freeCount = Number(cntRows?.[0]?.free_n || 0);
+            }
+
+            const wouldSet = freeCount;
+            const wouldClear = alreadyHeld;
+            if (dryRun) {
+                return res.json({
+                    success: true,
+                    dry_run: true,
+                    mode,
+                    total,
+                    already_held: alreadyHeld,
+                    free: freeCount,
+                    would_hold: mode === 'set' ? wouldSet : 0,
+                    would_clear: mode === 'clear' ? wouldClear : 0,
+                    to_update: mode === 'set' ? wouldSet : wouldClear,
+                    hold_days: hold && hold.days != null ? hold.days : null,
+                    hold_until: hold ? hold.until : null,
+                    applied_filters: ctx.applied_filters,
+                    duration_sec: Number(((Date.now() - startedAt) / 1000).toFixed(2))
+                });
+            }
+
+            const actorLogin = resolveActorName(req);
+            const actorDisplayName = await resolveActorDisplayName(actorLogin);
+            let affected = 0;
+            if (mode === 'set') {
+                const note =
+                    hold.days != null ? `bulk;days=${hold.days}` : `bulk;until=${hold.until.slice(0, 10)}`;
+                if (ids) {
+                    const chunk = 500;
+                    for (let i = 0; i < ids.length; i += chunk) {
+                        const part = ids.slice(i, i + chunk);
+                        if (!part.length) continue;
+                        const ph = part.map(() => '?').join(',');
+                        // eslint-disable-next-line no-await-in-loop
+                        const [r] = await db.query(
+                            `UPDATE my_products
+                             SET price_hold_until = ?, price_hold_by = ?, price_hold_note = ?, updated_at = NOW()
+                             WHERE id IN (${ph})
+                               AND (price_hold_until IS NULL OR price_hold_until <= NOW())`,
+                            [hold.until, actorDisplayName, note, ...part]
+                        );
+                        affected += Number(r.affectedRows || 0);
+                    }
+                } else {
+                    const [r] = await db.query(
+                        `UPDATE my_products mp
+                         ${ctx.joinSql}
+                         SET mp.price_hold_until = ?, mp.price_hold_by = ?, mp.price_hold_note = ?, mp.updated_at = NOW()
+                         ${ctx.whereSql}
+                           AND (mp.price_hold_until IS NULL OR mp.price_hold_until <= NOW())`,
+                        [hold.until, actorDisplayName, note, ...ctx.params]
+                    );
+                    affected = Number(r.affectedRows || 0);
+                }
+            } else {
+                if (ids) {
+                    const chunk = 500;
+                    for (let i = 0; i < ids.length; i += chunk) {
+                        const part = ids.slice(i, i + chunk);
+                        if (!part.length) continue;
+                        const ph = part.map(() => '?').join(',');
+                        // eslint-disable-next-line no-await-in-loop
+                        const [r] = await db.query(
+                            `UPDATE my_products
+                             SET price_hold_until = NULL, price_hold_by = NULL, price_hold_note = NULL, updated_at = NOW()
+                             WHERE id IN (${ph})
+                               AND price_hold_until IS NOT NULL AND price_hold_until > NOW()`,
+                            part
+                        );
+                        affected += Number(r.affectedRows || 0);
+                    }
+                } else {
+                    const [r] = await db.query(
+                        `UPDATE my_products mp
+                         ${ctx.joinSql}
+                         SET mp.price_hold_until = NULL, mp.price_hold_by = NULL, mp.price_hold_note = NULL, mp.updated_at = NOW()
+                         ${ctx.whereSql}
+                           AND mp.price_hold_until IS NOT NULL AND mp.price_hold_until > NOW()`,
+                        ctx.params
+                    );
+                    affected = Number(r.affectedRows || 0);
+                }
+            }
+            myProductsResponseCache.clear();
+            myProductsGapSetCache.clear();
+            return res.json({
+                success: true,
+                dry_run: false,
+                mode,
+                total,
+                already_held: alreadyHeld,
+                free: freeCount,
+                held: mode === 'set' ? affected : 0,
+                cleared: mode === 'clear' ? affected : 0,
+                to_update: affected,
+                hold_days: hold && hold.days != null ? hold.days : null,
+                hold_until: hold ? hold.until : null,
+                applied_filters: ctx.applied_filters,
+                duration_sec: Number(((Date.now() - startedAt) / 1000).toFixed(2))
+            });
+        } catch (e) {
+            console.error(`Error price-hold-bulk (${mode}):`, e);
+            return res.status(500).json({
+                error: e.message,
+                duration_sec: Number(((Date.now() - startedAt) / 1000).toFixed(2))
+            });
+        }
+    }
+
+    router.post('/set-price-hold-bulk', (req, res) => runBulkPriceHoldMutation(req, res, 'set'));
+    router.post('/clear-price-hold-bulk', (req, res) => runBulkPriceHoldMutation(req, res, 'clear'));
+
     // 4. Обновление цены на сайте от цены конкурента с рандомным шагом
     router.post('/sync-price-from-competitor', async (req, res) => {
         const { site_id, sku, source_id, random_min_pct, random_max_pct } = req.body || {};
@@ -2175,23 +2649,22 @@ function myProductsRouterFactory(db, settings) {
 
         try {
             await ensureMyProductsSyncAuditColumns();
+            await ensureMyProductsPriceHoldColumns();
             const siteIdNum = Number(site_id);
-            let rows;
-            if (source_id) {
-                [rows] = await db.query(
-                    'SELECT * FROM my_products WHERE site_id = ? AND source_id = ? LIMIT 1',
-                    [siteIdNum, String(source_id)]
-                );
-            } else {
-                [rows] = await db.query(
-                    'SELECT * FROM my_products WHERE site_id = ? AND sku = ? LIMIT 1',
-                    [siteIdNum, sku]
-                );
-            }
-            if (!rows.length) {
+            const product = await loadMyProductBySiteKey(siteIdNum, source_id, sku);
+            if (!product) {
                 return res.status(404).json({ error: 'Товар не найден' });
             }
-            const product = rows[0];
+            if (isPriceHoldActive(product)) {
+                return res.status(409).json({
+                    success: false,
+                    error: 'Цена заморожена вручную — синк с конкурента отключён до ' +
+                        String(product.price_hold_until || '').slice(0, 10),
+                    code: 'PRICE_HOLD_ACTIVE',
+                    price_hold_until: product.price_hold_until,
+                    price_hold_by: product.price_hold_by || null
+                });
+            }
             await enrichWithCompetitorPrices([product]);
 
             const fxSnap = snapshotFx();

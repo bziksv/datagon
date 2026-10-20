@@ -556,6 +556,7 @@ Query (основные):
 - `limit`, `offset` — пагинация
 - фильтр разрыва с конкурентом: `gap_filter_enabled`, `gap_exclude_zero`, `gap_competitor`, `gap_min_pct`, `gap_max_pct`, опционально второй диапазон **ИЛИ** `gap_min_pct_2` / `gap_max_pct_2` (оба заданы → совпадение с любым из двух диапазонов), `usd_to_rub`, `eur_to_rub`
 - `match_audit` — `all` | `confirmed` | `unlinked` | `none` (аудит `product_matches`). `confirmed` / `unlinked` / `none` строятся через `JOIN` к набору id из матчей (по `my_sku` ∪ по `my_product_name`), **не** через коррелированный `EXISTS` по всем ~40k `my_products` (тот путь давал десятки секунд на COUNT). При `gap_filter_enabled=1` пагинация в SQL снимается: сначала выбираются все строки по фильтрам, затем gap считается в Node — без узкого `search` / `match_audit` это тяжело.
+- `price_hold` — `all` | `1` | `0`: только с активной заморозкой своей цены (`price_hold_until > NOW()`), только без заморозки, или все.
 
 Кэш ответа: при неизменных параметрах повторный запрос в течение **120 с** может вернуть тот же JSON с полем `cache` (`source`, `age_ms`, `ttl_ms`). Проверка кэша — **до** DDL/прогрева индексов.
 
@@ -587,8 +588,20 @@ Body:
 { "site_id": 1, "sku": "ABC-123" }
 ```
 
+### POST `/api/my-products/set-manual-price`
+Записать свою цену в CMS сайта и поставить **заморозку** синка с конкурентов. Body: `site_id`, `source_id` или `sku`, `price`, `hold_days` (`30|60|90|180`, default **90**) или `hold_until` (`YYYY-MM-DD` / ISO, не далее 366 дней). Поля в `my_products`: `price`, `price_hold_until`, `price_hold_by`, `price_hold_note`.
+
+### POST `/api/my-products/set-price-hold`
+Только заморозка текущей цены (без записи в CMS). Те же идентификаторы + `hold_days` / `hold_until`.
+
+### POST `/api/my-products/clear-price-hold`
+Снять заморозку у одной строки (`price_hold_*` → NULL). Цену не меняет.
+
+### POST `/api/my-products/set-price-hold-bulk` / `clear-price-hold-bulk`
+Массовая заморозка / снятие по **тем же фильтрам**, что у list / sync-price-bulk (включая `price_hold`, Δ). `dry_run=1` или `confirm=1`. Для set — ещё `hold_days` / `hold_until`. Ответ: `total`, `already_held`, `free`, `would_hold` / `held` или `would_clear` / `cleared`, `duration_sec`, `applied_filters`. Потолок выборки — **50 000**. CMS не трогает.
+
 ### POST `/api/my-products/sync-price-from-competitor`
-Подтянуть цену с конкурента в источник (логика в `routes/myproducts.js`). В теле: `site_id`, `sku`, опционально `source_id`, `random_min_pct` / `random_max_pct`. Берётся **минимальная** цена среди Dealmed/Медкомплекс (в RUB), минус случайный % из диапазона; запись в CMS + аудит `comp_sync_*` в `my_products`. Заголовок `x-auth-username` / сессия попадает в аудит.
+Подтянуть цену с конкурента в источник (логика в `routes/myproducts.js`). В теле: `site_id`, `sku`, опционально `source_id`, `random_min_pct` / `random_max_pct`. Берётся **минимальная** цена среди Dealmed/Медкомплекс (в RUB), минус случайный % из диапазона; запись в CMS + аудит `comp_sync_*` в `my_products`. Заголовок `x-auth-username` / сессия попадает в аудит. Если у товара активна заморозка (`price_hold_until > NOW()`) → **`409 PRICE_HOLD_ACTIVE`**.
 
 ### POST `/api/my-products/sync-price-from-competitor-bulk`
 Массовая синхронизация цены с конкурента по **тем же API-фильтрам**, что у `GET /api/my-products` (сайт, статус, поиск, остаток, связь с МС, `match_audit`, фильтр Δ и курсы). Клиентские поля таблицы (`tf_*`) **не** участвуют.
@@ -604,15 +617,16 @@ Body:
 - без Δ: читает порциями `PRICE_SYNC_CHUNK` (**150**) по `id DESC`;
 - enrich конкурентов пачкой на чанк;
 - пишет в CMS параллельно до **`cms_concurrency` = 4** соединений на `site_id` (слот воркера → своё соединение);
-- счётчик `skipped_no_competitor` / alias `no_dm_mk_price` — **нет пригодной цены Dealmed/Медкомплекс > 0** (не путать с `match_audit=confirmed`: confirmed может быть с любым конкурентом).
+- счётчик `skipped_no_competitor` / alias `no_dm_mk_price` — **нет пригодной цены Dealmed/Медкомплекс > 0** (не путать с `match_audit=confirmed`: confirmed может быть с любым конкурентом);
+- счётчик `skipped_hold` — активная ручная заморозка цены (`price_hold_until > NOW()`), строка не пишется в CMS.
 
 ### GET `/api/my-products/sync-price-from-competitor-bulk-status`
-Статус: `active`, `phase` (`idle|selecting|writing|done|cancelled|error`), `scanned` / `total_sql`, `cms_ok`, `cms_failed`, `skipped_gap`, `skipped_no_competitor` / `no_dm_mk_price`, `chunk_size`, `cms_concurrency`, `message`, `errors[]`, `duration_sec`.
+Статус: `active`, `phase` (`idle|selecting|writing|done|cancelled|error`), `scanned` / `total_sql`, `cms_ok`, `cms_failed`, `skipped_gap`, `skipped_no_competitor` / `no_dm_mk_price`, `skipped_hold`, `chunk_size`, `cms_concurrency`, `message`, `errors[]`, `duration_sec`.
 
 ### POST `/api/my-products/sync-price-from-competitor-bulk-stop`
 Запрос остановки (`cancel_requested`); на отборе Δ останавливается между чанками SQL, на записи — после текущего чанка → `phase: cancelled`.
 
-UI: `/my-products.html` → **«Синх. цены по фильтрам»** + **«Стоп синх. цен»** + `#mp-action-log` (план → опрос статуса каждые 2 с → итог; подпись пропуска — «без цены ДМ/МК» / «отсеяно по Δ»).
+UI: `/my-products.html` → **«Синх. цены по фильтрам»** + **«Стоп синх. цен»** + заморозка (колонка «Ручн.», срок 30/60/90/180, bulk) + `#mp-action-log` (план → опрос статуса каждые 2 с → итог; подпись пропуска — «без цены ДМ/МК» / «заморозка» / «отсеяно по Δ»).
 
 ## Matches
 

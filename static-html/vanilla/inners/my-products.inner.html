@@ -149,6 +149,25 @@
                     <option value="none">Без действий</option>
                   </select>
                 </div>
+                <div class="col-md-2" data-dg-mp-filter-field="price_hold">
+                  <label class="form-label" for="mp-f-price_hold">Заморозка цены</label>
+                  <select class="form-select" id="mp-f-price_hold" title="Товары с ручной ценой: синк с конкурентов отключён до даты">
+                    <option value="all">Все</option>
+                    <option value="1">Только замороженные</option>
+                    <option value="0">Без заморозки</option>
+                  </select>
+                </div>
+                <div class="col-md-2" data-dg-mp-filter-field="hold_days">
+                  <label class="form-label" for="mp-f-hold_days">Срок заморозки</label>
+                  <select class="form-select" id="mp-f-hold_days" title="Общий срок для замка в строке и массовой заморозки по фильтрам">
+                    <option value="30">30 дней</option>
+                    <option value="60">60 дней</option>
+                    <option value="90" selected>90 дней</option>
+                    <option value="180">180 дней</option>
+                  </select>
+                </div>
+              </div>
+              <div class="row g-2 mt-1 align-items-end">
                 <div class="col-md-2" data-dg-mp-filter-field="sort_by">
                   <label class="form-label" for="mp-f-sort-by">Сортировать по</label>
                   <select class="form-select" id="mp-f-sort-by">
@@ -165,8 +184,6 @@
                     <option value="updated">Обновлен</option>
                   </select>
                 </div>
-              </div>
-              <div class="row g-2 mt-1 align-items-end">
                 <div class="col-md-2" data-dg-mp-filter-field="sort_dir">
                   <label class="form-label" for="mp-f-sort-dir">Направление</label>
                   <select class="form-select" id="mp-f-sort-dir">
@@ -174,7 +191,7 @@
                     <option value="desc">По убыванию</option>
                   </select>
                 </div>
-                <div class="col-md-10 d-flex flex-wrap gap-2 align-items-center pb-1">
+                <div class="col-md-8 d-flex flex-wrap gap-2 align-items-center pb-1">
                   <button type="button" class="btn btn-sm btn-primary" id="btn-apply" data-dg-tooltip="Применить фильтры и обновить данные. Сохраняет выбранные значения для следующего визита." data-dg-notify-start="Применяем фильтры и обновляем данные…"><i class="pe-7s-search me-1"></i>Применить</button>
                   <button type="button" class="btn btn-sm btn-outline-secondary" id="mp-filter-default" data-dg-tooltip="Сбросить фильтры к значениям по умолчанию и очистить сохранённые настройки." data-dg-notify-start="Сбрасываем фильтры и применяем…"><i class="pe-7s-refresh me-1"></i>По умолчанию</button>
                 </div>
@@ -275,6 +292,26 @@
                     data-dg-notify-start="Останавливаем синхронизацию цен…"
                   >Стоп синх. цен</button>
                 </span>
+                <span class="d-inline-flex" data-dg-mp-filter-field="btn_hold_price_bulk">
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-warning"
+                    id="mp-btn-hold-price-bulk"
+                    title="Заморозить текущие цены по применённым фильтрам на срок из «Срок заморозки» (без записи в CMS)"
+                    data-dg-notify-start="Считаем выборку для заморозки цен…"
+                    data-dg-activity-label="Массовая заморозка цен"
+                  ><i class="pe-7s-lock me-1"></i>Заморозить цены по фильтрам</button>
+                </span>
+                <span class="d-inline-flex" data-dg-mp-filter-field="btn_clear_hold_bulk">
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-secondary"
+                    id="mp-btn-clear-hold-bulk"
+                    title="Снять заморозку по применённым фильтрам (цену не меняет)"
+                    data-dg-notify-start="Считаем выборку для снятия заморозки…"
+                    data-dg-activity-label="Снятие заморозки цен"
+                  ><i class="pe-7s-unlock me-1"></i>Снять заморозку по фильтрам</button>
+                </span>
               </div>
               <div id="mp-action-log" class="alert mt-3 mb-0 d-none" role="status"></div>
               </div>
@@ -366,6 +403,7 @@
                       <th role="button" data-mp-sort="site" class="text-center" style="cursor:pointer">Сайт</th>
                       <th role="button" data-mp-sort="sku" class="text-center" style="cursor:pointer">Артикул (SKU)</th>
                       <th role="button" data-mp-sort="name" class="text-center" style="cursor:pointer">Название</th>
+                      <th data-mp-sort="price_hold" data-mp-label="Ручн." class="text-center" title="Заморозка своей цены: синк с конкурентов отключён до даты">Ручн.</th>
                       <th role="button" data-mp-sort="price" class="text-center" style="cursor:pointer">Цена</th>
                       <th role="button" data-mp-sort="dealmed_price" class="text-center" style="cursor:pointer">Цена ДМ</th>
                       <th role="button" data-mp-sort="medkompleks_price" class="text-center" style="cursor:pointer">Цена МК</th>
@@ -387,6 +425,28 @@
                   <button type="button" class="btn btn-sm btn-outline-secondary" id="mp-btn-prev" data-dg-notify-start="Предыдущая страница…">Назад</button>
                   <button type="button" class="btn btn-sm btn-outline-secondary" id="mp-btn-next" data-dg-notify-start="Следующая страница…">Вперёд</button>
                 </div>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-mp-confirm-overlay" class="dg-mp-confirm-overlay" style="display: none" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="dg-mp-confirm-title">
+            <div class="dg-mp-confirm-backdrop" data-mp-confirm-dismiss="1"></div>
+            <div class="card shadow dg-mp-confirm-panel">
+              <div class="card-header py-2">
+                <h5 class="mb-0 card-title" id="dg-mp-confirm-title">Подтверждение</h5>
+              </div>
+              <div class="card-body">
+                <p class="mb-2" id="dg-mp-confirm-text"></p>
+                <div id="dg-mp-confirm-price-wrap" class="mb-2 d-none">
+                  <label class="form-label" for="dg-mp-confirm-price">Цена</label>
+                  <input type="number" step="0.01" min="0" class="form-control" id="dg-mp-confirm-price" />
+                </div>
+                <p class="small text-muted mb-0" id="dg-mp-confirm-meta"></p>
+              </div>
+              <div class="card-footer d-flex justify-content-end gap-2 flex-wrap">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mp-confirm-cancel" data-mp-confirm-dismiss="1">Отмена</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary d-none" id="dg-mp-confirm-alt">Снять заморозку</button>
+                <button type="button" class="btn btn-sm btn-warning" id="dg-mp-confirm-ok" data-dg-notify-start="Выполняем…">Подтвердить</button>
               </div>
             </div>
           </div>

@@ -177,6 +177,32 @@
     #mp-main-table .mp-resize-handle {
       pointer-events: auto;
     }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-confirm-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 1090;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-confirm-overlay .dg-mp-confirm-backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.45);
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-confirm-overlay .dg-mp-confirm-panel {
+      position: relative;
+      z-index: 1;
+      width: min(440px, 100%);
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-hold-btn {
+      min-width: 2.25rem;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-hold-badge {
+      font-size: 0.72rem;
+      line-height: 1.2;
+    }
   </style>
 
   <style>
@@ -1237,6 +1263,25 @@
                     <option value="none">Без действий</option>
                   </select>
                 </div>
+                <div class="col-md-2" data-dg-mp-filter-field="price_hold">
+                  <label class="form-label" for="mp-f-price_hold">Заморозка цены</label>
+                  <select class="form-select" id="mp-f-price_hold" title="Товары с ручной ценой: синк с конкурентов отключён до даты">
+                    <option value="all">Все</option>
+                    <option value="1">Только замороженные</option>
+                    <option value="0">Без заморозки</option>
+                  </select>
+                </div>
+                <div class="col-md-2" data-dg-mp-filter-field="hold_days">
+                  <label class="form-label" for="mp-f-hold_days">Срок заморозки</label>
+                  <select class="form-select" id="mp-f-hold_days" title="Общий срок для замка в строке и массовой заморозки по фильтрам">
+                    <option value="30">30 дней</option>
+                    <option value="60">60 дней</option>
+                    <option value="90" selected>90 дней</option>
+                    <option value="180">180 дней</option>
+                  </select>
+                </div>
+              </div>
+              <div class="row g-2 mt-1 align-items-end">
                 <div class="col-md-2" data-dg-mp-filter-field="sort_by">
                   <label class="form-label" for="mp-f-sort-by">Сортировать по</label>
                   <select class="form-select" id="mp-f-sort-by">
@@ -1253,8 +1298,6 @@
                     <option value="updated">Обновлен</option>
                   </select>
                 </div>
-              </div>
-              <div class="row g-2 mt-1 align-items-end">
                 <div class="col-md-2" data-dg-mp-filter-field="sort_dir">
                   <label class="form-label" for="mp-f-sort-dir">Направление</label>
                   <select class="form-select" id="mp-f-sort-dir">
@@ -1262,7 +1305,7 @@
                     <option value="desc">По убыванию</option>
                   </select>
                 </div>
-                <div class="col-md-10 d-flex flex-wrap gap-2 align-items-center pb-1">
+                <div class="col-md-8 d-flex flex-wrap gap-2 align-items-center pb-1">
                   <button type="button" class="btn btn-sm btn-primary" id="btn-apply" data-dg-tooltip="Применить фильтры и обновить данные. Сохраняет выбранные значения для следующего визита." data-dg-notify-start="Применяем фильтры и обновляем данные…"><i class="pe-7s-search me-1"></i>Применить</button>
                   <button type="button" class="btn btn-sm btn-outline-secondary" id="mp-filter-default" data-dg-tooltip="Сбросить фильтры к значениям по умолчанию и очистить сохранённые настройки." data-dg-notify-start="Сбрасываем фильтры и применяем…"><i class="pe-7s-refresh me-1"></i>По умолчанию</button>
                 </div>
@@ -1363,6 +1406,26 @@
                     data-dg-notify-start="Останавливаем синхронизацию цен…"
                   >Стоп синх. цен</button>
                 </span>
+                <span class="d-inline-flex" data-dg-mp-filter-field="btn_hold_price_bulk">
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-warning"
+                    id="mp-btn-hold-price-bulk"
+                    title="Заморозить текущие цены по применённым фильтрам на срок из «Срок заморозки» (без записи в CMS)"
+                    data-dg-notify-start="Считаем выборку для заморозки цен…"
+                    data-dg-activity-label="Массовая заморозка цен"
+                  ><i class="pe-7s-lock me-1"></i>Заморозить цены по фильтрам</button>
+                </span>
+                <span class="d-inline-flex" data-dg-mp-filter-field="btn_clear_hold_bulk">
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-secondary"
+                    id="mp-btn-clear-hold-bulk"
+                    title="Снять заморозку по применённым фильтрам (цену не меняет)"
+                    data-dg-notify-start="Считаем выборку для снятия заморозки…"
+                    data-dg-activity-label="Снятие заморозки цен"
+                  ><i class="pe-7s-unlock me-1"></i>Снять заморозку по фильтрам</button>
+                </span>
               </div>
               <div id="mp-action-log" class="alert mt-3 mb-0 d-none" role="status"></div>
               </div>
@@ -1454,6 +1517,7 @@
                       <th role="button" data-mp-sort="site" class="text-center" style="cursor:pointer">Сайт</th>
                       <th role="button" data-mp-sort="sku" class="text-center" style="cursor:pointer">Артикул (SKU)</th>
                       <th role="button" data-mp-sort="name" class="text-center" style="cursor:pointer">Название</th>
+                      <th data-mp-sort="price_hold" data-mp-label="Ручн." class="text-center" title="Заморозка своей цены: синк с конкурентов отключён до даты">Ручн.</th>
                       <th role="button" data-mp-sort="price" class="text-center" style="cursor:pointer">Цена</th>
                       <th role="button" data-mp-sort="dealmed_price" class="text-center" style="cursor:pointer">Цена ДМ</th>
                       <th role="button" data-mp-sort="medkompleks_price" class="text-center" style="cursor:pointer">Цена МК</th>
@@ -1475,6 +1539,28 @@
                   <button type="button" class="btn btn-sm btn-outline-secondary" id="mp-btn-prev" data-dg-notify-start="Предыдущая страница…">Назад</button>
                   <button type="button" class="btn btn-sm btn-outline-secondary" id="mp-btn-next" data-dg-notify-start="Следующая страница…">Вперёд</button>
                 </div>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-mp-confirm-overlay" class="dg-mp-confirm-overlay" style="display: none" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="dg-mp-confirm-title">
+            <div class="dg-mp-confirm-backdrop" data-mp-confirm-dismiss="1"></div>
+            <div class="card shadow dg-mp-confirm-panel">
+              <div class="card-header py-2">
+                <h5 class="mb-0 card-title" id="dg-mp-confirm-title">Подтверждение</h5>
+              </div>
+              <div class="card-body">
+                <p class="mb-2" id="dg-mp-confirm-text"></p>
+                <div id="dg-mp-confirm-price-wrap" class="mb-2 d-none">
+                  <label class="form-label" for="dg-mp-confirm-price">Цена</label>
+                  <input type="number" step="0.01" min="0" class="form-control" id="dg-mp-confirm-price" />
+                </div>
+                <p class="small text-muted mb-0" id="dg-mp-confirm-meta"></p>
+              </div>
+              <div class="card-footer d-flex justify-content-end gap-2 flex-wrap">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mp-confirm-cancel" data-mp-confirm-dismiss="1">Отмена</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary d-none" id="dg-mp-confirm-alt">Снять заморозку</button>
+                <button type="button" class="btn btn-sm btn-warning" id="dg-mp-confirm-ok" data-dg-notify-start="Выполняем…">Подтвердить</button>
               </div>
             </div>
           </div>
@@ -1630,6 +1716,10 @@
         if (rebuild) rebuild.disabled = !!busy;
         if (syncSite) syncSite.disabled = !!busy || !sid || sid === "all";
         if (syncPriceBulk) syncPriceBulk.disabled = !!busy;
+        var holdBulk = document.getElementById("mp-btn-hold-price-bulk");
+        var clearHoldBulk = document.getElementById("mp-btn-clear-hold-bulk");
+        if (holdBulk) holdBulk.disabled = !!busy;
+        if (clearHoldBulk) clearHoldBulk.disabled = !!busy;
       }
 
       function setMpPriceSyncStopVisible(visible) {
@@ -1688,6 +1778,8 @@
         if (f.ms_linked === "1") parts.push("МС: связаны");
         else if (f.ms_linked === "0") parts.push("МС: без связи");
         if (f.match_audit && f.match_audit !== "all") parts.push("сопоставление: " + f.match_audit);
+        if (f.price_hold === "1") parts.push("заморозка: да");
+        else if (f.price_hold === "0") parts.push("заморозка: нет");
         if (f.search) parts.push("поиск: «" + f.search + "»");
         if (f.stock_min) parts.push("остаток от " + f.stock_min);
         if (f.stock_max) parts.push("остаток до " + f.stock_max);
@@ -1780,6 +1872,9 @@
                   ? st.no_dm_mk_price
                   : st.no_competitor || st.skipped_no_competitor || 0
               ).toLocaleString("ru-RU") +
+              (Number(st.skipped_hold || 0)
+                ? "; заморозка: " + Number(st.skipped_hold || 0).toLocaleString("ru-RU")
+                : "") +
               (Number(st.skipped_gap || 0)
                 ? "; отсеяно по Δ: " + Number(st.skipped_gap || 0).toLocaleString("ru-RU")
                 : "")
@@ -1812,6 +1907,7 @@
           ms_linked: f.ms_linked,
           search: f.search,
           match_audit: f.match_audit,
+          price_hold: f.price_hold,
           gap_filter_enabled: f.gap_filter_enabled,
           gap_exclude_zero: f.gap_exclude_zero,
           gap_competitor: f.gap_competitor,
@@ -2001,6 +2097,7 @@
         "site",
         "sku",
         "name",
+        "price_hold",
         "price",
         "dealmed_price",
         "medkompleks_price",
@@ -2011,6 +2108,7 @@
         "competitor",
         "actions",
       ];
+      var HOLD_DAYS_KEY = "datagon_my_products_hold_days_v1";
       var visibleCols = DEFAULT_VISIBLE_COLS.slice();
       var columnWidths = {};
       var resizeState = null;
@@ -2204,6 +2302,7 @@
           sort_dir: document.getElementById("mp-f-sort-dir").value,
           search: apiSearch,
           match_audit: document.getElementById("mp-f-match_audit").value,
+          price_hold: document.getElementById("mp-f-price_hold").value,
           gap_filter_enabled: document.getElementById("mp-f-gap_enabled").checked ? "1" : "0",
           gap_exclude_zero: document.getElementById("mp-f-gap_exclude_zero").checked ? "1" : "0",
           gap_competitor: document.getElementById("mp-f-gap_competitor").value,
@@ -2220,6 +2319,40 @@
           limit: lim,
           offset: offset,
         };
+      }
+
+      function getHoldDays() {
+        var el = document.getElementById("mp-f-hold_days");
+        var n = Number(el && el.value);
+        if (n === 30 || n === 60 || n === 90 || n === 180) return n;
+        return 90;
+      }
+
+      function persistHoldDays() {
+        try {
+          localStorage.setItem(HOLD_DAYS_KEY, String(getHoldDays()));
+        } catch (e) {}
+      }
+
+      function isRowPriceHoldActive(r) {
+        if (!r || !r.price_hold_until) return false;
+        var t = new Date(r.price_hold_until).getTime();
+        return Number.isFinite(t) && t > Date.now();
+      }
+
+      function formatHoldUntilShort(v) {
+        if (!v) return "—";
+        if (window.DatagonFmt && typeof window.DatagonFmt.formatDate === "function") {
+          try {
+            return window.DatagonFmt.formatDate(v);
+          } catch (e) {}
+        }
+        var s = String(v);
+        if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+          var p = s.slice(0, 10).split("-");
+          return p[2] + "-" + p[1] + "-" + p[0];
+        }
+        return s.slice(0, 10);
       }
 
       function collectTableFilters() {
@@ -2244,6 +2377,8 @@
           sort_by: document.getElementById("mp-f-sort-by").value,
           sort_dir: document.getElementById("mp-f-sort-dir").value,
           match_audit: document.getElementById("mp-f-match_audit").value,
+          price_hold: document.getElementById("mp-f-price_hold").value,
+          hold_days: document.getElementById("mp-f-hold_days").value,
           gap_filter_enabled: document.getElementById("mp-f-gap_enabled").checked ? "1" : "0",
           gap_exclude_zero: document.getElementById("mp-f-gap_exclude_zero").checked ? "1" : "0",
           gap_competitor: document.getElementById("mp-f-gap_competitor").value,
@@ -2310,6 +2445,13 @@
           document.getElementById("mp-f-sort-dir").value = String(prefs.sort_dir);
         if (miss("match_audit") && prefs.match_audit != null)
           document.getElementById("mp-f-match_audit").value = String(prefs.match_audit);
+        if (miss("price_hold") && prefs.price_hold != null)
+          document.getElementById("mp-f-price_hold").value = String(prefs.price_hold);
+        if (miss("hold_days") && prefs.hold_days != null) {
+          var hd = String(prefs.hold_days);
+          if (["30", "60", "90", "180"].indexOf(hd) >= 0)
+            document.getElementById("mp-f-hold_days").value = hd;
+        }
         if (miss("gap_filter_enabled") && prefs.gap_filter_enabled != null)
           document.getElementById("mp-f-gap_enabled").checked = String(prefs.gap_filter_enabled) === "1";
         if (miss("gap_exclude_zero") && prefs.gap_exclude_zero != null)
@@ -3029,6 +3171,34 @@
             actTd.appendChild(ma);
           }
 
+          var holdActive = isRowPriceHoldActive(r);
+          var holdTd = document.createElement("td");
+          holdTd.className = "text-center";
+          var holdBtn = document.createElement("button");
+          holdBtn.type = "button";
+          holdBtn.className =
+            "btn btn-sm dg-mp-hold-btn " +
+            (holdActive ? "btn-warning" : "btn-outline-secondary");
+          holdBtn.setAttribute("data-dg-no-activity", "1");
+          holdBtn.setAttribute(
+            "data-dg-tooltip",
+            holdActive
+              ? "Заморожено до " +
+                  formatHoldUntilShort(r.price_hold_until) +
+                  (r.price_hold_by ? " (" + r.price_hold_by + ")" : "") +
+                  ". Клик — снять или изменить цену."
+              : "Заморозить свою цену на " +
+                  getHoldDays() +
+                  " дн. (срок из фильтров). Синк с конкурентов будет пропущен."
+          );
+          holdBtn.innerHTML = holdActive
+            ? '<i class="pe-7s-lock"></i>'
+            : '<i class="pe-7s-unlock"></i>';
+          holdBtn.addEventListener("click", function () {
+            onPriceHoldClick(r);
+          });
+          holdTd.appendChild(holdBtn);
+
           var myTd = document.createElement("td");
           myTd.className = "text-end";
           myTd.appendChild(document.createTextNode(myPriceUi.baseText));
@@ -3038,11 +3208,18 @@
             mr.textContent = myPriceUi.rubText;
             myTd.appendChild(mr);
           }
+          if (holdActive) {
+            var hb = document.createElement("div");
+            hb.className = "small text-warning fw-semibold dg-mp-hold-badge mt-1";
+            hb.textContent = "до " + formatHoldUntilShort(r.price_hold_until);
+            myTd.appendChild(hb);
+          }
 
           tr.appendChild(tdText(r.cms_product_id || r.source_id || "—"));
           tr.appendChild(tdText(siteLabel));
           tr.appendChild(tdText(r.sku || "—"));
           tr.appendChild(nameTd);
+          tr.appendChild(holdTd);
           tr.appendChild(myTd);
           tr.appendChild(
             priceCell(
@@ -3276,6 +3453,7 @@
           "sort_dir",
           "search",
           "match_audit",
+          "price_hold",
           "gap_competitor",
           "gap_min_pct",
           "gap_max_pct",
@@ -3304,6 +3482,8 @@
           }
           if (k === "match_audit")
             document.getElementById("mp-f-match_audit").value = v;
+          if (k === "price_hold")
+            document.getElementById("mp-f-price_hold").value = v;
           if (k === "gap_competitor")
             document.getElementById("mp-f-gap_competitor").value = v;
           if (k === "gap_min_pct")
@@ -3500,8 +3680,473 @@
           });
       }
 
+      var mpConfirmState = null;
+
+      function closeMpConfirm() {
+        var ov = document.getElementById("dg-mp-confirm-overlay");
+        if (ov) {
+          ov.style.display = "none";
+          ov.setAttribute("aria-hidden", "true");
+        }
+        mpConfirmState = null;
+      }
+
+      function openMpConfirm(opts) {
+        var o = opts || {};
+        mpConfirmState = o;
+        var ov = document.getElementById("dg-mp-confirm-overlay");
+        var title = document.getElementById("dg-mp-confirm-title");
+        var text = document.getElementById("dg-mp-confirm-text");
+        var meta = document.getElementById("dg-mp-confirm-meta");
+        var priceWrap = document.getElementById("dg-mp-confirm-price-wrap");
+        var priceInp = document.getElementById("dg-mp-confirm-price");
+        var okBtn = document.getElementById("dg-mp-confirm-ok");
+        var altBtn = document.getElementById("dg-mp-confirm-alt");
+        if (!ov || !title || !text || !okBtn) return Promise.reject(new Error("confirm UI missing"));
+        title.textContent = o.title || "Подтверждение";
+        text.textContent = o.text || "";
+        if (meta) meta.textContent = o.meta || "";
+        if (priceWrap && priceInp) {
+          if (o.showPrice) {
+            priceWrap.classList.remove("d-none");
+            priceInp.value =
+              o.price != null && o.price !== ""
+                ? String(o.price)
+                : "";
+          } else {
+            priceWrap.classList.add("d-none");
+          }
+        }
+        okBtn.className = "btn btn-sm " + (o.okClass || "btn-warning");
+        okBtn.textContent = o.okText || "Подтвердить";
+        if (altBtn) {
+          if (o.altText) {
+            altBtn.classList.remove("d-none");
+            altBtn.textContent = o.altText;
+          } else {
+            altBtn.classList.add("d-none");
+          }
+        }
+        ov.style.display = "flex";
+        ov.setAttribute("aria-hidden", "false");
+        return new Promise(function (resolve) {
+          mpConfirmState = Object.assign({}, o, {
+            _resolve: resolve,
+          });
+        });
+      }
+
+      function bindMpConfirmUi() {
+        var ov = document.getElementById("dg-mp-confirm-overlay");
+        if (!ov || ov.getAttribute("data-mp-bound") === "1") return;
+        ov.setAttribute("data-mp-bound", "1");
+        ov.addEventListener("click", function (e) {
+          var t = e.target;
+          if (t && t.getAttribute && t.getAttribute("data-mp-confirm-dismiss") === "1") {
+            var st = mpConfirmState;
+            closeMpConfirm();
+            if (st && st._resolve) st._resolve({ ok: false });
+          }
+        });
+        document.addEventListener("keydown", function (e) {
+          if (e.key !== "Escape") return;
+          var overlay = document.getElementById("dg-mp-confirm-overlay");
+          if (!overlay || overlay.style.display === "none") return;
+          var st = mpConfirmState;
+          closeMpConfirm();
+          if (st && st._resolve) st._resolve({ ok: false });
+        });
+        var okBtn = document.getElementById("dg-mp-confirm-ok");
+        if (okBtn) {
+          okBtn.addEventListener("click", function () {
+            var st = mpConfirmState;
+            if (!st || !st._resolve) return;
+            var priceInp = document.getElementById("dg-mp-confirm-price");
+            var priceVal = priceInp ? priceInp.value : null;
+            var resolve = st._resolve;
+            closeMpConfirm();
+            resolve({ ok: true, price: priceVal });
+          });
+        }
+        var altBtn = document.getElementById("dg-mp-confirm-alt");
+        if (altBtn) {
+          altBtn.addEventListener("click", function () {
+            var st = mpConfirmState;
+            if (!st || !st._resolve) return;
+            var resolve = st._resolve;
+            closeMpConfirm();
+            resolve({ ok: true, alt: true });
+          });
+        }
+      }
+
+      function onPriceHoldClick(row) {
+        if (myProductsRowActionBusy) return;
+        var held = isRowPriceHoldActive(row);
+        var days = getHoldDays();
+        if (held) {
+          openMpConfirm({
+            title: "Заморозка цены",
+            text:
+              "Можно записать новую цену и продлить на " +
+              days +
+              " дн., или снять заморозку.",
+            meta:
+              "Сейчас до " +
+              formatHoldUntilShort(row.price_hold_until) +
+              (row.price_hold_by ? " · " + row.price_hold_by : "") +
+              ". Снятие не меняет цену в CMS.",
+            showPrice: true,
+            price: row.price,
+            okText: "Записать / продлить",
+            okClass: "btn-warning",
+            altText: "Снять заморозку",
+          }).then(function (res) {
+            if (!res || !res.ok) return;
+            if (res.alt) return postClearPriceHold(row);
+            var p = Number(String(res.price != null ? res.price : row.price).replace(",", "."));
+            if (!Number.isFinite(p) || p < 0) {
+              notifyMp("danger", "Некорректная цена");
+              return;
+            }
+            var cur = Number(row.price);
+            if (Number.isFinite(cur) && Math.abs(cur - p) < 0.00001) {
+              return postSetPriceHold(row, days);
+            }
+            return postSetManualPrice(row, p, days);
+          });
+          return;
+        }
+        openMpConfirm({
+          title: "Заморозить цену",
+          text:
+            "Заморозить текущую цену на " +
+            days +
+            " дн.? Синк с конкурентов будет пропускать этот товар до даты окончания.",
+          meta:
+            "SKU: " +
+            (row.sku || row.source_id || "—") +
+            ". Можно сразу указать другую цену — тогда запишем в CMS сайта.",
+          showPrice: true,
+          price: row.price,
+          okText: "Заморозить",
+          okClass: "btn-warning",
+        }).then(function (res) {
+          if (!res || !res.ok) return;
+          var p = Number(String(res.price != null ? res.price : row.price).replace(",", "."));
+          if (!Number.isFinite(p) || p < 0) {
+            notifyMp("danger", "Некорректная цена");
+            return;
+          }
+          var cur = Number(row.price);
+          if (Number.isFinite(cur) && Math.abs(cur - p) < 0.00001) {
+            return postSetPriceHold(row, days);
+          }
+          return postSetManualPrice(row, p, days);
+        });
+      }
+
+      function postSetPriceHold(row, days) {
+        if (myProductsRowActionBusy) return Promise.resolve();
+        myProductsRowActionBusy = true;
+        refreshMyProductsHeavyButtons();
+        return fetch("/api/my-products/set-price-hold", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            site_id: Number(row.site_id),
+            sku: row.sku,
+            source_id: row.source_id || undefined,
+            hold_days: days,
+          }),
+        })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok || !x.j.success)
+              throw new Error(x.j.error || x.j.message || "set-price-hold failed");
+            var d = (x.j && x.j.data) || {};
+            Object.assign(row, {
+              price_hold_until: d.price_hold_until,
+              price_hold_by: d.price_hold_by,
+              price_hold_note: d.price_hold_note,
+            });
+            notifyMp("success", "Цена заморожена до " + formatHoldUntilShort(d.price_hold_until));
+            renderRows(lastRows || []);
+          })
+          .catch(function (e) {
+            notifyMp("danger", e.message || String(e));
+          })
+          .finally(function () {
+            myProductsRowActionBusy = false;
+            refreshMyProductsHeavyButtons();
+          });
+      }
+
+      function postSetManualPrice(row, price, days) {
+        if (myProductsRowActionBusy) return Promise.resolve();
+        myProductsRowActionBusy = true;
+        refreshMyProductsHeavyButtons();
+        return fetch("/api/my-products/set-manual-price", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            site_id: Number(row.site_id),
+            sku: row.sku,
+            source_id: row.source_id || undefined,
+            price: price,
+            hold_days: days,
+          }),
+        })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok || !x.j.success)
+              throw new Error(x.j.error || x.j.message || "set-manual-price failed");
+            var d = (x.j && x.j.data) || {};
+            Object.assign(row, {
+              price: d.price != null ? d.price : price,
+              price_hold_until: d.price_hold_until,
+              price_hold_by: d.price_hold_by,
+              price_hold_note: d.price_hold_note,
+              updated_at: d.updated_at || row.updated_at,
+            });
+            notifyMp(
+              "success",
+              "Цена записана в CMS, заморозка до " + formatHoldUntilShort(d.price_hold_until)
+            );
+            renderRows(lastRows || []);
+          })
+          .catch(function (e) {
+            notifyMp("danger", e.message || String(e));
+          })
+          .finally(function () {
+            myProductsRowActionBusy = false;
+            refreshMyProductsHeavyButtons();
+          });
+      }
+
+      function postClearPriceHold(row) {
+        if (myProductsRowActionBusy) return Promise.resolve();
+        myProductsRowActionBusy = true;
+        refreshMyProductsHeavyButtons();
+        return fetch("/api/my-products/clear-price-hold", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            site_id: Number(row.site_id),
+            sku: row.sku,
+            source_id: row.source_id || undefined,
+          }),
+        })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok || !x.j.success)
+              throw new Error(x.j.error || x.j.message || "clear-price-hold failed");
+            Object.assign(row, {
+              price_hold_until: null,
+              price_hold_by: null,
+              price_hold_note: null,
+            });
+            notifyMp("success", "Заморозка снята");
+            renderRows(lastRows || []);
+          })
+          .catch(function (e) {
+            notifyMp("danger", e.message || String(e));
+          })
+          .finally(function () {
+            myProductsRowActionBusy = false;
+            refreshMyProductsHeavyButtons();
+          });
+      }
+
+      function formatBulkHoldSummary(j, prefix, mode) {
+        var p = prefix ? prefix + " " : "";
+        var title =
+          mode === "clear"
+            ? "Снятие заморозки цен по фильтрам"
+            : "Заморозка цен по фильтрам";
+        var lines = [
+          p + "<strong>" + title + "</strong>",
+          "Фильтры: " + describeMpAppliedFilters(),
+          "Всего в выборке: " + Number(j.total || 0).toLocaleString("ru-RU"),
+          "Уже заморожено: " + Number(j.already_held || 0).toLocaleString("ru-RU"),
+          "Без заморозки: " + Number(j.free || 0).toLocaleString("ru-RU"),
+        ];
+        if (mode === "set") {
+          lines.push(
+            (j.dry_run ? "Будет заморожено: " : "Заморожено: ") +
+              Number(j.dry_run ? j.would_hold || j.to_update || 0 : j.held || j.to_update || 0).toLocaleString(
+                "ru-RU"
+              )
+          );
+          if (j.hold_days != null) lines.push("Срок: " + j.hold_days + " дн.");
+          if (j.hold_until) lines.push("До: " + formatHoldUntilShort(j.hold_until));
+        } else {
+          lines.push(
+            (j.dry_run ? "Будет снято: " : "Снято: ") +
+              Number(j.dry_run ? j.would_clear || j.to_update || 0 : j.cleared || j.to_update || 0).toLocaleString(
+                "ru-RU"
+              )
+          );
+        }
+        if (j.duration_sec != null) {
+          lines.push("Время: " + Number(j.duration_sec || 0).toLocaleString("ru-RU") + " с");
+        }
+        return lines.join("<br>");
+      }
+
+      function runBulkPriceHold(mode) {
+        if (lastLoading) {
+          notifyMp("warning", "Дождитесь окончания загрузки таблицы");
+          return Promise.resolve();
+        }
+        if (myProductsBulkPriceBusy) return Promise.resolve();
+        var btnId = mode === "clear" ? "mp-btn-clear-hold-bulk" : "mp-btn-hold-price-bulk";
+        var btn = document.getElementById(btnId);
+        var days = getHoldDays();
+        var doFetch = function () {
+          myProductsBulkPriceBusy = true;
+          refreshMyProductsHeavyButtons();
+          showMpActionLog(
+            "info",
+            mode === "clear"
+              ? "Считаем выборку для снятия заморозки…"
+              : "Считаем выборку для заморозки (срок " + days + " дн.)…",
+            false
+          );
+          var bodyDry = buildBulkSyncPriceBody(
+            mode === "clear" ? { dry_run: 1 } : { dry_run: 1, hold_days: days }
+          );
+          var url =
+            mode === "clear"
+              ? "/api/my-products/clear-price-hold-bulk"
+              : "/api/my-products/set-price-hold-bulk";
+          return fetch(url, {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(bodyDry),
+          })
+            .then(function (r) {
+              return r.json().then(function (j) {
+                return { ok: r.ok, j: j };
+              });
+            })
+            .then(function (pre) {
+              if (!pre.ok || !pre.j || pre.j.success === false) {
+                throw new Error((pre.j && pre.j.error) || "Не удалось оценить выборку");
+              }
+              showMpActionLog("info", formatBulkHoldSummary(pre.j, "План.", mode), true);
+              var toUp = Number(pre.j.to_update || 0);
+              if (toUp <= 0) {
+                var okMsg =
+                  mode === "clear"
+                    ? "Нечего снимать: в выборке нет активной заморозки."
+                    : "Нечего замораживать: все уже заморожены или выборка пуста.";
+                showMpActionLog(
+                  "success",
+                  formatBulkHoldSummary(pre.j, "Итог.", mode) + "<br>" + okMsg,
+                  true
+                );
+                notifyMp("success", okMsg);
+                return null;
+              }
+              return openMpConfirm({
+                title: mode === "clear" ? "Снять заморозку?" : "Заморозить цены?",
+                text:
+                  mode === "clear"
+                    ? "Снять заморозку у " +
+                      toUp.toLocaleString("ru-RU") +
+                      " товаров по текущим фильтрам?"
+                    : "Заморозить цены у " +
+                      toUp.toLocaleString("ru-RU") +
+                      " товаров на " +
+                      days +
+                      " дн.? Цены в CMS не меняются.",
+                meta: describeMpAppliedFilters(),
+                showPrice: false,
+                okText: mode === "clear" ? "Снять" : "Заморозить",
+                okClass: mode === "clear" ? "btn-outline-secondary" : "btn-warning",
+              }).then(function (res) {
+                if (!res || !res.ok) return null;
+                var body = buildBulkSyncPriceBody(
+                  mode === "clear" ? { confirm: 1 } : { confirm: 1, hold_days: days }
+                );
+                return fetch(url, {
+                  method: "POST",
+                  credentials: "same-origin",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(body),
+                }).then(function (r) {
+                  return r.json().then(function (j) {
+                    return { ok: r.ok, j: j };
+                  });
+                });
+              });
+            })
+            .then(function (fin) {
+              if (!fin) return;
+              if (!fin.ok || !fin.j || fin.j.success === false) {
+                throw new Error((fin.j && fin.j.error) || "Операция не выполнена");
+              }
+              showMpActionLog("success", formatBulkHoldSummary(fin.j, "Итог.", mode), true);
+              notifyMp(
+                "success",
+                mode === "clear"
+                  ? "Снято: " + Number(fin.j.cleared || 0).toLocaleString("ru-RU")
+                  : "Заморожено: " + Number(fin.j.held || 0).toLocaleString("ru-RU")
+              );
+              return load();
+            })
+            .catch(function (e) {
+              var err = e && e.message ? e.message : "Ошибка";
+              showMpActionLog(
+                "danger",
+                "<strong>Ошибка заморозки цен</strong><br>" +
+                  err +
+                  "<br>Фильтры: " +
+                  describeMpAppliedFilters(),
+                true
+              );
+              notifyMp("danger", err);
+              throw e;
+            })
+            .finally(function () {
+              myProductsBulkPriceBusy = false;
+              refreshMyProductsHeavyButtons();
+            });
+        };
+        if (window.DatagonNotify && window.DatagonNotify.busyRun && btn) {
+          return window.DatagonNotify.busyRun(btn, doFetch);
+        }
+        return doFetch();
+      }
+
       function onSyncPrice(row) {
         if (myProductsRowActionBusy) return;
+        if (isRowPriceHoldActive(row)) {
+          notifyMp(
+            "warning",
+            "Цена заморожена до " +
+              formatHoldUntilShort(row.price_hold_until) +
+              " — сначала снимите заморозку"
+          );
+          return;
+        }
         myProductsRowActionBusy = true;
         refreshMyProductsHeavyButtons();
         var min =
@@ -3706,6 +4351,9 @@
         document.getElementById("mp-f-stock_max").value = "";
         document.getElementById("mp-f-limit").value = String(initialLimit);
         document.getElementById("mp-f-match_audit").value = "all";
+        document.getElementById("mp-f-price_hold").value = "all";
+        document.getElementById("mp-f-hold_days").value = "90";
+        persistHoldDays();
         document.getElementById("mp-f-sort-by").value = "id";
         document.getElementById("mp-f-sort-dir").value = "asc";
         document.getElementById("mp-f-gap_enabled").checked = false;
@@ -3843,6 +4491,30 @@
             });
         });
       }
+      var holdBulkBtn = document.getElementById("mp-btn-hold-price-bulk");
+      if (holdBulkBtn) {
+        holdBulkBtn.addEventListener("click", function () {
+          runBulkPriceHold("set");
+        });
+      }
+      var clearHoldBulkBtn = document.getElementById("mp-btn-clear-hold-bulk");
+      if (clearHoldBulkBtn) {
+        clearHoldBulkBtn.addEventListener("click", function () {
+          runBulkPriceHold("clear");
+        });
+      }
+      bindMpConfirmUi();
+      (function initHoldDaysSelect() {
+        var el = document.getElementById("mp-f-hold_days");
+        if (!el) return;
+        try {
+          var saved = String(localStorage.getItem(HOLD_DAYS_KEY) || "");
+          if (["30", "60", "90", "180"].indexOf(saved) >= 0) el.value = saved;
+        } catch (e) {}
+        el.addEventListener("change", function () {
+          persistHoldDays();
+        });
+      })();
       // Если вкладку перезагрузили во время фоновой задачи — подхватить прогресс.
       fetchBulkSyncPriceStatus()
         .then(function (x) {
@@ -3864,6 +4536,11 @@
             visibleCols = DEFAULT_VISIBLE_COLS.filter(function (k) {
               return rawVisible.indexOf(k) >= 0;
             });
+            if (visibleCols.indexOf("price_hold") < 0) {
+              var pi = visibleCols.indexOf("price");
+              if (pi >= 0) visibleCols.splice(pi, 0, "price_hold");
+              else visibleCols.push("price_hold");
+            }
           }
         } catch (e) {}
         var toggle = document.getElementById("dg-mp-columns-toggle");
@@ -3963,10 +4640,10 @@
         var V1_BLOCK_FIELDS = {
           core: ["smart", "site", "status", "ms_link"],
           table: ["tf_id", "tf_site", "tf_sku", "tf_name", "tf_currency", "table_hint"],
-          stock_sort: ["stock_min", "stock_max", "source_enabled", "limit", "match_audit", "sort_by", "sort_dir"],
+          stock_sort: ["stock_min", "stock_max", "source_enabled", "limit", "match_audit", "price_hold", "hold_days", "sort_by", "sort_dir"],
           gap: ["gap_enabled", "gap_exclude_zero", "gap_competitor", "gap_min_pct", "gap_max_pct", "gap_or_label", "gap_min_pct_2", "gap_max_pct_2", "usd_to_rub", "eur_to_rub"],
           comp_sync: ["comp_min", "comp_max"],
-          sync_bar: ["btn_fx", "btn_syncall", "btn_sync_site", "btn_rebuild", "btn_copy", "btn_sync_price_bulk", "btn_sync_price_bulk_stop"],
+          sync_bar: ["btn_fx", "btn_syncall", "btn_sync_site", "btn_rebuild", "btn_copy", "btn_sync_price_bulk", "btn_sync_price_bulk_stop", "btn_hold_price_bulk", "btn_clear_hold_bulk"],
         };
         var FIELD_GROUPS = [
           {
@@ -4000,6 +4677,8 @@
               { key: "source_enabled", title: "На сайте (вкл/выкл)", hint: "" },
               { key: "limit", title: "На странице", hint: "" },
               { key: "match_audit", title: "Статус сопоставления", hint: "" },
+              { key: "price_hold", title: "Заморозка цены", hint: "Фильтр списка" },
+              { key: "hold_days", title: "Срок заморозки", hint: "30/60/90/180 для замка и bulk" },
               { key: "sort_by", title: "Сортировать по", hint: "" },
               { key: "sort_dir", title: "Направление", hint: "" },
             ],
@@ -4039,6 +4718,8 @@
               { key: "btn_copy", title: "Скопировать ссылку", hint: "" },
               { key: "btn_sync_price_bulk", title: "Синх. цены по фильтрам", hint: "Массово с конкурента (фон)" },
               { key: "btn_sync_price_bulk_stop", title: "Стоп синх. цен", hint: "Остановка фона" },
+              { key: "btn_hold_price_bulk", title: "Заморозить цены по фильтрам", hint: "Hold без CMS" },
+              { key: "btn_clear_hold_bulk", title: "Снять заморозку по фильтрам", hint: "" },
             ],
           },
         ];
