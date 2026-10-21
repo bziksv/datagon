@@ -1,0 +1,162 @@
+<!-- @inject inner -->
+<div class="app-page-title">
+  <div class="page-title-wrapper">
+    <div class="page-title-heading">
+      <div class="page-title-icon">
+        <i class="pe-7s-cart icon-gradient bg-mean-fruit"></i>
+      </div>
+      <div>
+        Заказы поставщикам
+        <div class="page-title-subheading">
+          Документы <code>entity/purchaseorder</code> из МойСклад (шапки; «Принято» = <code>shippedSum</code>).
+          KPI для финансов — пресеты A/B. Не путать с <a href="/ms-orders.html">«Заказы в МС»</a> (покупатели).
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-2 mb-3 dg-mpo-kpi" id="dg-mpo-kpi-row">
+  <div class="col-md-4">
+    <div class="card mb-0">
+      <div class="card-body">
+        <div class="text-muted small">В пути (оплачено, не принято)</div>
+        <div class="h4 mb-0" id="dg-mpo-kpi-full">—</div>
+        <div class="small text-muted" id="dg-mpo-kpi-full-n"></div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card mb-0">
+      <div class="card-body">
+        <div class="text-muted small">Недопринято (сумма − принято)</div>
+        <div class="h4 mb-0" id="dg-mpo-kpi-gap">—</div>
+        <div class="small text-muted" id="dg-mpo-kpi-gap-n"></div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card mb-0">
+      <div class="card-body">
+        <div class="text-muted small">Итого зависло</div>
+        <div class="h4 mb-0" id="dg-mpo-kpi-total">—</div>
+        <div class="small text-muted" id="dg-mpo-kpi-asof"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="main-card mb-3 card">
+  <div class="card-header d-flex align-items-center justify-content-between gap-2">
+    <div class="d-flex align-items-center">
+      <i class="header-icon pe-7s-filter icon-gradient bg-plum-plate me-2"></i>
+      <span>Фильтры и действия</span>
+    </div>
+    <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mpo-filters-toggle">Свернуть</button>
+  </div>
+  <div class="card-body" id="dg-mpo-filters-body">
+    <div class="row g-2 align-items-end">
+      <div class="col-md-3">
+        <label class="form-label" for="dg-mpo-search">Умный поиск</label>
+        <input type="search" id="dg-mpo-search" class="form-control" placeholder="Номер, контрагент, склад…" autocomplete="off" />
+      </div>
+      <div class="col-md-2">
+        <label class="form-label" for="dg-mpo-preset">Пресет KPI</label>
+        <select id="dg-mpo-preset" class="form-select">
+          <option value="">Все / ручные фильтры</option>
+          <option value="A">A — едет целиком</option>
+          <option value="B">B — недопринято</option>
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label" for="dg-mpo-pay">Оплата</label>
+        <select id="dg-mpo-pay" class="form-select">
+          <option value="">Все</option>
+          <option value="paid">Оплачено</option>
+          <option value="partial">Частично</option>
+          <option value="none">Не оплачено</option>
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label" for="dg-mpo-ship">Принято</label>
+        <select id="dg-mpo-ship" class="form-select">
+          <option value="">Все</option>
+          <option value="unshipped">Не принято</option>
+          <option value="partial">Частично</option>
+          <option value="shipped">Полностью</option>
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label" for="dg-mpo-store">Склад</label>
+        <select id="dg-mpo-store" class="form-select">
+          <option value="">Все склады</option>
+        </select>
+      </div>
+    </div>
+    <div class="row g-2 align-items-end mt-1">
+      <div class="col-md-3">
+        <label class="form-label" for="dg-mpo-state">Статус</label>
+        <select id="dg-mpo-state" class="form-select">
+          <option value="">Все статусы</option>
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label" for="dg-mpo-limit">На странице</label>
+        <select id="dg-mpo-limit" class="form-select">
+          <option value="50">50</option>
+          <option value="100" selected>100</option>
+          <option value="200">200</option>
+        </select>
+      </div>
+      <div class="col-md-7 d-flex flex-wrap gap-2 align-items-end">
+        <button type="button" class="btn btn-primary" id="dg-mpo-apply" data-dg-notify-start="Применяем фильтры…">Применить</button>
+        <button type="button" class="btn btn-outline-secondary" id="dg-mpo-reset" data-dg-notify-start="Сбрасываем фильтры…">По умолчанию</button>
+        <button type="button" class="btn btn-outline-primary" id="dg-mpo-sync" data-dg-notify-start="Запускаем синк из МойСклад…">Синхронизировать</button>
+        <button type="button" class="btn btn-outline-danger" id="dg-mpo-sync-stop" data-dg-notify-start="Останавливаем синк…">Остановить</button>
+        <span class="small text-muted align-self-center" id="dg-mpo-sync-status"></span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="main-card mb-3 card">
+  <div class="card-header d-flex justify-content-between align-items-center gap-2 flex-wrap">
+    <div class="d-flex align-items-center gap-3 flex-grow-1" style="min-width:0">
+      <div class="d-flex align-items-center flex-shrink-0">
+        <i class="header-icon pe-7s-menu icon-gradient bg-happy-itmeo me-2"></i>
+        <span>Выгрузка заказов поставщикам</span>
+      </div>
+    </div>
+    <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mpo-table-toggle">Свернуть</button>
+  </div>
+  <div class="card-body" id="dg-mpo-table-body">
+    <div class="table-responsive">
+      <table class="table table-sm table-hover dg-mpo-table mb-0" id="dg-mpo-table">
+        <thead>
+          <tr>
+            <th data-sort="name">Номер</th>
+            <th data-sort="moment">Дата</th>
+            <th data-sort="agent">Контрагент</th>
+            <th data-sort="sum" class="text-end">Сумма</th>
+            <th data-sort="payed" class="text-end">Оплачено</th>
+            <th data-sort="shipped" class="text-end">Принято</th>
+            <th data-sort="gap" class="text-end">Осталось</th>
+            <th data-sort="store">Склад</th>
+            <th data-sort="state">Статус</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="dg-mpo-tbody">
+          <tr><td colspan="10" class="text-muted py-3">Загрузка…</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-3">
+      <div class="small text-muted" id="dg-mpo-page-status">Найдено: 0</div>
+      <div class="btn-group">
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mpo-prev">Назад</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mpo-next">Вперёд</button>
+      </div>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,319 @@
+<script>
+(function () {
+  "use strict";
+  var state = {
+    page: 1,
+    limit: 100,
+    total: 0,
+    sort_by: "moment",
+    sort_dir: "desc",
+    pending: { search: "", preset: "", pay: "", ship: "", store: "", state: "" },
+    applied: { search: "", preset: "", pay: "", ship: "", store: "", state: "" },
+  };
+
+  function fmtMoney(v) {
+    if (window.DatagonFmt && window.DatagonFmt.formatMoney) return window.DatagonFmt.formatMoney(v);
+    var n = Number(v);
+    if (!Number.isFinite(n)) return "—";
+    return n.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " ₽";
+  }
+  function fmtDate(v) {
+    if (window.DatagonFmt && window.DatagonFmt.formatDate) return window.DatagonFmt.formatDate(v);
+    return v ? String(v).slice(0, 10) : "—";
+  }
+  function esc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function readPending() {
+    state.pending = {
+      search: (document.getElementById("dg-mpo-search").value || "").trim(),
+      preset: document.getElementById("dg-mpo-preset").value || "",
+      pay: document.getElementById("dg-mpo-pay").value || "",
+      ship: document.getElementById("dg-mpo-ship").value || "",
+      store: document.getElementById("dg-mpo-store").value || "",
+      state: document.getElementById("dg-mpo-state").value || "",
+    };
+    state.limit = parseInt(document.getElementById("dg-mpo-limit").value, 10) || 100;
+  }
+
+  function commitFilters() {
+    readPending();
+    state.applied = Object.assign({}, state.pending);
+    state.page = 1;
+    loadList();
+  }
+
+  function buildQuery() {
+    var a = state.applied;
+    var p = new URLSearchParams();
+    p.set("limit", String(state.limit));
+    p.set("offset", String((state.page - 1) * state.limit));
+    p.set("sort_by", state.sort_by);
+    p.set("sort_dir", state.sort_dir);
+    if (a.preset) p.set("preset", a.preset);
+    else {
+      if (a.search) p.set("search", a.search);
+      if (a.pay) p.set("pay_status", a.pay);
+      if (a.ship) p.set("ship_status", a.ship);
+      if (a.store) p.set("store_uuid", a.store);
+      if (a.state) p.set("state_uuid", a.state);
+    }
+    return p;
+  }
+
+  function loadStats() {
+    fetch("/api/ms-purchase-orders/stats", { credentials: "same-origin" })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (!j || !j.success) return;
+        document.getElementById("dg-mpo-kpi-full").textContent = fmtMoney(j.prepaid_full);
+        document.getElementById("dg-mpo-kpi-full-n").textContent = "документов: " + (j.count_full || 0);
+        document.getElementById("dg-mpo-kpi-gap").textContent = fmtMoney(j.prepaid_partial_gap);
+        document.getElementById("dg-mpo-kpi-gap-n").textContent = "документов: " + (j.count_partial || 0);
+        document.getElementById("dg-mpo-kpi-total").textContent = fmtMoney(j.prepaid_total);
+        var asof = j.as_of_at
+          ? "снимок: " + (window.DatagonFmt && window.DatagonFmt.formatDateTime
+              ? window.DatagonFmt.formatDateTime(j.as_of_at)
+              : String(j.as_of_at))
+          : "нет данных — запустите синк";
+        if (j.sync_script && j.sync_script.version) {
+          asof += " · v" + j.sync_script.version;
+        }
+        document.getElementById("dg-mpo-kpi-asof").textContent = asof;
+      })
+      .catch(function () {});
+  }
+
+  function loadFilters() {
+    return fetch("/api/ms-purchase-orders/filters", { credentials: "same-origin" })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (!j || !j.success) return;
+        var storeSel = document.getElementById("dg-mpo-store");
+        var stateSel = document.getElementById("dg-mpo-state");
+        (j.stores || []).forEach(function (s) {
+          var o = document.createElement("option");
+          o.value = s.uuid || "";
+          o.textContent = (s.name || s.uuid) + " (" + (s.n || 0) + ")";
+          storeSel.appendChild(o);
+        });
+        (j.states || []).forEach(function (s) {
+          var o = document.createElement("option");
+          o.value = s.uuid || "";
+          o.textContent = (s.name || s.uuid) + " (" + (s.n || 0) + ")";
+          stateSel.appendChild(o);
+        });
+      });
+  }
+
+  function loadList() {
+    var tbody = document.getElementById("dg-mpo-tbody");
+    tbody.innerHTML = '<tr><td colspan="10" class="text-muted py-3">Загрузка…</td></tr>';
+    fetch("/api/ms-purchase-orders/list?" + buildQuery().toString(), { credentials: "same-origin" })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (!j || j.success === false) {
+          tbody.innerHTML =
+            '<tr><td colspan="10" class="text-danger py-3">' +
+            esc((j && j.error) || "Ошибка") +
+            "</td></tr>";
+          return;
+        }
+        state.total = Number(j.total) || 0;
+        var rows = Array.isArray(j.data) ? j.data : [];
+        if (!rows.length) {
+          tbody.innerHTML = '<tr><td colspan="10" class="text-muted py-3">Нет строк. Синхронизируйте или смените фильтр.</td></tr>';
+        } else {
+          tbody.innerHTML = rows
+            .map(function (r) {
+              return (
+                "<tr>" +
+                "<td>" + esc(r.name) + "</td>" +
+                "<td>" + esc(fmtDate(r.moment)) + "</td>" +
+                "<td>" + esc(r.agent_name || "—") + "</td>" +
+                '<td class="dg-mpo-num">' + esc(fmtMoney(r.sum)) + "</td>" +
+                '<td class="dg-mpo-num">' + esc(fmtMoney(r.payed)) + "</td>" +
+                '<td class="dg-mpo-num">' + esc(fmtMoney(r.shipped)) + "</td>" +
+                '<td class="dg-mpo-num">' + esc(fmtMoney(r.gap)) + "</td>" +
+                "<td>" + esc(r.store_name || "—") + "</td>" +
+                "<td>" + esc(r.state_name || "—") + "</td>" +
+                '<td><a class="btn btn-xs btn-outline-secondary btn-sm" target="_blank" rel="noopener" href="' +
+                esc(r.ms_url) +
+                '">МС</a></td>' +
+                "</tr>"
+              );
+            })
+            .join("");
+        }
+        var pages = Math.max(1, Math.ceil(state.total / state.limit) || 1);
+        var shown = rows.length;
+        document.getElementById("dg-mpo-page-status").textContent =
+          "Найдено: " +
+          state.total +
+          "; страница " +
+          state.page +
+          "/" +
+          pages +
+          "; показано: " +
+          shown;
+        document.getElementById("dg-mpo-prev").disabled = state.page <= 1;
+        document.getElementById("dg-mpo-next").disabled = state.page >= pages;
+      })
+      .catch(function (e) {
+        tbody.innerHTML =
+          '<tr><td colspan="10" class="text-danger py-3">' + esc(e.message || e) + "</td></tr>";
+      });
+  }
+
+  function pollSync() {
+    fetch("/api/ms-purchase-orders/sync-status", { credentials: "same-origin" })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        var el = document.getElementById("dg-mpo-sync-status");
+        if (!el) return;
+        el.textContent = j && j.message ? j.message : "";
+        if (j && j.active) setTimeout(pollSync, 1500);
+        else {
+          loadStats();
+          loadList();
+        }
+      })
+      .catch(function () {});
+  }
+
+  document.getElementById("dg-mpo-apply").addEventListener("click", commitFilters);
+  document.getElementById("dg-mpo-reset").addEventListener("click", function () {
+    document.getElementById("dg-mpo-search").value = "";
+    document.getElementById("dg-mpo-preset").value = "";
+    document.getElementById("dg-mpo-pay").value = "";
+    document.getElementById("dg-mpo-ship").value = "";
+    document.getElementById("dg-mpo-store").value = "";
+    document.getElementById("dg-mpo-state").value = "";
+    document.getElementById("dg-mpo-limit").value = "100";
+    commitFilters();
+  });
+  document.getElementById("dg-mpo-search").addEventListener("keydown", function (e) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      commitFilters();
+    }
+  });
+  document.getElementById("dg-mpo-prev").addEventListener("click", function () {
+    if (state.page > 1) {
+      state.page -= 1;
+      loadList();
+    }
+  });
+  document.getElementById("dg-mpo-next").addEventListener("click", function () {
+    var pages = Math.max(1, Math.ceil(state.total / state.limit) || 1);
+    if (state.page < pages) {
+      state.page += 1;
+      loadList();
+    }
+  });
+  document.getElementById("dg-mpo-sync").addEventListener("click", function () {
+    var run = function () {
+      return fetch("/api/ms-purchase-orders/sync", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      }).then(function (r) { return r.json(); }).then(function (j) {
+        if (window.DatagonNotify && window.DatagonNotify.toast) {
+          window.DatagonNotify.toast({
+            type: j && j.success ? "success" : "danger",
+            message: (j && j.status && j.status.message) || (j && j.error) || "Синк",
+          });
+        }
+        pollSync();
+      });
+    };
+    if (window.DatagonNotify && window.DatagonNotify.busyRun) {
+      window.DatagonNotify.busyRun(document.getElementById("dg-mpo-sync"), run);
+    } else run();
+  });
+  document.getElementById("dg-mpo-sync-stop").addEventListener("click", function () {
+    fetch("/api/ms-purchase-orders/sync-cancel", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    }).then(function () { pollSync(); });
+  });
+
+  document.querySelectorAll("#dg-mpo-table thead th[data-sort]").forEach(function (th) {
+    th.addEventListener("click", function () {
+      var sel = window.getSelection && window.getSelection();
+      if (sel && String(sel.toString() || "").trim()) return;
+      var key = th.getAttribute("data-sort");
+      if (state.sort_by === key) state.sort_dir = state.sort_dir === "asc" ? "desc" : "asc";
+      else {
+        state.sort_by = key;
+        state.sort_dir = key === "moment" || key === "name" ? "desc" : "desc";
+      }
+      loadList();
+    });
+  });
+
+  (function filtersCollapse() {
+    var KEY = "datagon_mpo_filters_collapsed_v1";
+    var body = document.getElementById("dg-mpo-filters-body");
+    var btn = document.getElementById("dg-mpo-filters-toggle");
+    function apply(collapsed) {
+      if (!body || !btn) return;
+      body.style.display = collapsed ? "none" : "";
+      btn.textContent = collapsed ? "Развернуть" : "Свернуть";
+    }
+    try {
+      apply(localStorage.getItem(KEY) === "1");
+    } catch (e) {
+      apply(false);
+    }
+    if (btn) {
+      btn.addEventListener("click", function () {
+        var collapsed = body.style.display === "none";
+        apply(!collapsed);
+        try {
+          localStorage.setItem(KEY, !collapsed ? "1" : "0");
+        } catch (e2) {}
+      });
+    }
+  })();
+
+  (function tableCollapse() {
+    var KEY = "dg.mpo.table-card.collapsed.v1";
+    var body = document.getElementById("dg-mpo-table-body");
+    var btn = document.getElementById("dg-mpo-table-toggle");
+    function apply(collapsed) {
+      if (!body || !btn) return;
+      body.style.display = collapsed ? "none" : "";
+      btn.textContent = collapsed ? "Развернуть" : "Свернуть";
+    }
+    try {
+      apply(localStorage.getItem(KEY) === "1");
+    } catch (e) {
+      apply(false);
+    }
+    if (btn) {
+      btn.addEventListener("click", function () {
+        var collapsed = body.style.display === "none";
+        apply(!collapsed);
+        try {
+          localStorage.setItem(KEY, !collapsed ? "1" : "0");
+        } catch (e2) {}
+      });
+    }
+  })();
+
+  loadFilters().then(function () {
+    commitFilters();
+    loadStats();
+    pollSync();
+  });
+})();
+</script>

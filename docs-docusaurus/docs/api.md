@@ -35,6 +35,7 @@ description: Справочник REST-эндпоинтов p.datagon.ru (осн
 | Конкуренты МП / Габариты / Новые товары / Отснять / Huckster | [Exports / Competitors](#exports--competitors-конкуренты) … [Huckster](#exports--huckster) |
 | Продажи МС (отгрузки) | [Продажи МС](#продажи-мс) |
 | Заказы покупателей МС | [Заказы в МС](#заказы-в-мс) |
+| Заказы поставщикам МС | [Заказы поставщикам](#заказы-поставщикам) |
 | Медмаркет (стыковка кодов) | [Медмаркет](#медмаркет) · [справка](/docs/medmarket/) |
 | Закупки товары (планирование, overrides) | [Закупки](#закупки) |
 | Поставщики / анализ поставщиков / анализ товаров | роуты в [Подключение роутов](#подключение-роутов); UI — [Поставщики](/docs/suppliers/), [Анализ поставщиков](/docs/supplier-analysis/), [Анализ товаров](/docs/product-analysis/) |
@@ -89,6 +90,7 @@ description: Справочник REST-эндпоинтов p.datagon.ru (осн
 - `/api/exports/huckster` -> `routes/exportsHuckster.js`
 - `/api/ms-sales` -> `routes/msSales.js` (Продажи МС: отгрузки `entity/demand` + позиции с привязкой к `ms_export`)
 - `/api/ms-orders` -> `routes/msOrders.js` (Заказы в МС: `entity/customerorder`, окно **30 дней**, исключение ответственных из `app_settings`)
+- `/api/ms-purchase-orders` -> `routes/msPurchaseOrders.js` (Заказы поставщикам: `entity/purchaseorder` → `ms_purchase_order`)
 - `/api/suppliers` -> `routes/suppliers.js` (Поставщики: агрегат по `ms_export` + `dg_supplier_settings`; `GET /`, `GET /assignees`, `GET /ms-order-log`, `GET /ms-order-log/:logId`, `GET /export/supplier`, `GET /export/purchaser`, `POST /:supplierKey/send-ms-order`, `PATCH /:supplierKey`)
 - `/api/supplier-analysis` -> `routes/supplierAnalysis.js` (Анализ поставщиков: продажи из `ms_demand` + `ms_export.supplier`; `GET /projects`, `/overview`, `/ranking`, `/highlights`, `/trend`, `/products`, `/export`, `/data-freshness`; фильтр `project_mode` / `project_uuids`)
 - `/api/product-analysis` -> `routes/productAnalysis.js` (Анализ товаров: продажи/остатки по SKU; `GET /projects`, `/presets`, `/overview`, `/ranking`, `/export`; `POST /decision`, `/decision/bulk`, `/min-stock/apply`; комментарии `POST|PATCH|DELETE /:code/comments[/:id]`; таблицы `dg_product_analysis_decisions`, `dg_product_analysis_comments`)
@@ -800,7 +802,7 @@ Query:
 
 Агрегированная статистика по выгрузке МойСклад (с кэшем на сервере; параметры — в `routes/moysklad.js`). Набор фильтров совпадает с `GET /api/ms/export`, включая **`g_*`** (сеточные поля экрана).
 
-Поля **`inventory_value_products`** и **`inventory_value_bundles`**: суммы **`остаток × себестоимость (закупочная цена)`** отдельно по строкам **`Товар`** и **`Комплект`** (те же фильтры, что у выборки; без «плакат» в наименовании). Для **`Товар`** расчёт полностью синхронизирован с отчётом «Остатки» в МойСклад (`report/stock/all`): используется точная себестоимость остатка **`stock_cost`** (`row.price / 100` из `report/stock/all`, с fallback на `buyPrice` карточки при нулевом остатке) и учитываются позиции с положительным остатком и доступным количеством (`stock > 0` и `stock_quantity > 0`, т.е. `typeStock=POSITIVE_ONLY` и `typeQuantity=POSITIVE_ONLY` в МС). В UI — две карточки «Сумма по товарам» / «Сумма по комплектам» с точностью до копеек.
+Поля **`inventory_value_products`** и **`inventory_value_bundles`**: суммы **`остаток × себестоимость (закупочная цена)`** отдельно по строкам **`Товар`** и **`Комплект`** (те же фильтры, что у выборки; без «плакат» в наименовании; **всегда** только **складская позиция «Да»** — даже если в query `stock_position=all`). Для **`Товар`** расчёт синхронизирован с отчётом «Остатки» в МойСклад (`report/stock/all`): точная себестоимость **`stock_cost`** (`row.price / 100`, fallback на `buyPrice` при нулевом остатке) и позиции с `stock > 0` и `stock_quantity > 0`. В UI — две карточки «Сумма по товарам» / «Сумма по комплектам».
 
 ### POST `/api/ms/stop`
 
@@ -2061,6 +2063,16 @@ Body (JSON): `email`, `password` (обязательны), опциональн�
 - Меню: пункт «Продажи МС» в блоке МойСклад — после «Заказы в МС» (не подменю «Маркетплейсы»).
 - Фронтенд: `static-html/vanilla/inners/ms-sales.{head,inner,scripts}.html` — две карточки (фильтры + таблица отгрузок с разворачивающимися позициями), поиск-зеркало в шапке таблицы.
 
+## Заказы поставщикам
+
+Страница `/ms-purchase-orders.html`, роутер `routes/msPurchaseOrders.js`. Заказы поставщикам (`GET /entity/purchaseorder`) с даты **`ms_purchase_orders_sync_from`** (default `2022-01-01`) → таблица **`ms_purchase_order`**. Приёмки не синкаются; «Принято» = `shippedSum`. Автосинк `ms_purchase_orders`. KPI A/B и поле **`ms_prepaid_orders`** в `GET /api/finance/accounts` (не смешивается с `ms_inventory`).
+
+- `GET /api/ms-purchase-orders/list` — список (фильтры `preset=A|B`, `pay_status`, `ship_status`, `store_uuid`, `state_uuid`, `search`)
+- `GET /api/ms-purchase-orders/stats` — `prepaid_full`, `prepaid_partial_gap`, `prepaid_total`
+- `GET /api/ms-purchase-orders/filters`, `POST /sync`, `POST /sync-cancel`, `GET /sync-status`
+
+См. [Заказы поставщикам](/docs/ms-purchase-orders).
+
 ## Заказы в МС
 
 Страница `/ms-orders.html`, роутер `routes/msOrders.js`. Заказы покупателей (`GET /entity/customerorder`) за период **`ms_orders_sync_days`** (настройки, 1..365, default **30**). Заказы с ответственными из **`ms_orders_exclude_owner_names`** (настройки) не синкаются и не показываются.
@@ -2490,16 +2502,23 @@ Preflight матча «Менеджер по продажам» ↔ Planfix `/us
 
 Дополнительно **`ms_inventory`**: товарный остаток МойСклад для финансов (привязка к **Альмамед**):
 
-- `value_products` — Σ(остаток × себестоимость), только тип **Товар** (как `/api/ms/stats`)
+- `value_products` — Σ(остаток × себестоимость), только тип **Товар** со **складской позицией «Да»** (как `/api/ms/stats → inventory_value_products`)
 - `ym`, `as_of_at`, `provisional` (`true` = live из `ms_export` до официального снимка EOM)
 - `customer_codes[]` — коды Альмамед (`finance_ms_inventory_customer_codes` или авто по алиасам)
+- `sync_script` — `{ id, version, revision, … }` из `lib/datagonFinanceMsInventorySyncRevision.js`
 - Таблица снимков: `dg_finance_ms_inventory_month`; автосинк `task: "ms_inventory_month"` (только последний день месяца МСК, дефолт `23:55`)
+
+Дополнительно **`ms_prepaid_orders`**: оплаченные заказы поставщикам (не смешивается с `ms_inventory`):
+
+- `prepaid_full` — корзина A (оплачено, не принято)
+- `prepaid_partial_gap` — корзина B (Σ сумма − принято)
+- `prepaid_total`, `count_full`, `count_partial`, `as_of_at`, `sync_script`
 
 В **`GET /api/finance/analytics/monthly`** при фильтре Альмамед/все: `totals.inventory`, `totals.assets_with_inventory`, в `series[]` — `inventory`, `assets_with_inventory` (линия графика «С товаром»).
 
 ### POST `/api/finance/ms-inventory/backfill`
 
-Только `full`. Body: `{ "from_ym": "2025-01", "to_ym": "2026-09", "force": false }`. Тянет `report/stock/all?filter=moment=YYYY-MM-DD 23:59:59` за каждый месяц, считает Σ(stock×price/100) только «Товар» (без плакатов), пишет в `dg_finance_ms_inventory_month` (`source=backfill`). Без `force` уже существующие `ym` не перезаписывает.
+Только `full`. Body: `{ "from_ym": "2025-01", "to_ym": "2026-09", "force": false }`. Тянет `report/stock/all?filter=moment=YYYY-MM-DD 23:59:59` за каждый месяц, считает Σ(stock×price/100) только «Товар» **со складской «Да»** (пересечение кодов с текущим `ms_export`, без плакатов), пишет в `dg_finance_ms_inventory_month` (`source=backfill`). Без `force` уже существующие `ym` не перезаписывает.
 
 ### POST `/api/finance/org-meta`
 

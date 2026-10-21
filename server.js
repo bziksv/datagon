@@ -142,6 +142,9 @@ let appSettings = {
     auto_sync_ms_orders_enabled: 0,
     auto_sync_ms_orders_time: '08:00',
     auto_sync_ms_orders_weekdays: '',
+    auto_sync_ms_purchase_orders_enabled: 0,
+    auto_sync_ms_purchase_orders_time: '08:30',
+    ms_purchase_orders_sync_from: '2022-01-01',
     discover_max_sitemaps: 200,
     discover_max_urls: 50000,
     discover_crawl_max_pages: 500,
@@ -306,6 +309,7 @@ const medmarketStore = require('./lib/medmarketStore');
  *  getSyncState в routes/msSales.js. */
 const msSalesModule = require('./routes/msSales');
 const msOrdersModule = require('./routes/msOrders');
+const msPurchaseOrdersModule = require('./routes/msPurchaseOrders');
 const medmarketRouterFactory = require('./routes/medmarket');
 const myProductsRouterFactory = require('./routes/myproducts');
 const networkPricesRouterFactory = require('./routes/networkPrices');
@@ -517,6 +521,7 @@ async function initDB() {
             ['auto_sync_ms_inventory_month_enabled','0'],['auto_sync_ms_inventory_month_time','23:55'],
             ['finance_ms_inventory_customer_codes',''],
             ['auto_sync_ms_orders_enabled','0'],['auto_sync_ms_orders_time','08:00'],['auto_sync_ms_orders_weekdays',''],
+            ['auto_sync_ms_purchase_orders_enabled','0'],['auto_sync_ms_purchase_orders_time','08:30'],['ms_purchase_orders_sync_from','2022-01-01'],
             ['discover_max_sitemaps','200'],['discover_max_urls','50000'],
             ['discover_crawl_max_pages','500'],['discover_request_delay_ms','100'],
             ['auth_session_ttl_days','14'],['auth_session_user_limit','1'],
@@ -3126,6 +3131,37 @@ async function processAutoSyncQueue() {
                     await finishAutoSyncRun('ms_orders', statusOrd, messageOrd);
                     console.log('[AUTO SYNC] Queue done: ms_orders — ' + statusOrd + ' (' + messageOrd + ')');
                 }
+            } else if (task === 'ms_purchase_orders') {
+                console.log('[AUTO SYNC] Queue start: ms_purchase_orders');
+                await startAutoSyncRun('ms_purchase_orders', triggerType);
+                let startResPo = { started: false };
+                if (typeof msPurchaseOrdersModule.triggerSync === 'function') {
+                    try {
+                        startResPo = await msPurchaseOrdersModule.triggerSync(db, appSettings, {
+                            awaitCompletion: true,
+                            config: require('./config'),
+                        });
+                    } catch (e) {
+                        startResPo = { started: false, error: e && e.message ? e.message : String(e) };
+                    }
+                }
+                const stPo =
+                    (startResPo && startResPo.status) ||
+                    (typeof msPurchaseOrdersModule.getSyncState === 'function'
+                        ? msPurchaseOrdersModule.getSyncState()
+                        : {});
+                let statusPo = 'failed';
+                let messagePo;
+                if (startResPo && startResPo.started === false && startResPo.reason !== 'already_running') {
+                    messagePo = startResPo.error || startResPo.reason || 'Не удалось запустить синк ЗП';
+                } else if (stPo.last_error) {
+                    messagePo = ('Ошибка: ' + stPo.last_error).slice(0, 480);
+                } else {
+                    statusPo = 'completed';
+                    messagePo = String(stPo.message || `Сохранено ${stPo.saved || 0} заказов`).slice(0, 480);
+                }
+                await finishAutoSyncRun('ms_purchase_orders', statusPo, messagePo);
+                console.log('[AUTO SYNC] Queue done: ms_purchase_orders — ' + statusPo);
             } else if (task === 'np_ms_enrich') {
                 console.log('[AUTO SYNC] Queue start: np_ms_enrich');
                 await startAutoSyncRun('np_ms_enrich', triggerType);
@@ -3329,6 +3365,11 @@ function startAutoSyncScheduler() {
                     enabled: Number(appSettings.auto_sync_ms_orders_enabled || 0) === 1,
                     time: String(appSettings.auto_sync_ms_orders_time || '08:00').slice(0, 5),
                     weekdays: parseAutoSyncWeekdaysMon17(appSettings.auto_sync_ms_orders_weekdays),
+                },
+                {
+                    type: 'ms_purchase_orders',
+                    enabled: Number(appSettings.auto_sync_ms_purchase_orders_enabled || 0) === 1,
+                    time: String(appSettings.auto_sync_ms_purchase_orders_time || '08:30').slice(0, 5),
                 },
                 {
                     type: 'marketplaces_ozon',
@@ -3748,6 +3789,8 @@ initDB().then(async () => {
         app.use('/api/ms-sales', createMsSalesRouter(db, appSettings));
         const { createMsOrdersRouter } = require('./routes/msOrders');
         app.use('/api/ms-orders', createMsOrdersRouter(db, appSettings));
+        const { createMsPurchaseOrdersRouter } = require('./routes/msPurchaseOrders');
+        app.use('/api/ms-purchase-orders', createMsPurchaseOrdersRouter(db, appSettings));
     }
     pagesRouter = pagesRouterFactory(db, appSettings);
     app.use('/api/pages', pagesRouter);

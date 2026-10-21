@@ -1965,9 +1965,12 @@ function createMoyskladRouter(db, settings, config) {
             const withJoinParams = [];
             let goodsWhereSql = ' WHERE type IN (?, ?)';
             const goodsWhereParams = ['Товар', 'Комплект'];
-            // Для оценки закупа по остатку — и товары, и комплекты (строки выгрузки); без «плакатов» в имени.
+            // Для оценки закупа по остатку — и товары, и комплекты (строки выгрузки); без «плакатов» в имени;
+            // только складская позиция «Да» (как финансы «Товар (МС)» и карточки сумм).
             goodsWhereSql += ' AND LOWER(name) NOT LIKE ?';
             goodsWhereParams.push('%плакат%');
+            goodsWhereSql +=
+                " AND LOWER(TRIM(COALESCE(stock_position, ''))) IN ('да', 'yes', '1', 'true')";
             const baseFilter = buildExportFilters({
                 search, type, archived, supplier, supplier2, manager, content_manager, vat, vat_on_product, uuid,
                 packing_standard, packing_own_box, packing_weight, updated_label, stock_position: stockPosition,
@@ -2075,8 +2078,10 @@ function createMoyskladRouter(db, settings, config) {
                 CASE WHEN buy_price IS NULL OR buy_price = '' THEN 0 ELSE COALESCE(${buyToDec}, 0) END,
                 0
             )`;
+            const stockPosYes = `LOWER(TRIM(COALESCE(stock_position, ''))) IN ('да', 'yes', '1', 'true')`;
             const prodValExpr = `CASE
                 WHEN type = 'Товар'
+                     AND ${stockPosYes}
                      AND COALESCE(stock, 0) > 0
                      AND COALESCE(stock_quantity, stock, 0) > 0
                 THEN stock * (${unitCostExpr})
@@ -2084,6 +2089,7 @@ function createMoyskladRouter(db, settings, config) {
             END`;
             const bundleValExpr = `CASE
                 WHEN type = 'Комплект'
+                     AND ${stockPosYes}
                      AND COALESCE(stock, 0) > 0
                 THEN stock * (${unitCostExpr})
                 ELSE 0

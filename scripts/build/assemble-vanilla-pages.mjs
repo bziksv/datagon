@@ -485,6 +485,14 @@ function assemble() {
             MAIN_INNER: read(path.join(vanillaDir, 'inners/ms-orders.inner.html')),
             PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/ms-orders.scripts.html')),
         },
+        {
+            out: 'ms-purchase-orders.html',
+            PAGE_TITLE: 'Заказы поставщикам — Датагон',
+            BODY_ATTRS: 'class="datagon-vanilla-body" data-dg-active-nav="ms-purchase-orders"',
+            EXTRA_HEAD: read(path.join(vanillaDir, 'inners/ms-purchase-orders.head.html')),
+            MAIN_INNER: read(path.join(vanillaDir, 'inners/ms-purchase-orders.inner.html')),
+            PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/ms-purchase-orders.scripts.html')),
+        },
     ];
 
     const legacyIndex = path.join(vanillaDir, 'index.html');

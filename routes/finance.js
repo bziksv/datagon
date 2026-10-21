@@ -9,6 +9,7 @@ const finCred = require('../lib/datagonFinanceCredentials');
 const finCash = require('../lib/datagonFinanceCash');
 const finPlans = require('../lib/datagonFinancePlans');
 const finMsInv = require('../lib/datagonFinanceMsInventory');
+const finMsPo = require('../lib/datagonMsPurchaseOrders');
 
 const DEFAULT_TX_DAYS = 30;
 const MAX_TX_DAYS = 1095; // до ~3 лет (1 + 2)
@@ -2139,6 +2140,17 @@ function factory(db, appSettings) {
                     error: eInv && eInv.message ? String(eInv.message) : String(eInv),
                 };
             }
+            let ms_prepaid_orders = null;
+            try {
+                ms_prepaid_orders = await finMsPo.loadPrepaidForFinance(db);
+            } catch (ePo) {
+                ms_prepaid_orders = {
+                    prepaid_full: 0,
+                    prepaid_partial_gap: 0,
+                    prepaid_total: 0,
+                    error: ePo && ePo.message ? String(ePo.message) : String(ePo),
+                };
+            }
             res.json({
                 success: true,
                 accounts: rows || [],
@@ -2146,9 +2158,10 @@ function factory(db, appSettings) {
                 org_aliases,
                 deposit_estimate,
                 ms_inventory,
+                ms_prepaid_orders,
                 can_write: pageMode(req) === 'full',
                 api_note:
-                    'Банк — в шапке организации (Точка / Райффайзен / Т‑Банк). Фонд: галка при редактировании названия (карандаш) или клик по бейджу типа. «На депозитах» — оценка из выписки (открытия − возвраты тела), всегда в карточках и в «Всего». «Товар (МС)» — оценка склада (остаток × себестоимость, только Товар), привязана к Альмамед; официальный снимок — конец месяца.',
+                    'Банк — в шапке организации (Точка / Райффайзен / Т‑Банк). Фонд: галка при редактировании названия (карандаш) или клик по бейджу типа. «На депозитах» — оценка из выписки (открытия − возвраты тела), всегда в карточках и в «Всего». «Товар (МС)» — оценка склада (остаток × себестоимость, только Товар со складской «Да»), привязана к Альмамед; официальный снимок — конец месяца. «В пути / недопринято» — оплаченные ЗП (purchaseorder), отдельно от товарного остатка.',
             });
         } catch (e) {
             res.status(500).json({ success: false, error: e.message || String(e) });

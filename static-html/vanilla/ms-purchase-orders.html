@@ -1,0 +1,1553 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, shrink-to-fit=no" />
+  <script>
+    (function () {
+      try {
+        if (localStorage.getItem("datagon_theme_font_source_sans_3_v1") === "1") {
+          document.documentElement.classList.add("dg-font-source-sans-3");
+          var l = document.createElement("link");
+          l.id = "dg-font-source-sans-3-link";
+          l.rel = "stylesheet";
+          l.href =
+            "https://fonts.googleapis.com/css2?family=Source+Sans+3:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap";
+          document.head.appendChild(l);
+        }
+      } catch (e) {}
+    })();
+  </script>
+  <title>Заказы поставщикам — Датагон</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="stylesheet" href="/static/css/main.989b22a9.css" />
+  <style>
+  body.datagon-vanilla-body[data-dg-active-nav="ms-purchase-orders"] .app-main__inner,
+  body.datagon-vanilla-body[data-dg-active-nav="ms-purchase-orders"] .main-card .card-body {
+    min-width: 0;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-purchase-orders"] .dg-mpo-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-purchase-orders"] .dg-mpo-table thead th {
+    border-right: 1px solid #e6e9ee;
+    user-select: text;
+    -webkit-user-select: text;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-purchase-orders"] .dg-mpo-table tbody td {
+    border-right: 1px solid #f3f5f8;
+    vertical-align: middle;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-purchase-orders"] .dg-mpo-num {
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    white-space: nowrap;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-purchase-orders"] .dg-mpo-kpi .card-body {
+    padding: 0.85rem 1rem;
+  }
+</style>
+
+  <style>
+    /* Один список сайдбара: «ArchitectUI меню» у нижнего края области навигации, без второго блока/ul */
+    .dg-sidebar-nav-scroll {
+      display: flex;
+      flex-direction: column;
+    }
+    .dg-sidebar-nav-measure {
+      flex: 1 1 auto;
+      min-height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+    .dg-sidebar-nav-measure .datagon-nav-shell,
+    .dg-sidebar-nav-measure .vertical-nav-menu {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    /* Только корневой список меню: иначе вложенный ul.metismenu-container (под «Маркетплейсы» и т.п.)
+       получает min-height:100% + flex и растягивается на всю колонку — вертикальная линия темы залезает на соседние пункты. */
+    .dg-sidebar-nav-measure .vertical-nav-menu > .metismenu-container {
+      display: flex;
+      flex-direction: column;
+      flex: 1 1 auto;
+      min-height: 100%;
+      margin-bottom: 0;
+    }
+    /*
+      Подменю «Маркетплейсы»: ArchitectUI скрывает .metismenu-icon у подпунктов и даёт малый padding.
+      Не трогаем узкую полоску без hover — большой padding раздувает li и смещает «left:50%» у всех иконок колонки.
+      При развороте по hover из closed-sidebar класс closed-sidebar не снимается — нужен отдельный селектор с .app-sidebar:hover.
+    */
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon,
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon,
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-work-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-work-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon {
+      display: block !important;
+    }
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link,
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link,
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-work-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-work-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link {
+      padding-left: 3.4375rem !important;
+      position: relative;
+      /* Длинные подписи подпунктов («Проблемы с товарами», «Яндекс Маркет»)
+         не должны обрезаться ellipsis: разрешаем перенос на 2 строки.
+         Иконка — как в ArchitectUI: top:50% + margin-top:-17px (не top:0.55rem —
+         иначе у однострочных пунктов иконка уезжает выше текста). */
+      white-space: normal !important;
+      line-height: 1.25;
+      align-items: center;
+      padding-top: 0.45rem !important;
+      padding-bottom: 0.45rem !important;
+      padding-right: 0.5rem !important;
+      min-height: 2rem;
+      height: auto !important;
+    }
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon,
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon,
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-work-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-work-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon {
+      top: 50% !important;
+      margin-top: -17px !important;
+    }
+    /* Пункты сайдбара с доступом как у журнала активности (admin / право на пользователей) */
+    .dg-sidebar-nav-restricted .metismenu-link {
+      display: inline-flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.15rem 0.35rem;
+    }
+    .dg-sidebar-nav-restricted .dg-nav-restricted-icon {
+      font-size: 0.7rem;
+      opacity: 0.72;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+    /*
+      Сайдбар: flex min-width:auto + overflow-y:auto раздували .app-sidebar__inner /
+      .custom-scrollbar до ~297px при колонке 280px — линии разделителей рисовались
+      за правым краем белой панели. Жёстко держим цепочку в ширине колонки.
+    */
+    .datagon-vanilla-shell .app-sidebar > .d-flex.flex-column,
+    .datagon-vanilla-shell .app-sidebar .dg-sidebar-nav-wrap,
+    .datagon-vanilla-shell .app-sidebar .app-sidebar__inner {
+      min-width: 0;
+      max-width: 100%;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    .datagon-vanilla-shell .app-sidebar .dg-sidebar-nav-wrap {
+      overflow-x: hidden;
+      /* тема даёт z-index:15 — при сбое ширины слой мог торчать поверх контента */
+      z-index: auto;
+    }
+    /*
+      Разделители: сам li — полоска (как ArchitectUI .nav-item-divider),
+      inset 0.5rem по бокам как у ссылок. Внутренний .nav-item-divider скрыт —
+      в flex-меню пустой 1px-div нестабильно рисуется.
+    */
+    .vertical-nav-menu .metismenu-item.dg-sidebar-nav-divider {
+      list-style: none;
+      pointer-events: none;
+      display: block !important;
+      margin: 0.5rem 0.5rem !important;
+      padding: 0 !important;
+      /* как ArchitectUI .nav-item-divider: тонкая 1px */
+      height: 1px !important;
+      min-height: 1px !important;
+      max-height: 1px !important;
+      line-height: 0 !important;
+      overflow: hidden !important;
+      flex: 0 0 auto !important;
+      border: 0 !important;
+      background: #dee2e6 !important;
+      box-shadow: none !important;
+    }
+    .vertical-nav-menu .metismenu-item.dg-sidebar-nav-divider .nav-item-divider {
+      display: none !important;
+    }
+    /*
+      Свёрнутый сайдбар (80px): у темы left:50% на иконке считается от узкой ссылки
+      (~24px), а не от колонки → иконки смещены вправо, слева пусто больше, чем справа.
+      Растягиваем пункт на всю ширину и центрируем иконку / разделитель.
+    */
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:not(:hover)
+      .app-sidebar__inner
+      .vertical-nav-menu
+      > .metismenu-container
+      > .metismenu-item
+      > .metismenu-link {
+      width: 100% !important;
+      margin-left: 0 !important;
+      margin-right: 0 !important;
+    }
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:not(:hover)
+      .app-sidebar__inner
+      .vertical-nav-menu
+      > .metismenu-container
+      > .metismenu-item
+      > .metismenu-link
+      > .metismenu-icon {
+      left: 50% !important;
+      margin-left: 0 !important;
+      transform: translateX(-50%) !important;
+    }
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:not(:hover)
+      .vertical-nav-menu
+      .metismenu-item.dg-sidebar-nav-divider {
+      width: 1.25rem !important;
+      max-width: 1.25rem !important;
+      margin-left: auto !important;
+      margin-right: auto !important;
+      margin-top: 0.45rem !important;
+      margin-bottom: 0.45rem !important;
+    }
+    .datagon-vanilla-shell .app-footer .app-footer__inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .datagon-vanilla-shell .app-footer-right {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 6px 12px;
+      padding: 4px 8px 4px 12px;
+      max-width: min(100%, 540px);
+      margin-left: auto;
+    }
+    .datagon-vanilla-shell .dg-footer-legal-link {
+      font-size: 11px;
+      line-height: 1.25;
+      color: #6c757d;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    .datagon-vanilla-shell .dg-footer-legal-link:hover {
+      color: #2f5de0;
+      text-decoration: underline;
+    }
+    @media (max-width: 991.98px) {
+      /* На мобильном layout не должен наследовать desktop-сдвиг fixed/closed sidebar. */
+      .datagon-vanilla-shell .app-main__outer {
+        margin-left: 0 !important;
+      }
+      .datagon-vanilla-shell .app-footer {
+        left: 0 !important;
+        width: 100% !important;
+      }
+      .datagon-vanilla-shell .app-footer .app-footer__inner {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-left: 0 !important;
+      }
+      /* На телефонах слой мобильного меню должен перекрывать фиксированный футер. */
+      .datagon-vanilla-shell .sidebar-mobile-overlay {
+        z-index: 1090;
+      }
+      .datagon-vanilla-shell .app-sidebar {
+        z-index: 1100;
+      }
+      .datagon-vanilla-shell .app-footer {
+        z-index: 1080;
+      }
+      .datagon-vanilla-shell.sidebar-mobile-open .app-footer {
+        pointer-events: none;
+        opacity: 0.25;
+      }
+    }
+    /* Source Sans 3 — opt-in из «Параметры макета» (все экраны, в т.ч. Windows). */
+    html.dg-font-source-sans-3 .datagon-vanilla-shell {
+      --bs-body-font-family: "Source Sans 3", -apple-system, BlinkMacSystemFont, "Segoe UI",
+        Roboto, "Helvetica Neue", Arial, sans-serif;
+      --bs-font-sans-serif: var(--bs-body-font-family);
+      font-family: var(--bs-body-font-family);
+    }
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .btn,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .form-control,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .form-select,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .table,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .card,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .page-title-heading,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .vertical-nav-menu a,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .app-header,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .app-sidebar,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .app-main,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .app-footer {
+      font-family: inherit;
+    }
+  </style>
+</head>
+<body class="datagon-vanilla-body" data-dg-active-nav="ms-purchase-orders">
+  <div class="app-container app-theme-white datagon-shell datagon-vanilla-shell fixed-header fixed-sidebar fixed-footer">
+    <div class="app-header header-shadow">
+      <div class="app-header__logo">
+        <button type="button" class="logo-src datagon-brand" onclick="location.href='/dashboard.html'" title="Открыть дашборд" style="border:0;background:transparent;padding:0;cursor:pointer">Датагон</button>
+        <div class="header__pane ms-auto">
+          <div>
+            <button type="button" class="hamburger hamburger--slider dg-toggle-sidebar" aria-label="Свернуть боковую панель" title="Свернуть боковую панель">
+              <span class="hamburger-box"><span class="hamburger-inner"></span></span>
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="app-header__mobile-menu">
+        <div>
+          <button type="button" class="hamburger hamburger--slider dg-toggle-mobile-sidebar" aria-label="Открыть меню">
+            <span class="hamburger-box"><span class="hamburger-inner"></span></span>
+          </button>
+        </div>
+      </div>
+      <div class="app-header__menu">
+        <span>
+          <button type="button" class="btn btn-primary btn-sm btn-icon btn-icon-only dg-toggle-header-small" aria-label="Доп. меню шапки">
+            <div class="btn-icon-wrapper">
+              <i class="pe-7s-more" style="font-size:1.1rem;line-height:1"></i>
+            </div>
+          </button>
+        </span>
+      </div>
+      <div class="app-header__content">
+        <div class="app-header-left">
+          <div class="dg-ws-clock-wrap me-2 flex-shrink-0">
+            <button
+              type="button"
+              id="dg-ws-clock-btn"
+              class="btn btn-sm btn-success dg-ws-clock-btn"
+              data-dg-notify-start="Отмечаем начало смены…"
+              title="Учёт рабочего времени (прототип)"
+            >
+              <i class="pe-7s-play me-1" aria-hidden="true"></i>
+              <span class="dg-ws-clock-label">Начать работать</span>
+              <span class="dg-ws-clock-timer d-none ms-1" aria-live="polite"></span>
+            </button>
+          </div>
+          <div class="search-wrapper">
+            <div class="input-holder">
+              <input type="text" class="search-input" placeholder="Type to search" autocomplete="off" />
+              <button type="button" class="search-icon dg-vanilla-search-docs" aria-label="Открыть документацию" title="Документация">
+                <span></span>
+              </button>
+            </div>
+            <button type="button" class="btn-close dg-vanilla-search-close" aria-label="Закрыть поиск"></button>
+          </div>
+        </div>
+        <div class="app-header-right">
+          <div class="ui-theme-settings ui-theme-settings--header">
+            <button type="button" class="btn btn-link btn-open-options btn-open-options--header" id="TooltipDemoVanilla" aria-label="Параметры темы" title="Параметры темы (полная версия в React-панели)">
+              <i class="pe-7s-config" style="font-size:1.35rem;color:#3f6ad8;line-height:1"></i>
+            </button>
+            <div class="theme-settings__inner">
+              <div class="theme-settings__options-wrapper">
+                <h3 class="themeoptions-heading">Параметры макета</h3>
+                <div class="list-group">
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Фиксированная шапка</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-fixed-header" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Тень шапки</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-header-shadow" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Фиксированный сайдбар</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-fixed-sidebar" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Тень сайдбара</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-sidebar-shadow" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Фиксированный футер</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-fixed-footer" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Шрифт Source Sans 3</h5>
+                    <label class="switch mb-0" title="Удобнее на Windows; сохраняется для всех страниц панели"><input type="checkbox" id="dg-theme-font-source-sans-3"><span class="slider round"></span></label>
+                  </div>
+                </div>
+
+                <h3 class="themeoptions-heading">Параметры заголовка страницы</h3>
+                <div class="list-group">
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Иконка заголовка</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-title-icon" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Подзаголовок страницы</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-title-subheading" checked><span class="slider round"></span></label>
+                  </div>
+                </div>
+
+                <h3 class="themeoptions-heading">Цветовые схемы</h3>
+                <div class="list-group">
+                  <div class="list-group-item">
+                    <h5 class="mb-2">Цветовая схема макета</h5>
+                    <div class="theme-settings-swatches">
+                      <div class="swatch-holder-lg active dg-theme-color-scheme" data-color-scheme="white" style="background:#fff;border:1px solid #dee2e6"></div>
+                      <div class="swatch-holder-lg dg-theme-color-scheme" data-color-scheme="gray" style="background:#868e96"></div>
+                    </div>
+                  </div>
+                </div>
+
+                <h3 class="themeoptions-heading">Параметры сайдбара</h3>
+                <div class="list-group">
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Фоновое изображение сайдбара</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-sidebar-bg-image"><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item">
+                    <h5 class="mb-2">Цвета сайдбара</h5>
+                    <div class="theme-settings-swatches">
+                      <div class="swatch-holder bg-primary dg-theme-sidebar-color" data-color-class="bg-primary"></div><div class="swatch-holder bg-danger dg-theme-sidebar-color" data-color-class="bg-danger"></div><div class="swatch-holder bg-warning dg-theme-sidebar-color" data-color-class="bg-warning"></div><div class="swatch-holder bg-success dg-theme-sidebar-color" data-color-class="bg-success"></div>
+                      <div class="swatch-holder bg-info dg-theme-sidebar-color" data-color-class="bg-info"></div><div class="swatch-holder bg-secondary dg-theme-sidebar-color" data-color-class="bg-secondary"></div><div class="swatch-holder bg-dark dg-theme-sidebar-color" data-color-class="bg-dark"></div><div class="swatch-holder dg-theme-sidebar-color" data-color-class="bg-plum-plate" style="background:#667eea"></div>
+                      <div class="swatch-holder dg-theme-sidebar-color" data-color-class="bg-arielle-smile" style="background:#16d9e3"></div><div class="swatch-holder dg-theme-sidebar-color" data-color-class="bg-ripe-malin" style="background:#f093fb"></div><div class="swatch-holder dg-theme-sidebar-color" data-color-class="bg-night-fade" style="background:#a18cd1"></div><div class="swatch-holder dg-theme-sidebar-color" data-color-class="bg-malibu-beach" style="background:#4facfe"></div>
+                    </div>
+                  </div>
+                </div>
+
+                <h3 class="themeoptions-heading">Параметры шапки</h3>
+                <div class="list-group">
+                  <div class="list-group-item">
+                    <h5 class="mb-2">Цвета шапки</h5>
+                    <div class="theme-settings-swatches">
+                      <div class="swatch-holder bg-primary dg-theme-header-color" data-color-class="bg-primary"></div><div class="swatch-holder bg-danger dg-theme-header-color" data-color-class="bg-danger"></div><div class="swatch-holder bg-warning dg-theme-header-color" data-color-class="bg-warning"></div><div class="swatch-holder bg-success dg-theme-header-color" data-color-class="bg-success"></div>
+                      <div class="swatch-holder bg-info dg-theme-header-color" data-color-class="bg-info"></div><div class="swatch-holder bg-secondary dg-theme-header-color" data-color-class="bg-secondary"></div><div class="swatch-holder bg-dark dg-theme-header-color" data-color-class="bg-dark"></div><div class="swatch-holder dg-theme-header-color" data-color-class="bg-plum-plate" style="background:#667eea"></div>
+                    </div>
+                  </div>
+                </div>
+                <div class="p-2">
+                  <a href="/settings.html" class="btn btn-sm btn-outline-primary w-100">Настройки</a>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="header-dots">
+            <div class="dropdown">
+              <button type="button" class="btn btn-link p-0 me-2 dg-vanilla-dropdown-toggle" style="line-height:0" aria-expanded="false" aria-haspopup="true">
+                <div class="icon-wrapper icon-wrapper-alt rounded-circle">
+                  <div class="icon-wrapper-bg bg-success"></div>
+                  <i class="pe-7s-graph2" style="font-size:23px;color:#3ac47d"></i>
+                </div>
+              </button>
+              <div class="dropdown-menu dropdown-menu-xl rm-pointers p-0" style="min-width: 320px">
+                <div class="dropdown-menu-header">
+                  <div class="dropdown-menu-header-inner bg-premium-dark">
+                    <div class="menu-header-image" style="background-image:url('/assets/utils/images/dropdown-header/abstract4.jpg')"></div>
+                    <div class="menu-header-content text-white">
+                      <h5 class="menu-header-title">Вы в сети</h5>
+                      <h6 class="menu-header-subtitle">Онлайн за окно из настроек</h6>
+                    </div>
+                  </div>
+                </div>
+                <div class="widget-chart">
+                  <div class="widget-chart-content">
+                    <div class="icon-wrapper rounded-circle">
+                      <div class="icon-wrapper-bg opacity-9 bg-focus"></div>
+                      <i class="lnr-users text-white"></i>
+                    </div>
+                    <div class="widget-numbers d-flex flex-column align-items-center text-center" id="dg-vanilla-online-users-wrap">
+                      <span id="dg-vanilla-online-users">—</span>
+                      <span class="opacity-9 fw-normal" style="font-size: 0.72rem; line-height: 1.25; margin-top: 0.15rem" id="dg-vanilla-online-users-unit"></span>
+                    </div>
+                    <div class="widget-subheading pt-2 small text-muted" id="dg-vanilla-online-users-role"></div>
+                    <div class="text-center small px-2 pt-1 pb-1">
+                      <a href="/settings.html#dg-settings-online-presence" class="text-decoration-none">Окно минут</a>
+                    </div>
+                    <div class="widget-description text-muted small px-2 mt-1 mb-0" id="dg-vanilla-online-users-sessions" style="line-height: 1.35"></div>
+                    <div class="widget-description text-muted mt-2 mb-0">
+                      <span class="pe-1 small" id="dg-vanilla-online-users-note"></span>
+                    </div>
+                  </div>
+                  <div class="widget-chart-wrapper">
+                    <div style="height:40px;opacity:.35;background:linear-gradient(90deg,#f7b924 0%,#f7b92455 100%);border-radius:2px;"></div>
+                  </div>
+                </div>
+                <div class="nav-item-divider mt-0"></div>
+                <div class="nav-item-btn text-center pb-3 mb-2">
+                  <button type="button" class="btn btn-sm btn-shine btn-wide btn-pill btn-warning" id="dg-vanilla-online-users-refresh">
+                    <i class="pe-7s-refresh me-2"></i>Обновить
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="header-btn-lg pe-0">
+            <div class="widget-content p-0">
+              <div class="widget-content-wrapper">
+                <div class="widget-content-left d-flex align-items-center gap-1 pe-2">
+                  <span
+                    class="rounded-circle d-inline-flex align-items-center justify-content-center flex-shrink-0 bg-light text-secondary border"
+                    style="width: 42px; height: 42px; border-color: #e2e8f0"
+                    role="img"
+                    aria-label="Профиль"
+                  >
+                    <i class="pe-7s-user" style="font-size: 1.2rem; line-height: 1; opacity: 0.85" aria-hidden="true"></i>
+                  </span>
+                  <button type="button" class="btn btn-link p-0 dg-vanilla-logout d-inline-flex align-items-center justify-content-center text-danger" title="Выйти" aria-label="Выйти из профиля" style="min-width:34px;min-height:34px;line-height:1;border-radius:50%">
+                    <i class="lnr-exit" style="font-size:1.2rem"></i>
+                  </button>
+                </div>
+                <div class="widget-content-left ms-2 header-user-info">
+                  <div class="widget-heading" id="dg-vanilla-user-display-inline">Пользователь</div>
+                  <div class="widget-subheading" id="dg-vanilla-user-role-inline">Пользователь</div>
+                </div>
+                <div class="widget-content-right header-user-info ms-3">
+                  <button type="button" class="btn btn-shadow p-1 btn-sm btn-info" id="Tooltip-1" title="Click for notifications">
+                    <i class="pe-7s-date text-white" style="font-size:20px;line-height:1"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="app-main">
+      <div class="sidebar-mobile-overlay"></div>
+      <div class="app-sidebar sidebar-shadow">
+        <div class="d-flex flex-column h-100 min-h-0">
+          <div class="app-header__logo">
+            <button type="button" class="logo-src datagon-brand" onclick="location.href='/dashboard.html'" title="Открыть дашборд" style="border:0;background:transparent;padding:0;cursor:pointer">Датагон</button>
+            <div class="header__pane ms-auto">
+              <div>
+                <button type="button" class="hamburger hamburger--slider dg-toggle-sidebar" aria-label="Свернуть боковую панель" title="Свернуть боковую панель">
+                  <span class="hamburger-box"><span class="hamburger-inner"></span></span>
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="app-header__mobile-menu">
+            <div>
+              <button type="button" class="hamburger hamburger--slider dg-toggle-mobile-sidebar" aria-label="Открыть меню">
+                <span class="hamburger-box"><span class="hamburger-inner"></span></span>
+              </button>
+            </div>
+          </div>
+          <div class="app-header__menu">
+            <span>
+              <button type="button" class="btn btn-primary btn-sm btn-icon btn-icon-only dg-toggle-header-small" aria-label="Доп. меню шапки">
+                <div class="btn-icon-wrapper">
+                  <i class="pe-7s-more" style="font-size:1.1rem;line-height:1"></i>
+                </div>
+              </button>
+            </span>
+          </div>
+          <div class="custom-scrollbar dg-sidebar-nav-wrap d-flex flex-column min-h-0" style="flex:1 1 0%;min-height:0;max-height:calc(100vh - 80px);overflow-x:hidden">
+            <div class="app-sidebar__inner dg-sidebar-nav-scroll flex-grow-1 min-h-0" style="overflow-y:auto;overflow-x:hidden">
+              <div class="dg-sidebar-nav-measure">
+                <div class="datagon-nav-shell">
+                  <div class="vertical-nav-menu" style="pointer-events:auto;z-index:999;position:relative">
+                    <ul class="metismenu-container">
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="dashboard" href="/dashboard.html"><i class="metismenu-icon pe-7s-rocket"></i>Дашборд</a></li>
+                      <li class="metismenu-item dg-sidebar-nav-restricted" data-dg-nav-restricted="activity">
+                        <a
+                          class="metismenu-link"
+                          data-nav="db-admin"
+                          href="/db-admin.html"
+                          title="Управление БД: размеры таблиц, связи, превью, OPTIMIZE (доступ ограничен: администратор или право управления пользователями)"
+                        >
+                          <i class="metismenu-icon pe-7s-server"></i>Управление БД
+                          <i
+                            class="pe-7s-lock dg-nav-restricted-icon"
+                            aria-hidden="true"
+                            title="Пункт меню с ограниченным доступом"
+                          ></i>
+                        </a>
+                      </li>
+                      <li class="metismenu-item dg-sidebar-architect-item dg-sidebar-nav-restricted" data-dg-nav-restricted="admin">
+                        <a
+                          class="metismenu-link"
+                          data-nav="architectui-demo"
+                          href="/ref/react-demo-index.html"
+                          title="Каталог разделов React-шаблона ArchitectUI (только администратор)"
+                        >
+                          <i class="metismenu-icon pe-7s-plugin"></i>ArchitectUI
+                          <i
+                            class="pe-7s-lock dg-nav-restricted-icon"
+                            aria-hidden="true"
+                            title="Пункт меню с ограниченным доступом"
+                          ></i>
+                        </a>
+                      </li>
+                      <li class="metismenu-item dg-sidebar-nav-restricted" data-dg-nav-restricted="activity">
+                        <a
+                          class="metismenu-link"
+                          data-nav="processes"
+                          href="/processes.html"
+                          title="Активность/Логи: журнал команды и фоновые процессы (доступ ограничен: администратор или право управления пользователями)"
+                        >
+                          <i class="metismenu-icon pe-7s-timer"></i>Активность/Логи
+                          <i
+                            class="pe-7s-lock dg-nav-restricted-icon"
+                            aria-hidden="true"
+                            title="Пункт меню с ограниченным доступом"
+                          ></i>
+                        </a>
+                      </li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="settings" href="/settings.html"><i class="metismenu-icon pe-7s-config"></i>Настройки</a></li>
+                      <li class="metismenu-item dg-sidebar-nav-divider" aria-hidden="true">
+                        <div class="nav-item nav-item-divider"></div>
+                      </li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="finance" href="/finance.html" title="Балансы и движение по счетам Точки (только чтение)"><i class="metismenu-icon pe-7s-wallet"></i>Финансы</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="manager-sales" href="/manager-sales.html" title="Годовые таблицы менеджеров: оплаты, маржа, премия"><i class="metismenu-icon pe-7s-id"></i>Таблицы менеджеров</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="ops-sheet" href="/ops-sheet.html" title="Операционный лист: оборот, прибыль, премии и оклады по месяцам"><i class="metismenu-icon pe-7s-notebook"></i>Операционный лист</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="work-schedule" href="/work-schedule.html" title="График работы и учёт рабочего времени"><i class="metismenu-icon pe-7s-clock"></i>График работы</a></li>
+                      <!-- «График · настройки» скрыт из меню: вход с /work-schedule.html (ссылка) или прямой URL; доступ — матрица work-schedule-settings -->
+                      <!-- <li class="metismenu-item"><a class="metismenu-link" data-nav="work-schedule-settings" href="/work-schedule-settings.html" title="Организация, отделы, сотрудники графика"><i class="metismenu-icon pe-7s-config"></i>График · настройки</a></li> -->
+                      <li class="metismenu-item">
+                        <a
+                          href="#"
+                          class="metismenu-link dg-vanilla-submenu-toggle"
+                          aria-expanded="false"
+                          title="WORK: проекты и пароли SEO/контекст (legacy)"
+                        >
+                          <i class="metismenu-icon pe-7s-portfolio"></i>WORK
+                          <i class="metismenu-state-icon pe-7s-angle-down" aria-hidden="true"></i>
+                        </a>
+                        <ul class="metismenu-container dg-vanilla-work-submenu">
+                          <li class="metismenu-item">
+                            <a class="metismenu-link" data-nav="work-seo-projects" href="/work-seo-projects.html" title="Проекты SEO">
+                              <i class="metismenu-icon pe-7s-search"></i>Проекты SEO
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a class="metismenu-link" data-nav="work-seo-passwords" href="/work-seo-passwords.html" title="Пароли SEO">
+                              <i class="metismenu-icon pe-7s-lock"></i>Пароли SEO
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a class="metismenu-link" data-nav="work-dev-passwords" href="/work-dev-passwords.html" title="Пароли DEV">
+                              <i class="metismenu-icon pe-7s-lock"></i>Пароли DEV
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a class="metismenu-link" data-nav="work-context-projects" href="/work-context-projects.html" title="Проекты контекст">
+                              <i class="metismenu-icon pe-7s-note2"></i>Проекты контекст
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a class="metismenu-link" data-nav="work-context-passwords" href="/work-context-passwords.html" title="Пароли контекст">
+                              <i class="metismenu-icon pe-7s-lock"></i>Пароли контекст
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a class="metismenu-link" data-nav="work-services" href="/work-services.html" title="Сервисы и пароли">
+                              <i class="metismenu-icon pe-7s-key"></i>Сервисы &amp; Пароли
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a class="metismenu-link" data-nav="work-seo-staff" href="/work-seo-staff.html" title="Сотрудники SEO">
+                              <i class="metismenu-icon pe-7s-users"></i>Сотрудники SEO
+                            </a>
+                          </li>
+                        </ul>
+                      </li>
+                      <li class="metismenu-item dg-sidebar-nav-divider" aria-hidden="true">
+                        <div class="nav-item nav-item-divider"></div>
+                      </li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="my-sites" href="/my-sites.html"><i class="metismenu-icon pe-7s-global"></i>Мои сайты</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="network-prices" href="/network-prices.html"><i class="metismenu-icon pe-7s-shuffle"></i>Цены сети</a></li>
+                      <li class="metismenu-item dg-sidebar-nav-divider" aria-hidden="true">
+                        <div class="nav-item nav-item-divider"></div>
+                      </li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="my-products" href="/my-products.html"><i class="metismenu-icon pe-7s-box2"></i>Мои товары (сайты)</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="moysklad" href="/moysklad.html"><i class="metismenu-icon pe-7s-shopbag"></i>Мой Склад (товары)</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="ms-orders" href="/ms-orders.html" title="Заказы покупателей entity/customerorder из МойСклад (30 дней)"><i class="metismenu-icon pe-7s-note2"></i>Заказы в МС</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="ms-purchase-orders" href="/ms-purchase-orders.html" title="Заказы поставщикам entity/purchaseorder из МойСклад"><i class="metismenu-icon pe-7s-cart"></i>Заказы поставщикам</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="ms-sales" href="/ms-sales.html" title="Продажи МС: отгрузки entity/demand, позиции с привязкой к товарам ms_export"><i class="metismenu-icon pe-7s-cash"></i>Продажи МС</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="medmarket" href="/medmarket.html" title="Стыковка кода МС с кодом товара для Медмаркета"><i class="metismenu-icon pe-7s-id"></i>Медмаркет</a></li>
+                      <li class="metismenu-item dg-sidebar-nav-divider" aria-hidden="true">
+                        <div class="nav-item nav-item-divider"></div>
+                      </li>
+                      <li class="metismenu-item">
+                        <a
+                          href="#"
+                          class="metismenu-link dg-vanilla-submenu-toggle"
+                          aria-expanded="false"
+                          title="Парсинг сайтов конкурентов: проекты, очередь, результаты, сопоставление"
+                        >
+                          <i class="metismenu-icon pe-7s-browser"></i>Парсинг
+                          <i class="metismenu-state-icon pe-7s-angle-down" aria-hidden="true"></i>
+                        </a>
+                        <ul class="metismenu-container dg-vanilla-parse-submenu">
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="projects"
+                              href="/projects.html"
+                              title="Проекты и сайты конкурентов"
+                            >
+                              <i class="metismenu-icon pe-7s-portfolio"></i>Конкуренты
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="queue"
+                              href="/queue.html"
+                              title="Очередь задач парсинга"
+                            >
+                              <i class="metismenu-icon pe-7s-network"></i>Очередь
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="results"
+                              href="/results.html"
+                              title="Результаты парсинга"
+                            >
+                              <i class="metismenu-icon pe-7s-note2"></i>Результаты
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="matches"
+                              href="/matches.html"
+                              title="Сопоставление товаров"
+                            >
+                              <i class="metismenu-icon pe-7s-link"></i>Сопоставление
+                            </a>
+                          </li>
+                        </ul>
+                      </li>
+                      <li class="metismenu-item">
+                        <a
+                          href="#"
+                          class="metismenu-link dg-vanilla-submenu-toggle"
+                          aria-expanded="false"
+                          title="Интеграции маркетплейсов: ключи и диагностика выгрузок"
+                        >
+                          <i class="metismenu-icon pe-7s-graph3"></i>Маркетплейсы
+                          <i class="metismenu-state-icon pe-7s-angle-down" aria-hidden="true"></i>
+                        </a>
+                        <ul class="metismenu-container dg-vanilla-mp-submenu">
+                          <!-- Подпункт «Настройки» (data-nav="exports-marketplaces", /exports-marketplaces.html)
+                               скрыт из меню по запросу: ключи API маркетплейсов задаются в /settings.html;
+                               страница остаётся доступной по прямому URL и через ссылки из гайдов
+                               (например, на /exports-marketplaces-issues.html). -->
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-ozon"
+                              href="/exports-marketplaces-ozon.html"
+                              title="Таблица и выгрузка Ozon"
+                            >
+                              <i class="metismenu-icon pe-7s-graph2"></i>Ozon
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-ozon-merge"
+                              href="/exports-ozon-merge.html"
+                              title="Быстрое объединение карточек товаров на Ozon через API"
+                            >
+                              <i class="metismenu-icon pe-7s-link"></i>Объединение Ozon
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-wildberries"
+                              href="/exports-marketplaces-wildberries.html"
+                              title="Таблица и выгрузка Wildberries"
+                            >
+                              <i class="metismenu-icon pe-7s-graph2"></i>Wildberries
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-yandex"
+                              href="/exports-marketplaces-yandex.html"
+                              title="Таблица и выгрузка Яндекс Маркет"
+                            >
+                              <i class="metismenu-icon pe-7s-graph2"></i>Яндекс Маркет
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-huckster"
+                              href="/exports-huckster.html"
+                              title="Интеграция Huckster / e-teleport — матрица UID по магазинам"
+                            >
+                              <i class="metismenu-icon pe-7s-cart"></i>Huckster
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-dimensions"
+                              href="/exports-dimensions.html"
+                              title="Реестр замеров габаритов товаров МойСклад"
+                            >
+                              <i class="metismenu-icon pe-7s-scissors"></i>Габариты
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-issues"
+                              href="/exports-marketplaces-issues.html"
+                              title="Товары МойСклад с проблемами публикации на маркетплейсах"
+                            >
+                              <i class="metismenu-icon pe-7s-attention"></i>Проблемы с товарами
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-new-products"
+                              href="/exports-new-products.html"
+                              title="Очередь новых товаров: Альмамед и Маркеты"
+                            >
+                              <i class="metismenu-icon pe-7s-plus"></i>Новые товары
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-photoshoot"
+                              href="/exports-photoshoot.html"
+                              title="Съёмка товаров из очереди «Размещение на маркеты»"
+                            >
+                              <i class="metismenu-icon pe-7s-camera"></i>Отснять товары
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-competitors"
+                              href="/exports-marketplaces-competitors.html"
+                              title="Поиск наших товаров на Ozon, Wildberries и Яндекс Маркет"
+                            >
+                              <i class="metismenu-icon pe-7s-search"></i>Конкуренты
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-reglament"
+                              href="/exports-marketplaces-reglament.html"
+                              title="Регламент МП: от поиска товара до поступления на склад"
+                            >
+                              <i class="metismenu-icon pe-7s-news-paper"></i>Инструкция
+                            </a>
+                          </li>
+                        </ul>
+                      </li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="purchase" href="/purchase.html" title="Закупки товары: планирование, неснижаемые остатки, кратность"><i class="metismenu-icon pe-7s-cart"></i>Закупки товары</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="suppliers" href="/suppliers.html" title="Поставщики: сводка по закупкам и настройки"><i class="metismenu-icon pe-7s-id"></i>Поставщики</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="supplier-analysis" href="/supplier-analysis.html" title="Продажи, оборот и тренды по поставщикам"><i class="metismenu-icon pe-7s-graph2"></i>Анализ поставщиков</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="product-analysis" href="/product-analysis.html" title="Продажи по SKU: топы, мёртвые, жизненный цикл и неснижаемый"><i class="metismenu-icon pe-7s-graph1"></i>Анализ товаров</a></li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="app-sidebar-bg opacity-06"></div>
+        </div>
+      </div>
+
+      <div class="app-main__outer">
+        <div class="app-main__inner">
+<!-- @inject inner -->
+<div class="app-page-title">
+  <div class="page-title-wrapper">
+    <div class="page-title-heading">
+      <div class="page-title-icon">
+        <i class="pe-7s-cart icon-gradient bg-mean-fruit"></i>
+      </div>
+      <div>
+        Заказы поставщикам
+        <div class="page-title-subheading">
+          Документы <code>entity/purchaseorder</code> из МойСклад (шапки; «Принято» = <code>shippedSum</code>).
+          KPI для финансов — пресеты A/B. Не путать с <a href="/ms-orders.html">«Заказы в МС»</a> (покупатели).
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-2 mb-3 dg-mpo-kpi" id="dg-mpo-kpi-row">
+  <div class="col-md-4">
+    <div class="card mb-0">
+      <div class="card-body">
+        <div class="text-muted small">В пути (оплачено, не принято)</div>
+        <div class="h4 mb-0" id="dg-mpo-kpi-full">—</div>
+        <div class="small text-muted" id="dg-mpo-kpi-full-n"></div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card mb-0">
+      <div class="card-body">
+        <div class="text-muted small">Недопринято (сумма − принято)</div>
+        <div class="h4 mb-0" id="dg-mpo-kpi-gap">—</div>
+        <div class="small text-muted" id="dg-mpo-kpi-gap-n"></div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card mb-0">
+      <div class="card-body">
+        <div class="text-muted small">Итого зависло</div>
+        <div class="h4 mb-0" id="dg-mpo-kpi-total">—</div>
+        <div class="small text-muted" id="dg-mpo-kpi-asof"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="main-card mb-3 card">
+  <div class="card-header d-flex align-items-center justify-content-between gap-2">
+    <div class="d-flex align-items-center">
+      <i class="header-icon pe-7s-filter icon-gradient bg-plum-plate me-2"></i>
+      <span>Фильтры и действия</span>
+    </div>
+    <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mpo-filters-toggle">Свернуть</button>
+  </div>
+  <div class="card-body" id="dg-mpo-filters-body">
+    <div class="row g-2 align-items-end">
+      <div class="col-md-3">
+        <label class="form-label" for="dg-mpo-search">Умный поиск</label>
+        <input type="search" id="dg-mpo-search" class="form-control" placeholder="Номер, контрагент, склад…" autocomplete="off" />
+      </div>
+      <div class="col-md-2">
+        <label class="form-label" for="dg-mpo-preset">Пресет KPI</label>
+        <select id="dg-mpo-preset" class="form-select">
+          <option value="">Все / ручные фильтры</option>
+          <option value="A">A — едет целиком</option>
+          <option value="B">B — недопринято</option>
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label" for="dg-mpo-pay">Оплата</label>
+        <select id="dg-mpo-pay" class="form-select">
+          <option value="">Все</option>
+          <option value="paid">Оплачено</option>
+          <option value="partial">Частично</option>
+          <option value="none">Не оплачено</option>
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label" for="dg-mpo-ship">Принято</label>
+        <select id="dg-mpo-ship" class="form-select">
+          <option value="">Все</option>
+          <option value="unshipped">Не принято</option>
+          <option value="partial">Частично</option>
+          <option value="shipped">Полностью</option>
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label" for="dg-mpo-store">Склад</label>
+        <select id="dg-mpo-store" class="form-select">
+          <option value="">Все склады</option>
+        </select>
+      </div>
+    </div>
+    <div class="row g-2 align-items-end mt-1">
+      <div class="col-md-3">
+        <label class="form-label" for="dg-mpo-state">Статус</label>
+        <select id="dg-mpo-state" class="form-select">
+          <option value="">Все статусы</option>
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label" for="dg-mpo-limit">На странице</label>
+        <select id="dg-mpo-limit" class="form-select">
+          <option value="50">50</option>
+          <option value="100" selected>100</option>
+          <option value="200">200</option>
+        </select>
+      </div>
+      <div class="col-md-7 d-flex flex-wrap gap-2 align-items-end">
+        <button type="button" class="btn btn-primary" id="dg-mpo-apply" data-dg-notify-start="Применяем фильтры…">Применить</button>
+        <button type="button" class="btn btn-outline-secondary" id="dg-mpo-reset" data-dg-notify-start="Сбрасываем фильтры…">По умолчанию</button>
+        <button type="button" class="btn btn-outline-primary" id="dg-mpo-sync" data-dg-notify-start="Запускаем синк из МойСклад…">Синхронизировать</button>
+        <button type="button" class="btn btn-outline-danger" id="dg-mpo-sync-stop" data-dg-notify-start="Останавливаем синк…">Остановить</button>
+        <span class="small text-muted align-self-center" id="dg-mpo-sync-status"></span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="main-card mb-3 card">
+  <div class="card-header d-flex justify-content-between align-items-center gap-2 flex-wrap">
+    <div class="d-flex align-items-center gap-3 flex-grow-1" style="min-width:0">
+      <div class="d-flex align-items-center flex-shrink-0">
+        <i class="header-icon pe-7s-menu icon-gradient bg-happy-itmeo me-2"></i>
+        <span>Выгрузка заказов поставщикам</span>
+      </div>
+    </div>
+    <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mpo-table-toggle">Свернуть</button>
+  </div>
+  <div class="card-body" id="dg-mpo-table-body">
+    <div class="table-responsive">
+      <table class="table table-sm table-hover dg-mpo-table mb-0" id="dg-mpo-table">
+        <thead>
+          <tr>
+            <th data-sort="name">Номер</th>
+            <th data-sort="moment">Дата</th>
+            <th data-sort="agent">Контрагент</th>
+            <th data-sort="sum" class="text-end">Сумма</th>
+            <th data-sort="payed" class="text-end">Оплачено</th>
+            <th data-sort="shipped" class="text-end">Принято</th>
+            <th data-sort="gap" class="text-end">Осталось</th>
+            <th data-sort="store">Склад</th>
+            <th data-sort="state">Статус</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="dg-mpo-tbody">
+          <tr><td colspan="10" class="text-muted py-3">Загрузка…</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-3">
+      <div class="small text-muted" id="dg-mpo-page-status">Найдено: 0</div>
+      <div class="btn-group">
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mpo-prev">Назад</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mpo-next">Вперёд</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+        </div>
+
+        <div class="app-footer">
+          <div class="app-footer__inner">
+            <div class="app-footer-left">
+              <div class="footer-dots">
+                <a
+                  href="#"
+                  class="dot-btn-wrapper dg-vanilla-footer-toggle"
+                  id="PopoverFooter-1"
+                  aria-expanded="false"
+                  aria-haspopup="true"
+                  title="Уведомления"
+                  aria-label="Уведомления"
+                >
+                  <i class="dot-btn-icon lnr-bullhorn icon-gradient bg-mean-fruit"></i>
+                  <div
+                    class="badge badge-dot badge-abs badge-dot-sm bg-danger d-none"
+                    id="dg-footer-notif-dot"
+                    aria-hidden="true"
+                  >
+                    ·
+                  </div>
+                </a>
+                <div class="dots-separator"></div>
+                <a href="#" class="dot-btn-wrapper dg-vanilla-footer-toggle" id="PopoverFooter-3" aria-expanded="false" aria-haspopup="true">
+                  <i class="dot-btn-icon lnr-pie-chart icon-gradient bg-love-kiss"></i>
+                  <div class="badge badge-dot badge-abs badge-dot-sm bg-warning">Notifications</div>
+                </a>
+                <div class="dropdown-menu popover-custom popover-custom-xl rm-pointers p-0 dg-vanilla-footer-popover" data-footer-popover="PopoverFooter-1" style="min-width:420px">
+                  <div class="dropdown-menu-header mb-0">
+                    <div class="dropdown-menu-header-inner bg-strong-bliss">
+                      <div class="menu-header-image opacity-1" style="background-image:url('./assets/utils/images/dropdown-header/city2.jpg')"></div>
+                      <div class="menu-header-content text-white">
+                        <h5 class="menu-header-title">Уведомления</h5>
+                        <h6 class="menu-header-subtitle" id="dg-footer-notif-subtitle">
+                          Нет непрочитанных
+                        </h6>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="card-tabs-animated card-tabs-animated-inner">
+                    <ul class="nav nav-justified">
+                      <li class="nav-item">
+                        <a href="#" class="nav-link active" id="dg-footer-notif-tab-approvals" data-dg-no-activity="1">Согласования</a>
+                      </li>
+                      <li class="nav-item">
+                        <a href="#" class="nav-link disabled text-muted" tabindex="-1" aria-disabled="true" data-dg-no-activity="1">События</a>
+                      </li>
+                      <li class="nav-item">
+                        <a href="#" class="nav-link disabled text-muted" tabindex="-1" aria-disabled="true" data-dg-no-activity="1">Ошибки</a>
+                      </li>
+                    </ul>
+                    <div class="p-0" id="dg-footer-notif-list" style="max-height: 16rem; overflow-y: auto">
+                      <div class="text-muted small p-3 mb-0">Пока нет согласований.</div>
+                    </div>
+                  </div>
+                  <div class="nav-item-btn text-center pt-3 pb-3">
+                    <a
+                      href="/work-schedule.html?tab=dept"
+                      class="btn btn-shadow btn-wide btn-pill btn-dark"
+                      id="dg-footer-notif-view-all"
+                      data-dg-notify-start="Открываем согласования…"
+                    >
+                      <span class="badge badge-dot badge-dot-lg bg-warning badge-pulse me-2" id="dg-footer-notif-view-pulse"></span>
+                      К согласованиям
+                    </a>
+                  </div>
+                </div>
+                <div class="dropdown-menu popover-custom popover-custom-lg rm-pointers p-0 dg-vanilla-footer-popover" data-footer-popover="PopoverFooter-3" style="min-width:380px">
+                  <div class="dropdown-menu-header">
+                    <div class="dropdown-menu-header-inner bg-malibu-beach">
+                      <div class="menu-header-image opacity-2" style="background-image:url('./assets/utils/images/dropdown-header/city2.jpg')"></div>
+                      <div class="menu-header-content text-white">
+                        <div class="avatar-icon-wrapper btn-hover-shine mb-3 avatar-icon-xl">
+                          <div class="avatar-icon rounded">
+                            <img src="./assets/utils/images/avatars/2.jpg" alt="Avatar 6" />
+                          </div>
+                        </div>
+                        <h5 class="menu-header-title">Fancy Statistics</h5>
+                        <h6 class="menu-header-subtitle">Just an example of a slider with some chart widgets inside.</h6>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="p-2">
+                    <div class="card no-shadow widget-chart widget-chart2 text-start p-2 m-1">
+                      <div class="widget-title opacity-6 text-muted text-uppercase">New accounts since 2018</div>
+                      <div class="widget-numbers text-success">78<small class="opacity-5 ps-1">%</small></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="app-footer-right">
+              <a class="dg-footer-legal-link" href="/legal/privacy.html" target="_blank" rel="noopener">Политика обработки персональных данных</a>
+              <a class="dg-footer-legal-link" href="/legal/cookies.html" target="_blank" rel="noopener">Политика использования cookie-файлов</a>
+              <a class="dg-footer-legal-link" href="/legal/recommendation.html" target="_blank" rel="noopener">Правила применения рекомендательных технологий</a>
+              <a class="dg-footer-legal-link" href="/legal/consent.html" target="_blank" rel="noopener">Согласие на обработку ПДн</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/datagon-legal.js"></script>
+  <script src="/datagon-vanilla.js?v=20261009-dates"></script>
+  <script>
+(function () {
+  "use strict";
+  var state = {
+    page: 1,
+    limit: 100,
+    total: 0,
+    sort_by: "moment",
+    sort_dir: "desc",
+    pending: { search: "", preset: "", pay: "", ship: "", store: "", state: "" },
+    applied: { search: "", preset: "", pay: "", ship: "", store: "", state: "" },
+  };
+
+  function fmtMoney(v) {
+    if (window.DatagonFmt && window.DatagonFmt.formatMoney) return window.DatagonFmt.formatMoney(v);
+    var n = Number(v);
+    if (!Number.isFinite(n)) return "—";
+    return n.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " ₽";
+  }
+  function fmtDate(v) {
+    if (window.DatagonFmt && window.DatagonFmt.formatDate) return window.DatagonFmt.formatDate(v);
+    return v ? String(v).slice(0, 10) : "—";
+  }
+  function esc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function readPending() {
+    state.pending = {
+      search: (document.getElementById("dg-mpo-search").value || "").trim(),
+      preset: document.getElementById("dg-mpo-preset").value || "",
+      pay: document.getElementById("dg-mpo-pay").value || "",
+      ship: document.getElementById("dg-mpo-ship").value || "",
+      store: document.getElementById("dg-mpo-store").value || "",
+      state: document.getElementById("dg-mpo-state").value || "",
+    };
+    state.limit = parseInt(document.getElementById("dg-mpo-limit").value, 10) || 100;
+  }
+
+  function commitFilters() {
+    readPending();
+    state.applied = Object.assign({}, state.pending);
+    state.page = 1;
+    loadList();
+  }
+
+  function buildQuery() {
+    var a = state.applied;
+    var p = new URLSearchParams();
+    p.set("limit", String(state.limit));
+    p.set("offset", String((state.page - 1) * state.limit));
+    p.set("sort_by", state.sort_by);
+    p.set("sort_dir", state.sort_dir);
+    if (a.preset) p.set("preset", a.preset);
+    else {
+      if (a.search) p.set("search", a.search);
+      if (a.pay) p.set("pay_status", a.pay);
+      if (a.ship) p.set("ship_status", a.ship);
+      if (a.store) p.set("store_uuid", a.store);
+      if (a.state) p.set("state_uuid", a.state);
+    }
+    return p;
+  }
+
+  function loadStats() {
+    fetch("/api/ms-purchase-orders/stats", { credentials: "same-origin" })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (!j || !j.success) return;
+        document.getElementById("dg-mpo-kpi-full").textContent = fmtMoney(j.prepaid_full);
+        document.getElementById("dg-mpo-kpi-full-n").textContent = "документов: " + (j.count_full || 0);
+        document.getElementById("dg-mpo-kpi-gap").textContent = fmtMoney(j.prepaid_partial_gap);
+        document.getElementById("dg-mpo-kpi-gap-n").textContent = "документов: " + (j.count_partial || 0);
+        document.getElementById("dg-mpo-kpi-total").textContent = fmtMoney(j.prepaid_total);
+        var asof = j.as_of_at
+          ? "снимок: " + (window.DatagonFmt && window.DatagonFmt.formatDateTime
+              ? window.DatagonFmt.formatDateTime(j.as_of_at)
+              : String(j.as_of_at))
+          : "нет данных — запустите синк";
+        if (j.sync_script && j.sync_script.version) {
+          asof += " · v" + j.sync_script.version;
+        }
+        document.getElementById("dg-mpo-kpi-asof").textContent = asof;
+      })
+      .catch(function () {});
+  }
+
+  function loadFilters() {
+    return fetch("/api/ms-purchase-orders/filters", { credentials: "same-origin" })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (!j || !j.success) return;
+        var storeSel = document.getElementById("dg-mpo-store");
+        var stateSel = document.getElementById("dg-mpo-state");
+        (j.stores || []).forEach(function (s) {
+          var o = document.createElement("option");
+          o.value = s.uuid || "";
+          o.textContent = (s.name || s.uuid) + " (" + (s.n || 0) + ")";
+          storeSel.appendChild(o);
+        });
+        (j.states || []).forEach(function (s) {
+          var o = document.createElement("option");
+          o.value = s.uuid || "";
+          o.textContent = (s.name || s.uuid) + " (" + (s.n || 0) + ")";
+          stateSel.appendChild(o);
+        });
+      });
+  }
+
+  function loadList() {
+    var tbody = document.getElementById("dg-mpo-tbody");
+    tbody.innerHTML = '<tr><td colspan="10" class="text-muted py-3">Загрузка…</td></tr>';
+    fetch("/api/ms-purchase-orders/list?" + buildQuery().toString(), { credentials: "same-origin" })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (!j || j.success === false) {
+          tbody.innerHTML =
+            '<tr><td colspan="10" class="text-danger py-3">' +
+            esc((j && j.error) || "Ошибка") +
+            "</td></tr>";
+          return;
+        }
+        state.total = Number(j.total) || 0;
+        var rows = Array.isArray(j.data) ? j.data : [];
+        if (!rows.length) {
+          tbody.innerHTML = '<tr><td colspan="10" class="text-muted py-3">Нет строк. Синхронизируйте или смените фильтр.</td></tr>';
+        } else {
+          tbody.innerHTML = rows
+            .map(function (r) {
+              return (
+                "<tr>" +
+                "<td>" + esc(r.name) + "</td>" +
+                "<td>" + esc(fmtDate(r.moment)) + "</td>" +
+                "<td>" + esc(r.agent_name || "—") + "</td>" +
+                '<td class="dg-mpo-num">' + esc(fmtMoney(r.sum)) + "</td>" +
+                '<td class="dg-mpo-num">' + esc(fmtMoney(r.payed)) + "</td>" +
+                '<td class="dg-mpo-num">' + esc(fmtMoney(r.shipped)) + "</td>" +
+                '<td class="dg-mpo-num">' + esc(fmtMoney(r.gap)) + "</td>" +
+                "<td>" + esc(r.store_name || "—") + "</td>" +
+                "<td>" + esc(r.state_name || "—") + "</td>" +
+                '<td><a class="btn btn-xs btn-outline-secondary btn-sm" target="_blank" rel="noopener" href="' +
+                esc(r.ms_url) +
+                '">МС</a></td>' +
+                "</tr>"
+              );
+            })
+            .join("");
+        }
+        var pages = Math.max(1, Math.ceil(state.total / state.limit) || 1);
+        var shown = rows.length;
+        document.getElementById("dg-mpo-page-status").textContent =
+          "Найдено: " +
+          state.total +
+          "; страница " +
+          state.page +
+          "/" +
+          pages +
+          "; показано: " +
+          shown;
+        document.getElementById("dg-mpo-prev").disabled = state.page <= 1;
+        document.getElementById("dg-mpo-next").disabled = state.page >= pages;
+      })
+      .catch(function (e) {
+        tbody.innerHTML =
+          '<tr><td colspan="10" class="text-danger py-3">' + esc(e.message || e) + "</td></tr>";
+      });
+  }
+
+  function pollSync() {
+    fetch("/api/ms-purchase-orders/sync-status", { credentials: "same-origin" })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        var el = document.getElementById("dg-mpo-sync-status");
+        if (!el) return;
+        el.textContent = j && j.message ? j.message : "";
+        if (j && j.active) setTimeout(pollSync, 1500);
+        else {
+          loadStats();
+          loadList();
+        }
+      })
+      .catch(function () {});
+  }
+
+  document.getElementById("dg-mpo-apply").addEventListener("click", commitFilters);
+  document.getElementById("dg-mpo-reset").addEventListener("click", function () {
+    document.getElementById("dg-mpo-search").value = "";
+    document.getElementById("dg-mpo-preset").value = "";
+    document.getElementById("dg-mpo-pay").value = "";
+    document.getElementById("dg-mpo-ship").value = "";
+    document.getElementById("dg-mpo-store").value = "";
+    document.getElementById("dg-mpo-state").value = "";
+    document.getElementById("dg-mpo-limit").value = "100";
+    commitFilters();
+  });
+  document.getElementById("dg-mpo-search").addEventListener("keydown", function (e) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      commitFilters();
+    }
+  });
+  document.getElementById("dg-mpo-prev").addEventListener("click", function () {
+    if (state.page > 1) {
+      state.page -= 1;
+      loadList();
+    }
+  });
+  document.getElementById("dg-mpo-next").addEventListener("click", function () {
+    var pages = Math.max(1, Math.ceil(state.total / state.limit) || 1);
+    if (state.page < pages) {
+      state.page += 1;
+      loadList();
+    }
+  });
+  document.getElementById("dg-mpo-sync").addEventListener("click", function () {
+    var run = function () {
+      return fetch("/api/ms-purchase-orders/sync", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      }).then(function (r) { return r.json(); }).then(function (j) {
+        if (window.DatagonNotify && window.DatagonNotify.toast) {
+          window.DatagonNotify.toast({
+            type: j && j.success ? "success" : "danger",
+            message: (j && j.status && j.status.message) || (j && j.error) || "Синк",
+          });
+        }
+        pollSync();
+      });
+    };
+    if (window.DatagonNotify && window.DatagonNotify.busyRun) {
+      window.DatagonNotify.busyRun(document.getElementById("dg-mpo-sync"), run);
+    } else run();
+  });
+  document.getElementById("dg-mpo-sync-stop").addEventListener("click", function () {
+    fetch("/api/ms-purchase-orders/sync-cancel", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    }).then(function () { pollSync(); });
+  });
+
+  document.querySelectorAll("#dg-mpo-table thead th[data-sort]").forEach(function (th) {
+    th.addEventListener("click", function () {
+      var sel = window.getSelection && window.getSelection();
+      if (sel && String(sel.toString() || "").trim()) return;
+      var key = th.getAttribute("data-sort");
+      if (state.sort_by === key) state.sort_dir = state.sort_dir === "asc" ? "desc" : "asc";
+      else {
+        state.sort_by = key;
+        state.sort_dir = key === "moment" || key === "name" ? "desc" : "desc";
+      }
+      loadList();
+    });
+  });
+
+  (function filtersCollapse() {
+    var KEY = "datagon_mpo_filters_collapsed_v1";
+    var body = document.getElementById("dg-mpo-filters-body");
+    var btn = document.getElementById("dg-mpo-filters-toggle");
+    function apply(collapsed) {
+      if (!body || !btn) return;
+      body.style.display = collapsed ? "none" : "";
+      btn.textContent = collapsed ? "Развернуть" : "Свернуть";
+    }
+    try {
+      apply(localStorage.getItem(KEY) === "1");
+    } catch (e) {
+      apply(false);
+    }
+    if (btn) {
+      btn.addEventListener("click", function () {
+        var collapsed = body.style.display === "none";
+        apply(!collapsed);
+        try {
+          localStorage.setItem(KEY, !collapsed ? "1" : "0");
+        } catch (e2) {}
+      });
+    }
+  })();
+
+  (function tableCollapse() {
+    var KEY = "dg.mpo.table-card.collapsed.v1";
+    var body = document.getElementById("dg-mpo-table-body");
+    var btn = document.getElementById("dg-mpo-table-toggle");
+    function apply(collapsed) {
+      if (!body || !btn) return;
+      body.style.display = collapsed ? "none" : "";
+      btn.textContent = collapsed ? "Развернуть" : "Свернуть";
+    }
+    try {
+      apply(localStorage.getItem(KEY) === "1");
+    } catch (e) {
+      apply(false);
+    }
+    if (btn) {
+      btn.addEventListener("click", function () {
+        var collapsed = body.style.display === "none";
+        apply(!collapsed);
+        try {
+          localStorage.setItem(KEY, !collapsed ? "1" : "0");
+        } catch (e2) {}
+      });
+    }
+  })();
+
+  loadFilters().then(function () {
+    commitFilters();
+    loadStats();
+    pollSync();
+  });
+})();
+</script>
+
+</body>
+</html>

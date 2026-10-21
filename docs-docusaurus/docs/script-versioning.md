@@ -131,6 +131,23 @@ description: Обязательные ревизии при изменении �
 | 30 | 2.6.2 | 2026-10-19 | Если ≥95% строк сейва относятся к месяцу синка, «В отчёте Planfix» считает весь сейв (дата создания в другом месяце и `<Нет значения>` тоже). Соседние месяцы этим сейвом не затираются. |
 | 31 | 2.6.3 | 2026-10-19 | Скользящие 14/90 дней и короткий «весь год» не перезаписывают помесячные гистограммы — только статусы заявок. Снимок месяца пишется, когда этот месяц составляет ≥95% сейва. |
 
+## Товарный остаток МС в финансах
+
+Реестр: `lib/datagonFinanceMsInventorySyncRevision.js`. Поле `sync_script` в `GET /api/finance/accounts` → `ms_inventory`, в `meta_json` снимков `dg_finance_ms_inventory_month` и в ответе `POST /api/finance/ms-inventory/backfill`.
+
+| rev | version | date | notes |
+|-----|---------|------|-------|
+| 1 | 1.0.0 | 2026-10-21 | Live `ms_export` / EOM / backfill `report/stock/all?moment=…`; Σ только «Товар»; без плакатов. |
+| 2 | 1.1.0 | 2026-10-21 | Только складская позиция «Да»; moment-бэкфилл пересекает остатки с кодами из текущего `ms_export`. |
+
+## Заказы поставщикам (МС)
+
+Реестр: `lib/datagonMsPurchaseOrdersSyncRevision.js`. Поле `sync_script` в `/api/ms-purchase-orders/*` и в `ms_prepaid_orders` на `GET /api/finance/accounts`.
+
+| rev | version | date | notes |
+|-----|---------|------|-------|
+| 1 | 1.0.0 | 2026-10-21 | Шапки `purchaseorder` → `ms_purchase_order`; KPI A/B; без `entity/supply`. |
+
 ## Cursor (для разработчиков)
 
 Правило агента: `.cursor/rules/datagon-script-version-revision.mdc` (always apply).

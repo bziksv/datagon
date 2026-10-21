@@ -73,6 +73,9 @@
         auto_sync_ms_inventory_month_enabled: 0,
         auto_sync_ms_inventory_month_time: "23:55",
         auto_sync_ms_orders_enabled: 0,
+        auto_sync_ms_purchase_orders_enabled: 0,
+        auto_sync_ms_purchase_orders_time: "08:30",
+        ms_purchase_orders_sync_from: "2022-01-01",
         auto_sync_ms_orders_time: "08:00",
         auto_sync_ms_orders_weekdays: "",
         auto_sync_marketplaces_enabled: 0,
@@ -1226,6 +1229,10 @@
         if (msOrdersAutoEn) msOrdersAutoEn.checked = Number(merged.auto_sync_ms_orders_enabled) === 1;
         set("dg-set-auto_ms_orders_time", merged.auto_sync_ms_orders_time || "08:00");
         applyAutoSyncWeekdayChecks("dg-set-auto_ms_orders_wd", merged.auto_sync_ms_orders_weekdays);
+        var msPoEn = document.getElementById("dg-set-auto_ms_po_en");
+        if (msPoEn) msPoEn.checked = Number(merged.auto_sync_ms_purchase_orders_enabled) === 1;
+        set("dg-set-auto_ms_po_time", merged.auto_sync_ms_purchase_orders_time || "08:30");
+        set("dg-set-ms_po_sync_from", merged.ms_purchase_orders_sync_from || "2022-01-01");
         document.getElementById("dg-set-auto_market_ozon_en").checked = Number(merged.auto_sync_marketplaces_ozon_enabled) === 1;
         set("dg-set-auto_market_ozon_time", merged.auto_sync_marketplaces_ozon_time || "06:00");
         document.getElementById("dg-set-auto_market_wb_en").checked = Number(merged.auto_sync_marketplaces_wb_enabled) === 1;
@@ -2474,6 +2481,11 @@
             : false,
           auto_sync_ms_orders_time: getStr("dg-set-auto_ms_orders_time") || "08:00",
           auto_sync_ms_orders_weekdays: collectAutoSyncWeekdayCsv("dg-set-auto_ms_orders_wd"),
+          auto_sync_ms_purchase_orders_enabled: document.getElementById("dg-set-auto_ms_po_en")
+            ? document.getElementById("dg-set-auto_ms_po_en").checked
+            : false,
+          auto_sync_ms_purchase_orders_time: getStr("dg-set-auto_ms_po_time") || "08:30",
+          ms_purchase_orders_sync_from: getStr("dg-set-ms_po_sync_from") || "2022-01-01",
           auto_sync_marketplaces_ozon_enabled: document.getElementById("dg-set-auto_market_ozon_en").checked,
           auto_sync_marketplaces_ozon_time: getStr("dg-set-auto_market_ozon_time") || "06:00",
           auto_sync_marketplaces_wb_enabled: document.getElementById("dg-set-auto_market_wb_en").checked,
@@ -2595,6 +2607,9 @@
             "auto_sync_ms_inventory_month_time",
             "auto_sync_ms_orders_time",
             "auto_sync_ms_orders_weekdays",
+            "auto_sync_ms_purchase_orders_enabled",
+            "auto_sync_ms_purchase_orders_time",
+            "ms_purchase_orders_sync_from",
             "auto_sync_marketplaces_ozon_time",
             "auto_sync_marketplaces_wb_time",
             "auto_sync_marketplaces_ym_time",
@@ -4183,6 +4198,12 @@
       }
       var msOrdersAutoRun = document.getElementById("dg-set-auto_ms_orders_run");
       if (msOrdersAutoRun) msOrdersAutoRun.addEventListener("click", function () { runAutoSyncNow("ms_orders", "Заказы в МС", "dg-set-auto_ms_orders_run"); });
+      var msPoAutoRun = document.getElementById("dg-set-auto_ms_po_run");
+      if (msPoAutoRun) {
+        msPoAutoRun.addEventListener("click", function () {
+          runAutoSyncNow("ms_purchase_orders", "Заказы поставщикам", "dg-set-auto_ms_po_run");
+        });
+      }
       document.getElementById("dg-set-auto_market_ozon_run").addEventListener("click", function () { runAutoSyncNow("marketplaces_ozon", "Ozon", "dg-set-auto_market_ozon_run"); });
       document.getElementById("dg-set-auto_market_wb_run").addEventListener("click", function () { runAutoSyncNow("marketplaces_wb", "Wildberries", "dg-set-auto_market_wb_run"); });
       document.getElementById("dg-set-auto_market_ym_run").addEventListener("click", function () { runAutoSyncNow("marketplaces_ym", "Яндекс Маркет", "dg-set-auto_market_ym_run"); });

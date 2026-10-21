@@ -17,7 +17,7 @@ module.exports = {
     {
       type: "category",
       label: "Сайты и каталог",
-      items: ["mysites", "network-prices", "myproducts", "moysklad", "ms-orders", "ms-sales", "medmarket"],
+      items: ["mysites", "network-prices", "myproducts", "moysklad", "ms-orders", "ms-purchase-orders", "ms-sales", "medmarket"],
     },
     {
       type: "category",

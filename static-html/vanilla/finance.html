@@ -1848,6 +1848,7 @@
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="my-products" href="/my-products.html"><i class="metismenu-icon pe-7s-box2"></i>Мои товары (сайты)</a></li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="moysklad" href="/moysklad.html"><i class="metismenu-icon pe-7s-shopbag"></i>Мой Склад (товары)</a></li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="ms-orders" href="/ms-orders.html" title="Заказы покупателей entity/customerorder из МойСклад (30 дней)"><i class="metismenu-icon pe-7s-note2"></i>Заказы в МС</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="ms-purchase-orders" href="/ms-purchase-orders.html" title="Заказы поставщикам entity/purchaseorder из МойСклад"><i class="metismenu-icon pe-7s-cart"></i>Заказы поставщикам</a></li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="ms-sales" href="/ms-sales.html" title="Продажи МС: отгрузки entity/demand, позиции с привязкой к товарам ms_export"><i class="metismenu-icon pe-7s-cash"></i>Продажи МС</a></li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="medmarket" href="/medmarket.html" title="Стыковка кода МС с кодом товара для Медмаркета"><i class="metismenu-icon pe-7s-id"></i>Медмаркет</a></li>
                       <li class="metismenu-item dg-sidebar-nav-divider" aria-hidden="true">
@@ -2348,7 +2349,7 @@
                 <canvas id="dg-fin-analytics-chart" height="280" aria-label="График поступлений и списаний по месяцам"></canvas>
                 <div id="dg-fin-analytics-empty" class="dg-fin-analytics-empty d-none">Нет проводок за выбранный период — загрузите выписки.</div>
               </div>
-              <p class="small text-muted mb-0 mt-2">По снимку из БД. Организация и счёт — из применённых фильтров. По умолчанию без <strong>внутреннего оборота</strong>: тело депозита (UNV), «Перевод собственных средств» (расчётный ↔ фонд) и <strong>выплаты дивидендов</strong>. <strong>Капитал / займ учредителей</strong> (галка «займ» в таблице движения) никогда не входит в график: это не деньги фирмы. Галка <strong>«Не учитывать расход на ИНН 362903774541»</strong> (вкл. по умолчанию) убирает из графика и топа контрагентов исходящие платежи на этот ИНН — в «Движении» они остаются. Проценты и реальные платежи из фонда остаются. Зелёный — входящие, красный — исходящие, синяя линия — чистый поток (как в фильтре графика). <strong>Оранжевая линия — остаток</strong> на конец месяца (= расчётные + оценка депозитов, как «Всего доступно»; walkback по полной выписке). <strong>Синяя сплошная «С товаром»</strong> — остаток + товарный остаток МС (снимок на 23:59 последнего дня месяца, только «Товар», Альмамед); в подсказке — товар и итог. KPI «Разница» — изменение остатка за весь выбранный период. <strong>Клик по столбцу месяца</strong> подставляет «С даты» / «По дату» (и направление) — остаётся нажать «Применить».</p>
+              <p class="small text-muted mb-0 mt-2">По снимку из БД. Организация и счёт — из применённых фильтров. По умолчанию без <strong>внутреннего оборота</strong>: тело депозита (UNV), «Перевод собственных средств» (расчётный ↔ фонд) и <strong>выплаты дивидендов</strong>. <strong>Капитал / займ учредителей</strong> (галка «займ» в таблице движения) никогда не входит в график: это не деньги фирмы. Галка <strong>«Не учитывать расход на ИНН 362903774541»</strong> (вкл. по умолчанию) убирает из графика и топа контрагентов исходящие платежи на этот ИНН — в «Движении» они остаются. Проценты и реальные платежи из фонда остаются. Зелёный — входящие, красный — исходящие, синяя линия — чистый поток (как в фильтре графика). <strong>Оранжевая линия — остаток</strong> на конец месяца (= расчётные + оценка депозитов, как «Всего доступно»; walkback по полной выписке). <strong>Фиолетовая линия «С товаром»</strong> — остаток + товарный остаток МС (снимок на 23:59 последнего дня месяца, только «Товар» со складской «Да», Альмамед); в подсказке — товар и итог. Не путать с синей линией чистого потока. KPI «Разница» — изменение остатка за весь выбранный период. <strong>Клик по столбцу месяца</strong> подставляет «С даты» / «По дату» (и направление) — остаётся нажать «Применить».</p>
             </div>
           </div>
 
@@ -3147,6 +3148,7 @@
     accounts: [],
     depositEstimate: { items: [], totals: [], note: "", method: "" },
     msInventory: null,
+    msPrepaidOrders: null,
     orgAliases: {},
     page: 1,
     total: 0,
@@ -3810,6 +3812,26 @@
           '</div><div class="dg-fin-kpi-sub">остаток + товар</div></div>';
       }
     }
+    var prepaidHtml = "";
+    var prepaid = state.msPrepaidOrders;
+    if (prepaid && typeof prepaid === "object") {
+      var pf = Number(prepaid.prepaid_full);
+      var pg = Number(prepaid.prepaid_partial_gap);
+      var pt = Number(prepaid.prepaid_total);
+      if (Number.isFinite(pt) && (pt > 0 || pf > 0 || pg > 0 || prepaid.count_full || prepaid.count_partial)) {
+        prepaidHtml =
+          '<div class="dg-fin-kpi is-prepaid"><div class="dg-fin-kpi-label">В пути (ЗП)</div><div class="dg-fin-kpi-value">' +
+          esc(fmtMoney(pf, cur)) +
+          '</div><div class="dg-fin-kpi-sub">оплачено, не принято · ' +
+          esc(String(prepaid.count_full || 0)) +
+          ' док.</div></div>' +
+          '<div class="dg-fin-kpi is-prepaid"><div class="dg-fin-kpi-label">Недопринято</div><div class="dg-fin-kpi-value">' +
+          esc(fmtMoney(pg, cur)) +
+          '</div><div class="dg-fin-kpi-sub">сумма − принято · ' +
+          esc(String(prepaid.count_partial || 0)) +
+          ' док.</div></div>';
+      }
+    }
     box.innerHTML =
       '<div class="dg-fin-kpi is-in"><div class="dg-fin-kpi-label">Входящие</div><div class="dg-fin-kpi-value">' +
       esc(fmtMoney(t.in, cur)) +
@@ -3830,6 +3852,7 @@
       balHtml +
       diffHtml +
       invHtml +
+      prepaidHtml +
       '<div class="dg-fin-kpi"><div class="dg-fin-kpi-label">Операций</div><div class="dg-fin-kpi-value">' +
       esc(String(Number(t.count) || 0)) +
       '</div><div class="dg-fin-kpi-sub">в снимке за период</div></div>';
@@ -4001,17 +4024,18 @@
           });
         }
         if (hasAssetsInv) {
+          // Не синий (чистый поток) и не зелёный (входящие) — фиолетовый.
           datasets.push({
             type: "line",
             label: "С товаром",
             data: assetsVals,
-            borderColor: "#1d4ed8",
-            backgroundColor: "rgba(29, 78, 216, 0.08)",
+            borderColor: "#7c3aed",
+            backgroundColor: "rgba(124, 58, 237, 0.1)",
             borderWidth: 2.5,
             pointRadius: 3.5,
             pointHoverRadius: 5,
             pointBackgroundColor: "#fff",
-            pointBorderColor: "#1d4ed8",
+            pointBorderColor: "#7c3aed",
             pointBorderWidth: 2,
             tension: 0.25,
             spanGaps: true,
@@ -4047,7 +4071,7 @@
             beginAtZero: false,
             ticks: {
               font: { size: 11 },
-              color: hasAssetsInv ? "#1d4ed8" : "#b45309",
+              color: hasAssetsInv ? "#7c3aed" : "#b45309",
               callback: function (v) {
                 var n = Number(v);
                 if (Math.abs(n) >= 1000000) return (n / 1000000).toLocaleString("ru-RU", { maximumFractionDigits: 1 }) + " млн";
@@ -5040,6 +5064,37 @@
     );
   }
 
+  function renderMsPrepaidCard(po) {
+    if (!po) return "";
+    var total = Number(po.prepaid_total) || 0;
+    var tip =
+      "Оплаченные заказы поставщикам: в пути (не принято) + недопринято (сумма − принято). Не входит в «Товар (МС)». См. /ms-purchase-orders.html";
+    return (
+      '<div class="col-sm-6 col-lg-4 col-xl-3">' +
+      '<div class="card dg-fin-bal-card is-prepaid" title="' +
+      esc(tip) +
+      '">' +
+      '<div class="card-body">' +
+      '<div class="dg-fin-acc-top">' +
+      '<span class="dg-fin-type-pill is-inventory">ЗП</span>' +
+      '<span class="dg-fin-acc-mask">МС</span>' +
+      "</div>" +
+      '<div class="dg-fin-acc-title-row"><span class="dg-fin-acc-title dg-fin-name-text">В пути / недопринято</span></div>' +
+      '<div class="dg-fin-acc-amount dg-fin-bal-num">' +
+      esc(fmtMoney(total, "RUB")) +
+      "</div>" +
+      '<div class="dg-fin-acc-blocked text-muted">' +
+      esc(
+        "в пути " +
+          fmtMoney(po.prepaid_full, "RUB") +
+          " · недопр. " +
+          fmtMoney(po.prepaid_partial_gap, "RUB")
+      ) +
+      "</div>" +
+      "</div></div></div>"
+    );
+  }
+
   function groupAccountsByBank(list) {
     var order = [];
     var map = Object.create(null);
@@ -5334,6 +5389,9 @@
           state.msInventory
         ) {
           invCard = renderMsInventoryCard(state.msInventory);
+          if (state.msPrepaidOrders) {
+            invCard += renderMsPrepaidCard(state.msPrepaidOrders);
+          }
           inventoryCardAttached = true;
         }
         return (
@@ -5897,6 +5955,18 @@
                 customer_codes: Array.isArray(j.ms_inventory.customer_codes)
                   ? j.ms_inventory.customer_codes.map(String)
                   : [],
+              }
+            : null;
+        state.msPrepaidOrders =
+          j.ms_prepaid_orders && typeof j.ms_prepaid_orders === "object"
+            ? {
+                prepaid_full: Number(j.ms_prepaid_orders.prepaid_full) || 0,
+                prepaid_partial_gap: Number(j.ms_prepaid_orders.prepaid_partial_gap) || 0,
+                prepaid_total: Number(j.ms_prepaid_orders.prepaid_total) || 0,
+                count_full: Number(j.ms_prepaid_orders.count_full) || 0,
+                count_partial: Number(j.ms_prepaid_orders.count_partial) || 0,
+                as_of_at: j.ms_prepaid_orders.as_of_at || null,
+                sync_script: j.ms_prepaid_orders.sync_script || null,
               }
             : null;
         state.orgAliases = j.org_aliases && typeof j.org_aliases === "object" ? j.org_aliases : {};
