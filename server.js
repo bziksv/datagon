@@ -136,6 +136,9 @@ let appSettings = {
     auto_sync_bitcop_hours_weekdays: '',
     auto_sync_moysklad_enabled: 0,
     auto_sync_moysklad_time: '04:00',
+    auto_sync_ms_inventory_month_enabled: 0,
+    auto_sync_ms_inventory_month_time: '23:55',
+    finance_ms_inventory_customer_codes: '',
     auto_sync_ms_orders_enabled: 0,
     auto_sync_ms_orders_time: '08:00',
     auto_sync_ms_orders_weekdays: '',
@@ -511,6 +514,8 @@ async function initDB() {
             ['auto_sync_bitcop_hours_only_hourly','1'],
             ['auto_sync_bitcop_hours_weekdays',''],
             ['auto_sync_moysklad_enabled','0'],['auto_sync_moysklad_time','04:00'],
+            ['auto_sync_ms_inventory_month_enabled','0'],['auto_sync_ms_inventory_month_time','23:55'],
+            ['finance_ms_inventory_customer_codes',''],
             ['auto_sync_ms_orders_enabled','0'],['auto_sync_ms_orders_time','08:00'],['auto_sync_ms_orders_weekdays',''],
             ['discover_max_sitemaps','200'],['discover_max_urls','50000'],
             ['discover_crawl_max_pages','500'],['discover_request_delay_ms','100'],
@@ -2325,6 +2330,20 @@ async function processAutoSyncQueue() {
                     (msFailed ? msMsg : 'Завершено') || (done ? 'Завершено' : 'Таймаут ожидания')
                 );
                 console.log('[AUTO SYNC] Queue done: moysklad');
+            } else if (task === 'ms_inventory_month') {
+                console.log('[AUTO SYNC] Queue start: ms_inventory_month');
+                await startAutoSyncRun('ms_inventory_month', triggerType);
+                const finMsInv = require('./lib/datagonFinanceMsInventory');
+                // Ручной «Запустить сейчас» — force; по расписанию — только последний день месяца МСК.
+                const forceSnap = triggerType === 'manual';
+                const invRes = await finMsInv.runMsInventoryMonthSnapshot(db, appSettings, {
+                    force: forceSnap,
+                    source: forceSnap ? 'manual' : 'auto',
+                });
+                const invStatus = invRes && invRes.skipped ? 'skipped' : invRes && invRes.status === 'completed' ? 'completed' : 'failed';
+                const invMsg = String((invRes && invRes.message) || '').trim() || (invStatus === 'completed' ? 'Завершено' : 'Ошибка');
+                await finishAutoSyncRun('ms_inventory_month', invStatus, invMsg);
+                console.log(`[AUTO SYNC] Queue done: ms_inventory_month — ${invStatus}`);
             } else if (
                 task === 'marketplaces'
                 || task === 'marketplaces_ozon'
@@ -3203,6 +3222,9 @@ async function processAutoSyncQueue() {
         if (autoSyncRunIds.has('moysklad')) {
             await finishAutoSyncRun('moysklad', 'failed', e.message || 'Ошибка очереди');
         }
+        if (autoSyncRunIds.has('ms_inventory_month')) {
+            await finishAutoSyncRun('ms_inventory_month', 'failed', e.message || 'Ошибка очереди');
+        }
         if (autoSyncRunIds.has('marketplaces')) {
             await finishAutoSyncRun('marketplaces', 'failed', e.message || 'Ошибка очереди');
         }
@@ -3296,6 +3318,11 @@ function startAutoSyncScheduler() {
                     type: 'moysklad',
                     enabled: Number(appSettings.auto_sync_moysklad_enabled || 0) === 1,
                     time: String(appSettings.auto_sync_moysklad_time || '04:00').slice(0, 5)
+                },
+                {
+                    type: 'ms_inventory_month',
+                    enabled: Number(appSettings.auto_sync_ms_inventory_month_enabled || 0) === 1,
+                    time: String(appSettings.auto_sync_ms_inventory_month_time || '23:55').slice(0, 5)
                 },
                 {
                     type: 'ms_orders',

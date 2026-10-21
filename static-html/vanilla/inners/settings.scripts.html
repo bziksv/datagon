@@ -70,6 +70,8 @@
         auto_sync_price_comp_site_id: "all",
         auto_sync_moysklad_enabled: 0,
         auto_sync_moysklad_time: "04:00",
+        auto_sync_ms_inventory_month_enabled: 0,
+        auto_sync_ms_inventory_month_time: "23:55",
         auto_sync_ms_orders_enabled: 0,
         auto_sync_ms_orders_time: "08:00",
         auto_sync_ms_orders_weekdays: "",
@@ -1215,6 +1217,11 @@
         applyAutoSyncWeekdayChecks("dg-set-auto_bitcop_hours_wd", merged.auto_sync_bitcop_hours_weekdays);
         document.getElementById("dg-set-auto_ms_en").checked = Number(merged.auto_sync_moysklad_enabled) === 1;
         set("dg-set-auto_ms_time", merged.auto_sync_moysklad_time || "04:00");
+        if (document.getElementById("dg-set-auto_ms_inv_en")) {
+          document.getElementById("dg-set-auto_ms_inv_en").checked =
+            Number(merged.auto_sync_ms_inventory_month_enabled) === 1;
+        }
+        set("dg-set-auto_ms_inv_time", merged.auto_sync_ms_inventory_month_time || "23:55");
         var msOrdersAutoEn = document.getElementById("dg-set-auto_ms_orders_en");
         if (msOrdersAutoEn) msOrdersAutoEn.checked = Number(merged.auto_sync_ms_orders_enabled) === 1;
         set("dg-set-auto_ms_orders_time", merged.auto_sync_ms_orders_time || "08:00");
@@ -2458,6 +2465,10 @@
           auto_sync_bitcop_hours_weekdays: collectAutoSyncWeekdayCsv("dg-set-auto_bitcop_hours_wd"),
           auto_sync_moysklad_enabled: document.getElementById("dg-set-auto_ms_en").checked,
           auto_sync_moysklad_time: getStr("dg-set-auto_ms_time") || "04:00",
+          auto_sync_ms_inventory_month_enabled: document.getElementById("dg-set-auto_ms_inv_en")
+            ? document.getElementById("dg-set-auto_ms_inv_en").checked
+            : false,
+          auto_sync_ms_inventory_month_time: getStr("dg-set-auto_ms_inv_time") || "23:55",
           auto_sync_ms_orders_enabled: document.getElementById("dg-set-auto_ms_orders_en")
             ? document.getElementById("dg-set-auto_ms_orders_en").checked
             : false,
@@ -2580,6 +2591,8 @@
             "auto_sync_ops_planfix_time",
             "auto_sync_ops_planfix_weekdays",
             "auto_sync_moysklad_time",
+            "auto_sync_ms_inventory_month_enabled",
+            "auto_sync_ms_inventory_month_time",
             "auto_sync_ms_orders_time",
             "auto_sync_ms_orders_weekdays",
             "auto_sync_marketplaces_ozon_time",
@@ -4163,6 +4176,11 @@
         startPriceCompLivePolling();
       }
       document.getElementById("dg-set-auto_ms_run").addEventListener("click", function () { runAutoSyncNow("moysklad", "МойСклад (ms_export)", "dg-set-auto_ms_run"); });
+      if (document.getElementById("dg-set-auto_ms_inv_run")) {
+        document.getElementById("dg-set-auto_ms_inv_run").addEventListener("click", function () {
+          runAutoSyncNow("ms_inventory_month", "Товарный остаток МС (месяц)", "dg-set-auto_ms_inv_run");
+        });
+      }
       var msOrdersAutoRun = document.getElementById("dg-set-auto_ms_orders_run");
       if (msOrdersAutoRun) msOrdersAutoRun.addEventListener("click", function () { runAutoSyncNow("ms_orders", "Заказы в МС", "dg-set-auto_ms_orders_run"); });
       document.getElementById("dg-set-auto_market_ozon_run").addEventListener("click", function () { runAutoSyncNow("marketplaces_ozon", "Ozon", "dg-set-auto_market_ozon_run"); });

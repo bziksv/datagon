@@ -173,6 +173,8 @@ module.exports = (db, appSettings) => {
             auto_sync_ops_planfix_enabled, auto_sync_ops_planfix_time, auto_sync_ops_planfix_weekdays,
             auto_sync_bitcop_hours_enabled, auto_sync_bitcop_hours_time, auto_sync_bitcop_hours_days, auto_sync_bitcop_hours_only_hourly, auto_sync_bitcop_hours_weekdays,
             auto_sync_moysklad_enabled, auto_sync_moysklad_time,
+            auto_sync_ms_inventory_month_enabled, auto_sync_ms_inventory_month_time,
+            finance_ms_inventory_customer_codes,
             auto_sync_ms_orders_enabled, auto_sync_ms_orders_time, auto_sync_ms_orders_weekdays,
             auto_sync_marketplaces_enabled, auto_sync_marketplaces_time,
             auto_sync_marketplaces_ozon_enabled, auto_sync_marketplaces_ozon_time,
@@ -362,6 +364,29 @@ module.exports = (db, appSettings) => {
             }
             if (auto_sync_moysklad_enabled !== undefined) queries.push(['auto_sync_moysklad_enabled', auto_sync_moysklad_enabled ? 1 : 0]);
             if (auto_sync_moysklad_time !== undefined) queries.push(['auto_sync_moysklad_time', auto_sync_moysklad_time || '04:00']);
+            if (auto_sync_ms_inventory_month_enabled !== undefined) {
+                queries.push(['auto_sync_ms_inventory_month_enabled', auto_sync_ms_inventory_month_enabled ? 1 : 0]);
+            }
+            if (auto_sync_ms_inventory_month_time !== undefined) {
+                queries.push(['auto_sync_ms_inventory_month_time', auto_sync_ms_inventory_month_time || '23:55']);
+            }
+            if (finance_ms_inventory_customer_codes !== undefined) {
+                let codesVal = '';
+                if (Array.isArray(finance_ms_inventory_customer_codes)) {
+                    codesVal = JSON.stringify(
+                        finance_ms_inventory_customer_codes.map((x) => String(x || '').trim()).filter(Boolean)
+                    );
+                } else {
+                    const s = String(finance_ms_inventory_customer_codes || '').trim();
+                    if (s.startsWith('[')) codesVal = s;
+                    else if (s) {
+                        codesVal = JSON.stringify(
+                            s.split(/[,;\s]+/).map((x) => x.trim()).filter(Boolean)
+                        );
+                    } else codesVal = '';
+                }
+                queries.push(['finance_ms_inventory_customer_codes', codesVal]);
+            }
             if (auto_sync_ms_orders_enabled !== undefined) queries.push(['auto_sync_ms_orders_enabled', auto_sync_ms_orders_enabled ? 1 : 0]);
             if (auto_sync_ms_orders_time !== undefined) queries.push(['auto_sync_ms_orders_time', auto_sync_ms_orders_time || '08:00']);
             if (auto_sync_ms_orders_weekdays !== undefined) {
@@ -747,6 +772,29 @@ module.exports = (db, appSettings) => {
             }
             if(auto_sync_moysklad_enabled !== undefined) appSettings.auto_sync_moysklad_enabled = auto_sync_moysklad_enabled ? 1 : 0;
             if(auto_sync_moysklad_time !== undefined) appSettings.auto_sync_moysklad_time = auto_sync_moysklad_time || '04:00';
+            if (auto_sync_ms_inventory_month_enabled !== undefined) {
+                appSettings.auto_sync_ms_inventory_month_enabled = auto_sync_ms_inventory_month_enabled ? 1 : 0;
+            }
+            if (auto_sync_ms_inventory_month_time !== undefined) {
+                appSettings.auto_sync_ms_inventory_month_time = auto_sync_ms_inventory_month_time || '23:55';
+            }
+            if (finance_ms_inventory_customer_codes !== undefined) {
+                let codesVal = '';
+                if (Array.isArray(finance_ms_inventory_customer_codes)) {
+                    codesVal = JSON.stringify(
+                        finance_ms_inventory_customer_codes.map((x) => String(x || '').trim()).filter(Boolean)
+                    );
+                } else {
+                    const s = String(finance_ms_inventory_customer_codes || '').trim();
+                    if (s.startsWith('[')) codesVal = s;
+                    else if (s) {
+                        codesVal = JSON.stringify(
+                            s.split(/[,;\s]+/).map((x) => x.trim()).filter(Boolean)
+                        );
+                    } else codesVal = '';
+                }
+                appSettings.finance_ms_inventory_customer_codes = codesVal;
+            }
             if(auto_sync_ms_orders_enabled !== undefined) appSettings.auto_sync_ms_orders_enabled = auto_sync_ms_orders_enabled ? 1 : 0;
             if(auto_sync_ms_orders_time !== undefined) appSettings.auto_sync_ms_orders_time = auto_sync_ms_orders_time || '08:00';
             if(auto_sync_ms_orders_weekdays !== undefined) {

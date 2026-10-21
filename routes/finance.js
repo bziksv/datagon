@@ -8,6 +8,7 @@ const tbank = require('../lib/datagonTbankClient');
 const finCred = require('../lib/datagonFinanceCredentials');
 const finCash = require('../lib/datagonFinanceCash');
 const finPlans = require('../lib/datagonFinancePlans');
+const finMsInv = require('../lib/datagonFinanceMsInventory');
 
 const DEFAULT_TX_DAYS = 30;
 const MAX_TX_DAYS = 1095; // до ~3 лет (1 + 2)
@@ -2124,15 +2125,30 @@ function factory(db, appSettings) {
             }
             const org_aliases = await finCred.loadOrgAliases(db, appSettings);
             const deposit_estimate = await loadDepositStockEstimate(db);
+            let ms_inventory = null;
+            try {
+                await finMsInv.ensureMsInventorySchema(db);
+                ms_inventory = await finMsInv.loadMsInventoryForFinance(db, appSettings);
+            } catch (eInv) {
+                ms_inventory = {
+                    ym: finMsInv.currentYmMsk(),
+                    value_products: 0,
+                    provisional: true,
+                    source: 'error',
+                    customer_codes: [],
+                    error: eInv && eInv.message ? String(eInv.message) : String(eInv),
+                };
+            }
             res.json({
                 success: true,
                 accounts: rows || [],
                 account_sub_types: subtypes,
                 org_aliases,
                 deposit_estimate,
+                ms_inventory,
                 can_write: pageMode(req) === 'full',
                 api_note:
-                    'Банк — в шапке организации (Точка / Райффайзен / Т‑Банк). Фонд: галка при редактировании названия (карандаш) или клик по бейджу типа. «На депозитах» — оценка из выписки (открытия − возвраты тела), всегда в карточках и в «Всего».',
+                    'Банк — в шапке организации (Точка / Райффайзен / Т‑Банк). Фонд: галка при редактировании названия (карандаш) или клик по бейджу типа. «На депозитах» — оценка из выписки (открытия − возвраты тела), всегда в карточках и в «Всего». «Товар (МС)» — оценка склада (остаток × себестоимость, только Товар), привязана к Альмамед; официальный снимок — конец месяца.',
             });
         } catch (e) {
             res.status(500).json({ success: false, error: e.message || String(e) });
@@ -3617,6 +3633,11 @@ function factory(db, appSettings) {
                 balance_diff: null,
                 balance_note: null,
             };
+            let inventoryMeta = {
+                inventory_now: null,
+                inventory_customer_codes: [],
+                inventory_applies: false,
+            };
             if (source !== 'cash') {
                 const bal = await loadAccountBalanceSeries(db, {
                     monthKeys,
@@ -3632,6 +3653,32 @@ function factory(db, appSettings) {
                     deposits_now: bal.deposits_now,
                     balance_note: bal.balance_note,
                 };
+                const almaCodes = await finMsInv.resolveAlmaMedCustomerCodes(db, appSettings);
+                const inventoryApplies =
+                    !customerCodes.length ||
+                    customerCodes.some((c) => almaCodes.indexOf(String(c)) >= 0);
+                inventoryMeta.inventory_customer_codes = almaCodes;
+                inventoryMeta.inventory_applies = inventoryApplies;
+                let invByYm = Object.create(null);
+                if (inventoryApplies && currency === 'RUB' && !accountId) {
+                    try {
+                        invByYm = await finMsInv.loadSnapshotsByYm(db, monthKeys);
+                    } catch (eInv) {
+                        invByYm = Object.create(null);
+                    }
+                }
+                const lastYm = monthKeys[monthKeys.length - 1];
+                if (inventoryApplies && invByYm[lastYm]) {
+                    inventoryMeta.inventory_now = invByYm[lastYm].value_products;
+                } else if (inventoryApplies && currency === 'RUB' && !accountId) {
+                    try {
+                        const live = await finMsInv.loadMsInventoryForFinance(db, appSettings);
+                        inventoryMeta.inventory_now = live.value_products;
+                        inventoryMeta.inventory_provisional = !!live.provisional;
+                    } catch (eLive) {
+                        /* ignore */
+                    }
+                }
                 let prevBal = bal.balance_start;
                 series.forEach(function (row) {
                     const b =
@@ -3646,9 +3693,20 @@ function factory(db, appSettings) {
                         bal.deposits_by_ym && bal.deposits_by_ym[row.month] != null
                             ? Math.round(Number(bal.deposits_by_ym[row.month]) * 100) / 100
                             : null;
+                    const invSnap = invByYm[row.month];
                     row.balance = b;
                     row.balance_accounts = acc;
                     row.balance_deposits = dep;
+                    row.inventory =
+                        invSnap && invSnap.value_products != null
+                            ? Math.round(Number(invSnap.value_products) * 100) / 100
+                            : null;
+                    row.assets_with_inventory =
+                        b != null && row.inventory != null
+                            ? Math.round((b + row.inventory) * 100) / 100
+                            : b != null
+                              ? b
+                              : null;
                     row.diff =
                         b != null && prevBal != null
                             ? Math.round((b - prevBal) * 100) / 100
@@ -3689,8 +3747,20 @@ function factory(db, appSettings) {
                     balance_diff: balanceMeta.balance_diff,
                     balance_accounts: balanceMeta.accounts_now,
                     balance_deposits: balanceMeta.deposits_now,
+                    inventory: inventoryMeta.inventory_now,
+                    inventory_provisional: !!inventoryMeta.inventory_provisional,
+                    inventory_applies: !!inventoryMeta.inventory_applies,
+                    assets_with_inventory:
+                        balanceMeta.balance_now != null && inventoryMeta.inventory_now != null
+                            ? Math.round(
+                                  (Number(balanceMeta.balance_now) + Number(inventoryMeta.inventory_now)) * 100
+                              ) / 100
+                            : balanceMeta.balance_now,
                 },
                 balance_note: balanceMeta.balance_note,
+                ms_inventory_note: inventoryMeta.inventory_applies
+                    ? 'Товар (МС) — снимок Σ(остаток×себестоимость) только «Товар», привязка к Альмамед; до EOM — оценка из ms_export.'
+                    : null,
                 end_ym: endYm,
             });
         } catch (e) {

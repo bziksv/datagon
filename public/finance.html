@@ -339,6 +339,11 @@
       background: #fffbeb;
       border-color: #fde68a;
     }
+    .dg-fin-type-pill.is-inventory {
+      color: #1e3a8a;
+      background: #eff6ff;
+      border-color: #bfdbfe;
+    }
     .dg-fin-type-pill.is-toggle {
       cursor: pointer;
     }
@@ -374,6 +379,10 @@
     .dg-fin-bal-card.is-deposit {
       border-left: 3px solid #f59e0b;
       background: linear-gradient(180deg, #ffffff 0%, #fffbeb 100%);
+    }
+    .dg-fin-bal-card.is-inventory {
+      border-left: 3px solid #3b82f6;
+      background: linear-gradient(180deg, #ffffff 0%, #eff6ff 100%);
     }
     .dg-fin-bal-card.is-zero {
       opacity: 0.78;
@@ -3137,6 +3146,7 @@
     tbankCredentials: [],
     accounts: [],
     depositEstimate: { items: [], totals: [], note: "", method: "" },
+    msInventory: null,
     orgAliases: {},
     page: 1,
     total: 0,
@@ -3783,6 +3793,23 @@
           esc((balDiff > 0 ? "+" : "") + fmtMoney(balDiff, cur)) +
           '</div><div class="dg-fin-kpi-sub">остаток: конец − начало периода</div></div>'
         : '<div class="dg-fin-kpi is-diff"><div class="dg-fin-kpi-label">Разница</div><div class="dg-fin-kpi-value">—</div><div class="dg-fin-kpi-sub">нет данных</div></div>';
+    var invNow = t.inventory != null ? Number(t.inventory) : null;
+    var invHtml = "";
+    if (t.inventory_applies && invNow != null && Number.isFinite(invNow)) {
+      invHtml =
+        '<div class="dg-fin-kpi is-inv"><div class="dg-fin-kpi-label">Товар (МС)</div><div class="dg-fin-kpi-value">' +
+        esc(fmtMoney(invNow, cur)) +
+        '</div><div class="dg-fin-kpi-sub">' +
+        esc(t.inventory_provisional ? "оценка сейчас · Альмамед" : "снимок / Альмамед") +
+        "</div></div>";
+      var assets = t.assets_with_inventory != null ? Number(t.assets_with_inventory) : null;
+      if (assets != null && Number.isFinite(assets)) {
+        invHtml +=
+          '<div class="dg-fin-kpi is-assets"><div class="dg-fin-kpi-label">С товаром</div><div class="dg-fin-kpi-value">' +
+          esc(fmtMoney(assets, cur)) +
+          '</div><div class="dg-fin-kpi-sub">остаток + товар</div></div>';
+      }
+    }
     box.innerHTML =
       '<div class="dg-fin-kpi is-in"><div class="dg-fin-kpi-label">Входящие</div><div class="dg-fin-kpi-value">' +
       esc(fmtMoney(t.in, cur)) +
@@ -3802,6 +3829,7 @@
       "</div>" +
       balHtml +
       diffHtml +
+      invHtml +
       '<div class="dg-fin-kpi"><div class="dg-fin-kpi-label">Операций</div><div class="dg-fin-kpi-value">' +
       esc(String(Number(t.count) || 0)) +
       '</div><div class="dg-fin-kpi-sub">в снимке за период</div></div>';
@@ -4921,6 +4949,65 @@
     );
   }
 
+  function msInventoryCodes() {
+    var inv = state.msInventory;
+    return inv && Array.isArray(inv.customer_codes) ? inv.customer_codes.map(String) : [];
+  }
+
+  function msInventoryVisibleForOrgs(orgCodes) {
+    var alma = msInventoryCodes();
+    if (!alma.length || !state.msInventory) return false;
+    var codes = normalizeOrgs(orgCodes);
+    if (!codes.length) return true;
+    return codes.some(function (c) {
+      return alma.indexOf(String(c)) >= 0;
+    });
+  }
+
+  function isAlmaMedCustomerCode(code) {
+    var alma = msInventoryCodes();
+    return alma.indexOf(String(code || "")) >= 0;
+  }
+
+  function renderMsInventoryCard(inv) {
+    if (!inv) return "";
+    var amt = Number(inv.value_products);
+    if (!Number.isFinite(amt)) amt = 0;
+    var sub = inv.provisional
+      ? "оценка сейчас (до снимка конца месяца)"
+      : "снимок " + (inv.ym || "");
+    var asOf =
+      inv.as_of_at && !inv.provisional
+        ? " · на " + fmtDate(inv.as_of_at)
+        : inv.provisional
+          ? ""
+          : "";
+    var tip =
+      "Σ(остаток × себестоимость), только «Товар» (как на МойСклад). Привязка: Альмамед. " +
+      (inv.provisional
+        ? "Пока нет официального снимка за " + (inv.ym || "месяц") + " — live из ms_export."
+        : "Официальный снимок за " + (inv.ym || "") + ".");
+    return (
+      '<div class="col-sm-6 col-lg-4 col-xl-3">' +
+      '<div class="card dg-fin-bal-card is-inventory" title="' +
+      esc(tip) +
+      '">' +
+      '<div class="card-body">' +
+      '<div class="dg-fin-acc-top">' +
+      '<span class="dg-fin-type-pill is-inventory">Товар</span>' +
+      '<span class="dg-fin-acc-mask">МС</span>' +
+      "</div>" +
+      '<div class="dg-fin-acc-title-row"><span class="dg-fin-acc-title dg-fin-name-text">Товар (МС)</span></div>' +
+      '<div class="dg-fin-acc-amount dg-fin-bal-num">' +
+      esc(fmtMoney(amt, "RUB")) +
+      "</div>" +
+      '<div class="dg-fin-acc-blocked text-muted">' +
+      esc(sub + asOf) +
+      "</div>" +
+      "</div></div></div>"
+    );
+  }
+
   function groupAccountsByBank(list) {
     var order = [];
     var map = Object.create(null);
@@ -5064,6 +5151,25 @@
           esc(formatMoneyList(depositLines)) +
           "</strong></div>"
         : "";
+    var invVisible = msInventoryVisibleForOrgs(state.applied.org);
+    var invAmt = invVisible && state.msInventory ? Number(state.msInventory.value_products) : null;
+    var invExtra = "";
+    var withInvExtra = "";
+    if (invVisible && invAmt != null && Number.isFinite(invAmt)) {
+      invExtra =
+        '<div class="dg-fin-total-extra small text-muted">+ товар (МС' +
+        (state.msInventory.provisional ? ", оценка" : "") +
+        "): <strong class=\"text-dark\">" +
+        esc(fmtMoney(invAmt, "RUB")) +
+        "</strong></div>";
+      var cashMain = main && Number.isFinite(Number(main.amount)) ? Number(main.amount) : 0;
+      if (!main || normalizeCurrency(main.currency) === "RUB") {
+        withInvExtra =
+          '<div class="dg-fin-total-extra small">Всего с товаром: <strong class="text-dark">' +
+          esc(fmtMoney(cashMain + invAmt, "RUB")) +
+          "</strong></div>";
+      }
+    }
 
     totalWrap.innerHTML =
       '<div class="card dg-fin-total-card">' +
@@ -5083,11 +5189,14 @@
       (depositLines.length ? " · расчётные + оценка депозитов" : "") +
       "</div>" +
       depositExtra +
+      invExtra +
+      withInvExtra +
       multiCur +
       blockedHtml +
       "</div></div>";
 
     var groups = groupAccountsByBank(viewAccounts);
+    var inventoryCardAttached = false;
     banksWrap.innerHTML = groups
       .map(function (g) {
         var depForG = depositEstimateForGroup(g);
@@ -5185,6 +5294,16 @@
           })
           .join("");
         var depositCards = depForG.map(renderDepositEstimateCard).join("");
+        var invCard = "";
+        if (
+          !inventoryCardAttached &&
+          invVisible &&
+          isAlmaMedCustomerCode(g.customer_code) &&
+          state.msInventory
+        ) {
+          invCard = renderMsInventoryCard(state.msInventory);
+          inventoryCardAttached = true;
+        }
         return (
           '<div class="dg-fin-bank-block" data-fin-bank="' +
           esc(g.key) +
@@ -5227,6 +5346,7 @@
           '<div class="row g-3 dg-fin-balances-row">' +
           cards +
           depositCards +
+          invCard +
           "</div></div>"
         );
       })
@@ -5730,6 +5850,23 @@
           items: Array.isArray(de.items) ? de.items : [],
           totals: Array.isArray(de.totals) ? de.totals : [],
         };
+        state.msInventory =
+          j.ms_inventory && typeof j.ms_inventory === "object"
+            ? {
+                ym: String(j.ms_inventory.ym || ""),
+                value_products: Number(j.ms_inventory.value_products) || 0,
+                value_bundles:
+                  j.ms_inventory.value_bundles == null
+                    ? null
+                    : Number(j.ms_inventory.value_bundles) || 0,
+                as_of_at: j.ms_inventory.as_of_at || null,
+                provisional: !!j.ms_inventory.provisional,
+                source: String(j.ms_inventory.source || ""),
+                customer_codes: Array.isArray(j.ms_inventory.customer_codes)
+                  ? j.ms_inventory.customer_codes.map(String)
+                  : [],
+              }
+            : null;
         state.orgAliases = j.org_aliases && typeof j.org_aliases === "object" ? j.org_aliases : {};
         if (typeof j.can_write === "boolean") state.canWrite = j.can_write;
         setApiNote(j.api_note || "");
