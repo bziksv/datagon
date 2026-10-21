@@ -2155,6 +2155,38 @@ function factory(db, appSettings) {
         }
     });
 
+    /**
+     * Бэкфилл снимков товарного остатка МС на 23:59 последнего дня месяца.
+     * Body: { from_ym?: "2025-01", to_ym?: "2026-09", force?: false }
+     */
+    router.post('/ms-inventory/backfill', async (req, res) => {
+        if (!requireFinanceAccess(req, res, true)) return;
+        try {
+            const body = req.body || {};
+            const fromYm = String(body.from_ym || body.fromYm || '2025-01').trim();
+            const toYm = String(body.to_ym || body.toYm || '2026-09').trim();
+            const force = body.force === true || body.force === 1 || body.force === '1';
+            let cfg = null;
+            try {
+                cfg = require('../config');
+            } catch (eCfg) {
+                cfg = null;
+            }
+            const result = await finMsInv.backfillMsInventoryMonths(db, appSettings, {
+                fromYm,
+                toYm,
+                force,
+                config: cfg,
+            });
+            res.json(result);
+        } catch (e) {
+            res.status(500).json({
+                success: false,
+                error: e && e.message ? e.message : String(e),
+            });
+        }
+    });
+
     /** Своё название юрлица (customer_code): полное + короткое — не затирается синком. */
     router.post('/org-meta', async (req, res) => {
         if (!requireFinanceAccess(req, res, true)) return;
@@ -3701,12 +3733,11 @@ function factory(db, appSettings) {
                         invSnap && invSnap.value_products != null
                             ? Math.round(Number(invSnap.value_products) * 100) / 100
                             : null;
+                    // Только когда есть снимок товара за месяц — иначе на графике дублировала бы «Остаток».
                     row.assets_with_inventory =
                         b != null && row.inventory != null
                             ? Math.round((b + row.inventory) * 100) / 100
-                            : b != null
-                              ? b
-                              : null;
+                            : null;
                     row.diff =
                         b != null && prevBal != null
                             ? Math.round((b - prevBal) * 100) / 100

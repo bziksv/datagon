@@ -845,7 +845,8 @@
       return (
         Number(r.in) > 0 ||
         Number(r.out) > 0 ||
-        (r.balance != null && Number.isFinite(Number(r.balance)))
+        (r.balance != null && Number.isFinite(Number(r.balance))) ||
+        (r.assets_with_inventory != null && Number.isFinite(Number(r.assets_with_inventory)))
       );
     });
     if (!hasAny) {
@@ -867,7 +868,13 @@
     var balVals = rows.map(function (r) {
       return r.balance != null && Number.isFinite(Number(r.balance)) ? Number(r.balance) : null;
     });
+    var assetsVals = rows.map(function (r) {
+      return r.assets_with_inventory != null && Number.isFinite(Number(r.assets_with_inventory))
+        ? Number(r.assets_with_inventory)
+        : null;
+    });
     var hasBalance = balVals.some(function (v) { return v != null; });
+    var hasAssetsInv = assetsVals.some(function (v) { return v != null; });
     var cur = currency || "RUB";
 
     loadChartJs()
@@ -946,6 +953,25 @@
             order: 1,
           });
         }
+        if (hasAssetsInv) {
+          datasets.push({
+            type: "line",
+            label: "С товаром",
+            data: assetsVals,
+            borderColor: "#1d4ed8",
+            backgroundColor: "rgba(29, 78, 216, 0.08)",
+            borderWidth: 2.5,
+            pointRadius: 3.5,
+            pointHoverRadius: 5,
+            pointBackgroundColor: "#fff",
+            pointBorderColor: "#1d4ed8",
+            pointBorderWidth: 2,
+            tension: 0.25,
+            spanGaps: true,
+            yAxisID: "yBal",
+            order: 0,
+          });
+        }
 
         var scales = {
           x: {
@@ -968,13 +994,13 @@
             grid: { color: "rgba(15, 23, 42, 0.06)" },
           },
         };
-        if (hasBalance) {
+        if (hasBalance || hasAssetsInv) {
           scales.yBal = {
             position: "right",
             beginAtZero: false,
             ticks: {
               font: { size: 11 },
-              color: "#b45309",
+              color: hasAssetsInv ? "#1d4ed8" : "#b45309",
               callback: function (v) {
                 var n = Number(v);
                 if (Math.abs(n) >= 1000000) return (n / 1000000).toLocaleString("ru-RU", { maximumFractionDigits: 1 }) + " млн";
@@ -1054,6 +1080,12 @@
                     }
                     if (src.balance_deposits != null && Number.isFinite(Number(src.balance_deposits)) && Number(src.balance_deposits) > 0) {
                       lines.push("Депозиты (оценка): " + fmtMoney(Number(src.balance_deposits), cur));
+                    }
+                    if (src.inventory != null && Number.isFinite(Number(src.inventory))) {
+                      lines.push("Товар (МС): " + fmtMoney(Number(src.inventory), cur));
+                    }
+                    if (src.assets_with_inventory != null && Number.isFinite(Number(src.assets_with_inventory))) {
+                      lines.push("С товаром: " + fmtMoney(Number(src.assets_with_inventory), cur));
                     }
                     lines.push("Клик — даты месяца в фильтр");
                     return lines;

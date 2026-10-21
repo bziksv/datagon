@@ -2495,7 +2495,11 @@ Preflight матча «Менеджер по продажам» ↔ Planfix `/us
 - `customer_codes[]` — коды Альмамед (`finance_ms_inventory_customer_codes` или авто по алиасам)
 - Таблица снимков: `dg_finance_ms_inventory_month`; автосинк `task: "ms_inventory_month"` (только последний день месяца МСК, дефолт `23:55`)
 
-В **`GET /api/finance/analytics/monthly`** при фильтре Альмамед/все: `totals.inventory`, `totals.assets_with_inventory`, в `series[]` — `inventory`, `assets_with_inventory`.
+В **`GET /api/finance/analytics/monthly`** при фильтре Альмамед/все: `totals.inventory`, `totals.assets_with_inventory`, в `series[]` — `inventory`, `assets_with_inventory` (линия графика «С товаром»).
+
+### POST `/api/finance/ms-inventory/backfill`
+
+Только `full`. Body: `{ "from_ym": "2025-01", "to_ym": "2026-09", "force": false }`. Тянет `report/stock/all?filter=moment=YYYY-MM-DD 23:59:59` за каждый месяц, считает Σ(stock×price/100) только «Товар» (без плакатов), пишет в `dg_finance_ms_inventory_month` (`source=backfill`). Без `force` уже существующие `ym` не перезаписывает.
 
 ### POST `/api/finance/org-meta`
 
