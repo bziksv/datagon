@@ -201,6 +201,14 @@
     var c = cur ? normalizeCurrency(cur) : "";
     return t + (c ? " " + c : "");
   }
+  /** Календарная дата для UI: дд-мм-гггг (не сырой YYYY-MM-DD). */
+  function fmtDate(value) {
+    var F = window.DatagonFmt;
+    if (F && F.formatDate) return F.formatDate(value);
+    var s = String(value == null ? "" : value).trim();
+    var m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return m ? m[3] + "-" + m[2] + "-" + m[1] : s || "—";
+  }
   /** Маска р/с: «номер/БИК» — берём хвост номера, не БИК (иначе у всех …5104). */
   function maskAcc(num) {
     var s = String(num || "").replace(/\s+/g, "");
@@ -1679,7 +1687,7 @@
       return purpose || "—";
     }
     if (key === "booked_date") {
-      return esc(row.booked_date || String(row.booked_at || "").slice(0, 10));
+      return esc(fmtDate(row.booked_date || row.booked_at));
     }
     return esc(row[key] || "");
   }
@@ -3599,7 +3607,7 @@
         return (
           '<tr class="dg-fin-row-needs-review dg-fin-cash-recurring" title="Автопроводка из шаблона с галкой «Требуется проверка». Подтвердите сумму за месяц.">' +
           "<td>" +
-          esc(String(r.booked_date || "").slice(0, 10)) +
+          esc(fmtDate(r.booked_date)) +
           "</td>" +
           "<td>" +
           esc(dirOut ? "Исходящий" : "Входящий") +
@@ -3725,7 +3733,7 @@
         return (
           "<tr>" +
           "<td>" +
-          esc(String(r.booked_date || "").slice(0, 10)) +
+          esc(fmtDate(r.booked_date)) +
           "</td>" +
           "<td>" +
           esc(dirOut ? "Исходящий" : "Входящий") +
