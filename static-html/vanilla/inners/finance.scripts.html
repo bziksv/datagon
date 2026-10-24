@@ -115,6 +115,8 @@
     cashTemplates: [],
     cashOnce: [],
     cashPendingReviews: [],
+    /** Ежемесячные уже наступившие и не в «Ждут проверки» (в т.ч. подтверждённые). */
+    cashPostedRecurring: [],
     cashSearch: "",
     cashOrgCodes: [],
     cashOnceEditId: null,
@@ -3894,7 +3896,7 @@
     appendOrgQuery(q, state.applied.org);
     q.set("source", "cash");
     q.set("page", "1");
-    q.set("page_size", "200");
+    q.set("page_size", "500");
     q.set("sort_by", "booked_date");
     q.set("sort_dir", "desc");
     return fetch("/api/finance/transactions?" + q.toString(), { credentials: "same-origin" })
@@ -3905,20 +3907,32 @@
         var now = moscowNowParts();
         var today = now.ymd;
         var todayYm = now.y + "-" + now.m;
-        var rows = (j && j.success && Array.isArray(j.rows) ? j.rows : []).filter(function (r) {
+        var all = j && j.success && Array.isArray(j.rows) ? j.rows : [];
+        var pending = all.filter(function (r) {
           if (!r || !r.review_pending || r.cash_kind !== "recurring") return false;
           var bd = String(r.booked_date || "").slice(0, 10);
           var rowYm = String(r.ym || bd).slice(0, 7);
           return bd && bd <= today && rowYm === todayYm;
         });
-        state.cashPendingReviews = rows;
+        // Уже наступившие ежемесячные вне очереди проверки (в т.ч. после «Подтвердить»).
+        var posted = all.filter(function (r) {
+          if (!r || r.cash_kind !== "recurring") return false;
+          if (r.review_pending) return false;
+          var bd = String(r.booked_date || "").slice(0, 10);
+          return bd && bd <= today;
+        });
+        state.cashPendingReviews = pending;
+        state.cashPostedRecurring = posted;
         renderCashPendingReviews();
-        if (rows.length) setCashTab("once");
-        return rows;
+        renderCashOnceList();
+        if (pending.length) setCashTab("once");
+        return pending;
       })
       .catch(function () {
         state.cashPendingReviews = [];
+        state.cashPostedRecurring = [];
         renderCashPendingReviews();
+        renderCashOnceList();
         return [];
       });
   }
@@ -3926,11 +3940,26 @@
     var tb = el("dg-fin-cash-once-tbody");
     if (!tb) return;
     var q = cashListQuery();
-    var rows = (state.cashOnce || []).filter(function (r) {
+    var onceRows = (state.cashOnce || []).map(function (r) {
+      return Object.assign({}, r, { cash_kind: "once", _listKey: "o:" + r.id });
+    });
+    var recRows = (state.cashPostedRecurring || []).map(function (r) {
+      return Object.assign({}, r, { _listKey: "t:" + r.template_id + ":" + r.ym });
+    });
+    var merged = onceRows.concat(recRows).sort(function (a, b) {
+      var da = String(a.booked_date || "");
+      var db = String(b.booked_date || "");
+      if (da !== db) return da < db ? 1 : -1;
+      var aa = Math.abs(Number(a.amount_abs != null ? a.amount_abs : a.amount) || 0);
+      var bb = Math.abs(Number(b.amount_abs != null ? b.amount_abs : b.amount) || 0);
+      return bb - aa;
+    });
+    var rows = merged.filter(function (r) {
       return cashRowMatchesSearch(
         [
           r.booked_date,
           r.amount,
+          r.amount_abs,
           r.purpose,
           r.direction,
           r.scope,
@@ -3938,12 +3967,15 @@
           orgOptionLabel(r.customer_code),
           planItemTitleById(r.plan_item_id),
           Number(r.include_chart) !== 0 ? "график" : "не в графике",
+          r.cash_kind === "recurring" ? "ежемес" : "нал",
+          Number(r.review_confirmed) === 1 ? "ок" : "",
         ],
         q
       );
     });
-    if (!(state.cashOnce || []).length) {
-      tb.innerHTML = '<tr><td colspan="8" class="text-muted small">Разовых проводок пока нет.</td></tr>';
+    if (!merged.length) {
+      tb.innerHTML =
+        '<tr><td colspan="8" class="text-muted small">Пока нет разовых и подтверждённых ежемесячных проводок.</td></tr>';
       return;
     }
     if (!rows.length) {
@@ -3953,14 +3985,44 @@
     }
     tb.innerHTML = rows
       .map(function (r) {
+        var isRec = r.cash_kind === "recurring";
         var dirOut = r.direction === "out";
-        var amt = Number(r.amount) || 0;
+        var amt = Number(r.amount_abs != null ? r.amount_abs : r.amount) || 0;
         if (dirOut) amt = -Math.abs(amt);
+        else amt = Math.abs(amt);
         var scopeLab =
           r.scope === "org" ? orgOptionLabel(r.customer_code) || r.customer_code || "орг" : "все компании";
         var planLab = planItemTitleById(r.plan_item_id) || "—";
+        var inChart = isRec
+          ? !r.chart_excluded && Number(r.include_chart) !== 0
+          : Number(r.include_chart) !== 0;
+        var badges = isRec
+          ? ' <span class="badge bg-warning text-dark border">ежемес.</span>' +
+            (Number(r.review_confirmed) === 1
+              ? ' <span class="badge bg-success-subtle text-success border">ок</span>'
+              : "")
+          : ' <span class="badge bg-success-subtle text-success border">нал</span>';
+        var actions = "";
+        if (state.canWrite) {
+          if (isRec) {
+            actions =
+              '<button type="button" class="btn btn-sm btn-outline-primary me-1 dg-fin-cash-review-edit" data-tx-id="' +
+              esc(r.tx_id || "") +
+              '" data-dg-notify-start="Открываем правку месяца…">Изменить</button>';
+          } else {
+            actions =
+              '<button type="button" class="btn btn-sm btn-outline-primary me-1 dg-fin-cash-once-edit" data-id="' +
+              esc(r.id) +
+              '" data-dg-notify-start="Открываем редактирование…">Изменить</button>' +
+              '<button type="button" class="btn btn-sm btn-outline-danger dg-fin-cash-once-del" data-id="' +
+              esc(r.id) +
+              '" data-dg-notify-start="Удаляем разовую…">Удалить</button>';
+          }
+        }
         return (
-          "<tr>" +
+          "<tr" +
+          (isRec ? ' class="dg-fin-cash-recurring"' : "") +
+          ">" +
           "<td>" +
           esc(fmtDate(r.booked_date)) +
           "</td>" +
@@ -3973,6 +4035,7 @@
           '">' +
           esc(fmtMoney(amt, "RUB")) +
           "</span>" +
+          badges +
           "</td>" +
           "<td>" +
           esc(r.purpose || "—") +
@@ -3984,17 +4047,10 @@
           esc(scopeLab) +
           "</td>" +
           "<td>" +
-          (Number(r.include_chart) !== 0 ? "да" : "нет") +
+          (inChart ? "да" : "нет") +
           "</td>" +
           '<td class="dg-fin-cash-actions">' +
-          (state.canWrite
-            ? '<button type="button" class="btn btn-sm btn-outline-primary me-1 dg-fin-cash-once-edit" data-id="' +
-              esc(r.id) +
-              '" data-dg-notify-start="Открываем редактирование…">Изменить</button>' +
-              '<button type="button" class="btn btn-sm btn-outline-danger dg-fin-cash-once-del" data-id="' +
-              esc(r.id) +
-              '" data-dg-notify-start="Удаляем разовую…">Удалить</button>'
-            : "") +
+          actions +
           "</td>" +
           "</tr>"
         );
@@ -4372,7 +4428,7 @@
         })
         .then(function (x) {
           if (!x.ok || !x.j || !x.j.success) throw new Error((x.j && x.j.error) || "Не удалось подтвердить");
-          toast("success", "Проводка за " + ym + " подтверждена");
+          toast("success", "Проводка за " + ym + " подтверждена — в списке «Все проводки»");
           return Promise.all([loadTx(), loadCashPendingReviews()]);
         })
         .catch(function (e) {
@@ -4453,7 +4509,11 @@
       return String(r.tx_id) === id;
     });
     if (fromTx) return fromTx;
-    return (state.cashPendingReviews || []).find(function (r) {
+    var fromPending = (state.cashPendingReviews || []).find(function (r) {
+      return String(r.tx_id) === id;
+    });
+    if (fromPending) return fromPending;
+    return (state.cashPostedRecurring || []).find(function (r) {
       return String(r.tx_id) === id;
     });
   }
@@ -4599,6 +4659,13 @@
     var onceTb = el("dg-fin-cash-once-tbody");
     if (onceTb) {
       onceTb.addEventListener("click", function (ev) {
+        var monthEdit =
+          ev.target && ev.target.closest ? ev.target.closest(".dg-fin-cash-review-edit") : null;
+        if (monthEdit && onceTb.contains(monthEdit)) {
+          ev.preventDefault();
+          openCashMonthEditor(monthEdit.getAttribute("data-tx-id"));
+          return;
+        }
         var editBtn = ev.target && ev.target.closest ? ev.target.closest(".dg-fin-cash-once-edit") : null;
         if (editBtn) {
           beginEditCashOnce(editBtn.getAttribute("data-id"));
