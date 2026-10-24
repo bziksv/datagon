@@ -1735,15 +1735,23 @@
       return esc(rowOrgLabel(row) || "—");
     }
     if (key === "bank") {
-      if (isCashRow(row)) {
-        return (
-          "Наличные" +
-          (row.cash_kind === "recurring"
-            ? ' <span class="badge bg-light text-muted border">ежемес.</span>'
-            : ' <span class="badge bg-light text-muted border">нал</span>')
-        );
-      }
+      // Тип (нал / ежемес.) уже в бейдже у суммы — в «Банк» только «Наличные», без второго «нал».
+      if (isCashRow(row)) return "Наличные";
       return esc(BANK_LABELS[String(row.bank || "tochka").toLowerCase()] || row.bank || "—");
+    }
+    if (key === "counterparty") {
+      if (isCashRow(row)) {
+        var cpPurpose = String(row.purpose || "").trim();
+        var cp = cpPurpose
+          ? cpPurpose.charAt(0) === "*"
+            ? cpPurpose
+            : "*" + cpPurpose
+          : String(row.counterparty || "").trim();
+        if (!cp || cp === "(наличные)") cp = "*";
+        return esc(cp);
+      }
+      var cpBank = String(row.counterparty || "").trim();
+      return cpBank ? esc(cpBank) : "—";
     }
     if (key === "account_number") {
       if (isCashRow(row)) return "—";
