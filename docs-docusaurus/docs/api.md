@@ -2503,7 +2503,7 @@ Preflight матча «Менеджер по продажам» ↔ Planfix `/us
 Дополнительно **`ms_inventory`**: товарный остаток МойСклад для финансов (привязка к **Альмамед**):
 
 - `value_products` — Σ(остаток × себестоимость), только тип **Товар** со **складской позицией «Да»** (как `/api/ms/stats → inventory_value_products`)
-- `ym`, `as_of_at`, `provisional` (`true` = live из `ms_export` до официального снимка EOM)
+- `ym`, `as_of_at`, `provisional` (`true` = live из `ms_export` до официального снимка EOM; mid-month `manual` в таблице снимков официальным не считается)
 - `customer_codes[]` — коды Альмамед (`finance_ms_inventory_customer_codes` или авто по алиасам)
 - `sync_script` — `{ id, version, revision, … }` из `lib/datagonFinanceMsInventorySyncRevision.js`
 - Таблица снимков: `dg_finance_ms_inventory_month`; автосинк `task: "ms_inventory_month"` (только последний день месяца МСК, дефолт `23:55`)
