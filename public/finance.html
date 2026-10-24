@@ -4651,19 +4651,14 @@
   }
   function cashBadgeHtml(row) {
     if (!isCashRow(row)) return "";
-    if (row.cash_kind === "recurring") {
-      var badges =
-        ' <span class="badge bg-warning text-dark border" title="Ежемесячный шаблон">ежемес.</span>';
-      if (row.review_pending) {
-        badges +=
-          ' <span class="badge bg-danger border dg-fin-review-badge" title="Шаблон с галкой «Требуется проверка»: подтвердите сумму за месяц">проверка</span>';
-      } else if (Number(row.needs_review) === 1 && Number(row.review_confirmed) === 1) {
-        badges +=
-          ' <span class="badge bg-success-subtle text-success border" title="Проверка за месяц подтверждена">ок</span>';
-      }
-      return badges;
+    // В «Движении» у уже подтверждённых/разовых бейджи «нал» / «ежемес.» / «ок» не нужны.
+    // Только «проверка», пока месяц ждёт подтверждения.
+    if (row.cash_kind === "recurring" && row.review_pending) {
+      return (
+        ' <span class="badge bg-danger border dg-fin-review-badge" title="Шаблон с галкой «Требуется проверка»: подтвердите сумму за месяц">проверка</span>'
+      );
     }
-    return ' <span class="badge bg-success-subtle text-success border" title="Разовая наличная">нал</span>';
+    return "";
   }
   function cashReviewConfirmHtml(row) {
     if (!row || !row.review_pending || !state.canWrite) return "";
@@ -7060,12 +7055,7 @@
         var inChart = isRec
           ? !r.chart_excluded && Number(r.include_chart) !== 0
           : Number(r.include_chart) !== 0;
-        var badges = isRec
-          ? ' <span class="badge bg-warning text-dark border">ежемес.</span>' +
-            (Number(r.review_confirmed) === 1
-              ? ' <span class="badge bg-success-subtle text-success border">ок</span>'
-              : "")
-          : ' <span class="badge bg-success-subtle text-success border">нал</span>';
+        // В подтверждённом списке бейджи «нал» / «ежемес.» / «ок» лишние — статус уже ясен из блока «Ждут проверки».
         var actions = "";
         if (state.canWrite) {
           if (isRec) {
@@ -7106,7 +7096,6 @@
           '">' +
           esc(fmtMoney(amt, "RUB")) +
           "</span>" +
-          badges +
           "</td>" +
           "<td>" +
           esc(r.purpose || "—") +
