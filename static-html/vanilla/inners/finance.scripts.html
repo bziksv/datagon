@@ -3860,11 +3860,18 @@
             ? '<button type="button" class="btn btn-sm btn-outline-primary me-1 dg-fin-cash-review-edit" data-tx-id="' +
               esc(r.tx_id || "") +
               '" data-dg-notify-start="Открываем правку месяца…">Изменить</button>' +
-              '<button type="button" class="btn btn-sm btn-warning dg-fin-cash-review-confirm" data-template-id="' +
+              '<button type="button" class="btn btn-sm btn-warning me-1 dg-fin-cash-review-confirm" data-template-id="' +
               esc(r.template_id) +
               '" data-ym="' +
               esc(r.ym || "") +
-              '" data-dg-notify-start="Подтверждаем проводку…">Подтвердить</button>'
+              '" data-dg-notify-start="Подтверждаем проводку…">Подтвердить</button>' +
+              '<button type="button" class="btn btn-sm btn-outline-danger dg-fin-cash-month-del" data-template-id="' +
+              esc(r.template_id) +
+              '" data-ym="' +
+              esc(r.ym || "") +
+              '" data-purpose="' +
+              esc(r.purpose || "") +
+              '" data-dg-notify-start="Убираем проводку за месяц…">Удалить</button>'
             : "") +
           "</td>" +
           "</tr>"
@@ -4008,7 +4015,14 @@
             actions =
               '<button type="button" class="btn btn-sm btn-outline-primary me-1 dg-fin-cash-review-edit" data-tx-id="' +
               esc(r.tx_id || "") +
-              '" data-dg-notify-start="Открываем правку месяца…">Изменить</button>';
+              '" data-dg-notify-start="Открываем правку месяца…">Изменить</button>' +
+              '<button type="button" class="btn btn-sm btn-outline-danger dg-fin-cash-month-del" data-template-id="' +
+              esc(r.template_id) +
+              '" data-ym="' +
+              esc(r.ym || "") +
+              '" data-purpose="' +
+              esc(r.purpose || "") +
+              '" data-dg-notify-start="Убираем проводку за месяц…">Удалить</button>';
           } else {
             actions =
               '<button type="button" class="btn btn-sm btn-outline-primary me-1 dg-fin-cash-once-edit" data-id="' +
@@ -4411,6 +4425,53 @@
         });
     });
   }
+  /** Убрать инстанс шаблона за месяц (skipped) — шаблон сам не удаляется. */
+  function deleteCashMonthInstance(templateId, ym, purpose) {
+    var tid = Number(templateId);
+    var month = String(ym || "").trim();
+    if (!Number.isFinite(tid) || tid < 1 || !/^\d{4}-\d{2}$/.test(month)) {
+      return Promise.reject(new Error("Нет шаблона или месяца"));
+    }
+    var label = String(purpose || "").trim();
+    return openFinConfirm({
+      title: "Удалить проводку за месяц?",
+      text:
+        (label ? "«" + label + "» · " : "") +
+        month +
+        ". Строка исчезнет из «Все проводки» и «Движение». Шаблон останется — в следующем месяце снова появится на своём дне.",
+      okLabel: "Удалить",
+    }).then(function (ok) {
+      if (!ok) return null;
+      return fetch(
+        "/api/finance/cash/templates/" +
+          encodeURIComponent(tid) +
+          "/months/" +
+          encodeURIComponent(month),
+        {
+          method: "PUT",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ skipped: 1 }),
+        }
+      )
+        .then(function (r) {
+          return r.json().then(function (j) {
+            return { ok: r.ok, j: j };
+          });
+        })
+        .then(function (x) {
+          if (!x.ok || !x.j || !x.j.success) throw new Error((x.j && x.j.error) || "Не удалось удалить");
+          toast("success", "Проводка за " + month + " убрана");
+          return Promise.all([
+            loadCashLists(),
+            loadCashPendingReviews(),
+            loadTx(),
+            loadMonthlyAnalytics(),
+            loadCounterparties(),
+          ]);
+        });
+    });
+  }
   function confirmCashMonthReview(templateId, ym, btn) {
     if (!templateId || !ym) return Promise.resolve();
     var run = function () {
@@ -4661,6 +4722,16 @@
     if (tmplCancel) tmplCancel.addEventListener("click", cancelEditCashTemplate);
     syncCashOnceSaveUi();
     syncCashTmplSaveUi();
+    function onCashMonthDelClick(btn) {
+      if (!btn) return;
+      deleteCashMonthInstance(
+        btn.getAttribute("data-template-id"),
+        btn.getAttribute("data-ym"),
+        btn.getAttribute("data-purpose")
+      ).catch(function (e) {
+        toast("danger", e.message || String(e));
+      });
+    }
     var onceTb = el("dg-fin-cash-once-tbody");
     if (onceTb) {
       onceTb.addEventListener("click", function (ev) {
@@ -4669,6 +4740,13 @@
         if (monthEdit && onceTb.contains(monthEdit)) {
           ev.preventDefault();
           openCashMonthEditor(monthEdit.getAttribute("data-tx-id"));
+          return;
+        }
+        var monthDel =
+          ev.target && ev.target.closest ? ev.target.closest(".dg-fin-cash-month-del") : null;
+        if (monthDel && onceTb.contains(monthDel)) {
+          ev.preventDefault();
+          onCashMonthDelClick(monthDel);
           return;
         }
         var editBtn = ev.target && ev.target.closest ? ev.target.closest(".dg-fin-cash-once-edit") : null;
@@ -4691,6 +4769,13 @@
         if (editBtn && reviewTb.contains(editBtn)) {
           ev.preventDefault();
           openCashMonthEditor(editBtn.getAttribute("data-tx-id"));
+          return;
+        }
+        var monthDel =
+          ev.target && ev.target.closest ? ev.target.closest(".dg-fin-cash-month-del") : null;
+        if (monthDel && reviewTb.contains(monthDel)) {
+          ev.preventDefault();
+          onCashMonthDelClick(monthDel);
           return;
         }
         var confirmBtn =

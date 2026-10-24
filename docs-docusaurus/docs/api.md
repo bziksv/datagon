@@ -2554,6 +2554,8 @@ CRUD ежемесячных шаблонов (`dg_finance_cash_templates`). Body
 
 ### PUT `/api/finance/cash/templates/:id/months/:ym`
 
+Помесячный override (`skipped`, суммы, `review_confirmed` и т.д.). В UI **«Удалить»** на строке ежемесячной проводки шлёт `{ skipped: 1 }` — инстанс месяца скрывается из списков/«Движение», шаблон остаётся.
+
 Помесячный override (`ym=YYYY-MM`): `{ amount_fix?, amount_premium?, clear_premium?, purpose?, include_chart?, skipped?, review_confirmed? }`. Частичное обновление: отсутствующие поля сохраняют прежний override или шаблон. `review_confirmed=1` снимает подсветку «требуется проверка» за месяц.
 
 ### GET/POST/PATCH/DELETE `/api/finance/cash/tx`
