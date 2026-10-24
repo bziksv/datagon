@@ -3713,14 +3713,33 @@ function factory(db, appSettings) {
                     }
                 }
                 const lastYm = monthKeys[monthKeys.length - 1];
-                if (inventoryApplies && invByYm[lastYm]) {
+                const curYm = finMsInv.currentYmMsk();
+                let liveInvProducts = null;
+                // Текущий месяц до EOM: KPI и точка «С товаром» на графике — live из ms_export.
+                if (
+                    inventoryApplies &&
+                    currency === 'RUB' &&
+                    !accountId &&
+                    curYm &&
+                    monthKeys.indexOf(curYm) >= 0 &&
+                    !invByYm[curYm]
+                ) {
+                    try {
+                        const live = await finMsInv.loadMsInventoryForFinance(db, appSettings);
+                        liveInvProducts = Math.round((Number(live.value_products) || 0) * 100) / 100;
+                        inventoryMeta.inventory_now = liveInvProducts;
+                        inventoryMeta.inventory_provisional = !!live.provisional;
+                    } catch (eLive) {
+                        /* ignore */
+                    }
+                } else if (inventoryApplies && invByYm[lastYm]) {
                     inventoryMeta.inventory_now = invByYm[lastYm].value_products;
                 } else if (inventoryApplies && currency === 'RUB' && !accountId) {
                     try {
                         const live = await finMsInv.loadMsInventoryForFinance(db, appSettings);
                         inventoryMeta.inventory_now = live.value_products;
                         inventoryMeta.inventory_provisional = !!live.provisional;
-                    } catch (eLive) {
+                    } catch (eLive2) {
                         /* ignore */
                     }
                 }
@@ -3745,8 +3764,10 @@ function factory(db, appSettings) {
                     row.inventory =
                         invSnap && invSnap.value_products != null
                             ? Math.round(Number(invSnap.value_products) * 100) / 100
-                            : null;
-                    // Только когда есть снимок товара за месяц — иначе на графике дублировала бы «Остаток».
+                            : row.month === curYm && liveInvProducts != null
+                              ? liveInvProducts
+                              : null;
+                    // EOM-снимок или live текущего месяца; иначе линия совпала бы с «Остаток».
                     row.assets_with_inventory =
                         b != null && row.inventory != null
                             ? Math.round((b + row.inventory) * 100) / 100
