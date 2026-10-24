@@ -4317,6 +4317,11 @@
       plan_item_id: planRaw ? parseInt(planRaw, 10) : null,
     };
     var editId = state.cashTmplEditId;
+    // Новый шаблон действует с сегодня (МСК), не плодит проводки «задней датой».
+    if (!editId) {
+      var nowParts = moscowNowParts();
+      body.valid_from = nowParts.ymd;
+    }
     var btn = el("dg-fin-cash-tmpl-save");
     var run = function () {
       clearCashFieldErrors("tmpl");

@@ -2550,7 +2550,7 @@ Query: `search`, **`inn`** / `counterparty_inn` (только цифры; под
 
 ### GET/POST/PATCH/DELETE `/api/finance/cash/templates`
 
-CRUD ежемесячных шаблонов (`dg_finance_cash_templates`). Body POST: `{ purpose, direction?, day_of_month?, amount_fix, amount_premium?, scope?: "all"|"org", customer_code?, include_chart?, needs_review?, active?, valid_from?, valid_to?, plan_item_id? }`. DELETE также чистит overrides шаблона. `plan_item_id` — ручная привязка к статье плана (nullable). `needs_review` — `review_pending` только для **текущего** `ym` и только если `booked_date` ≤ сегодня (МСК); прошлые/будущие месяцы периода без `review_pending`.
+CRUD ежемесячных шаблонов (`dg_finance_cash_templates`). Body POST: `{ purpose, direction?, day_of_month?, amount_fix, amount_premium?, scope?: "all"|"org", customer_code?, include_chart?, needs_review?, active?, valid_from?, valid_to?, plan_item_id? }`. DELETE также чистит overrides шаблона. `plan_item_id` — ручная привязка к статье плана (nullable). При POST **`valid_from` по умолчанию = сегодня МСК** (дата добавления шаблона); разворот в «Все проводки» / «Движение» / график — **только `booked ≥ valid_from`**, без задних месяцев. `needs_review` — `review_pending` только для **текущего** `ym` и `booked_date` ≤ сегодня; непроверенные прошлые месяцы **не** разворачиваются; после «Подтвердить» строка попадает в списки и график.
 
 ### PUT `/api/finance/cash/templates/:id/months/:ym`
 

@@ -2587,7 +2587,7 @@
                     </table>
                   </div>
                 </div>
-                <p class="small text-muted mb-1 mt-3">Разовые и уже наступившие ежемесячные (после «Подтвердить» — тоже здесь; ждут проверки — блоком выше).</p>
+                <p class="small text-muted mb-1 mt-3">Разовые и ежемесячные <strong>с даты добавления шаблона вперёд</strong> (день наступил → при «проверке» сначала блок выше, после «Подтвердить» — сюда и в «Движение»). Прошлые месяцы до шаблона не создаём.</p>
                 <div class="table-responsive">
                   <table class="table table-hover table-striped mb-0 dg-fin-table dg-fin-cash-table" id="dg-fin-cash-once-table">
                     <thead>
@@ -7366,6 +7366,11 @@
       plan_item_id: planRaw ? parseInt(planRaw, 10) : null,
     };
     var editId = state.cashTmplEditId;
+    // Новый шаблон действует с сегодня (МСК), не плодит проводки «задней датой».
+    if (!editId) {
+      var nowParts = moscowNowParts();
+      body.valid_from = nowParts.ymd;
+    }
     var btn = el("dg-fin-cash-tmpl-save");
     var run = function () {
       clearCashFieldErrors("tmpl");

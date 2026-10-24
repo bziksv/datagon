@@ -2426,7 +2426,8 @@ function factory(db, appSettings) {
             const needsReview =
                 body.needs_review === true || body.needs_review === 1 || body.needs_review === '1' ? 1 : 0;
             const active = body.active === false || body.active === 0 || body.active === '0' ? 0 : 1;
-            const validFrom = parseYmd(body.valid_from) || null;
+            // С даты добавления вперёд — не разворачиваем прошлые месяцы фильтра.
+            const validFrom = parseYmd(body.valid_from) || finCash.moscowTodayYmd();
             const validTo = parseYmd(body.valid_to) || null;
             const planItemId = Object.prototype.hasOwnProperty.call(body, 'plan_item_id')
                 ? finPlans.parsePlanItemId(body.plan_item_id)
