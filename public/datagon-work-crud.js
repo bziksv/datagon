@@ -252,10 +252,37 @@
     }
     var text = v == null ? "" : String(v);
     if (c.type === "copy") {
+      var setFlag = row[c.key + "_set"];
+      var maskHint = row[c.key + "_mask"] || "";
+      if ((text === "" || text == null) && setFlag) {
+        return (
+          '<td class="dg-work-td-copy">' +
+          '<button type="button" class="btn btn-sm btn-outline-secondary dg-work-reveal" data-dg-work-reveal-id="' +
+          esc(row.id) +
+          '" data-dg-work-reveal-field="' +
+          esc(c.key) +
+          '" title="Показать и скопировать (пишется в журнал)">' +
+          esc(maskHint || "••••") +
+          " · показать</button></td>"
+        );
+      }
       return (
         '<td class="dg-work-td-copy"><textarea class="dg-work-copy" rows="1" readonly onclick="this.select()" title="Потяните за угол, чтобы растянуть">' +
         esc(text) +
         "</textarea></td>"
+      );
+    }
+    var sensSet = row[c.key + "_set"];
+    var sensMask = row[c.key + "_mask"] || "";
+    if ((text === "" || text == null) && sensSet && /pass|ftp|ssa|secret/i.test(c.key)) {
+      return (
+        '<td><button type="button" class="btn btn-sm btn-outline-secondary dg-work-reveal" data-dg-work-reveal-id="' +
+        esc(row.id) +
+        '" data-dg-work-reveal-field="' +
+        esc(c.key) +
+        '" title="Показать (пишется в журнал)">' +
+        esc(sensMask || "••••") +
+        " · показать</button></td>"
       );
     }
     if (text.length > 80) text = text.slice(0, 77) + "…";
@@ -451,9 +478,42 @@
     return "col-md-4";
   }
 
+  function isSecretFormKey(key) {
+    return /^(admin_pass|password|ftp|ssa|passYandex|passGoogle|value_serialize)$/.test(String(key || ""));
+  }
+
   function renderFormField(f, fullRow, assigneeIds, headId) {
     var val = fullRow && fullRow[f.key] != null ? fullRow[f.key] : f.type === "number" ? "0" : "";
     var col = fieldColClass(f);
+    if (isSecretFormKey(f.key) && fullRow) {
+      var set = fullRow[f.key + "_set"];
+      var mask = fullRow[f.key + "_mask"] || "";
+      var ph = set ? "сохранён: " + (mask || "••••") + " — оставьте пустым, чтобы не менять" : "новый секрет";
+      if (f.type === "textarea") {
+        return (
+          '<div class="' +
+          col +
+          '"><label class="form-label">' +
+          esc(f.label) +
+          '</label><textarea class="form-control" rows="2" data-dg-work-field="' +
+          esc(f.key) +
+          '" placeholder="' +
+          esc(ph) +
+          '"></textarea><div class="form-text">Пустое поле при сохранении не затирает секрет</div></div>'
+        );
+      }
+      return (
+        '<div class="' +
+        col +
+        '"><label class="form-label">' +
+        esc(f.label) +
+        '</label><input type="password" class="form-control" data-dg-work-field="' +
+        esc(f.key) +
+        '" value="" autocomplete="new-password" placeholder="' +
+        esc(ph) +
+        '" /><div class="form-text">Пустое поле при сохранении не затирает секрет</div></div>'
+      );
+    }
     if (f.type === "staff-multi") {
       var boxes = state.staff
         .map(function (s) {
@@ -990,6 +1050,41 @@
       });
     }
     document.addEventListener("click", function (e) {
+      var rev = e.target.closest("[data-dg-work-reveal-id]");
+      if (rev) {
+        e.preventDefault();
+        var rid = Number(rev.getAttribute("data-dg-work-reveal-id"));
+        var rfield = rev.getAttribute("data-dg-work-reveal-field") || "";
+        if (!rid || !rfield) return;
+        var prevLabel = rev.textContent;
+        rev.disabled = true;
+        rev.textContent = "…";
+        api("/" + entitySlug + "/" + rid + "/reveal?field=" + encodeURIComponent(rfield))
+          .then(function (j) {
+            var val = j && j.value != null ? String(j.value) : "";
+            var td = rev.parentNode;
+            if (td) {
+              td.innerHTML =
+                '<textarea class="dg-work-copy" rows="2" readonly onclick="this.select()" title="Скопируйте вручную">' +
+                esc(val) +
+                "</textarea>";
+              try {
+                var ta = td.querySelector("textarea");
+                if (ta) {
+                  ta.focus();
+                  ta.select();
+                }
+              } catch (err2) {}
+            }
+            toast("success", "Секрет показан (событие записано в журнал)");
+          })
+          .catch(function (err) {
+            rev.disabled = false;
+            rev.textContent = prevLabel;
+            toast("danger", err.message || String(err));
+          });
+        return;
+      }
       var sortTh = e.target.closest("[data-dg-work-sort]");
       if (sortTh) {
         try {

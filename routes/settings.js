@@ -2,6 +2,10 @@ const express = require('express');
 const fs = require('fs/promises');
 const path = require('path');
 const { parseUuidList } = require('../lib/datagonSalesFormulaDemandFilter');
+const {
+    publicSettingsSnapshot,
+    isBlankSecretInput,
+} = require('../lib/datagonSecretRedact');
 const router = express.Router();
 
 /** Пн=1…Вс=7; пустая строка — «каждый день» (legacy). Ровно семь дней храним как `1,2,3,4,5,6,7`, не как пусто — иначе после сохранения UI снова рисует «все дни» и «вс» «возвращается». */
@@ -41,13 +45,7 @@ module.exports = (db, appSettings) => {
         if (typeof appSettings._reloadFromDb === 'function') {
             await appSettings._reloadFromDb(true);
         }
-        const out = Object.assign({}, appSettings);
-        delete out._reloadFromDb;
-        delete out.finance_tochka_jwt;
-        delete out.finance_tochka_credentials;
-        delete out.finance_raiffeisen_credentials;
-        delete out.finance_tbank_credentials;
-        return res.json(out);
+        return res.json(publicSettingsSnapshot(appSettings));
     });
 
     /** GET /api/settings/ms-demand-projects — проекты из отгрузок МС для фильтра формулы продаж. */
@@ -86,20 +84,20 @@ module.exports = (db, appSettings) => {
         const { fetch_proxy_enabled, fetch_proxy_list } = req.body || {};
         try {
             const en = fetch_proxy_enabled ? 1 : 0;
-            const list = String(fetch_proxy_list != null ? fetch_proxy_list : appSettings.fetch_proxy_list || '').slice(
-                0,
-                120000
-            );
             await db.query(
                 'INSERT INTO app_settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value=?',
                 ['fetch_proxy_enabled', String(en), String(en)]
             );
-            await db.query(
-                'INSERT INTO app_settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value=?',
-                ['fetch_proxy_list', list, list]
-            );
             appSettings.fetch_proxy_enabled = en;
-            appSettings.fetch_proxy_list = list;
+            // Пустой список = не затирать сохранённые прокси (write-only secret).
+            if (fetch_proxy_list !== undefined && !isBlankSecretInput(fetch_proxy_list)) {
+                const list = String(fetch_proxy_list).slice(0, 120000);
+                await db.query(
+                    'INSERT INTO app_settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value=?',
+                    ['fetch_proxy_list', list, list]
+                );
+                appSettings.fetch_proxy_list = list;
+            }
             return res.json({ success: true });
         } catch (e) {
             return res.status(500).json({ error: e.message });
@@ -551,22 +549,29 @@ module.exports = (db, appSettings) => {
             if (fetch_proxy_enabled !== undefined) {
                 queries.push(['fetch_proxy_enabled', fetch_proxy_enabled ? 1 : 0]);
             }
-            if (fetch_proxy_list !== undefined) {
-                queries.push(['fetch_proxy_list', String(fetch_proxy_list || '').slice(0, 120000)]);
+            // Секреты: пустая строка = оставить как было (write-only).
+            if (fetch_proxy_list !== undefined && !isBlankSecretInput(fetch_proxy_list)) {
+                queries.push(['fetch_proxy_list', String(fetch_proxy_list).slice(0, 120000)]);
             }
             if (ozon_client_id !== undefined) queries.push(['ozon_client_id', String(ozon_client_id || '').slice(0, 8000)]);
-            if (ozon_api_key !== undefined) queries.push(['ozon_api_key', String(ozon_api_key || '').slice(0, 8000)]);
-            if (wb_api_key !== undefined) queries.push(['wb_api_key', String(wb_api_key || '').slice(0, 8000)]);
+            if (ozon_api_key !== undefined && !isBlankSecretInput(ozon_api_key)) {
+                queries.push(['ozon_api_key', String(ozon_api_key).slice(0, 8000)]);
+            }
+            if (wb_api_key !== undefined && !isBlankSecretInput(wb_api_key)) {
+                queries.push(['wb_api_key', String(wb_api_key).slice(0, 8000)]);
+            }
             if (wb_token_type !== undefined) {
                 const allowedTokenTypes = ['personal', 'service', 'base', 'test'];
                 const norm = String(wb_token_type || 'base').trim().toLowerCase();
                 queries.push(['wb_token_type', allowedTokenTypes.includes(norm) ? norm : 'base']);
             }
-            if (ym_api_key !== undefined) queries.push(['ym_api_key', String(ym_api_key || '').slice(0, 8000)]);
+            if (ym_api_key !== undefined && !isBlankSecretInput(ym_api_key)) {
+                queries.push(['ym_api_key', String(ym_api_key).slice(0, 8000)]);
+            }
             if (ym_campaign_id !== undefined) queries.push(['ym_campaign_id', String(ym_campaign_id || '').slice(0, 8000)]);
             if (ym_business_id !== undefined) queries.push(['ym_business_id', String(ym_business_id || '').slice(0, 8000)]);
-            if (planfix_rest_api_key !== undefined) {
-                queries.push(['planfix_rest_api_key', String(planfix_rest_api_key || '').slice(0, 8000)]);
+            if (planfix_rest_api_key !== undefined && !isBlankSecretInput(planfix_rest_api_key)) {
+                queries.push(['planfix_rest_api_key', String(planfix_rest_api_key).slice(0, 8000)]);
             }
             if (planfix_account !== undefined) {
                 const { normAccount } = require('../lib/planfixClient');
@@ -904,20 +909,28 @@ module.exports = (db, appSettings) => {
                 appSettings.auth_online_presence_minutes = Math.max(1, Math.min(24 * 60, Number(auth_online_presence_minutes || 15)));
             }
             if (fetch_proxy_enabled !== undefined) appSettings.fetch_proxy_enabled = fetch_proxy_enabled ? 1 : 0;
-            if (fetch_proxy_list !== undefined) appSettings.fetch_proxy_list = String(fetch_proxy_list || '').slice(0, 120000);
+            if (fetch_proxy_list !== undefined && !isBlankSecretInput(fetch_proxy_list)) {
+                appSettings.fetch_proxy_list = String(fetch_proxy_list).slice(0, 120000);
+            }
             if (ozon_client_id !== undefined) appSettings.ozon_client_id = String(ozon_client_id || '').slice(0, 8000);
-            if (ozon_api_key !== undefined) appSettings.ozon_api_key = String(ozon_api_key || '').slice(0, 8000);
-            if (wb_api_key !== undefined) appSettings.wb_api_key = String(wb_api_key || '').slice(0, 8000);
+            if (ozon_api_key !== undefined && !isBlankSecretInput(ozon_api_key)) {
+                appSettings.ozon_api_key = String(ozon_api_key).slice(0, 8000);
+            }
+            if (wb_api_key !== undefined && !isBlankSecretInput(wb_api_key)) {
+                appSettings.wb_api_key = String(wb_api_key).slice(0, 8000);
+            }
             if (wb_token_type !== undefined) {
                 const allowedTokenTypes = ['personal', 'service', 'base', 'test'];
                 const norm = String(wb_token_type || 'base').trim().toLowerCase();
                 appSettings.wb_token_type = allowedTokenTypes.includes(norm) ? norm : 'base';
             }
-            if (ym_api_key !== undefined) appSettings.ym_api_key = String(ym_api_key || '').slice(0, 8000);
+            if (ym_api_key !== undefined && !isBlankSecretInput(ym_api_key)) {
+                appSettings.ym_api_key = String(ym_api_key).slice(0, 8000);
+            }
             if (ym_campaign_id !== undefined) appSettings.ym_campaign_id = String(ym_campaign_id || '').slice(0, 8000);
             if (ym_business_id !== undefined) appSettings.ym_business_id = String(ym_business_id || '').slice(0, 8000);
-            if (planfix_rest_api_key !== undefined) {
-                appSettings.planfix_rest_api_key = String(planfix_rest_api_key || '').slice(0, 8000);
+            if (planfix_rest_api_key !== undefined && !isBlankSecretInput(planfix_rest_api_key)) {
+                appSettings.planfix_rest_api_key = String(planfix_rest_api_key).slice(0, 8000);
             }
             if (planfix_account !== undefined) {
                 const { normAccount } = require('../lib/planfixClient');

@@ -9,6 +9,12 @@ const {
     saveSeoPayoutSettings,
     recalcAllSeoSummaZp,
 } = require('../lib/datagonWorkSeoPayout');
+const {
+    maskWorkRowSecrets,
+    isWorkSensitiveKey,
+    isBlankSecretInput,
+} = require('../lib/datagonSecretRedact');
+const { recordDatagonActivity } = require('../lib/datagonActivity');
 
 function actorOf(req) {
     return req.datagonActor || req.user || {};
@@ -392,14 +398,12 @@ function sortWorkRows(rows, sortKey, sortDir) {
 }
 
 /**
- * Как в WORK: admin видит всё; обычный пользователь — только свои назначения / себя в персонале.
- * Admin Datagon: username=admin или can_manage_users.
+ * Unscoped WORK-admin: только username=admin (не can_manage_users). F-WORK-02.
+ * Обычный пользователь — только свои назначения / себя в персонале.
  */
 function isWorkUnscopedAdmin(actor) {
     if (!actor) return false;
-    if (actor.username === 'admin') return true;
-    if (actor.can_manage_users === true || Number(actor.can_manage_users) === 1) return true;
-    return false;
+    return actor.username === 'admin';
 }
 
 async function resolveWorkActorScope(db, actor) {
@@ -1057,7 +1061,7 @@ module.exports = (db) => {
             let enriched = await enrichWorkListRows(db, ent, rows || []);
             if (sortKey) enriched = sortWorkRows(enriched, sortKey, sortDir);
             const total = enriched.length;
-            const pageRows = enriched.slice(offset, offset + limit);
+            const pageRows = enriched.slice(offset, offset + limit).map(maskWorkRowSecrets);
             const summary = await buildWorkSummary(db, ent, scope);
             res.json({
                 success: true,
@@ -1069,6 +1073,7 @@ module.exports = (db) => {
                     isStaff: !!ent.isStaff,
                     showFavicon: !!ent.showFavicon,
                     summaryKind: ent.summaryKind || null,
+                    secrets_masked: true,
                 },
                 summary,
                 scope: scope.unscoped ? 'all' : 'self',
@@ -1079,6 +1084,39 @@ module.exports = (db) => {
                 sort: sortKey || null,
                 dir: sortKey ? sortDir : null,
             });
+        } catch (e) {
+            next(e);
+        }
+    });
+
+    /** Reveal одного секретного поля с audit (F-WORK-01). */
+    router.get('/:slug/:id/reveal', async (req, res, next) => {
+        try {
+            const ent = getWorkEntity(req.params.slug);
+            if (!ent) return res.status(404).json({ success: false, error: 'unknown entity' });
+            const field = String(req.query.field || '').trim();
+            if (!isWorkSensitiveKey(field)) {
+                return res.status(400).json({ success: false, error: 'Поле не является секретным или неизвестно', code: 'BAD_FIELD' });
+            }
+            const scope = await resolveWorkActorScope(db, actorOf(req));
+            const id = Number(req.params.id);
+            if (!id) return res.status(400).json({ success: false, error: 'bad id' });
+            const [rows] = await db.query(`SELECT * FROM ${ent.table} WHERE id = ? LIMIT 1`, [id]);
+            if (!rows[0]) return res.status(404).json({ success: false, error: 'not found' });
+            const row = rows[0];
+            if (!(await actorCanAccessWorkRow(db, ent, row, scope))) {
+                return res.status(403).json({ success: false, error: 'Нет доступа к этой записи', code: 'FORBIDDEN' });
+            }
+            const actor = actorOf(req);
+            await recordDatagonActivity(db, {
+                userId: actor.id,
+                kind: 'work_reveal',
+                section: ent.pageKey || ent.slug,
+                label: `WORK reveal ${ent.slug}#${id}.${field}`,
+                detail: JSON.stringify({ slug: ent.slug, id, field }),
+            });
+            const value = row[field] == null ? '' : String(row[field]);
+            return res.json({ success: true, field, value, id });
         } catch (e) {
             next(e);
         }
@@ -1105,7 +1143,7 @@ module.exports = (db) => {
             if (ent.assigneeType) {
                 row.assignee_legacy_ids = await loadAssigneesForEntity(db, ent, id);
             }
-            res.json({ success: true, row });
+            res.json({ success: true, row: maskWorkRowSecrets(row), secrets_masked: true });
         } catch (e) {
             next(e);
         }
@@ -1193,6 +1231,12 @@ module.exports = (db) => {
             }
             const body = req.body || {};
             const data = pickFields(ent, body);
+            // Пустой секрет = не затирать (write-only).
+            for (const k of Object.keys(data)) {
+                if (isWorkSensitiveKey(k) && isBlankSecretInput(data[k])) {
+                    delete data[k];
+                }
+            }
             const assigneeIds = parseAssigneeLegacyIds(body);
             const headId = Object.prototype.hasOwnProperty.call(body, 'id_glavn_user')
                 ? body.id_glavn_user
@@ -1211,6 +1255,17 @@ module.exports = (db) => {
                     .map((k) => data[k])
                     .concat([id]);
                 await db.query(`UPDATE \`${ent.table}\` SET ${sets.join(', ')} WHERE id=?`, vals);
+                const actor = actorOf(req);
+                const touchedSecrets = Object.keys(data).filter(isWorkSensitiveKey);
+                if (touchedSecrets.length) {
+                    await recordDatagonActivity(db, {
+                        userId: actor.id,
+                        kind: 'work_update_secret',
+                        section: ent.pageKey || ent.slug,
+                        label: `WORK update secrets ${ent.slug}#${id}`,
+                        detail: JSON.stringify({ slug: ent.slug, id, fields: touchedSecrets }),
+                    });
+                }
             }
             if (ent.assigneeType && assigneeIds != null) {
                 await syncEntityAssignees(db, ent, id, assigneeIds, headId);

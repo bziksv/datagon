@@ -432,14 +432,23 @@ async function ensureSourceIdentityIndexes() {
 }
 
 async function queryBitrixRowsWithSourceEnabledFallback(conn, site, limit, offset) {
-    const withSourceEnabled = `SELECT ${site.field_code} as source_id, ${site.field_code} as cms_product_id, ${site.field_name} as name, ${site.field_sku} as sku, ${site.field_price} as price, ${site.field_currency} as currency, ${site.field_stock} as stock, '' as url_key, COALESCE(SOURCE_ENABLED, 1) as source_enabled FROM ${site.table_products} LIMIT ? OFFSET ?`;
+    const { assertMySiteSqlIdents, quoteSqlIdent } = require('./lib/datagonSecretRedact');
+    assertMySiteSqlIdents(site);
+    const t = quoteSqlIdent(site.table_products);
+    const fc = quoteSqlIdent(site.field_code);
+    const fn = quoteSqlIdent(site.field_name);
+    const fs = quoteSqlIdent(site.field_sku);
+    const fp = quoteSqlIdent(site.field_price);
+    const fcur = quoteSqlIdent(site.field_currency);
+    const fst = quoteSqlIdent(site.field_stock);
+    const withSourceEnabled = `SELECT ${fc} as source_id, ${fc} as cms_product_id, ${fn} as name, ${fs} as sku, ${fp} as price, ${fcur} as currency, ${fst} as stock, '' as url_key, COALESCE(SOURCE_ENABLED, 1) as source_enabled FROM ${t} LIMIT ? OFFSET ?`;
     let rows;
     try {
         const [r] = await conn.query(withSourceEnabled, [limit, offset]);
         rows = r;
     } catch (e) {
         if (!/Unknown column 'SOURCE_ENABLED'/i.test(String(e?.message || ''))) throw e;
-        const fallback = `SELECT ${site.field_code} as source_id, ${site.field_code} as cms_product_id, ${site.field_name} as name, ${site.field_sku} as sku, ${site.field_price} as price, ${site.field_currency} as currency, ${site.field_stock} as stock, '' as url_key, 1 as source_enabled FROM ${site.table_products} LIMIT ? OFFSET ?`;
+        const fallback = `SELECT ${fc} as source_id, ${fc} as cms_product_id, ${fn} as name, ${fs} as sku, ${fp} as price, ${fcur} as currency, ${fst} as stock, '' as url_key, 1 as source_enabled FROM ${t} LIMIT ? OFFSET ?`;
         const [r] = await conn.query(fallback, [limit, offset]);
         rows = r;
     }
@@ -652,7 +661,12 @@ async function initDB() {
                 appSettings[r.setting_key] = asInt ? parseInt(r.setting_value, 10) : r.setting_value;
             }
         });
-        console.log('[Settings] Loaded', appSettings);
+        try {
+            const { redactAppSettingsForLog } = require('./lib/datagonSecretRedact');
+            console.log('[Settings] Loaded', redactAppSettingsForLog(appSettings));
+        } catch (_) {
+            console.log('[Settings] Loaded (keys)', Object.keys(appSettings || {}).filter((k) => k !== '_reloadFromDb'));
+        }
 
         /**
          * Глобальная синхронизация appSettings из БД (MySQL app_settings),
@@ -1071,9 +1085,38 @@ function startGlobalSyncBackground(targetSiteId = null) {
             }
 
             let totalProcessed = 0;
+            const { assertMySiteSqlIdents, quoteSqlIdent } = require('./lib/datagonSecretRedact');
             for (const site of sites) {
                 syncState.message = `Синхронизация: ${site.name}...`;
                 console.log(`[SYNC] Site: ${site.name}`);
+                let qTable;
+                let qWaTable;
+                let qWaSku;
+                let qWaPrice;
+                let qWaStock;
+                let qCode;
+                let qName;
+                let qSku;
+                let qPrice;
+                let qCurrency;
+                let qStock;
+                try {
+                    assertMySiteSqlIdents(site);
+                    qTable = quoteSqlIdent(site.table_products);
+                    qWaTable = quoteSqlIdent(site.wa_table_skus || 'shop_product_skus');
+                    qWaSku = site.wa_field_sku_val ? quoteSqlIdent(site.wa_field_sku_val) : null;
+                    qWaPrice = site.wa_field_price_val ? quoteSqlIdent(site.wa_field_price_val) : null;
+                    qWaStock = site.wa_field_stock_val ? quoteSqlIdent(site.wa_field_stock_val) : null;
+                    qCode = quoteSqlIdent(site.field_code);
+                    qName = quoteSqlIdent(site.field_name);
+                    qSku = quoteSqlIdent(site.field_sku);
+                    qPrice = quoteSqlIdent(site.field_price);
+                    qCurrency = quoteSqlIdent(site.field_currency);
+                    qStock = quoteSqlIdent(site.field_stock);
+                } catch (ve) {
+                    console.error(`[SYNC] Bad SQL idents ${site.name}:`, ve.message);
+                    continue;
+                }
 
                 let skuSnap = [];
                 if (String(site.cms_type || '').toLowerCase() === 'webasyst') {
@@ -1111,12 +1154,12 @@ function startGlobalSyncBackground(targetSiteId = null) {
                     let rows;
                     if (site.cms_type === 'webasyst') {
                         // source_id = id SKU; cms_product_id = id карточки (для «ID/КОД» и админки WA).
-                        query = `SELECT sk.id as source_id, p.id as cms_product_id, p.name, sk.${site.wa_field_sku_val} as sku, sk.${site.wa_field_price_val} as price, p.currency, sk.${site.wa_field_stock_val} as stock, p.url as url_key, CASE WHEN p.status = 1 THEN 1 ELSE 0 END as source_enabled FROM ${site.table_products} p JOIN ${site.wa_table_skus} sk ON p.id = sk.product_id LIMIT ? OFFSET ?`;
+                        query = `SELECT sk.id as source_id, p.id as cms_product_id, p.name, sk.${qWaSku} as sku, sk.${qWaPrice} as price, p.currency, sk.${qWaStock} as stock, p.url as url_key, CASE WHEN p.status = 1 THEN 1 ELSE 0 END as source_enabled FROM ${qTable} p JOIN ${qWaTable} sk ON p.id = sk.product_id LIMIT ? OFFSET ?`;
                         [rows] = await conn.query(query, [batchSize, offset]);
                     } else if (String(site.cms_type || '').toLowerCase() === 'bitrix') {
                         rows = await queryBitrixRowsWithSourceEnabledFallback(conn, site, batchSize, offset);
                     } else {
-                        query = `SELECT ${site.field_code} as source_id, ${site.field_code} as cms_product_id, ${site.field_name} as name, ${site.field_sku} as sku, ${site.field_price} as price, ${site.field_currency} as currency, ${site.field_stock} as stock, '' as url_key, 1 as source_enabled FROM ${site.table_products} LIMIT ? OFFSET ?`;
+                        query = `SELECT ${qCode} as source_id, ${qCode} as cms_product_id, ${qName} as name, ${qSku} as sku, ${qPrice} as price, ${qCurrency} as currency, ${qStock} as stock, '' as url_key, 1 as source_enabled FROM ${qTable} LIMIT ? OFFSET ?`;
                         [rows] = await conn.query(query, [batchSize, offset]);
                     }
                     if (rows.length === 0) break;

@@ -1514,7 +1514,11 @@
         document.getElementById("ms-db_host").value = s.db_host || "";
         document.getElementById("ms-db_name").value = s.db_name || "";
         document.getElementById("ms-db_user").value = s.db_user || "";
-        document.getElementById("ms-db_pass").value = s.db_pass || "";
+        var passEl = document.getElementById("ms-db_pass");
+        passEl.value = "";
+        passEl.placeholder = s.db_pass_set
+          ? "сохранён: " + (s.db_pass_mask || "••••") + " — пусто = не менять"
+          : "Пароль CMS";
         document.getElementById("ms-table_products-bx").value = s.table_products || DEFAULT_FORM.table_products;
         document.getElementById("ms-table_products-wa").value = s.table_products || DEFAULT_FORM.table_products;
         document.getElementById("ms-field_name").value = s.field_name || DEFAULT_FORM.field_name;
@@ -1553,7 +1557,10 @@
             return false;
           }
         }
-        if (!String(document.getElementById("ms-db_pass").value || "").trim()) {
+        var editingId = String(document.getElementById("ms-editing-id").value || "").trim();
+        var passVal = String(document.getElementById("ms-db_pass").value || "").trim();
+        // При создании пароль обязателен; при редактировании пусто = оставить сохранённый.
+        if (!passVal && !editingId) {
           alert("Заполните все обязательные поля");
           return false;
         }

@@ -4477,7 +4477,7 @@
         set("dg-set-discover_crawl_max_pages", merged.discover_crawl_max_pages);
         set("dg-set-discover_request_delay_ms", merged.discover_request_delay_ms);
         document.getElementById("dg-set-fetch_proxy_enabled").checked = Number(merged.fetch_proxy_enabled) === 1;
-        set("dg-set-fetch_proxy_list", merged.fetch_proxy_list || "");
+        // fetch_proxy_list — секрет; placeholder ниже через applySecretInput в блоке MP keys
         set("dg-set-sync_batch_size", merged.sync_batch_size);
         set("dg-set-sync_delay_ms", merged.sync_delay_ms);
         document.getElementById("dg-set-sync_mode").value = merged.sync_mode || "always";
@@ -4651,10 +4651,21 @@
         set("dg-set-auto_sync_runs_retention_days", merged.auto_sync_runs_retention_days);
         set("dg-set-product_stock_snapshot_retention_days", merged.product_stock_snapshot_retention_days);
         set("dg-set-ozon_client_id", merged.ozon_client_id || "");
-        set("dg-set-ozon_api_key", merged.ozon_api_key || "");
-        set("dg-set-wb_api_key", merged.wb_api_key || "");
+        // Секреты write-only: GET отдаёт пусто + *_set / *_mask — не подставляем plaintext в инпут.
+        function applySecretInput(id, key) {
+          var el = document.getElementById(id);
+          if (!el) return;
+          el.value = "";
+          var setFlag = merged[key + "_set"];
+          var mask = merged[key + "_mask"] || "";
+          el.placeholder = setFlag
+            ? "сохранён: " + mask + " — введите новый, чтобы заменить"
+            : "не задан";
+        }
+        applySecretInput("dg-set-ozon_api_key", "ozon_api_key");
+        applySecretInput("dg-set-wb_api_key", "wb_api_key");
         set("dg-set-wb_token_type", merged.wb_token_type || "base");
-        set("dg-set-ym_api_key", merged.ym_api_key || "");
+        applySecretInput("dg-set-ym_api_key", "ym_api_key");
         set("dg-set-ym_campaign_id", merged.ym_campaign_id || "");
         set("dg-set-ym_business_id", merged.ym_business_id || "");
         set("dg-set-mp_ozon_delay_ms", merged.mp_ozon_delay_ms || 400);
@@ -4662,8 +4673,9 @@
         set("dg-set-mp_wb_delay_other_ms", merged.mp_wb_delay_other_ms || 1600);
         set("dg-set-mp_yandex_delay_ms", merged.mp_yandex_delay_ms || 280);
         document.getElementById("dg-set-mp_ozon_include_archived").checked = Number(merged.mp_ozon_include_archived) === 1;
-        set("dg-set-planfix_rest_api_key", merged.planfix_rest_api_key || "");
+        applySecretInput("dg-set-planfix_rest_api_key", "planfix_rest_api_key");
         set("dg-set-planfix_account", merged.planfix_account || "almamed");
+        applySecretInput("dg-set-fetch_proxy_list", "fetch_proxy_list");
         set(
           "dg-set-sales_formula_replenishment_days",
           (function () {
@@ -5508,10 +5520,30 @@
           if (!(k in payload)) return;
           var sent = payload[k];
           var got = settings && settings[k] !== undefined ? settings[k] : "";
-          var mask = /api_key|password|secret/i.test(k);
+          var mask = /api_key|password|secret|proxy_list/i.test(k);
+          var gotSet = settings && settings[k + "_set"];
+          var gotMask = settings && settings[k + "_mask"];
           var sentDisplay = mask ? maskValue(sent) : (sent === "" ? "<em>пусто</em>" : "<code>" + String(sent) + "</code>");
-          var gotDisplay = mask ? maskValue(got) : (got === "" || got == null ? "<em>пусто</em>" : "<code>" + String(got) + "</code>");
+          var gotDisplay;
+          if (mask) {
+            if (gotSet || gotMask) gotDisplay = maskValue(gotMask || got) || ("<code>" + String(gotMask || "••••") + "</code>");
+            else if (got) gotDisplay = maskValue(got);
+            else gotDisplay = "<em>не задан</em>";
+          } else {
+            gotDisplay = got === "" || got == null ? "<em>пусто</em>" : "<code>" + String(got) + "</code>";
+          }
           var same = String(sent || "") === String(got || "");
+          // Секрет: пустая отправка = «не менять» → сверка по *_set / маске.
+          if (mask && String(sent || "").trim() === "") {
+            same = Boolean(gotSet) || Boolean(gotMask) || (got != null && String(got) !== "");
+            if (!gotSet && !gotMask && (got === "" || got == null)) same = true; // оба пусты
+            sentDisplay = "<em>не меняли</em>";
+          } else if (mask && String(sent || "").trim() !== "") {
+            // Сверяем длину/маску нового значения с ответом GET
+            var sentM = maskValue(sent).replace(/<[^>]+>/g, "");
+            var gotM = String(gotMask || maskValue(got)).replace(/<[^>]+>/g, "");
+            same = Boolean(gotSet) && sentM === gotM;
+          }
           if (!same && /_enabled$/.test(String(k || ""))) {
             function asEnFlag(v) {
               return v === true || v === 1 || v === "1" ? 1 : 0;

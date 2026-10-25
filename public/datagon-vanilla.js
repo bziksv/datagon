@@ -926,14 +926,13 @@
     });
   }
 
-  /** Как `actorCanViewActivity` в routes/activity.js: журнал и пункт «Активность». */
+  /** Как `actorCanViewActivity` / db-admin: только admin (не can_manage_users). F-DBA-02. */
   function canViewActivityNav() {
     try {
-      var adm =
+      return (
         window.localStorage.getItem("isAdmin") === "true" ||
-        window.localStorage.getItem("currentUser") === "admin";
-      var cm = window.localStorage.getItem("canManageUsers") === "true";
-      return Boolean(adm || cm);
+        window.localStorage.getItem("currentUser") === "admin"
+      );
     } catch (e) {
       return false;
     }

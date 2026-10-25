@@ -2,6 +2,68 @@ const mysql = require('mysql2/promise');
 const express = require('express');
 const router = express.Router();
 const { attachBitrixUrlKeys } = require('../lib/datagonBitrixProductUrl');
+const {
+    assertSqlIdent,
+    assertMySiteSqlIdents,
+    quoteSqlIdent,
+    isBlankSecretInput,
+    maskSecret,
+} = require('../lib/datagonSecretRedact');
+
+function maskMySiteRow(row) {
+    if (!row) return row;
+    const out = Object.assign({}, row);
+    const pass = out.db_pass == null ? '' : String(out.db_pass);
+    out.db_pass_set = Boolean(pass);
+    out.db_pass_mask = pass ? maskSecret(pass) : '';
+    out.db_pass = '';
+    return out;
+}
+
+/** Валидирует и возвращает quoted-идентификаторы для подстановки в SQL CMS. */
+function quotedSiteIdents(site) {
+    assertMySiteSqlIdents(site);
+    const q = (v, optional) => {
+        if (v == null || String(v).trim() === '') {
+            if (optional) return null;
+            return quoteSqlIdent(v);
+        }
+        return quoteSqlIdent(v);
+    };
+    return {
+        table_products: q(site.table_products),
+        field_name: q(site.field_name),
+        field_sku: q(site.field_sku),
+        field_code: q(site.field_code),
+        field_price: q(site.field_price),
+        field_currency: q(site.field_currency),
+        field_stock: q(site.field_stock),
+        wa_table_skus: q(site.wa_table_skus || 'shop_product_skus'),
+        wa_field_sku_val: q(site.wa_field_sku_val, true),
+        wa_field_price_val: q(site.wa_field_price_val, true),
+        wa_field_stock_val: q(site.wa_field_stock_val, true),
+    };
+}
+
+function validateIncomingSiteIdents(body) {
+    const probe = {
+        table_products: body.table_products,
+        field_name: body.field_name || 'name',
+        field_sku: body.field_sku || 'sku',
+        field_code: body.field_code || 'id',
+        field_price: body.field_price || 'price',
+        field_currency: body.field_currency || 'currency',
+        field_stock: body.field_stock || 'stock',
+        wa_table_skus: body.wa_table_skus || 'shop_product_skus',
+        wa_field_sku_val: body.wa_field_sku_val,
+        wa_field_price_val: body.wa_field_price_val,
+        wa_field_stock_val: body.wa_field_stock_val,
+    };
+    assertMySiteSqlIdents(probe);
+    // Явно прогнать table_products даже если Bitrix auto-prepare позже подменит
+    if (body.table_products) assertSqlIdent(body.table_products, 'table_products');
+    if (body.wa_table_skus) assertSqlIdent(body.wa_table_skus, 'wa_table_skus');
+}
 
 module.exports = (db, settings) => {
     let sourceEnabledColumnReady = false;
@@ -96,14 +158,15 @@ module.exports = (db, settings) => {
     }
 
     async function queryBitrixRowsWithSourceEnabledFallback(conn, s, limit, offset) {
-        const withSourceEnabled = `SELECT ${s.field_code} as source_id, ${s.field_code} as cms_product_id, ${s.field_name} as name, ${s.field_sku} as sku, ${s.field_price} as price, ${s.field_currency} as currency, ${s.field_stock} as stock, '' as url_key, COALESCE(SOURCE_ENABLED, 1) as source_enabled FROM ${s.table_products} LIMIT ? OFFSET ?`;
+        const qi = quotedSiteIdents(s);
+        const withSourceEnabled = `SELECT ${qi.field_code} as source_id, ${qi.field_code} as cms_product_id, ${qi.field_name} as name, ${qi.field_sku} as sku, ${qi.field_price} as price, ${qi.field_currency} as currency, ${qi.field_stock} as stock, '' as url_key, COALESCE(SOURCE_ENABLED, 1) as source_enabled FROM ${qi.table_products} LIMIT ? OFFSET ?`;
         let rows;
         try {
             const [r] = await conn.query(withSourceEnabled, [limit, offset]);
             rows = r;
         } catch (e) {
             if (!/Unknown column 'SOURCE_ENABLED'/i.test(String(e?.message || ''))) throw e;
-            const fallback = `SELECT ${s.field_code} as source_id, ${s.field_code} as cms_product_id, ${s.field_name} as name, ${s.field_sku} as sku, ${s.field_price} as price, ${s.field_currency} as currency, ${s.field_stock} as stock, '' as url_key, 1 as source_enabled FROM ${s.table_products} LIMIT ? OFFSET ?`;
+            const fallback = `SELECT ${qi.field_code} as source_id, ${qi.field_code} as cms_product_id, ${qi.field_name} as name, ${qi.field_sku} as sku, ${qi.field_price} as price, ${qi.field_currency} as currency, ${qi.field_stock} as stock, '' as url_key, 1 as source_enabled FROM ${qi.table_products} LIMIT ? OFFSET ?`;
             const [r] = await conn.query(fallback, [limit, offset]);
             rows = r;
         }
@@ -111,8 +174,11 @@ module.exports = (db, settings) => {
     }
 
     async function prepareBitrixView(conn, requestedTable = 'b_catalog_product') {
-        const tableName = String(requestedTable || 'b_catalog_product').trim() || 'b_catalog_product';
-        await conn.query(`SELECT * FROM ${tableName} LIMIT 1`);
+        const tableName = assertSqlIdent(
+            String(requestedTable || 'b_catalog_product').trim() || 'b_catalog_product',
+            'table_products'
+        );
+        await conn.query(`SELECT * FROM ${quoteSqlIdent(tableName)} LIMIT 1`);
 
         const [articleProps] = await conn.query(`
             SELECT ID, IBLOCK_ID, CODE
@@ -203,7 +269,7 @@ module.exports = (db, settings) => {
     router.get('/', async (req, res) => {
         try {
             const [rows] = await db.query('SELECT * FROM my_sites ORDER BY id DESC');
-            return res.json(rows);
+            return res.json((rows || []).map(maskMySiteRow));
         } catch (e) {
             return res.status(500).json({ error: e.message });
         }
@@ -222,10 +288,15 @@ module.exports = (db, settings) => {
         let effectiveFieldStock = field_stock;
         let autoPrepared = null;
         try {
+            try {
+                validateIncomingSiteIdents(req.body || {});
+            } catch (ve) {
+                return res.status(400).json({ error: ve.message || 'Недопустимые имена таблиц/полей', code: 'BAD_SQL_IDENT' });
+            }
             const conn = await mysql.createConnection({ host: db_host, user: db_user, password: db_pass, database: db_name, connectTimeout: 5000 });
             if (safeCms === 'webasyst') {
-                await conn.query(`SELECT id FROM ${table_products} LIMIT 1`);
-                await conn.query(`SELECT id FROM ${safeWaTable} LIMIT 1`);
+                await conn.query(`SELECT id FROM ${quoteSqlIdent(table_products)} LIMIT 1`);
+                await conn.query(`SELECT id FROM ${quoteSqlIdent(safeWaTable)} LIMIT 1`);
             } else {
                 autoPrepared = await prepareBitrixView(conn, table_products || 'b_catalog_product');
                 effectiveTableProducts = autoPrepared.table_products;
@@ -237,9 +308,15 @@ module.exports = (db, settings) => {
                 effectiveFieldStock = autoPrepared.field_stock;
             }
             await conn.end();
+            assertSqlIdent(effectiveTableProducts, 'table_products');
             const [result] = await db.query(`INSERT INTO my_sites (name, domain, cms_type, db_host, db_name, db_user, db_pass, table_products, field_name, field_sku, field_code, field_price, field_currency, field_stock, wa_table_skus, wa_field_sku_val, wa_field_price_val, wa_field_stock_val) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, [name, domain, safeCms, db_host, db_name, db_user, db_pass, effectiveTableProducts, effectiveFieldName, effectiveFieldSku, effectiveFieldCode, effectiveFieldPrice, effectiveFieldCurrency, effectiveFieldStock, safeWaTable, wa_field_sku_val, wa_field_price_val, wa_field_stock_val]);
             res.json({ success: true, id: result.insertId, auto_prepared: autoPrepared });
-        } catch (e) { res.status(500).json({ error: 'DB Connect Error: ' + e.message }); }
+        } catch (e) {
+            if (e && e.code === 'BAD_SQL_IDENT') {
+                return res.status(400).json({ error: e.message, code: 'BAD_SQL_IDENT' });
+            }
+            res.status(500).json({ error: 'DB Connect Error: ' + e.message });
+        }
     });
 
     router.put('/:id', async (req, res) => {
@@ -256,10 +333,18 @@ module.exports = (db, settings) => {
         let effectiveFieldStock = field_stock;
         let autoPrepared = null;
         try {
-            const conn = await mysql.createConnection({ host: db_host, user: db_user, password: db_pass, database: db_name, connectTimeout: 5000 });
+            try {
+                validateIncomingSiteIdents(req.body || {});
+            } catch (ve) {
+                return res.status(400).json({ error: ve.message || 'Недопустимые имена таблиц/полей', code: 'BAD_SQL_IDENT' });
+            }
+            const [existingRows] = await db.query('SELECT db_pass FROM my_sites WHERE id = ? LIMIT 1', [id]);
+            const existingPass = existingRows[0] ? existingRows[0].db_pass : '';
+            const effectivePass = isBlankSecretInput(db_pass) ? existingPass : db_pass;
+            const conn = await mysql.createConnection({ host: db_host, user: db_user, password: effectivePass, database: db_name, connectTimeout: 5000 });
             if (safeCms === 'webasyst') {
-                await conn.query(`SELECT id FROM ${table_products} LIMIT 1`);
-                await conn.query(`SELECT id FROM ${safeWaTable} LIMIT 1`);
+                await conn.query(`SELECT id FROM ${quoteSqlIdent(table_products)} LIMIT 1`);
+                await conn.query(`SELECT id FROM ${quoteSqlIdent(safeWaTable)} LIMIT 1`);
             } else {
                 autoPrepared = await prepareBitrixView(conn, table_products || 'b_catalog_product');
                 effectiveTableProducts = autoPrepared.table_products;
@@ -271,9 +356,15 @@ module.exports = (db, settings) => {
                 effectiveFieldStock = autoPrepared.field_stock;
             }
             await conn.end();
-            await db.query(`UPDATE my_sites SET name=?, domain=?, cms_type=?, db_host=?, db_name=?, db_user=?, db_pass=?, table_products=?, field_name=?, field_sku=?, field_code=?, field_price=?, field_currency=?, field_stock=?, wa_table_skus=?, wa_field_sku_val=?, wa_field_price_val=?, wa_field_stock_val=? WHERE id=?`, [name, domain, safeCms, db_host, db_name, db_user, db_pass, effectiveTableProducts, effectiveFieldName, effectiveFieldSku, effectiveFieldCode, effectiveFieldPrice, effectiveFieldCurrency, effectiveFieldStock, safeWaTable, wa_field_sku_val, wa_field_price_val, wa_field_stock_val, id]);
+            assertSqlIdent(effectiveTableProducts, 'table_products');
+            await db.query(`UPDATE my_sites SET name=?, domain=?, cms_type=?, db_host=?, db_name=?, db_user=?, db_pass=?, table_products=?, field_name=?, field_sku=?, field_code=?, field_price=?, field_currency=?, field_stock=?, wa_table_skus=?, wa_field_sku_val=?, wa_field_price_val=?, wa_field_stock_val=? WHERE id=?`, [name, domain, safeCms, db_host, db_name, db_user, effectivePass, effectiveTableProducts, effectiveFieldName, effectiveFieldSku, effectiveFieldCode, effectiveFieldPrice, effectiveFieldCurrency, effectiveFieldStock, safeWaTable, wa_field_sku_val, wa_field_price_val, wa_field_stock_val, id]);
             res.json({ success: true, auto_prepared: autoPrepared });
-        } catch (e) { res.status(500).json({ error: 'DB Connect Error: ' + e.message }); }
+        } catch (e) {
+            if (e && e.code === 'BAD_SQL_IDENT') {
+                return res.status(400).json({ error: e.message, code: 'BAD_SQL_IDENT' });
+            }
+            res.status(500).json({ error: 'DB Connect Error: ' + e.message });
+        }
     });
 
     router.delete('/:id', async (req, res) => {
@@ -287,17 +378,23 @@ module.exports = (db, settings) => {
         const s = sites[0];
         const limit = parseInt(req.body.limit) || 100;
         try {
+            const qi = quotedSiteIdents(s);
             const conn = await mysql.createConnection({ host: s.db_host, user: s.db_user, password: s.db_pass, database: s.db_name, connectTimeout: 10000 });
             let query = '';
             if (s.cms_type === 'webasyst') {
-                query = `SELECT sk.id as source_id, p.id as cms_product_id, p.name, sk.${s.wa_field_sku_val} as sku, sk.${s.wa_field_price_val} as price, p.currency, sk.${s.wa_field_stock_val} as stock, p.url as url_key FROM ${s.table_products} p JOIN ${s.wa_table_skus} sk ON p.id = sk.product_id ORDER BY sk.id DESC LIMIT ?`;
+                query = `SELECT sk.id as source_id, p.id as cms_product_id, p.name, sk.${qi.wa_field_sku_val} as sku, sk.${qi.wa_field_price_val} as price, p.currency, sk.${qi.wa_field_stock_val} as stock, p.url as url_key FROM ${qi.table_products} p JOIN ${qi.wa_table_skus} sk ON p.id = sk.product_id ORDER BY sk.id DESC LIMIT ?`;
             } else {
-                query = `SELECT ${s.field_code} as source_id, ${s.field_name} as name, ${s.field_sku} as sku, ${s.field_price} as price, ${s.field_currency} as currency, ${s.field_stock} as stock, '' as url_key FROM ${s.table_products} LIMIT ?`;
+                query = `SELECT ${qi.field_code} as source_id, ${qi.field_name} as name, ${qi.field_sku} as sku, ${qi.field_price} as price, ${qi.field_currency} as currency, ${qi.field_stock} as stock, '' as url_key FROM ${qi.table_products} LIMIT ?`;
             }
             const [rows] = await conn.query(query, [limit]);
             await conn.end();
             res.json({ success: true, data: rows });
-        } catch (e) { res.status(500).json({ error: e.message }); }
+        } catch (e) {
+            if (e && e.code === 'BAD_SQL_IDENT') {
+                return res.status(400).json({ error: e.message, code: 'BAD_SQL_IDENT' });
+            }
+            res.status(500).json({ error: e.message });
+        }
     });
 
     router.post('/:id/verify-stats', async (req, res) => {
@@ -306,6 +403,7 @@ module.exports = (db, settings) => {
         const s = sites[0];
         let conn;
         try {
+            const qi = quotedSiteIdents(s);
             await ensureSourceEnabledColumn();
             await ensureSourceIdentityIndexes();
             conn = await mysql.createConnection({
@@ -326,8 +424,8 @@ module.exports = (db, settings) => {
                         COUNT(sk.id) AS total,
                         SUM(CASE WHEN p.status = 1 THEN 1 ELSE 0 END) AS active,
                         SUM(CASE WHEN p.status <> 1 OR p.status IS NULL THEN 1 ELSE 0 END) AS disabled
-                    FROM ${s.table_products} p
-                    JOIN ${s.wa_table_skus} sk ON p.id = sk.product_id
+                    FROM ${qi.table_products} p
+                    JOIN ${qi.wa_table_skus} sk ON p.id = sk.product_id
                 `);
                 sourceTotal = Number(src[0]?.total || 0);
                 sourceActive = Number(src[0]?.active || 0);
@@ -338,13 +436,13 @@ module.exports = (db, settings) => {
                         COUNT(*) AS total,
                         SUM(CASE WHEN COALESCE(SOURCE_ENABLED, 1) = 1 THEN 1 ELSE 0 END) AS active,
                         SUM(CASE WHEN COALESCE(SOURCE_ENABLED, 1) = 0 THEN 1 ELSE 0 END) AS disabled
-                    FROM ${s.table_products}
+                    FROM ${qi.table_products}
                 `);
                 sourceTotal = Number(src[0]?.total || 0);
                 sourceActive = Number(src[0]?.active || 0);
                 sourceDisabled = Number(src[0]?.disabled || 0);
             } else {
-                const [src] = await conn.query(`SELECT COUNT(*) AS total FROM ${s.table_products}`);
+                const [src] = await conn.query(`SELECT COUNT(*) AS total FROM ${qi.table_products}`);
                 sourceTotal = Number(src[0]?.total || 0);
                 sourceActive = sourceTotal;
                 sourceDisabled = 0;
@@ -399,13 +497,14 @@ module.exports = (db, settings) => {
         const currentOffset = parseInt(offset) || 0;
 
         try {
+            const qi = quotedSiteIdents(s);
             await ensureSourceEnabledColumn();
             await ensureCmsProductIdColumn();
             await ensureSourceIdentityIndexes();
             if (init === 'true') {
                 await db.query('UPDATE my_products SET is_active = 0 WHERE site_id = ?', [s.id]);
                 const conn = await mysql.createConnection({ host: s.db_host, user: s.db_user, password: s.db_pass, database: s.db_name, connectTimeout: 10000 });
-                let countQ = s.cms_type === 'webasyst' ? `SELECT COUNT(*) as total FROM ${s.table_products} p JOIN ${s.wa_table_skus} sk ON p.id = sk.product_id` : `SELECT COUNT(*) as total FROM ${s.table_products}`;
+                let countQ = s.cms_type === 'webasyst' ? `SELECT COUNT(*) as total FROM ${qi.table_products} p JOIN ${qi.wa_table_skus} sk ON p.id = sk.product_id` : `SELECT COUNT(*) as total FROM ${qi.table_products}`;
                 const [countRes] = await conn.query(countQ);
                 await conn.end();
                 return res.json({ success: true, init: true, total: countRes[0].total });
@@ -415,12 +514,12 @@ module.exports = (db, settings) => {
             let query = '';
             let rows;
             if (s.cms_type === 'webasyst') {
-                query = `SELECT sk.id as source_id, p.id as cms_product_id, p.name, sk.${s.wa_field_sku_val} as sku, sk.${s.wa_field_price_val} as price, p.currency, sk.${s.wa_field_stock_val} as stock, p.url as url_key, CASE WHEN p.status = 1 THEN 1 ELSE 0 END as source_enabled FROM ${s.table_products} p JOIN ${s.wa_table_skus} sk ON p.id = sk.product_id LIMIT ? OFFSET ?`;
+                query = `SELECT sk.id as source_id, p.id as cms_product_id, p.name, sk.${qi.wa_field_sku_val} as sku, sk.${qi.wa_field_price_val} as price, p.currency, sk.${qi.wa_field_stock_val} as stock, p.url as url_key, CASE WHEN p.status = 1 THEN 1 ELSE 0 END as source_enabled FROM ${qi.table_products} p JOIN ${qi.wa_table_skus} sk ON p.id = sk.product_id LIMIT ? OFFSET ?`;
                 [rows] = await conn.query(query, [batchSize, currentOffset]);
             } else if (String(s.cms_type || '').toLowerCase() === 'bitrix') {
                 rows = await queryBitrixRowsWithSourceEnabledFallback(conn, s, batchSize, currentOffset);
             } else {
-                query = `SELECT ${s.field_code} as source_id, ${s.field_name} as name, ${s.field_sku} as sku, ${s.field_price} as price, ${s.field_currency} as currency, ${s.field_stock} as stock, '' as url_key, 1 as source_enabled FROM ${s.table_products} LIMIT ? OFFSET ?`;
+                query = `SELECT ${qi.field_code} as source_id, ${qi.field_name} as name, ${qi.field_sku} as sku, ${qi.field_price} as price, ${qi.field_currency} as currency, ${qi.field_stock} as stock, '' as url_key, 1 as source_enabled FROM ${qi.table_products} LIMIT ? OFFSET ?`;
                 [rows] = await conn.query(query, [batchSize, currentOffset]);
             }
             await conn.end();
@@ -467,7 +566,14 @@ module.exports = (db, settings) => {
             
             for (const site of sites) {
                 console.log(`[GLOBAL SYNC] Processing site: ${site.name} (ID: ${site.id})`);
-                
+                let qi;
+                try {
+                    qi = quotedSiteIdents(site);
+                } catch (ve) {
+                    console.error(`[GLOBAL SYNC] Bad SQL idents for ${site.name}: ${ve.message}`);
+                    continue;
+                }
+
                 // 1. Инициализация (сброс is_active=0)
                 await db.query('UPDATE my_products SET is_active = 0 WHERE site_id = ?', [site.id]);
                 
@@ -491,12 +597,12 @@ module.exports = (db, settings) => {
                     let query = '';
                     let rows;
                     if (site.cms_type === 'webasyst') {
-                        query = `SELECT sk.id as source_id, p.id as cms_product_id, p.name, sk.${site.wa_field_sku_val} as sku, sk.${site.wa_field_price_val} as price, p.currency, sk.${site.wa_field_stock_val} as stock, p.url as url_key, CASE WHEN p.status = 1 THEN 1 ELSE 0 END as source_enabled FROM ${site.table_products} p JOIN ${site.wa_table_skus} sk ON p.id = sk.product_id LIMIT ${batchSize} OFFSET ${offset}`;
+                        query = `SELECT sk.id as source_id, p.id as cms_product_id, p.name, sk.${qi.wa_field_sku_val} as sku, sk.${qi.wa_field_price_val} as price, p.currency, sk.${qi.wa_field_stock_val} as stock, p.url as url_key, CASE WHEN p.status = 1 THEN 1 ELSE 0 END as source_enabled FROM ${qi.table_products} p JOIN ${qi.wa_table_skus} sk ON p.id = sk.product_id LIMIT ${batchSize} OFFSET ${offset}`;
                         [rows] = await conn.query(query);
                     } else if (String(site.cms_type || '').toLowerCase() === 'bitrix') {
                         rows = await queryBitrixRowsWithSourceEnabledFallback(conn, site, batchSize, offset);
                     } else {
-                        query = `SELECT ${site.field_code} as source_id, ${site.field_name} as name, ${site.field_sku} as sku, ${site.field_price} as price, ${site.field_currency} as currency, ${site.field_stock} as stock, '' as url_key, 1 as source_enabled FROM ${site.table_products} LIMIT ${batchSize} OFFSET ${offset}`;
+                        query = `SELECT ${qi.field_code} as source_id, ${qi.field_name} as name, ${qi.field_sku} as sku, ${qi.field_price} as price, ${qi.field_currency} as currency, ${qi.field_stock} as stock, '' as url_key, 1 as source_enabled FROM ${qi.table_products} LIMIT ${batchSize} OFFSET ${offset}`;
                         [rows] = await conn.query(query);
                     }
                     

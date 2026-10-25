@@ -46,8 +46,9 @@ function mergePageOptions(dbSections) {
         .sort((a, b) => a.label.localeCompare(b.label, 'ru'));
 }
 
+/** Журнал активности — только admin (не can_manage_users). F-DBA-02. */
 function actorCanViewActivity(actor) {
-    return Boolean(actor && (actor.username === 'admin' || actor.can_manage_users === true));
+    return Boolean(actor && actor.username === 'admin');
 }
 
 /** datetime-local / ISO → сравнение с TIMESTAMP в БД (локаль процесса Node) */

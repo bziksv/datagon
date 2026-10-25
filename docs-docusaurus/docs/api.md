@@ -102,7 +102,7 @@ description: Справочник REST-эндпоинтов p.datagon.ru (осн
 - `/api/manager-sales` -> `routes/managerSales.js` (Таблицы менеджеров: годовой журнал оплат `dg_manager_sales_rows`)
 - `/api/ops-sheet` -> `routes/opsSheet.js` (Операционный лист: свод + Planfix-заявки `dg_ops_planfix_tasks`)
 - `/api/work-schedule` -> `routes/workSchedule.js` (График работы: `ws_*`, clock, табель, отпуска, payroll, audit, экспорт 1С; см. [work-schedule.md](/docs/work-schedule/))
-- `/api/work` -> `routes/work.js` (WORK: legacy проекты/пароли SEO·контекст·DEV·сервисы + сотрудники SEO; таблицы `work_*`; CRUD `GET|POST|PUT|DELETE /:slug[/:id]`; список: `status`, `q`, `specialist`=`legacy_user_id` (главный или в `work_assignees`); назначение специалистов `assignee_legacy_ids` + `id_glavn_user` → `work_assignees`; `GET /meta/staff`; **видимость как в WORK**: admin/`can_manage_users` — всё; иначе только свои назначения; персонал — только своя строка; создание — только admin; SEO выплаты `GET|PUT /seo-payout-settings`, `POST /seo-payout-recalc`; `POST /seo-staff/rematch`; импорт `npm run import:work-prime`)
+- `/api/work` -> `routes/work.js` (WORK: legacy проекты/пароли SEO·контекст·DEV·сервисы + сотрудники SEO; таблицы `work_*`; CRUD `GET|POST|PUT|DELETE /:slug[/:id]`; **секреты vault** (`admin_pass`/`password`/`ftp`/`ssa`/`passYandex`/`passGoogle`/…) в list/detail **замаскированы** (`*_set`/`*_mask`, поле пустое); показать — `GET /:slug/:id/reveal?field=` (+ activity `work_reveal`); PUT с пустым секретом не затирает; **unscoped admin только `username=admin`** (не `can_manage_users`); иначе только свои назначения; создание — только admin; SEO выплаты `GET|PUT /seo-payout-settings`, `POST /seo-payout-recalc`; `POST /seo-staff/rematch`; импорт `npm run import:work-prime`)
 - `GET /api/processes/overview`, `POST /api/sync-all-start`, `POST /api/sync-site-start`, `GET /api/sync-status` -> `server.js`
 
 ## Auth
@@ -159,10 +159,15 @@ Body:
 - Ответ: `{ success, days, projects: [{ uuid, name, count }] }`.
 
 ### GET `/api/settings`
-Получить текущие настройки приложения. Ключ **`finance_tochka_jwt` не отдаётся** (JWT Точки только через `/api/finance/config`).
+Получить текущие настройки приложения. **Секреты не отдаются plaintext**: для ключей вроде `ozon_api_key`, `wb_api_key`, `ym_api_key`, `planfix_rest_api_key`, `huckster_password`, `fetch_proxy_list` (и прочих `*password*` / `*api_key*` / `*token*` / `*jwt*` / `*secret*` / `*credentials*`) в ответе:
+- само поле = `""`;
+- `<key>_set` = `true|false` (секрет сохранён);
+- `<key>_mask` = маска вида `kKxJ…7y2Q (40 симв.)`.
+
+JWT/креды банков по-прежнему только через `/api/finance/config` (masks).
 
 ### POST `/api/settings`
-Обновить настройки парсинга/синхронизации.
+Обновить настройки парсинга/синхронизации. Для секретных полей **пустая строка = не менять** (write-only; нельзя затереть ключ, отправив пустое поле из формы).
 
 Body (пример):
 ```json
@@ -2603,7 +2608,7 @@ Body: `{ "days": 30, "date_from?", "date_to?", "customer_code?", "customer_codes
 
 ## Управление БД
 
-Страница `/db-admin.html`, роутер `routes/dbAdmin.js`, каталог связей `lib/datagonDbRelations.js`. Только **основная** MySQL Datagon (не CMS сайтов). Доступ API и пункт меню с замком: **admin** или `can_manage_users` (как «Активность/Логи») — жёсткая проверка в роутере, не только матрица. Ключ матрицы HTML: `db-admin`. UI: [Управление БД](/docs/db-admin/). Имена таблиц для preview/ANALYZE/OPTIMIZE сверяются с `information_schema` текущей схемы — произвольный SQL запрещён.
+Страница `/db-admin.html`, роутер `routes/dbAdmin.js`, каталог связей `lib/datagonDbRelations.js`. Только **основная** MySQL Datagon (не CMS сайтов). Доступ API: **строго `username === admin`** (не `can_manage_users`). Ключ матрицы HTML: `db-admin`. UI: [Управление БД](/docs/db-admin/). Имена таблиц для preview/ANALYZE/OPTIMIZE сверяются с `information_schema` текущей схемы — произвольный SQL запрещён. **Превью запрещено** для `app_settings`, `users`, `auth_sessions`, `work_*_passwords`, `work_services`. В остальных таблицах колонки с `password`/`token`/`secret`/`api_key`/`hash` маскируются.
 
 ### GET `/api/db-admin/overview`
 

@@ -4,14 +4,19 @@
  */
 const express = require('express');
 const { buildRelationsCatalog, getTableMeta } = require('../lib/datagonDbRelations');
+const {
+    isDbAdminPreviewForbidden,
+    redactDbAdminPreviewRows,
+} = require('../lib/datagonSecretRedact');
 
 const IDENT_RE = /^[A-Za-z0-9_]+$/;
 const PREVIEW_MAX = 50;
 const PREVIEW_DEFAULT = 20;
 const MAINT_MAX_TABLES = 40;
 
+/** Только username=admin (не can_manage_users) — F-DBA-01/02. */
 function actorCanUseDbAdmin(actor) {
-    return Boolean(actor && (actor.username === 'admin' || actor.can_manage_users === true));
+    return Boolean(actor && actor.username === 'admin');
 }
 
 function quoteIdent(name) {
@@ -122,10 +127,10 @@ module.exports = (db) => {
     const router = express.Router();
 
     router.use((req, res, next) => {
-        if (!actorCanUseDbAdmin(req.datagonActor)) {
+            if (!actorCanUseDbAdmin(req.datagonActor)) {
             return res.status(403).json({
                 success: false,
-                error: 'Недостаточно прав: нужны администратор или право управления пользователями',
+                error: 'Недостаточно прав: управление БД только для admin',
             });
         }
         return next();
@@ -213,6 +218,13 @@ module.exports = (db) => {
             if (!exists || !exists.length) {
                 return res.status(404).json({ success: false, error: 'Таблица не найдена' });
             }
+            if (isDbAdminPreviewForbidden(name)) {
+                return res.status(403).json({
+                    success: false,
+                    error: `Превью таблицы «${name}» запрещено (секреты / учётные данные)`,
+                    code: 'PREVIEW_FORBIDDEN',
+                });
+            }
             let limit = parseInt(String(req.query.limit || PREVIEW_DEFAULT), 10);
             if (!Number.isFinite(limit) || limit < 1) limit = PREVIEW_DEFAULT;
             if (limit > PREVIEW_MAX) limit = PREVIEW_MAX;
@@ -239,14 +251,16 @@ module.exports = (db) => {
             );
 
             const meta = getTableMeta(name);
+            const safeRows = redactDbAdminPreviewRows(rows || [], cols || []);
             return res.json({
                 success: true,
                 table: name,
                 limit,
                 columns: cols || [],
-                rows: rows || [],
-                row_count: (rows || []).length,
+                rows: safeRows,
+                row_count: safeRows.length,
                 meta,
+                redacted: true,
             });
         } catch (e) {
             return res.status(500).json({ success: false, error: e.message || String(e) });

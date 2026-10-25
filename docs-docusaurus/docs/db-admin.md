@@ -12,8 +12,8 @@ description: Обзор основной MySQL Datagon, карта связей,
 
 Два независимых уровня:
 
-1. **Пункт меню / HTML** — как «Активность/Логи»: виден и открывается только **`admin`** или пользователю с **`can_manage_users`**. Ключ матрицы `db-admin` участвует в общем реестре страниц, но замок меню завязан на manage-users, не только на `page_modes`.
-2. **API `/api/db-admin/*`** — жёсткая проверка в `routes/dbAdmin.js`: иначе **403** («нужны администратор или право управления пользователями»). Даже при `db-admin=full` в матрице без `can_manage_users` API не отдаст данные.
+1. **Пункт меню / HTML** — ключ матрицы `db-admin`. Замок меню может показывать пункт менеджерам пользователей, но **данные API только для `username=admin`**.
+2. **API `/api/db-admin/*`** — жёсткая проверка в `routes/dbAdmin.js`: только **`admin`**, иначе **403**. `can_manage_users` **не** открывает DBA. Превью `app_settings` / `users` / `auth_sessions` / `work_*_passwords` / `work_services` — **403**; прочие таблицы — redact колонок `*password*`/`*token*`/`*secret*`/`*api_key*`/`*hash*`.
 
 ## Что на экране
 

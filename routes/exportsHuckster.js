@@ -1698,13 +1698,19 @@ function createExportsHucksterRouter(_db, appSettings) {
         try {
             const body = req.body || {};
             const email = String(body.email || '').trim();
-            const password = String(body.password || '').trim();
+            const passwordRaw = body.password != null ? String(body.password) : '';
+            const password = passwordRaw.trim();
             const delayMs = Math.max(
                 HUCKSTER_DELAY_MS_MIN,
                 Number(body.delay_ms || appSettings.huckster_delay_ms || HUCKSTER_DELAY_MS_DEFAULT)
             );
             const maxOffset = Math.max(0, Number(body.max_offset_per_shop || appSettings.huckster_max_offset_per_shop || 0));
-            if (!email || !password) {
+            const existingPass = String(appSettings.huckster_password || '').trim();
+            // Пустой password = оставить сохранённый (write-only). F-NP-01 / F-SEC-02.
+            if (!email) {
+                return res.status(400).json({ error: 'Заполните email', code: 'MISSING_CREDS' });
+            }
+            if (!password && !existingPass) {
                 return res.status(400).json({ error: 'Заполните email и password', code: 'MISSING_CREDS' });
             }
             if (typeof _db?.query !== 'function') {
@@ -1712,10 +1718,12 @@ function createExportsHucksterRouter(_db, appSettings) {
             }
             const kv = [
                 ['huckster_email', email],
-                ['huckster_password', password],
                 ['huckster_delay_ms', String(delayMs)],
                 ['huckster_max_offset_per_shop', String(maxOffset)],
             ];
+            if (password) {
+                kv.push(['huckster_password', password]);
+            }
             for (const [k, v] of kv) {
                 await _db.query(
                     'INSERT INTO app_settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value=?',
@@ -1723,7 +1731,11 @@ function createExportsHucksterRouter(_db, appSettings) {
                 );
                 appSettings[k] = k.includes('delay') || k.includes('offset') ? Number(v) : v;
             }
-            return res.json({ success: true });
+            return res.json({
+                success: true,
+                password_updated: Boolean(password),
+                password_set: Boolean(password || existingPass),
+            });
         } catch (e) {
             return res.status(500).json({ error: e.message || String(e), code: 'SAVE_CREDS_FAILED' });
         }
