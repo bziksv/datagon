@@ -150,6 +150,7 @@ description: Обязательные ревизии при изменении �
 | rev | version | date | notes |
 |-----|---------|------|-------|
 | 1 | 1.0.0 | 2026-10-21 | Шапки `purchaseorder` → `ms_purchase_order`; KPI A/B; без `entity/supply`. |
+| 2 | 1.0.1 | 2026-10-26 | Страница limit=50, timeout 300s + retry на timeout/5xx (фикс обрыва 120s). |
 
 ## Cursor (для разработчиков)
 
