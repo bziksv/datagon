@@ -3,6 +3,10 @@
       var FILTERS_KEY = "datagon_processes_filters_collapsed_v1";
       var overview = null;
       var dgProcAsRunLogById = Object.create(null);
+      /** task_type открытого лога — чтобы ←/→ по дням в модалке искали тот же тип. */
+      var asLogModalTaskType = "";
+      /** После loadOverview открыть лог этого task_type (смена дня из модалки). */
+      var pendingAsLogTaskType = "";
       var loading = false;
       /** Счётчик параллельных fetch overview (поллинг + ручное «Обновить»): кнопку включаем только когда все завершились. */
       var overviewFetchDepth = 0;
@@ -792,6 +796,64 @@
         }
       }
 
+      function findLatestRunForTask(taskType) {
+        var tt = String(taskType || "").trim().toLowerCase();
+        if (!tt) return null;
+        var best = null;
+        Object.keys(dgProcAsRunLogById).forEach(function (id) {
+          var r = dgProcAsRunLogById[id];
+          if (!r) return;
+          if (String(r.task_type || "").trim().toLowerCase() !== tt) return;
+          if (!best) {
+            best = r;
+            return;
+          }
+          var a = Number(r.id) || 0;
+          var b = Number(best.id) || 0;
+          if (a > b) best = r;
+        });
+        return best;
+      }
+
+      function showEmptyAsLogForTask(taskType) {
+        var dlg = document.getElementById("dg-proc-as-run-log-dialog");
+        if (!dlg) return;
+        var tt = String(taskType || "").trim() || "—";
+        asLogModalTaskType = tt === "—" ? "" : tt;
+        var titleEl = document.getElementById("dg-proc-as-run-log-d-title");
+        var pre = document.getElementById("dg-proc-as-run-log-d-summary");
+        var foot = document.getElementById("dg-proc-as-run-log-d-foot");
+        var dimWrap = document.getElementById("dg-proc-as-run-log-d-dim-wrap");
+        if (titleEl) titleEl.textContent = tt + " · нет запуска";
+        if (pre) {
+          pre.textContent =
+            "task_type: " +
+            tt +
+            "\nfor_date (МСК): " +
+            forDate +
+            " (" +
+            moscowDayLabel(forDate) +
+            ")\n\nЗа этот день записей auto_sync_runs для задачи нет.\nПереключите день стрелками или чипами выше.";
+        }
+        if (dimWrap) dimWrap.classList.add("d-none");
+        if (foot) foot.textContent = "Смена дня в шапке модалки синхронизирует «За день» на странице.";
+        syncAsLogModalDateUi();
+        if (typeof dlg.showModal === "function" && !dlg.open) {
+          try {
+            dlg.showModal();
+          } catch (_) {}
+        }
+      }
+
+      function reopenAsLogForPendingTask() {
+        var tt = String(pendingAsLogTaskType || "").trim();
+        pendingAsLogTaskType = "";
+        if (!tt) return;
+        var rec = findLatestRunForTask(tt);
+        if (rec && rec.id != null) openAutoSyncRunLogModal(String(rec.id));
+        else showEmptyAsLogForTask(tt);
+      }
+
       function openAutoSyncRunLogModal(runIdStr) {
         var rec = dgProcAsRunLogById[runIdStr];
         var dlg = document.getElementById("dg-proc-as-run-log-dialog");
@@ -802,6 +864,8 @@
         var dimWrap = document.getElementById("dg-proc-as-run-log-d-dim-wrap");
         var dimBody = document.getElementById("dg-proc-as-run-log-d-dim");
         var tt = String(rec.task_type || "").trim() || "—";
+        asLogModalTaskType = tt === "—" ? "" : tt;
+        syncAsLogModalDateUi();
         var trig = String(rec.trigger_type || "").trim() || "—";
         var st = String(rec.status || "").trim() || "—";
         if (titleEl) titleEl.textContent = "#" + String(rec.id) + " · " + tt;
@@ -1550,9 +1614,11 @@
             if (overview.isToday === false) stopPoll();
             else if (!pollTimer) startPoll();
             showErr("");
+            reopenAsLogForPendingTask();
           })
           .catch(function (e) {
             showErr(e.message || "Ошибка загрузки процессов");
+            pendingAsLogTaskType = "";
           })
           .then(function () {
             loading = false;
@@ -1614,9 +1680,55 @@
       });
       document.getElementById("dg-proc-ms-stop").addEventListener("click", stopMsSync);
 
-      function renderForDateChips() {
-        var box = document.getElementById("dg-proc-date-chips");
+      function clampForDate(v) {
+        var d = String(v || "").trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return forDate;
+        if (!forDateOptions.length) return d;
+        if (d > forDateOptions[0]) return forDateOptions[0];
+        if (d < forDateOptions[forDateOptions.length - 1]) return forDateOptions[forDateOptions.length - 1];
+        return d;
+      }
+
+      function neighborForDate(delta) {
+        if (!forDateOptions.length) return forDate;
+        var idx = forDateOptions.indexOf(forDate);
+        if (idx < 0) idx = 0;
+        /** options: [сегодня, вчера, …] — «вчера» = +1 в индексе. */
+        var next = idx - delta;
+        if (next < 0) next = 0;
+        if (next > forDateOptions.length - 1) next = forDateOptions.length - 1;
+        return forDateOptions[next];
+      }
+
+      function forDateChangeReopenOpts(forceFromModal) {
+        var dlg = document.getElementById("dg-proc-as-run-log-dialog");
+        var modalOpen = dlg && (dlg.open || forceFromModal);
+        if (modalOpen && asLogModalTaskType) return { reopenTaskType: asLogModalTaskType };
+        return {};
+      }
+
+      /**
+       * Смена «За день». opts.reopenTaskType — после загрузки снова открыть лог этой задачи.
+       */
+      function setForDate(nextDate, opts) {
+        opts = opts || {};
+        var v = clampForDate(nextDate);
+        if (opts.reopenTaskType) pendingAsLogTaskType = String(opts.reopenTaskType || "").trim();
+        if (v === forDate) {
+          syncForDateUi();
+          if (pendingAsLogTaskType) reopenAsLogForPendingTask();
+          return;
+        }
+        forDate = v;
+        syncForDateUi();
+        loadOverview();
+      }
+
+      function fillDateChipsBox(box, chipOpts) {
         if (!box) return;
+        chipOpts = chipOpts || {};
+        var compact = !!chipOpts.compact;
+        var reopenFromModal = !!chipOpts.reopenFromModal;
         box.replaceChildren();
         var today = moscowTodayDate();
         forDateOptions.forEach(function (d, i) {
@@ -1625,20 +1737,57 @@
           btn.className = "btn btn-sm btn-outline-secondary dg-proc-date-chip";
           if (d === forDate) btn.classList.add("active");
           var label;
-          if (d === today) label = "Сегодня";
-          else if (i === 1) label = "Вчера";
+          if (d === today) label = compact ? "Сег." : "Сегодня";
+          else if (i === 1) label = compact ? "Вч." : "Вчера";
           else label = "−" + i;
           btn.textContent = label;
-          btn.title = d;
+          btn.title = d + " · " + moscowDayLabel(d);
           btn.setAttribute("data-date", d);
+          btn.setAttribute("data-dg-notify-start", "День: " + moscowDayLabel(d) + "…");
           btn.addEventListener("click", function () {
-            if (forDate === d) return;
-            forDate = d;
-            syncForDateUi();
-            loadOverview();
+            setForDate(d, forDateChangeReopenOpts(reopenFromModal));
           });
           box.appendChild(btn);
         });
+      }
+
+      function renderForDateChips() {
+        fillDateChipsBox(document.getElementById("dg-proc-date-chips"), { compact: false });
+        fillDateChipsBox(document.getElementById("dg-proc-as-date-chips"), { compact: true });
+        fillDateChipsBox(document.getElementById("dg-proc-as-log-day-chips"), {
+          compact: true,
+          reopenFromModal: true,
+        });
+      }
+
+      function syncAsLogModalDateUi() {
+        var input = document.getElementById("dg-proc-as-log-day-input");
+        var label = document.getElementById("dg-proc-as-log-day-label");
+        var prev = document.getElementById("dg-proc-as-log-day-prev");
+        var next = document.getElementById("dg-proc-as-log-day-next");
+        if (label) {
+          var fmt =
+            window.DatagonFmt && typeof window.DatagonFmt.formatDate === "function"
+              ? window.DatagonFmt.formatDate(forDate)
+              : forDate;
+          label.textContent = fmt + " · " + moscowDayLabel(forDate);
+        }
+        if (input) {
+          if (forDateOptions.length) {
+            input.max = forDateOptions[0];
+            input.min = forDateOptions[forDateOptions.length - 1];
+          }
+          if (input.value !== forDate) input.value = forDate;
+        }
+        var idx = forDateOptions.indexOf(forDate);
+        if (prev) prev.disabled = idx < 0 || idx >= forDateOptions.length - 1;
+        if (next) next.disabled = idx <= 0;
+        var box = document.getElementById("dg-proc-as-log-day-chips");
+        if (box) {
+          [].forEach.call(box.querySelectorAll(".dg-proc-date-chip"), function (b) {
+            b.classList.toggle("active", b.getAttribute("data-date") === forDate);
+          });
+        }
       }
 
       function syncForDateUi() {
@@ -1650,36 +1799,65 @@
           }
           if (input.value !== forDate) input.value = forDate;
         }
-        var box = document.getElementById("dg-proc-date-chips");
-        if (box) {
+        ["dg-proc-date-chips", "dg-proc-as-date-chips", "dg-proc-as-log-day-chips"].forEach(function (id) {
+          var box = document.getElementById(id);
+          if (!box) return;
           [].forEach.call(box.querySelectorAll(".dg-proc-date-chip"), function (b) {
             b.classList.toggle("active", b.getAttribute("data-date") === forDate);
           });
+        });
+        syncAsLogModalDateUi();
+      }
+
+      function syncProcDateStickyTop() {
+        var header = document.querySelector(".app-header");
+        var top = 60;
+        if (header) {
+          var h = header.getBoundingClientRect().height;
+          if (h && isFinite(h)) top = Math.round(h);
         }
+        document.documentElement.style.setProperty("--dg-proc-date-sticky-top", top + "px");
       }
 
       (function bindForDate() {
         var input = document.getElementById("dg-proc-for-date");
-        if (!input) return;
+        syncProcDateStickyTop();
+        window.addEventListener("resize", syncProcDateStickyTop);
         syncForDateUi();
         renderForDateChips();
-        input.addEventListener("change", function () {
-          var v = String(input.value || "").trim();
-          if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) {
-            input.value = forDate;
-            return;
-          }
-          /** Если ввели дату вне 14-дневного окна — мягко прижимаем к ближайшей допустимой. */
-          if (forDateOptions.length && (v > forDateOptions[0] || v < forDateOptions[forDateOptions.length - 1])) {
-            if (v > forDateOptions[0]) v = forDateOptions[0];
-            else v = forDateOptions[forDateOptions.length - 1];
-            input.value = v;
-          }
-          if (v === forDate) return;
-          forDate = v;
-          syncForDateUi();
-          loadOverview();
-        });
+        if (input) {
+          input.addEventListener("change", function () {
+            var v = String(input.value || "").trim();
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+              input.value = forDate;
+              return;
+            }
+            setForDate(v, forDateChangeReopenOpts(false));
+          });
+        }
+        var logInput = document.getElementById("dg-proc-as-log-day-input");
+        if (logInput) {
+          logInput.addEventListener("change", function () {
+            var v = String(logInput.value || "").trim();
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+              logInput.value = forDate;
+              return;
+            }
+            setForDate(v, forDateChangeReopenOpts(true));
+          });
+        }
+        var prevBtn = document.getElementById("dg-proc-as-log-day-prev");
+        var nextBtn = document.getElementById("dg-proc-as-log-day-next");
+        if (prevBtn) {
+          prevBtn.addEventListener("click", function () {
+            setForDate(neighborForDate(-1), forDateChangeReopenOpts(true));
+          });
+        }
+        if (nextBtn) {
+          nextBtn.addEventListener("click", function () {
+            setForDate(neighborForDate(1), forDateChangeReopenOpts(true));
+          });
+        }
       })();
 
       (function processesFilterFieldVisibility() {
@@ -1826,6 +2004,10 @@
         if (!dlg || !btnClose) return;
         btnClose.addEventListener("click", function () {
           if (typeof dlg.close === "function") dlg.close();
+        });
+        dlg.addEventListener("close", function () {
+          asLogModalTaskType = "";
+          pendingAsLogTaskType = "";
         });
         dlg.addEventListener("click", function (ev) {
           if (ev.target === dlg && typeof dlg.close === "function") dlg.close();

@@ -107,12 +107,37 @@
       font-size: 0.72rem;
       line-height: 1.2;
     }
+    /* «За день» липнет под app-header — удобно менять дату, листая логи ниже. */
+    body.datagon-vanilla-body[data-dg-active-nav='processes'] #dg-proc-date-card.dg-proc-date-card-sticky {
+      position: sticky;
+      top: var(--dg-proc-date-sticky-top, 60px);
+      z-index: 24;
+      background: #fff;
+      box-shadow: 0 4px 14px rgba(26, 54, 93, 0.1);
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='processes'] #dg-proc-as-date-chips .dg-proc-date-chip {
+      font-size: 0.72rem;
+      line-height: 1.2;
+      padding: 0.15rem 0.45rem;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='processes'] #dg-proc-as-date-chips .dg-proc-date-chip.active,
+    body.datagon-vanilla-body[data-dg-active-nav='processes'] #dg-proc-date-chips .dg-proc-date-chip.active,
+    body.datagon-vanilla-body[data-dg-active-nav='processes'] #dg-proc-as-log-day-chips .dg-proc-date-chip.active {
+      background: #3f6ad8;
+      border-color: #3f6ad8;
+      color: #fff;
+    }
     body.datagon-vanilla-body[data-dg-active-nav='processes'] #dg-proc-as-run-log-dialog {
       max-width: min(920px, 96vw);
       width: 100%;
     }
     body.datagon-vanilla-body[data-dg-active-nav='processes'] #dg-proc-as-run-log-dialog::backdrop {
       background: rgba(15, 23, 42, 0.45);
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='processes'] .dg-proc-as-log-day-input {
+      width: auto;
+      min-width: 9.5rem;
+      max-width: 11rem;
     }
     body.datagon-vanilla-body[data-dg-active-nav='processes'] #dg-proc-as-run-log-d-summary {
       white-space: pre-wrap;

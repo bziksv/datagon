@@ -256,7 +256,7 @@
             </div>
           </div>
 
-          <div class="main-card mb-3 card" id="dg-proc-date-card">
+          <div class="main-card mb-3 card dg-proc-date-card-sticky" id="dg-proc-date-card">
             <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
               <div class="d-flex align-items-center">
                 <i class="header-icon pe-7s-date icon-gradient bg-happy-fisher me-2"> </i>
@@ -312,13 +312,16 @@
             </div>
           </div>
 
-          <div class="main-card mb-3 card">
+          <div class="main-card mb-3 card" id="dg-proc-as-card">
             <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
-              <div class="d-flex align-items-center">
-                <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
-                <span>Автосинхронизация по расписанию</span>
-                <span class="ms-2 small text-muted" id="dg-proc-as-day-hint"></span>
+              <div class="d-flex align-items-center flex-wrap gap-2">
+                <div class="d-flex align-items-center">
+                  <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
+                  <span>Автосинхронизация по расписанию</span>
+                  <span class="ms-2 small text-muted" id="dg-proc-as-day-hint"></span>
+                </div>
               </div>
+              <div class="d-flex flex-wrap align-items-center gap-1" id="dg-proc-as-date-chips" role="group" aria-label="День автосинхронизации"></div>
             </div>
             <div class="card-body">
               <div class="row g-2 mb-3 small">
@@ -340,6 +343,19 @@
                 <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-proc-as-run-log-d-close">Закрыть</button>
               </div>
               <div class="card-body">
+                <div class="dg-proc-as-log-daybar border rounded px-2 py-2 mb-3 bg-light" id="dg-proc-as-log-daybar">
+                  <div class="d-flex flex-wrap align-items-center gap-2 mb-1">
+                    <span class="small text-muted fw-semibold text-uppercase" style="letter-spacing:0.02em">День (МСК)</span>
+                    <span class="small text-muted" id="dg-proc-as-log-day-label">—</span>
+                    <div class="ms-auto d-flex align-items-center gap-1">
+                      <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-proc-as-log-day-prev" data-dg-notify-start="Лог: предыдущий день…" title="Предыдущий день" aria-label="Предыдущий день">←</button>
+                      <input type="date" class="form-control form-control-sm dg-proc-as-log-day-input" id="dg-proc-as-log-day-input" autocomplete="off" />
+                      <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-proc-as-log-day-next" data-dg-notify-start="Лог: следующий день…" title="Следующий день" aria-label="Следующий день">→</button>
+                    </div>
+                  </div>
+                  <div class="d-flex flex-wrap gap-1" id="dg-proc-as-log-day-chips" role="group" aria-label="Быстрый выбор дня в логе"></div>
+                  <div class="small text-muted mt-1 mb-0">Смена дня подгружает тот же тип задачи за выбранную дату (как «За день» на странице).</div>
+                </div>
                 <div class="small text-muted mb-1">Полный текст из БД (<code>auto_sync_runs.message</code>) и, для габаритов МС, строки отказов из <code>ms_dimensions_log</code> (на странице «Габариты» — «Журнал изменений габаритов»).</div>
                 <pre id="dg-proc-as-run-log-d-summary" class="small mb-0 bg-light p-2 rounded"></pre>
                 <div id="dg-proc-as-run-log-d-dim-wrap" class="d-none">
