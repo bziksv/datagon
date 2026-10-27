@@ -726,6 +726,10 @@ module.exports = (db, appSettings = {}) => {
                     }),
                 });
             }
+            // F-SET-06: revoke + delete sessions before user row (no FK CASCADE on auth_sessions)
+            await ensureAuthSchema();
+            await db.query('UPDATE auth_sessions SET revoked = 1 WHERE user_id = ? AND revoked = 0', [id]);
+            await db.query('DELETE FROM auth_sessions WHERE user_id = ?', [id]);
             await db.query('DELETE FROM users WHERE id = ?', [id]);
             return res.json({ success: true });
         } catch (e) {
@@ -943,7 +947,7 @@ module.exports = (db, appSettings = {}) => {
     });
 
     router.post('/change-password', async (req, res) => {
-        const { username, newPassword } = req.body;
+        const { username, newPassword, currentPassword } = req.body || {};
 
         if (!username || !newPassword) {
             return res.status(400).json({ error: 'Заполните логин и новый пароль' });
@@ -966,12 +970,31 @@ module.exports = (db, appSettings = {}) => {
             const user = users[0];
             const isActorAdmin = actor.username === 'admin';
             const isTargetAdmin = user.username === 'admin';
+            const isSelf = Number(actor.id) === Number(user.id) || actor.username === user.username;
 
-            if (!isActorAdmin && actor.username !== user.username) {
+            if (!isActorAdmin && !isSelf) {
                 return res.status(403).json({ error: 'Можно менять пароль только своего пользователя' });
             }
             if (!isActorAdmin && isTargetAdmin) {
                 return res.status(403).json({ error: 'Только admin может изменять пароль admin' });
+            }
+
+            // F-AUTH-04 / F-SET-04: self-change requires current password (stolen session ≠ full takeover)
+            if (isSelf) {
+                const cur = String(currentPassword || '');
+                if (!cur) {
+                    return res.status(400).json({
+                        error: 'Укажите текущий пароль',
+                        code: 'CURRENT_PASSWORD_REQUIRED',
+                    });
+                }
+                const okCur = await bcrypt.compare(cur, user.password_hash);
+                if (!okCur) {
+                    return res.status(403).json({
+                        error: 'Неверный текущий пароль',
+                        code: 'CURRENT_PASSWORD_INVALID',
+                    });
+                }
             }
 
             const newHash = await bcrypt.hash(newPassword, 10);

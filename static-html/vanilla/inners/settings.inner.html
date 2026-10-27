@@ -2114,10 +2114,14 @@
               </div>
             </div>
             <div class="card-body">
-              <p class="small text-muted">Измените пароль пользователя. Для не-admin доступна смена только своего пароля.</p>
+              <p class="small text-muted">Измените пароль пользователя. Для не-admin доступна смена только своего пароля. При смене <strong>своего</strong> пароля нужен текущий (F-AUTH-04).</p>
               <div class="row g-2">
                 <div class="col-md-3"><label class="form-label" for="dg-set-pw-username">Логин</label><input type="text" class="form-control" id="dg-set-pw-username" /></div>
-                <div class="col-md-5">
+                <div class="col-md-3">
+                  <label class="form-label" for="dg-set-pw-current">Текущий пароль</label>
+                  <input type="password" class="form-control" id="dg-set-pw-current" autocomplete="current-password" placeholder="для своего аккаунта" />
+                </div>
+                <div class="col-md-4">
                   <label class="form-label" for="dg-set-pw-new">Новый пароль</label>
                   <div class="d-flex gap-2">
                     <input type="password" class="form-control" id="dg-set-pw-new" autocomplete="new-password" />
@@ -2126,14 +2130,14 @@
                   </div>
                 </div>
                 <div class="col-md-2"><label class="form-label" for="dg-set-pw-length">Длина</label><input type="number" class="form-control" id="dg-set-pw-length" min="15" value="15" /></div>
-                <div class="col-md-2 d-flex align-items-end gap-2 flex-wrap">
+                <div class="col-md-12 d-flex align-items-end gap-2 flex-wrap">
                   <button type="button" class="btn btn-primary" id="dg-set-pw-gen" data-dg-no-activity="1">
                     Сгенерировать пароль
                   </button>
                   <button type="button" class="btn btn-success" id="dg-set-pw-submit" data-dg-notify-start="Меняем пароль…">🔐 Сменить пароль</button>
                 </div>
               </div>
-              <p class="text-muted mb-0 mt-2 small">Минимальная длина: 15 символов</p>
+              <p class="text-muted mb-0 mt-2 small">Минимальная длина: 15 символов. Admin reset чужого пароля — без поля «Текущий».</p>
             </div>
           </div>
 

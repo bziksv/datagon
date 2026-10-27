@@ -121,12 +121,14 @@ Body:
 Legacy-алиас входа (тот же обработчик, что и выше).
 
 ### POST `/api/auth/change-password`
-Смена пароля.
+Смена пароля. **F-AUTH-04:** при смене **своего** пароля обязателен `currentPassword` (`400 CURRENT_PASSWORD_REQUIRED` / `403 CURRENT_PASSWORD_INVALID`). Admin reset чужого — без текущего. После успеха все сессии цели отзываются, cookie сбрасывается.
 
 Body:
 ```json
-{ "username": "admin", "newPassword": "минимум 15 символов" }
+{ "username": "admin", "newPassword": "минимум 15 символов", "currentPassword": "…" }
 ```
+
+**F-SET-06:** `DELETE /api/auth/users/:id` перед удалением отзывает и удаляет строки `auth_sessions` этого user_id.
 
 ### Прочие маршруты `routes/auth.js`
 
@@ -167,7 +169,7 @@ Body:
 JWT/креды банков по-прежнему только через `/api/finance/config` (masks).
 
 ### POST `/api/settings`
-Обновить настройки парсинга/синхронизации. Для секретных полей **пустая строка = не менять** (write-only; нельзя затереть ключ, отправив пустое поле из формы).
+Обновить настройки парсинга/синхронизации. Для секретных полей **пустая строка = не менять** (write-only; нельзя затереть ключ, отправив пустое поле из формы). **F-SET-01:** ключи Ozon/WB/YM/Planfix/прокси/huckster может менять только **admin** (`403 SETTINGS_SECRETS_ADMIN_ONLY`); `settings=full` без admin — расписание и прочие несекретные поля.
 
 Body (пример):
 ```json
@@ -2488,14 +2490,16 @@ Preflight матча «Менеджер по продажам» ↔ Planfix `/us
 Точка (по умолчанию):
 
 - `{ "action": "upsert", "label", "jwt", "id?" }` — добавить/обновить ключ (при upsert без id — новая запись; с id — правка)
-- `{ "action": "delete", "id" }`
+- `{ "action": "delete", "id", "confirm": true }` — без `confirm` → `400 CONFIRM_REQUIRED`
 - `{ "action": "toggle", "id", "enabled" }`
 - legacy `{ "jwt", "label?" }` — upsert первой/новой
-- `{ "clear": true }` — очистить JWT Точки
+- `{ "clear": true, "confirm": true }` — очистить JWT Точки
 
-Райф: `{ "bank": "raiffeisen", "action": "upsert"|"delete"|"toggle", … }` (`client_id`, `client_secret`, `refresh_token`, `label`, `id`).
+Райф: `{ "bank": "raiffeisen", "action": "upsert"|"delete"|"toggle", … }` (`client_id`, `client_secret`, `refresh_token`, `label`, `id`; delete — `confirm: true`).
 
-Т‑Банк: `{ "bank": "tbank", "action": "upsert"|"delete"|"toggle", … }` (`token`, `label`, `id`).
+Т‑Банк: `{ "bank": "tbank", "action": "upsert"|"delete"|"toggle", … }` (`token`, `label`, `id`; delete — `confirm: true`).
+
+Activity `finance_credential` на upsert/delete/toggle/clear (без секретов в detail). Sync: не-admin ≤ **180** дней; admin — до 1095.
 
 ### GET `/api/finance/probe`
 
@@ -2585,7 +2589,7 @@ Query: `search`, **`inn`** / `counterparty_inn` (только цифры; под
 
 В строках банка: `customer_code`, `org_label`, **`org`** — **полное** имя организации (alias `full`, иначе `org_label`), **`org_short`** — короткое. **`chart_excluded`** / **`chart_exclude_reason`**, **`chart_tag`**: `founder` | `dividend` | `""`, **`founder_capital`** / **`dividend_payout`**. В строках cash: `source=cash`, `cash_kind=once|recurring`, `bank=cash`, `tx_id` вида `cash:o:{id}` / `cash:t:{templateId}:{ym}`, `include_chart`, `amount_fix` / `amount_premium` (для recurring), `scope`. Умный поиск матчит оба alias.
 
-Ответ дополнительно: `include_internal`, `founder_capital`, `dividend`, `source`, `sort_by`, `sort_dir`.
+Ответ дополнительно: `include_internal`, `founder_capital`, `dividend`, `source`, `sort_by`, `sort_dir`, **`detail_hidden`**. При `finance=view` поля `purpose` / `counterparty` / `counterparty_inn` / `document_number` обнуляются, `account_number` маскируется (F-FIN-02); суммы и даты остаются.
 
 ### GET `/api/finance/cash/summary`
 

@@ -513,14 +513,19 @@
           var tdProd = document.createElement("td");
           var pageUrl = String(r.page_url || r.url || "").trim();
           var prodName = String(r.product_name || "").trim() || (pageUrl ? pageUrl : "—");
-          if (pageUrl) {
+          // F-XSS-04: только http(s) или относительный /
+          var safeHref =
+            /^https?:\/\//i.test(pageUrl) || (pageUrl.charAt(0) === "/" && pageUrl.charAt(1) !== "/")
+              ? pageUrl
+              : "";
+          if (safeHref) {
             var aProd = document.createElement("a");
-            aProd.href = pageUrl;
+            aProd.href = safeHref;
             aProd.target = "_blank";
             aProd.rel = "noopener noreferrer";
             aProd.className = "dg-res-product-link";
             aProd.textContent = prodName;
-            aProd.title = pageUrl;
+            aProd.title = safeHref;
             tdProd.appendChild(aProd);
           } else {
             tdProd.textContent = prodName;

@@ -46,6 +46,15 @@
     return String(Math.round(Number(n) || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, " ") + " ₽";
   }
 
+  function escapeHtml(s) {
+    if (window.DatagonFmt && window.DatagonFmt.escapeHtml) return window.DatagonFmt.escapeHtml(s);
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
   /** Вывод пользователю: дд-мм-гггг (не сырой YYYY-MM-DD). */
   function fmtDate(v) {
     if (!v) return "—";
@@ -498,7 +507,7 @@
       })
       .catch(function (e) {
         if (meta) meta.textContent = e.message || "Ошибка";
-        if (tb) tb.innerHTML = '<tr><td colspan="4" class="text-danger">' + (e.message || "Ошибка") + "</td></tr>";
+        if (tb) tb.innerHTML = '<tr><td colspan="4" class="text-danger">' + escapeHtml(e.message || "Ошибка") + "</td></tr>";
         toast("danger", e.message || "Не удалось загрузить историю оклада");
       });
   }
@@ -2284,7 +2293,7 @@
         renderAuditJournal();
       })
       .catch(function (e) {
-        if (host) host.innerHTML = '<div class="text-danger small">' + (e.message || "Ошибка журнала") + "</div>";
+        if (host) host.innerHTML = '<div class="text-danger small">' + escapeHtml(e.message || "Ошибка журнала") + "</div>";
       });
   }
 

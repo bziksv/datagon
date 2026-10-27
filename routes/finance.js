@@ -15,7 +15,10 @@ const finWb = require('../lib/datagonWbFinance');
 const finYm = require('../lib/datagonYmFinance');
 
 const DEFAULT_TX_DAYS = 30;
-const MAX_TX_DAYS = 1095; // до ~3 лет (1 + 2)
+const MAX_TX_DAYS = 1095; // до ~3 лет (1 + 2); admin
+/** F-FIN-03: не-admin sync не длиннее полугода. */
+const MAX_TX_DAYS_NON_ADMIN = 180;
+const { recordDatagonActivity } = require('../lib/datagonActivity');
 
 let tablesReady = null;
 let syncJob = {
@@ -162,6 +165,56 @@ function requireFinanceAccess(req, res, write) {
         return null;
     }
     return mode;
+}
+
+function financeActorIsAdmin(req) {
+    return String((req.datagonActor && req.datagonActor.username) || '').toLowerCase() === 'admin';
+}
+
+function maxTxDaysForReq(req) {
+    return financeActorIsAdmin(req) ? MAX_TX_DAYS : MAX_TX_DAYS_NON_ADMIN;
+}
+
+/** F-FIN-02: view — без назначений / ИНН / полных счетов. */
+function redactFinanceDetailRow(row) {
+    if (!row || typeof row !== 'object') return row;
+    const out = { ...row };
+    out.purpose = '';
+    out.counterparty = '';
+    out.counterparty_inn = '';
+    out.document_number = '';
+    if (out.account_number != null && String(out.account_number).trim() !== '') {
+        const a = String(out.account_number);
+        out.account_number = a.length > 4 ? '•••' + a.slice(-4) : '••••';
+    }
+    return out;
+}
+
+function withFinanceTxViewRedaction(req, payload) {
+    if (!payload || typeof payload !== 'object') return payload;
+    if (pageMode(req) === 'full') {
+        return Object.assign({}, payload, { detail_hidden: false });
+    }
+    const rows = Array.isArray(payload.rows) ? payload.rows.map(redactFinanceDetailRow) : payload.rows;
+    return Object.assign({}, payload, { rows, detail_hidden: true });
+}
+
+function bodyConfirmTrue(body) {
+    const b = body && typeof body === 'object' ? body : {};
+    return b.confirm === true || b.confirm === 1 || b.confirm === '1';
+}
+
+async function auditFinanceCredential(db, req, detail) {
+    const actor = req.datagonActor || {};
+    const uid = Number(actor.id);
+    if (!Number.isFinite(uid) || uid <= 0) return;
+    await recordDatagonActivity(db, {
+        userId: uid,
+        kind: 'finance_credential',
+        section: 'finance',
+        label: String((detail && detail.action) || 'credential').slice(0, 120),
+        detail: JSON.stringify(detail || {}),
+    });
 }
 
 function parseBookedDate(bookedAt) {
@@ -769,8 +822,15 @@ async function loadDepositStockEstimate(db) {
     };
 }
 
-/** Период выписки: date_from/date_to или окно days. */
+/** Период выписки: date_from/date_to или окно days. opts.max_days — потолок (F-FIN-03). */
 function resolveStatementWindow(opts) {
+    const maxDays = Math.max(
+        1,
+        Math.min(
+            MAX_TX_DAYS,
+            Number(opts && opts.max_days != null ? opts.max_days : MAX_TX_DAYS) || MAX_TX_DAYS
+        )
+    );
     const dateFrom = parseYmd(opts && opts.date_from);
     const dateTo = parseYmd(opts && opts.date_to);
     if (dateFrom || dateTo) {
@@ -783,14 +843,14 @@ function resolveStatementWindow(opts) {
         }
         const ms = Date.parse(end + 'T00:00:00Z') - Date.parse(start + 'T00:00:00Z');
         const spanDays = Math.floor(ms / 86400000) + 1;
-        if (spanDays > MAX_TX_DAYS) {
-            const err = new Error('Период выписки не больше ' + MAX_TX_DAYS + ' дней (сейчас ' + spanDays + ')');
+        if (spanDays > maxDays) {
+            const err = new Error('Период выписки не больше ' + maxDays + ' дней (сейчас ' + spanDays + ')');
             err.status = 400;
             throw err;
         }
         return { startYmd: start, endYmd: end, days: spanDays, from_dates: true };
     }
-    const days = Math.max(1, Math.min(MAX_TX_DAYS, Number(opts && opts.days != null ? opts.days : DEFAULT_TX_DAYS)));
+    const days = Math.max(1, Math.min(maxDays, Number(opts && opts.days != null ? opts.days : DEFAULT_TX_DAYS)));
     const end = new Date();
     const start = new Date();
     start.setDate(start.getDate() - (days - 1));
@@ -1796,6 +1856,15 @@ function factory(db, appSettings) {
         try {
             const body = req.body || {};
             const bank = String(body.bank || '').trim().toLowerCase();
+            const destructiveCred =
+                String(body.action || '').trim() === 'delete' || body.clear === true;
+            if (destructiveCred && !bodyConfirmTrue(body)) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'confirm required для удаления / очистки ключей',
+                    code: 'CONFIRM_REQUIRED',
+                });
+            }
             if (bank === 'raiffeisen') {
                 let list = await finCred.loadRaiffeisenCredentials(db, appSettings);
                 const action = String(body.action || '').trim();
@@ -1830,6 +1899,12 @@ function factory(db, appSettings) {
                     list = await finCred.saveRaiffeisenCredentials(db, appSettings, list);
                     await enrichRaiffCredentialMeta(db, appSettings, cred);
                     list = await finCred.loadRaiffeisenCredentials(db, appSettings);
+                    await auditFinanceCredential(db, req, {
+                        bank: 'raiffeisen',
+                        action: 'upsert',
+                        id: cred.id,
+                        secret_changed: !!(body.client_secret || body.refresh_token),
+                    });
                 } else if (action === 'delete') {
                     const id = String(body.id || '').trim();
                     if (!id) return res.status(400).json({ success: false, error: 'Нужен id' });
@@ -1838,6 +1913,7 @@ function factory(db, appSettings) {
                         appSettings,
                         list.filter((c) => c.id !== id)
                     );
+                    await auditFinanceCredential(db, req, { bank: 'raiffeisen', action: 'delete', id });
                 } else if (action === 'toggle') {
                     const id = String(body.id || '').trim();
                     const cred = list.find((c) => c.id === id);
@@ -1845,6 +1921,12 @@ function factory(db, appSettings) {
                     cred.enabled = body.enabled !== false && body.enabled !== 0 && body.enabled !== '0';
                     cred.updated_at = new Date().toISOString();
                     list = await finCred.saveRaiffeisenCredentials(db, appSettings, list);
+                    await auditFinanceCredential(db, req, {
+                        bank: 'raiffeisen',
+                        action: 'toggle',
+                        id,
+                        enabled: !!cred.enabled,
+                    });
                 } else {
                     return res.status(400).json({
                         success: false,
@@ -1881,6 +1963,12 @@ function factory(db, appSettings) {
                     cred.updated_at = new Date().toISOString();
                     list = await finCred.saveTbankCredentials(db, appSettings, list);
                     await enrichTbankCredentialMeta(db, appSettings, cred);
+                    await auditFinanceCredential(db, req, {
+                        bank: 'tbank',
+                        action: 'upsert',
+                        id: cred.id,
+                        secret_changed: !!token,
+                    });
                 } else if (action === 'delete') {
                     const id = String(body.id || '').trim();
                     if (!id) return res.status(400).json({ success: false, error: 'Нужен id' });
@@ -1889,6 +1977,7 @@ function factory(db, appSettings) {
                         appSettings,
                         list.filter((c) => c.id !== id)
                     );
+                    await auditFinanceCredential(db, req, { bank: 'tbank', action: 'delete', id });
                 } else if (action === 'toggle') {
                     const id = String(body.id || '').trim();
                     const cred = list.find((c) => c.id === id);
@@ -1896,6 +1985,12 @@ function factory(db, appSettings) {
                     cred.enabled = body.enabled !== false && body.enabled !== 0 && body.enabled !== '0';
                     cred.updated_at = new Date().toISOString();
                     list = await finCred.saveTbankCredentials(db, appSettings, list);
+                    await auditFinanceCredential(db, req, {
+                        bank: 'tbank',
+                        action: 'toggle',
+                        id,
+                        enabled: !!cred.enabled,
+                    });
                 } else {
                     return res.status(400).json({
                         success: false,
@@ -1924,6 +2019,13 @@ function factory(db, appSettings) {
                 }
                 await enrichCredentialMeta(cred);
                 list = await finCred.saveCredentials(db, appSettings, list);
+                await auditFinanceCredential(db, req, {
+                    bank: 'tochka',
+                    action: 'upsert',
+                    id: cred.id,
+                    secret_changed: true,
+                    legacy_jwt: true,
+                });
             } else if (action === 'upsert') {
                 const jwt = String(body.jwt || '').trim();
                 const label = String(body.label || '').trim();
@@ -1946,11 +2048,18 @@ function factory(db, appSettings) {
                 if (jwt || !cred.customer_codes.length) await enrichCredentialMeta(cred);
                 else cred.updated_at = new Date().toISOString();
                 list = await finCred.saveCredentials(db, appSettings, list);
+                await auditFinanceCredential(db, req, {
+                    bank: 'tochka',
+                    action: 'upsert',
+                    id: cred.id,
+                    secret_changed: !!jwt,
+                });
             } else if (action === 'delete') {
                 const id = String(body.id || '').trim();
                 if (!id) return res.status(400).json({ success: false, error: 'Нужен id' });
                 list = list.filter((c) => c.id !== id);
                 list = await finCred.saveCredentials(db, appSettings, list);
+                await auditFinanceCredential(db, req, { bank: 'tochka', action: 'delete', id });
             } else if (action === 'toggle') {
                 const id = String(body.id || '').trim();
                 const cred = list.find((c) => c.id === id);
@@ -1958,8 +2067,15 @@ function factory(db, appSettings) {
                 cred.enabled = body.enabled !== false && body.enabled !== 0 && body.enabled !== '0';
                 cred.updated_at = new Date().toISOString();
                 list = await finCred.saveCredentials(db, appSettings, list);
+                await auditFinanceCredential(db, req, {
+                    bank: 'tochka',
+                    action: 'toggle',
+                    id,
+                    enabled: !!cred.enabled,
+                });
             } else if (body.clear === true) {
                 list = await finCred.saveCredentials(db, appSettings, []);
+                await auditFinanceCredential(db, req, { bank: 'tochka', action: 'clear' });
             } else {
                 return res.status(400).json({
                     success: false,
@@ -3465,22 +3581,24 @@ function factory(db, appSettings) {
                 const offset = (page - 1) * pageSize;
                 const pageRows = sorted.slice(offset, offset + pageSize);
                 const pages = Math.max(1, Math.ceil(total / pageSize));
-                return res.json({
-                    success: true,
-                    total,
-                    page,
-                    page_size: pageSize,
-                    pages,
-                    shown: pageRows.length,
-                    include_internal: includeInternal,
-                    founder_capital: founderOnly,
-                    dividend: dividendOnly,
-                    inn: innFilter || null,
-                    source,
-                    sort_by: sortKey,
-                    sort_dir: sortDir,
-                    rows: pageRows,
-                });
+                return res.json(
+                    withFinanceTxViewRedaction(req, {
+                        success: true,
+                        total,
+                        page,
+                        page_size: pageSize,
+                        pages,
+                        shown: pageRows.length,
+                        include_internal: includeInternal,
+                        founder_capital: founderOnly,
+                        dividend: dividendOnly,
+                        inn: innFilter || null,
+                        source,
+                        sort_by: sortKey,
+                        sort_dir: sortDir,
+                        rows: pageRows,
+                    })
+                );
             }
 
             const where = [];
@@ -3624,22 +3742,24 @@ function factory(db, appSettings) {
                     const offset = (page - 1) * pageSize;
                     const pageRows = merged.slice(offset, offset + pageSize);
                     const pages = Math.max(1, Math.ceil(merged.length / pageSize));
-                    return res.json({
-                        success: true,
-                        total: merged.length,
-                        page,
-                        page_size: pageSize,
-                        pages,
-                        shown: pageRows.length,
-                        include_internal: includeInternal,
-                        founder_capital: founderOnly,
-                        dividend: dividendOnly,
-                        inn: innFilter || null,
-                        source,
-                        sort_by: sortKey,
-                        sort_dir: sortDir,
-                        rows: pageRows,
-                    });
+                    return res.json(
+                        withFinanceTxViewRedaction(req, {
+                            success: true,
+                            total: merged.length,
+                            page,
+                            page_size: pageSize,
+                            pages,
+                            shown: pageRows.length,
+                            include_internal: includeInternal,
+                            founder_capital: founderOnly,
+                            dividend: dividendOnly,
+                            inn: innFilter || null,
+                            source,
+                            sort_by: sortKey,
+                            sort_dir: sortDir,
+                            rows: pageRows,
+                        })
+                    );
                 }
                 const offset = (page - 1) * pageSize;
                 const sortCol = TX_SORT_SQL[sortKey] || TX_SORT_SQL.booked_date;
@@ -3665,22 +3785,24 @@ function factory(db, appSettings) {
                 );
                 const enriched = (rows || []).map(mapBankRow);
                 const pages = Math.max(1, Math.ceil(total / pageSize));
-                return res.json({
-                    success: true,
-                    total,
-                    page,
-                    page_size: pageSize,
-                    pages,
-                    shown: enriched.length,
-                    include_internal: includeInternal,
-                    founder_capital: founderOnly,
-                    dividend: dividendOnly,
-                    inn: innFilter || null,
-                    source,
-                    sort_by: TX_SORT_SQL[sortKey] ? sortKey : 'booked_date',
-                    sort_dir: sortDir,
-                    rows: enriched,
-                });
+                return res.json(
+                    withFinanceTxViewRedaction(req, {
+                        success: true,
+                        total,
+                        page,
+                        page_size: pageSize,
+                        pages,
+                        shown: enriched.length,
+                        include_internal: includeInternal,
+                        founder_capital: founderOnly,
+                        dividend: dividendOnly,
+                        inn: innFilter || null,
+                        source,
+                        sort_by: TX_SORT_SQL[sortKey] ? sortKey : 'booked_date',
+                        sort_dir: sortDir,
+                        rows: enriched,
+                    })
+                );
             }
 
             const sortColMerge = TX_SORT_SQL[sortKey] || TX_SORT_SQL.booked_date;
@@ -3710,22 +3832,24 @@ function factory(db, appSettings) {
             const offset = (page - 1) * pageSize;
             const pageRows = merged.slice(offset, offset + pageSize);
             const pages = Math.max(1, Math.ceil(merged.length / pageSize));
-            res.json({
-                success: true,
-                total: merged.length,
-                page,
-                page_size: pageSize,
-                pages,
-                shown: pageRows.length,
-                include_internal: includeInternal,
-                founder_capital: founderOnly,
-                dividend: dividendOnly,
-                inn: innFilter || null,
-                source,
-                sort_by: sortKey,
-                sort_dir: sortDir,
-                rows: pageRows,
-            });
+            res.json(
+                withFinanceTxViewRedaction(req, {
+                    success: true,
+                    total: merged.length,
+                    page,
+                    page_size: pageSize,
+                    pages,
+                    shown: pageRows.length,
+                    include_internal: includeInternal,
+                    founder_capital: founderOnly,
+                    dividend: dividendOnly,
+                    inn: innFilter || null,
+                    source,
+                    sort_by: sortKey,
+                    sort_dir: sortDir,
+                    rows: pageRows,
+                })
+            );
         } catch (e) {
             res.status(500).json({ success: false, error: e.message || String(e) });
         }
@@ -4323,9 +4447,10 @@ function factory(db, appSettings) {
     router.post('/sync', async (req, res) => {
         if (!requireFinanceAccess(req, res, true)) return;
         const body = req.body || {};
+        const maxDays = maxTxDaysForReq(req);
         const days = Math.max(
             1,
-            Math.min(MAX_TX_DAYS, Number(body.days != null ? body.days : DEFAULT_TX_DAYS))
+            Math.min(maxDays, Number(body.days != null ? body.days : DEFAULT_TX_DAYS))
         );
         const balancesOnly = Boolean(
             body.balances_only === true || body.balances_only === 1 || body.balances_only === '1'
@@ -4341,6 +4466,7 @@ function factory(db, appSettings) {
                 days,
                 date_from: dateFrom,
                 date_to: dateTo,
+                max_days: maxDays,
             });
         } catch (e) {
             return res.status(400).json({ success: false, error: e.message || String(e) });
@@ -4364,6 +4490,7 @@ function factory(db, appSettings) {
         setImmediate(() => {
             runFinanceAll(db, appSettings, {
                 days,
+                max_days: maxDays,
                 balances_only: balancesOnly,
                 credential_id: credentialId || undefined,
                 customer_codes: customerCodes.length ? customerCodes : undefined,

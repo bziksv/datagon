@@ -3959,13 +3959,22 @@
       function changePassword() {
         var un = getStr("dg-set-pw-username").trim();
         var np = getStr("dg-set-pw-new");
+        var cur = getStr("dg-set-pw-current");
         if (!un) return alert("Введите логин");
         if (np.length < 15) return alert("Пароль должен быть не короче 15 символов");
+        var me = "";
+        try {
+          me = String(window.localStorage.getItem("currentUser") || "").trim();
+        } catch (eMe) {}
+        var isSelf = me && me.toLowerCase() === un.toLowerCase();
+        if (isSelf && !cur) return alert("Укажите текущий пароль");
+        var body = { username: un, newPassword: np };
+        if (cur) body.currentPassword = cur;
         fetch("/api/auth/change-password", {
           method: "POST",
           credentials: "same-origin",
           headers: authHeaders(true),
-          body: JSON.stringify({ username: un, newPassword: np }),
+          body: JSON.stringify(body),
         })
           .then(function (r) {
             return r.json().then(function (j) {
@@ -3974,8 +3983,14 @@
           })
           .then(function (x) {
             if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Не удалось сменить пароль");
-            alert("Пароль успешно изменен");
+            alert("Пароль успешно изменен. Войдите снова.");
             set("dg-set-pw-new", "");
+            set("dg-set-pw-current", "");
+            try {
+              window.localStorage.removeItem("isLoggedIn");
+              window.localStorage.removeItem("authToken");
+            } catch (eLs) {}
+            window.location.href = "/login.html";
           })
           .catch(function (e) {
             alert(e.message || "Ошибка смены пароля");

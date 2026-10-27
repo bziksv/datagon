@@ -361,6 +361,32 @@ const {
     getApiPageModeForActor,
     getMarketplaceShopPageMode,
 } = require('../lib/datagonPageRegistry');
+const { recordDatagonActivity } = require('../lib/datagonActivity');
+
+/** F-MPK-02: audit mass write в кабинеты МП (без payload секретов). */
+async function auditMarketplaceMassWrite(db, req, action, detail) {
+    const actor = req.datagonActor || {};
+    const uid = Number(actor.id);
+    if (!db || !Number.isFinite(uid) || uid <= 0) return;
+    try {
+        await recordDatagonActivity(db, {
+            userId: uid,
+            kind: 'mp_mass_write',
+            section: 'exports-marketplaces',
+            label: String(action || 'mp_write').slice(0, 120),
+            detail: JSON.stringify(
+                Object.assign(
+                    {
+                        username: actor.username || null,
+                    },
+                    detail || {}
+                )
+            ),
+        });
+    } catch (_) {
+        /* non-fatal */
+    }
+}
 
 /** F-ACL-03: shop-scoped доступ (max parent + child). false → ответ уже отправлен. */
 function assertMarketplaceShopAccess(req, res, shopKind, opts) {
@@ -2072,7 +2098,7 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
                 }
             }
 
-            return res.json({
+            const payload = {
                 success: failed === 0,
                 dry_run: dryRun,
                 total: codes.length,
@@ -2083,7 +2109,17 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
                 errors,
                 results: results.slice(0, 50),
                 duration_sec: Number(((Date.now() - t0) / 1000).toFixed(2)),
-            });
+            };
+            if (!dryRun) {
+                await auditMarketplaceMassWrite(db, req, 'fill-ozon-dims', {
+                    shop: 'ozon',
+                    total: codes.length,
+                    updated,
+                    failed,
+                    codes_sample: codes.slice(0, 30),
+                });
+            }
+            return res.json(payload);
         } catch (e) {
             console.error('[exports/marketplaces] fix-ozon-dims failed:', e && e.stack ? e.stack : e);
             return res.status(500).json({ error: e.message || String(e), code: 'FIX_OZON_DIMS_FAILED' });
@@ -2307,6 +2343,15 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
                 duration_sec: Number(((Date.now() - t0) / 1000).toFixed(2)),
             });
 
+            if (!dryRun) {
+                await auditMarketplaceMassWrite(db, req, 'fill-wb-dims', {
+                    shop: 'wb',
+                    total: codes.length,
+                    updated,
+                    failed,
+                    codes_sample: codes.slice(0, 30),
+                });
+            }
             return res.json({
                 success: failed === 0,
                 dry_run: dryRun,
@@ -2514,6 +2559,15 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
                 }
             }
 
+            if (!dryRun) {
+                await auditMarketplaceMassWrite(db, req, 'fill-ym-dims', {
+                    shop: 'ym',
+                    total: codes.length,
+                    updated,
+                    failed,
+                    codes_sample: codes.slice(0, 30),
+                });
+            }
             return res.json({
                 success: failed === 0,
                 dry_run: dryRun,
@@ -2697,6 +2751,15 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
                 }
             }
 
+            if (!dryRun) {
+                await auditMarketplaceMassWrite(db, req, 'fill-ozon-vat', {
+                    shop: 'ozon',
+                    total: codes.length,
+                    updated,
+                    failed,
+                    codes_sample: codes.slice(0, 30),
+                });
+            }
             return res.json({
                 success: failed === 0,
                 dry_run: dryRun,
@@ -2910,6 +2973,15 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
                 }
             }
 
+            if (!dryRun) {
+                await auditMarketplaceMassWrite(db, req, 'fill-wb-vat', {
+                    shop: 'wb',
+                    total: codes.length,
+                    updated,
+                    failed,
+                    codes_sample: codes.slice(0, 30),
+                });
+            }
             return res.json({
                 success: failed === 0,
                 dry_run: dryRun,
@@ -3109,6 +3181,15 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
                 }
             }
 
+            if (!dryRun) {
+                await auditMarketplaceMassWrite(db, req, 'fill-ym-vat', {
+                    shop: 'ym',
+                    total: codes.length,
+                    updated,
+                    failed,
+                    codes_sample: codes.slice(0, 30),
+                });
+            }
             return res.json({
                 success: failed === 0,
                 dry_run: dryRun,
@@ -3860,6 +3941,7 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
      * Body: { offer_ids: string[], signature?: string, confirm?: boolean }
      */
     router.post('/ozon-merge/unmerge', async (req, res) => {
+        if (!assertMarketplaceShopAccess(req, res, 'ozon', { write: true })) return;
         try {
             await refreshMarketplaceCredsFromDb(db, appSettings);
             const creds = getOzonCreds(appSettings);
@@ -3884,13 +3966,18 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
             );
             const { actorName, actorUserId } = resolveOzonMergeActor(req);
             const logger = createMarketplaceLogger('ozon-unmerge');
+            const offerIds = Array.isArray(body.offer_ids) ? body.offer_ids : [];
             const out = await unmergeOzonGroup(creds, db, {
-                offer_ids: body.offer_ids,
+                offer_ids: offerIds,
                 signature: body.signature,
                 delayMs,
                 actorName,
                 actorUserId,
                 logger,
+            });
+            await auditMarketplaceMassWrite(db, req, 'ozon-merge-unmerge', {
+                shop: 'ozon',
+                offers: offerIds.length,
             });
             return res.json(out);
         } catch (e) {
@@ -3999,6 +4086,7 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
      * }
      */
     router.post('/ozon-merge/apply', async (req, res) => {
+        if (!assertMarketplaceShopAccess(req, res, 'ozon', { write: true })) return;
         try {
             await refreshMarketplaceCredsFromDb(db, appSettings);
             const creds = getOzonCreds(appSettings);
@@ -4025,8 +4113,9 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
             );
             const { actorName, actorUserId } = resolveOzonMergeActor(req);
             const logger = createMarketplaceLogger('ozon-merge');
+            const groups = Array.isArray(body.groups) ? body.groups : [];
             const out = await applyOzonMergeGroups(creds, db, {
-                groups: body.groups,
+                groups,
                 copyFromMain: body.copy_from_main !== false,
                 dryRun,
                 delayMs,
@@ -4034,6 +4123,13 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
                 actorUserId,
                 logger,
             });
+            if (!dryRun) {
+                await auditMarketplaceMassWrite(db, req, 'ozon-merge-apply', {
+                    shop: 'ozon',
+                    groups: groups.length,
+                    dry_run: false,
+                });
+            }
             return res.json(out);
         } catch (e) {
             console.error('[exports/marketplaces] ozon-merge/apply failed:', e && e.stack ? e.stack : e);

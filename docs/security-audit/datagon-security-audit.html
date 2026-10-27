@@ -298,18 +298,20 @@
         </div>
       </div>
 
-      <div class="finding" id="F-AUTH-04">
-        <div class="title"><span class="badge med">medium</span> F-AUTH-04 · Смена пароля без текущего (self)</div>
+      <div class="finding fixed-out" id="F-AUTH-04">
+        <div class="title"><span class="badge med">medium</span> <span class="badge fixed">исправлено</span> F-AUTH-04 · Смена пароля без текущего (self)</div>
         <div class="ev">
           <code>POST /change-password</code> для своего аккаунта не требует old password → украденная сессия = полный захват.
           <strong>Fix:</strong> требовать <code>currentPassword</code> для non-admin.
+          <div class="fix-note"><strong>2026-10-27 (local):</strong> self-change → <code>currentPassword</code> обязателен (<code>CURRENT_PASSWORD_REQUIRED</code>/<code>INVALID</code>); admin reset чужого — без; UI settings + редирект на login после успеха.</div>
         </div>
       </div>
 
-      <div class="finding" id="F-AUTH-05">
-        <div class="title"><span class="badge med">medium</span> F-AUTH-05 · Timing user-enumeration</div>
+      <div class="finding fixed-out" id="F-AUTH-05">
+        <div class="title"><span class="badge med">medium</span> <span class="badge fixed">исправлено</span> F-AUTH-05 · Timing user-enumeration</div>
         <div class="ev">
           Нет пользователя → быстрый 401; есть → bcrypt.compare. <strong>Fix:</strong> dummy bcrypt на miss.
+          <div class="fix-note"><strong>2026-10-27:</strong> <code>burnLoginCompare</code> в <code>routes/auth.js</code> — dummy hash + compare при неизвестном username.</div>
         </div>
       </div>
 
@@ -721,8 +723,8 @@
         </div>
       </div>
 
-      <div class="finding" id="F-XSS-03">
-        <div class="title"><span class="badge med">medium</span> F-XSS-03 · <code>e.message</code> → <code>innerHTML</code> (work-schedule)</div>
+      <div class="finding fixed-out" id="F-XSS-03">
+        <div class="title"><span class="badge med">medium</span> <span class="badge fixed">исправлено</span> F-XSS-03 · <code>e.message</code> → <code>innerHTML</code> (work-schedule)</div>
         <div class="ev">
           <code>work-schedule.scripts.html</code> / <code>work-schedule-settings.scripts.html</code>:
           <code>throw new Error(j.error)</code> → catch →
@@ -730,11 +732,12 @@
           Если API когда-либо отразит пользовательский ввод в <code>error</code> — XSS в UI бухгалтерии/руководителя.
           Сейчас чаще фиксированные строки — риск отложенный / при утечке деталей SQL.
           <strong>Fix:</strong> <code>escapeHtml(e.message)</code> или <code>textContent</code>.
+          <div class="fix-note"><strong>2026-10-27 (local):</strong> catch → <code>escapeHtml(e.message)</code> в history/audit journal (оба WS-скрипта).</div>
         </div>
       </div>
 
-      <div class="finding" id="F-XSS-04">
-        <div class="title"><span class="badge med">medium</span> F-XSS-04 · <code>href</code> из данных без allowlist схемы</div>
+      <div class="finding fixed-out" id="F-XSS-04">
+        <div class="title"><span class="badge med">medium</span> <span class="badge fixed">исправлено</span> F-XSS-04 · <code>href</code> из данных без allowlist схемы</div>
         <div class="ev">
           <code>results.scripts.html</code>: <code>aProd.href = pageUrl</code> из БД парсинга
           (<code>page_url</code>). Значение <code>javascript:…</code> / <code>data:text/html…</code>
@@ -742,11 +745,12 @@
           <code>my-products</code> / competitors: product URL с CMS — тот же класс риска.
           Product linkify безопаснее (URL_RE), но raw <code>a.href = raw</code> для http(s) — ок.
           <strong>Fix:</strong> allowlist <code>^https?:</code> (и относительные <code>/</code>); иначе <code>textContent</code> без ссылки.
+          <div class="fix-note"><strong>2026-10-27 (local):</strong> results — только <code>https?:</code> или <code>/</code> (не <code>//</code>); иначе text без ссылки. my-products/competitors — при необходимости отдельно.</div>
         </div>
       </div>
 
-      <div class="finding" id="F-XSS-05">
-        <div class="title"><span class="badge med">medium</span> F-XSS-05 · Имя сайта / note API в HTML summary без esc</div>
+      <div class="finding fixed-out" id="F-XSS-05">
+        <div class="title"><span class="badge med">medium</span> <span class="badge fixed">исправлено</span> F-XSS-05 · Имя сайта / note API в HTML summary без esc</div>
         <div class="ev">
           В my-products action-log: <code>siteNameById[id]</code> (имя из my_sites) и
           <code>String(j.note)</code> / <code>st.message</code> попадают в asHtml-строку.
@@ -754,6 +758,7 @@
           <code>&lt;img src=x onerror=…&gt;</code> → stored XSS у коллеги при bulk sync цен
           (цепочка с F-SQL-01 по поверхности доверия к my-sites).
           <strong>Fix:</strong> esc на имена сущностей и любые строки статуса из API.
+          <div class="fix-note"><strong>2026-10-27:</strong> <code>describeMpAppliedFilters</code> / <code>formatBulkSyncPriceSummary</code> уже через <code>escHtml</code> (site, note, message, errors).</div>
         </div>
       </div>
 
@@ -963,8 +968,8 @@
 
       <h3>Findings</h3>
 
-      <div class="finding" id="F-SET-01">
-        <div class="title"><span class="badge high">high</span> F-SET-01 · Один page-key <code>settings</code> = секреты + расписание + опасные действия</div>
+      <div class="finding fixed-out" id="F-SET-01">
+        <div class="title"><span class="badge high">high</span> <span class="badge partial">частично</span> F-SET-01 · Один page-key <code>settings</code> = секреты + расписание + опасные действия</div>
         <div class="ev">
           Любой с <code>settings=view|full</code> читает ozon/wb/ym/huckster/proxy keys (F-SEC-02).
           С <code>full</code> — перезаписывает ключи, retention, формулы продаж, прокси.
@@ -972,6 +977,7 @@
           «широкая» специальность с settings=full = полный контроль интеграций.
           <strong>Fix:</strong> разделить page keys (<code>settings-users</code> / <code>settings-integrations</code> /
           <code>settings-autosync</code>); GET secrets только admin или write-only masks.
+          <div class="fix-note"><strong>2026-10-27 (локально):</strong> запись MP/Planfix/proxy/huckster секретов — только <code>admin</code> (<code>SETTINGS_SECRETS_ADMIN_ONLY</code>); GET по-прежнему masks (F-SEC-02). Разделение page keys — отдельно.</div>
         </div>
       </div>
 
@@ -998,13 +1004,14 @@
         </div>
       </div>
 
-      <div class="finding" id="F-SET-04">
-        <div class="title"><span class="badge med">medium</span> F-SET-04 · Смена пароля без текущего (self) + admin reset</div>
+      <div class="finding fixed-out" id="F-SET-04">
+        <div class="title"><span class="badge med">medium</span> <span class="badge fixed">исправлено</span> F-SET-04 · Смена пароля без текущего (self) + admin reset</div>
         <div class="ev">
           <code>POST /api/auth/change-password</code>: достаточно сессии; поле текущего пароля нет
           (см. F-AUTH-04). Украденный token (XSS/LS) → смена пароля + revoke чужих сессий жертвы =
           полный захват. Admin reset чужих — ожидаемо, но без step-up.
           <strong>Fix:</strong> для self требовать <code>currentPassword</code>; для admin — re-auth / TOTP.
+          <div class="fix-note"><strong>2026-10-27 (local):</strong> self = F-AUTH-04. Admin step-up/TOTP — отдельно (не в этом батче).</div>
         </div>
       </div>
 
@@ -1020,13 +1027,14 @@
         </div>
       </div>
 
-      <div class="finding" id="F-SET-06">
-        <div class="title"><span class="badge med">medium</span> F-SET-06 · DELETE user без revoke сессий / без FK CASCADE</div>
+      <div class="finding fixed-out" id="F-SET-06">
+        <div class="title"><span class="badge med">medium</span> <span class="badge fixed">исправлено</span> F-SET-06 · DELETE user без revoke сессий / без FK CASCADE</div>
         <div class="ev">
           <code>DELETE FROM users</code> без предварительного revoke (в отличие от archive).
           Таблица <code>auth_sessions</code> без явного ON DELETE CASCADE в ensureAuthSchema —
           риск сиротских сессий или ошибки FK / висящих hash.
           <strong>Fix:</strong> revoke + delete sessions в той же транзакции; FK ON DELETE CASCADE.
+          <div class="fix-note"><strong>2026-10-27 (local):</strong> перед <code>DELETE users</code> — revoke + <code>DELETE auth_sessions WHERE user_id</code>. FK CASCADE в схеме — опционально позже.</div>
         </div>
       </div>
 
@@ -1110,34 +1118,37 @@
         </div>
       </div>
 
-      <div class="finding" id="F-FIN-02">
-        <div class="title"><span class="badge high">high</span> F-FIN-02 · <code>finance=view</code> = полная финансовая разведка</div>
+      <div class="finding fixed-out" id="F-FIN-02">
+        <div class="title"><span class="badge high">high</span> <span class="badge fixed">исправлено</span> F-FIN-02 · <code>finance=view</code> = полная финансовая разведка</div>
         <div class="ev">
           View читает выписки (суммы, ИНН, назначения, контрагенты), балансы счетов, наличные шаблоны,
           планы, аналитику, МС-остатки. Нет периметра по организации/счёту на пользователя —
           любой «финансист view» видит всё юрлицо.
           <strong>Fix:</strong> осознанно сузить, кому давать view; опционально scope по
           <code>customer_code</code> / specialty; отдельный mode «только агрегаты» без строк выписки.
+          <div class="fix-note"><strong>2026-10-27 (локально):</strong> <code>GET /transactions</code> при view — <code>detail_hidden</code>: purpose/counterparty/INN/doc пустые, счёт маска; суммы/даты остаются. Scope по org — отдельно.</div>
         </div>
       </div>
 
-      <div class="finding" id="F-FIN-03">
-        <div class="title"><span class="badge med">medium</span> F-FIN-03 · <code>finance=full</code>: wipe ключей, sync до 3 лет, удаление всех шаблонов</div>
+      <div class="finding fixed-out" id="F-FIN-03">
+        <div class="title"><span class="badge med">medium</span> <span class="badge fixed">исправлено</span> F-FIN-03 · <code>finance=full</code>: wipe ключей, sync до 3 лет, удаление всех шаблонов</div>
         <div class="ev">
           Один full-пользователь: <code>clear:true</code> / delete credential; <code>POST /sync</code> с
           <code>MAX_TX_DAYS=1095</code> (нагрузка на банки + долгий job); DELETE любого cash template / plan
           без dual-control. Shared company data — не классический IDOR, но высокий blast radius insider.
           <strong>Fix:</strong> confirm+activity на credential wipe; лимит sync days для UI ниже;
           soft-delete шаблонов; опционально «два admin» на clear credentials.
+          <div class="fix-note"><strong>2026-10-27 (локально):</strong> delete/clear → <code>confirm:true</code>; sync не-admin ≤180 дн.; dual-control шаблонов — отдельно.</div>
         </div>
       </div>
 
-      <div class="finding" id="F-FIN-04">
-        <div class="title"><span class="badge med">medium</span> F-FIN-04 · Нет activity-лога на смену банковских ключей</div>
+      <div class="finding fixed-out" id="F-FIN-04">
+        <div class="title"><span class="badge med">medium</span> <span class="badge fixed">исправлено</span> F-FIN-04 · Нет activity-лога на смену банковских ключей</div>
         <div class="ev">
           Upsert/delete/toggle JWT в <code>POST /config</code> не пишет <code>recordDatagonActivity</code>
           (в отличие от create user). Сложнее расследовать «кто подменил токен».
           <strong>Fix:</strong> audit: actor, bank, credential id, action (без секрета в detail).
+          <div class="fix-note"><strong>2026-10-27 (локально):</strong> activity <code>finance_credential</code> на upsert/delete/toggle/clear (без секретов в detail).</div>
         </div>
       </div>
 
@@ -2022,8 +2033,8 @@
         </div>
       </div>
 
-      <div class="finding" id="F-MPK-02">
-        <div class="title"><span class="badge high">high</span> F-MPK-02 · Mass write в кабинеты МП под общим org-токеном</div>
+      <div class="finding fixed-out" id="F-MPK-02">
+        <div class="title"><span class="badge high">high</span> <span class="badge partial">частично</span> F-MPK-02 · Mass write в кабинеты МП под общим org-токеном</div>
         <div class="ev">
           fill-dims/vat, ozon-merge apply/unmerge — запись в боевые API Ozon/WB/YM.
           Confirm есть; ACL = parent <code>exports-marketplaces</code> (F-ACL-03): скрытый
@@ -2031,6 +2042,7 @@
           Один скомпрометированный full = порча габаритов/НДС/объединений на всех площадках.
           <strong>Fix:</strong> shop-scoped pageKey на mutating routes; audit actor+codes;
           dual-control для merge apply.
+          <div class="fix-note"><strong>2026-10-27 (локально):</strong> shop+issues ACL (ранее) + activity <code>mp_mass_write</code> на fill-*/ozon-merge apply|unmerge; dual-control — отдельно.</div>
         </div>
       </div>
 
@@ -2516,10 +2528,10 @@
 <tr><td><a href="#F-DEP-01">F-DEP-01</a></td><td><span class="badge high">high</span></td><td>6</td><td>HTTP без redirect/HSTS (упрощ. nginx)</td><td>P1</td><td><span class="badge fixed">исправлено</span></td></tr>
 <tr><td><a href="#F-DEP-02">F-DEP-02</a></td><td><span class="badge high">high</span></td><td>6</td><td>Node 0.0.0.0:3000</td><td>P1</td><td><span class="badge fixed">исправлено</span></td></tr>
 <tr><td><a href="#F-DEP-03">F-DEP-03</a></td><td><span class="badge high">high</span></td><td>6</td><td>Мало security headers</td><td>P1</td><td><span class="badge fixed">исправлено</span></td></tr>
-<tr><td><a href="#F-SET-01">F-SET-01</a></td><td><span class="badge high">high</span></td><td>7</td><td>Один settings key = всё</td><td>P1</td><td>—</td></tr>
+<tr><td><a href="#F-SET-01">F-SET-01</a></td><td><span class="badge high">high</span></td><td>7</td><td>Один settings key = всё</td><td>P1</td><td><span class="badge partial">частично</span></td></tr>
 <tr><td><a href="#F-SET-02">F-SET-02</a></td><td><span class="badge high">high</span></td><td>7</td><td>auto-sync-run любому settings=full</td><td>P1</td><td><span class="badge fixed">исправлено</span></td></tr>
 <tr><td><a href="#F-FIN-01">F-FIN-01</a></td><td><span class="badge high">high</span></td><td>8</td><td>Банковские JWT plaintext</td><td>P0</td><td><span class="badge fixed">исправлено</span></td></tr>
-<tr><td><a href="#F-FIN-02">F-FIN-02</a></td><td><span class="badge high">high</span></td><td>8</td><td>finance=view = полная разведка</td><td>P1</td><td>—</td></tr>
+<tr><td><a href="#F-FIN-02">F-FIN-02</a></td><td><span class="badge high">high</span></td><td>8</td><td>finance=view = полная разведка</td><td>P1</td><td><span class="badge fixed">исправлено</span></td></tr>
 <tr><td><a href="#F-WORK-02">F-WORK-02</a></td><td><span class="badge high">high</span></td><td>9</td><td>can_manage_users = WORK-admin</td><td>P0</td><td><span class="badge fixed">исправлено</span></td></tr>
 <tr><td><a href="#F-WORK-03">F-WORK-03</a></td><td><span class="badge high">high</span></td><td>9</td><td>view отдаёт plaintext секреты</td><td>P0</td><td><span class="badge fixed">исправлено</span></td></tr>
 <tr><td><a href="#F-WS-01">F-WS-01</a></td><td><span class="badge high">high</span></td><td>10</td><td>CRM clock shared secret</td><td>P1</td><td><span class="badge fixed">исправлено</span></td></tr>
@@ -2534,7 +2546,7 @@
 <tr><td><a href="#F-MP-01">F-MP-01</a></td><td><span class="badge high">high</span></td><td>15</td><td>CMS price write с my-products</td><td>P1</td><td><span class="badge fixed">исправлено</span></td></tr>
 <tr><td><a href="#F-MP-02">F-MP-02</a></td><td><span class="badge high">high</span></td><td>15</td><td>network mass apply/on-off</td><td>P1</td><td><span class="badge fixed">исправлено</span></td></tr>
 <tr><td><a href="#F-MPK-01">F-MPK-01</a></td><td><span class="badge high">high</span></td><td>16</td><td>Перезапись API-ключей МП</td><td>P1</td><td><span class="badge fixed">исправлено</span></td></tr>
-<tr><td><a href="#F-MPK-02">F-MPK-02</a></td><td><span class="badge high">high</span></td><td>16</td><td>Mass write в кабинеты МП</td><td>P1</td><td>—</td></tr>
+<tr><td><a href="#F-MPK-02">F-MPK-02</a></td><td><span class="badge high">high</span></td><td>16</td><td>Mass write в кабинеты МП</td><td>P1</td><td><span class="badge partial">частично</span></td></tr>
 <tr><td><a href="#F-NP-01">F-NP-01</a></td><td><span class="badge high">high</span></td><td>17</td><td>Huckster password любому full</td><td>P0</td><td><span class="badge fixed">исправлено</span></td></tr>
 <tr><td><a href="#F-NP-02">F-NP-02</a></td><td><span class="badge high">high</span></td><td>17</td><td>dimensions sync-ms без confirm</td><td>P1</td><td><span class="badge fixed">исправлено</span></td></tr>
 <tr><td><a href="#F-OPS-01">F-OPS-01</a></td><td><span class="badge high">high</span></td><td>18</td><td>ops-sheet view = ФОТ всех</td><td>P1</td><td><span class="badge fixed">исправлено</span></td></tr>

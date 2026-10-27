@@ -24,6 +24,38 @@ function normalizeAutoSyncWeekdaysCsv(raw) {
         .join(',');
 }
 
+/** F-SET-01: интеграционные секреты пишет только admin (settings=full — расписание/прочее). */
+const SETTINGS_INTEGRATION_SECRET_KEYS = [
+    'ozon_api_key',
+    'ozon_client_id',
+    'wb_api_key',
+    'ym_api_key',
+    'ym_campaign_id',
+    'ym_business_id',
+    'planfix_rest_api_key',
+    'fetch_proxy_list',
+    'huckster_password',
+    'huckster_login',
+];
+
+function settingsActorIsAdmin(req) {
+    return String((req.datagonActor && req.datagonActor.username) || '').toLowerCase() === 'admin';
+}
+
+function bodyTouchesIntegrationSecrets(body) {
+    const b = body && typeof body === 'object' ? body : {};
+    for (const k of SETTINGS_INTEGRATION_SECRET_KEYS) {
+        if (!Object.prototype.hasOwnProperty.call(b, k)) continue;
+        if (k.endsWith('_list') || k.includes('password') || k.includes('api_key') || k.includes('secret')) {
+            if (isBlankSecretInput(b[k])) continue;
+        } else if (b[k] == null || String(b[k]).trim() === '') {
+            continue;
+        }
+        return true;
+    }
+    return false;
+}
+
 module.exports = (db, appSettings) => {
     async function ensureAutoSyncRunsTableLocal() {
         await db.query(`
@@ -83,6 +115,17 @@ module.exports = (db, appSettings) => {
     router.post('/fetch-proxy', async (req, res) => {
         const { fetch_proxy_enabled, fetch_proxy_list } = req.body || {};
         try {
+            if (
+                fetch_proxy_list !== undefined &&
+                !isBlankSecretInput(fetch_proxy_list) &&
+                !settingsActorIsAdmin(req)
+            ) {
+                return res.status(403).json({
+                    success: false,
+                    error: 'Список прокси может менять только admin',
+                    code: 'SETTINGS_SECRETS_ADMIN_ONLY',
+                });
+            }
             const en = fetch_proxy_enabled ? 1 : 0;
             await db.query(
                 'INSERT INTO app_settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value=?',
@@ -158,6 +201,13 @@ module.exports = (db, appSettings) => {
     });
     
     router.post('/', async (req, res) => {
+        if (bodyTouchesIntegrationSecrets(req.body) && !settingsActorIsAdmin(req)) {
+            return res.status(403).json({
+                success: false,
+                error: 'Ключи маркетплейсов / Planfix / прокси может менять только admin',
+                code: 'SETTINGS_SECRETS_ADMIN_ONLY',
+            });
+        }
         const {
             default_limit, parse_batch_size, page_delay_ms, sync_batch_size, sync_delay_ms, sync_mode, log_retention_days, results_retention_days, ms_dimensions_log_retention_days, dg_purchase_overrides_log_retention_days, auto_sync_runs_retention_days, product_stock_snapshot_retention_days,
             ms_sync_page_limit, ms_sync_delay_ms, ms_purchase_order_organization_name, ms_orders_exclude_owner_names, ms_orders_sync_days,

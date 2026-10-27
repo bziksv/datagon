@@ -2915,7 +2915,7 @@
       })
       .catch(function (e) {
         if (meta) meta.textContent = e.message || "Ошибка загрузки";
-        if (tb) tb.innerHTML = '<tr><td colspan="4" class="text-danger">' + (e.message || "Ошибка") + "</td></tr>";
+        if (tb) tb.innerHTML = '<tr><td colspan="4" class="text-danger">' + escapeHtml(e.message || "Ошибка") + "</td></tr>";
         toast("danger", e.message || "Не удалось загрузить периоды оплаты");
       });
   }
