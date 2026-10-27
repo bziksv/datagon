@@ -138,9 +138,9 @@ Body:
 
 Запись (`POST`, `PUT`, `DELETE`, сохранение матрицы) — только **admin**. Чтение `GET /api/specialties` и `GET /api/specialties/pages` также разрешено пользователю с **`can_manage_users`** (форма нового пользователя на `/settings.html` при скрытой странице «Настройки» в матрице).
 
-- `GET /api/specialties` — список специальностей (с числом привязанных пользователей).
+- `GET /api/specialties` — список специальностей (с числом привязанных пользователей и флагом **`can_payroll`**).
 - `POST /api/specialties` — создать; body: `{ "name": "..." }`.
-- `PUT /api/specialties/:id` — переименовать; body: `{ "name": "..." }`.
+- `PUT /api/specialties/:id` — обновить; body: `{ "name"?: "...", "can_payroll"?: true|false }` (F-WS-02: payroll/accounting ACL по флагу, не по имени «Бухгалтерия» / «Полный доступ»).
 - `DELETE /api/specialties/:id` — удалить (нельзя удалить системную «Полный доступ» и специальность с привязанными пользователями).
 - `GET /api/specialties/pages` — каталог разделов панели (ключ, заголовок, html-файл) для матрицы.
 - `GET /api/specialties/:id/access` — текущие режимы по разделам.
@@ -1687,6 +1687,8 @@ Query: `channel`, `search`, `status`, `priority`, `brand`, `responsible` (id | `
 
 ### DELETE `/api/exports/new-products/:id/kits/:kitId`
 
+Body: `{ "confirm": true }` (F-NP-04).
+
 Удалить комплект.
 
 ### GET `/api/exports/new-products/:id/log`
@@ -1695,7 +1697,7 @@ Query: `channel`, `search`, `status`, `priority`, `brand`, `responsible` (id | `
 
 ### DELETE `/api/exports/new-products/:id`
 
-Мягкое удаление: `status = removed` (не hard `DELETE`). Для Альмамед каскадом уводит в удалённые связанные строки маркетов (`source_almamed_id`). Ответ: `{ soft_deleted, cascaded_markets }`. Смотреть корзину: `GET /?status=removed`.
+Мягкое удаление: `status = removed` (не hard `DELETE`). Body: `{ "confirm": true }` (F-NP-04). Для Альмамед каскадом уводит в удалённые связанные строки маркетов (`source_almamed_id`). Ответ: `{ soft_deleted, cascaded_markets }`. Смотреть корзину: `GET /?status=removed`.
 
 ### POST `/api/exports/new-products/:id/restore`
 
@@ -2341,7 +2343,7 @@ CSV UTF-8 с BOM по текущему фильтру.
 
 ### GET `/api/ops-sheet`
 
-Query: `year` (по умолчанию текущий). Ответ: `months[{ month, label, rows, totals, ops_auto_era }]`, `managers` (включая **архивных** менеджеров продаж), `can_write`, `planfix_unmatched`, `ops_auto_from`. В строке менеджера дополнительно: `bonus_past_auto`, `bonus_past_is_manual`, `bonus_past_source` (`auto`|`manual`|`archive`), `bonus_past_orders_count`, `ops_auto_era`. На `/ops-sheet.html` строка скрыта, если все суммы / заявки / оплаты / ручные поля нули или пустые. У архивного в ФИО пометка «(архив)». Синк Planfix по-прежнему берёт только неархивных постановщиков. У строки менеджера — стрелка: разворот статусов заявок (`GET /manager-app-statuses`).
+Query: `year` (по умолчанию текущий). Ответ: `months[{ month, label, rows, totals, ops_auto_era }]`, `managers` (включая **архивных** менеджеров продаж), `can_write`, `payroll_hidden`, `planfix_unmatched`, `ops_auto_from`. В строке менеджера дополнительно: `bonus_past_auto`, `bonus_past_is_manual`, `bonus_past_source` (`auto`|`manual`|`archive`), `bonus_past_orders_count`, `ops_auto_era`. **F-OPS-01:** при `ops-sheet=view` (`can_write=false`) поля ФОТ/`bonus_*`/`salary*`/`fact_profit`/`company_*` обнуляются (`payroll_hidden: true`). На `/ops-sheet.html` строка скрыта, если все суммы / заявки / оплаты / ручные поля нули или пустые. У архивного в ФИО пометка «(архив)». Синк Planfix по-прежнему берёт только неархивных постановщиков. У строки менеджера — стрелка: разворот статусов заявок (`GET /manager-app-statuses`).
 
 ### GET `/api/ops-sheet/yearly`
 
@@ -2367,6 +2369,8 @@ Query: `year`, `month` (1–12), `manager_user_id`. Разбивка задач 
 Body: `year`, `month`, `manager_user_id` + `bonus_past` / `salary`. Только `full`. Для `bonus_past` в авто-эре: число → ручной override (`bonus_past_manual=1`); `null`/пусто → сброс к авто. Ответ: пересчитанная `row` (+ `bonus_past_auto`, `bonus_past_is_manual`, `bonus_past_orders_count`) + `totals` месяца.
 
 ### GET `/api/ops-sheet/bonus-past-orders`
+
+Только при `ops-sheet=full` (иначе `403 PAYROLL_HIDDEN`).
 
 Query: `year`, `month`, `manager_user_id`. Список заказов, входящих в авто-расчёт «Премия с учетом заказов с прошлых месяцев» (отгрузка в месяце, оплата раньше). Ответ: `orders[]`, `total_bonus`, `orders_count`, `ops_auto_era`, `bonus_past_manual` / `bonus_past_override`.
 

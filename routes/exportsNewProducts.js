@@ -2660,6 +2660,11 @@ module.exports = function exportsNewProductsRouterFactory(db, config, appSetting
     router.delete('/:id/kits/:kitId', async (req, res) => {
         try {
             await ensureSchema(db);
+            const body = req.body && typeof req.body === 'object' ? req.body : {};
+            const confirm = body.confirm === true || body.confirm === 1 || body.confirm === '1';
+            if (!confirm) {
+                return res.status(400).json({ error: 'confirm required', code: 'CONFIRM_REQUIRED' });
+            }
             const parentId = parseInt(req.params.id, 10);
             const kitId = parseInt(req.params.kitId, 10);
             if (!Number.isFinite(parentId) || parentId < 1 || !Number.isFinite(kitId) || kitId < 1) {
@@ -2777,6 +2782,11 @@ module.exports = function exportsNewProductsRouterFactory(db, config, appSetting
     router.delete('/:id', async (req, res) => {
         try {
             await ensureSchema(db);
+            const body = req.body && typeof req.body === 'object' ? req.body : {};
+            const confirm = body.confirm === true || body.confirm === 1 || body.confirm === '1';
+            if (!confirm) {
+                return res.status(400).json({ error: 'confirm required', code: 'CONFIRM_REQUIRED' });
+            }
             const id = parseInt(req.params.id, 10);
             if (!Number.isFinite(id) || id < 1) return res.status(400).json({ error: 'Некорректный id' });
             const [[cur]] = await db.query('SELECT * FROM dg_new_products WHERE id = ? LIMIT 1', [id]);

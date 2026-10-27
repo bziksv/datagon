@@ -1644,7 +1644,7 @@
         if (!specList.length) {
           var tr0 = document.createElement("tr");
           var td0 = document.createElement("td");
-          td0.colSpan = 4;
+          td0.colSpan = 5;
           td0.className = "text-muted";
           td0.textContent = "Нет данных (загрузите снова после входа admin)";
           tr0.appendChild(td0);
@@ -1659,6 +1659,47 @@
           tdN.textContent = sp.name || "";
           var tdC = document.createElement("td");
           tdC.textContent = String(sp.users_count != null ? sp.users_count : "0");
+          var tdPay = document.createElement("td");
+          tdPay.className = "text-center";
+          var payCb = document.createElement("input");
+          payCb.type = "checkbox";
+          payCb.className = "form-check-input";
+          payCb.title = "Доступ к окладам / payroll / Bitcop (can_payroll)";
+          payCb.checked = !!sp.can_payroll;
+          payCb.setAttribute("data-dg-no-activity", "1");
+          payCb.addEventListener("change", function () {
+            var next = !!payCb.checked;
+            payCb.disabled = true;
+            fetch("/api/specialties/" + sp.id, {
+              method: "PUT",
+              credentials: "same-origin",
+              headers: authHeaders(true),
+              body: JSON.stringify({ can_payroll: next }),
+            })
+              .then(function (r) {
+                return r.json().then(function (j) {
+                  return { r: r, j: j };
+                });
+              })
+              .then(function (x) {
+                if (!x.r.ok) throw new Error((x.j && x.j.error) || "Ошибка");
+                sp.can_payroll = next;
+                if (window.DatagonNotify && window.DatagonNotify.toast) {
+                  window.DatagonNotify.toast({
+                    type: "success",
+                    message: next ? "ФОТ включён" : "ФОТ выключен",
+                  });
+                }
+              })
+              .catch(function (e) {
+                payCb.checked = !next;
+                alert(e.message || "Ошибка");
+              })
+              .finally(function () {
+                payCb.disabled = false;
+              });
+          });
+          tdPay.appendChild(payCb);
           var tdA = document.createElement("td");
           tdA.className = "text-nowrap";
           var bRen = document.createElement("button");
@@ -1718,6 +1759,7 @@
           tr.appendChild(tdId);
           tr.appendChild(tdN);
           tr.appendChild(tdC);
+          tr.appendChild(tdPay);
           tr.appendChild(tdA);
           tbody.appendChild(tr);
         });

@@ -194,7 +194,9 @@ module.exports = (db, appSettings = {}) => {
             `
             SELECT u.id, u.username, u.full_name, u.can_manage_users, u.specialty_id,
                    COALESCE(u.is_archived, 0) AS is_archived,
-                   sp.name AS specialty_name, s.id AS session_id
+                   sp.name AS specialty_name,
+                   COALESCE(sp.can_payroll, 0) AS can_payroll,
+                   s.id AS session_id
             FROM auth_sessions s
             JOIN users u ON u.id = s.user_id
             LEFT JOIN specialties sp ON sp.id = u.specialty_id
@@ -227,6 +229,7 @@ module.exports = (db, appSettings = {}) => {
             can_manage_users: Number(actor.can_manage_users || 0) === 1 || actor.username === 'admin',
             specialty_id: actor.specialty_id != null ? Number(actor.specialty_id) : null,
             specialty_name: actor.specialty_name || null,
+            can_payroll: Number(actor.can_payroll || 0) === 1,
             page_modes
         };
     }
@@ -322,6 +325,7 @@ module.exports = (db, appSettings = {}) => {
                 canManageUsers: actor.username === 'admin' || actor.can_manage_users === true,
                 specialty_id: actor.specialty_id != null ? Number(actor.specialty_id) : null,
                 specialty_name: actor.specialty_name || null,
+                can_payroll: actor.can_payroll === true,
                 page_modes: actor.page_modes || {},
                 redirect_after_login
             });
@@ -872,13 +876,16 @@ module.exports = (db, appSettings = {}) => {
             attachSessionCookie(res, token, req);
             let page_modes = {};
             let specialty_name = null;
+            let can_payroll = false;
             try {
                 page_modes = await datagonSpecialties.getPageModesForSpecialty(db, user.specialty_id);
                 if (user.specialty_id != null) {
-                    const [sn] = await db.query('SELECT name FROM specialties WHERE id = ? LIMIT 1', [
-                        user.specialty_id
-                    ]);
+                    const [sn] = await db.query(
+                        'SELECT name, COALESCE(can_payroll, 0) AS can_payroll FROM specialties WHERE id = ? LIMIT 1',
+                        [user.specialty_id]
+                    );
                     specialty_name = sn[0]?.name || null;
+                    can_payroll = Number(sn[0]?.can_payroll || 0) === 1;
                 }
             } catch (_) {
                 page_modes = await datagonSpecialties.getPageModesForSpecialty(db, null);
@@ -898,6 +905,7 @@ module.exports = (db, appSettings = {}) => {
                 canManageUsers: user.username === 'admin' || Number(user.can_manage_users || 0) === 1,
                 specialty_id: user.specialty_id != null ? Number(user.specialty_id) : null,
                 specialty_name,
+                can_payroll,
                 page_modes,
                 auth_token: token,
                 redirect_after_login

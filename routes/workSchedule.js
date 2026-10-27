@@ -77,16 +77,17 @@ function isAdminActor(actor) {
     return String(actor.username || '').toLowerCase() === 'admin';
 }
 
+/** Payroll/accounting: admin или specialty.can_payroll (F-WS-02). Имена специальностей не сравниваем. */
 function isAccounting(actor) {
     if (isAdminActor(actor)) return true;
-    const sp = String(actor.specialty_name || '');
-    if (sp === 'Бухгалтерия' || sp === 'Полный доступ') return true;
+    if (actor && actor.can_payroll === true) return true;
     return false;
 }
 
-/** Спец. «Бухгалтерия» — видит все отделы на вкладке «Отдел». admin / «Полный доступ» — как руководитель. */
+/** Видит все отделы на вкладке «Отдел»: admin или can_payroll (не «Полный доступ» по имени). */
 function isCompanyAccounting(actor) {
-    return String(actor.specialty_name || '') === 'Бухгалтерия';
+    if (isAdminActor(actor)) return true;
+    return !!(actor && actor.can_payroll === true);
 }
 
 function clientIp(req) {

@@ -52,7 +52,16 @@ module.exports = (db) => {
         try {
             const id = parseInt(req.params.id, 10);
             if (!Number.isFinite(id)) return res.status(400).json({ error: 'Некорректный id' });
-            await datagonSpecialties.renameSpecialty(db, id, req.body?.name);
+            const body = req.body && typeof req.body === 'object' ? req.body : {};
+            const patch = {};
+            if (body.name != null) patch.name = body.name;
+            if (Object.prototype.hasOwnProperty.call(body, 'can_payroll')) {
+                patch.can_payroll = body.can_payroll;
+            }
+            if (!Object.keys(patch).length) {
+                return res.status(400).json({ error: 'Нет полей для обновления' });
+            }
+            await datagonSpecialties.updateSpecialty(db, id, patch);
             return res.json({ success: true });
         } catch (e) {
             return res.status(400).json({ error: e.message });

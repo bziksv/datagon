@@ -5938,7 +5938,8 @@
           return fetch("/api/exports/new-products/" + row.id, {
             method: "DELETE",
             credentials: "same-origin",
-            headers: authHeaders(false),
+            headers: authHeaders(true),
+            body: JSON.stringify({ confirm: true }),
           })
             .then(function (r) {
               return r.json().then(function (j) {
@@ -6809,7 +6810,7 @@
       openNpConfirm({ title: "Удалить комплект?", message: msg }).then(function (ok) {
         if (!ok) return;
         var run = function () {
-          return kitApi(parent.id, "DELETE", "/" + kit.id).then(function () {
+          return kitApi(parent.id, "DELETE", "/" + kit.id, { confirm: true }).then(function () {
             parent.kits = (parent.kits || []).filter(function (k) {
               return k.id !== kit.id;
             });

@@ -1348,8 +1348,8 @@
         </div>
       </div>
 
-      <div class="finding" id="F-WS-02">
-        <div class="title"><span class="badge high">high</span> F-WS-02 · Payroll ACL по строке имени специальности</div>
+      <div class="finding fixed-out" id="F-WS-02">
+        <div class="title"><span class="badge high">high</span> <span class="badge fixed">исправлено</span> F-WS-02 · Payroll ACL по строке имени специальности</div>
         <div class="ev">
           <code>isAccounting</code>: admin ИЛИ specialty_name ∈ {«Бухгалтерия», «Полный доступ»}.
           Не флаг/role id. Дубликат имени «Бухгалтерия» (нет UNIQUE — F-SET-05) + page
@@ -1357,14 +1357,16 @@
           Переименование «Полный доступ» ломает/сохраняет привилегию независимо от матрицы страниц.
           <strong>Fix:</strong> <code>is_system</code> / <code>can_payroll</code> на specialty;
           не сравнивать display name; «Полный доступ» ≠ автоматически бухгалтерия (или явный capability).
+          <div class="fix-note"><strong>2026-10-27 (локально):</strong> <code>specialties.can_payroll</code>; actor <code>can_payroll</code>; <code>isAccounting</code>/<code>isCompanyAccounting</code> только admin|флаг; миграция имени «Бухгалтерия»→1; UI чекбокс ФОТ в settings; «Полный доступ» больше не даёт payroll автоматически.</div>
         </div>
       </div>
 
-      <div class="finding" id="F-WS-03">
-        <div class="title"><span class="badge med">medium</span> F-WS-03 · Bitcop API key plaintext в app_settings</div>
+      <div class="finding fixed-out" id="F-WS-03">
+        <div class="title"><span class="badge med">medium</span> <span class="badge fixed">исправлено</span> F-WS-03 · Bitcop API key plaintext в app_settings</div>
         <div class="ev">
           <code>ws_bitcop_api_key</code> в MySQL без encrypt (как прочие секреты). Маска только на чтении API.
           <strong>Fix:</strong> encrypt-at-rest; write-only пустое поле.
+          <div class="fix-note"><strong>2026-10-27 (локально):</strong> save → <code>enc:v1:</code> через <code>DATAGON_VAULT_KEY</code>; load/mask decrypt; <code>scripts/migrate-bitcop-api-key-encrypt.mjs</code>.</div>
         </div>
       </div>
 
@@ -2142,12 +2144,13 @@
         </div>
       </div>
 
-      <div class="finding" id="F-NP-04">
-        <div class="title"><span class="badge med">medium</span> F-NP-04 · NP soft-delete / cascade без server confirm</div>
+      <div class="finding fixed-out" id="F-NP-04">
+        <div class="title"><span class="badge med">medium</span> <span class="badge fixed">исправлено</span> F-NP-04 · NP soft-delete / cascade без server confirm</div>
         <div class="ev">
           <code>DELETE /api/exports/new-products/:id</code> → softRemove + cascade markets.
           UI-модалка есть (эталон); API без <code>confirm</code> (как unlink network-prices).
           <strong>Fix:</strong> body confirm; то же для kit_delete при cascade.
+          <div class="fix-note"><strong>2026-10-27 (локально):</strong> DELETE product/kit требуют <code>{confirm:true}</code>; UI шлёт confirm.</div>
         </div>
       </div>
 
@@ -2220,14 +2223,15 @@
 
       <h3>Findings</h3>
 
-      <div class="finding" id="F-OPS-01">
-        <div class="title"><span class="badge high">high</span> F-OPS-01 · ops-sheet=view = зарплаты всех менеджеров</div>
+      <div class="finding fixed-out" id="F-OPS-01">
+        <div class="title"><span class="badge high">high</span> <span class="badge fixed">исправлено</span> F-OPS-01 · ops-sheet=view = зарплаты всех менеджеров</div>
         <div class="ev">
           <code>GET /</code> / <code>/yearly</code> отдают salary, bonus_*, profit, salary_paid
           по всем менеджерам без self-scope (в отличие от manager-sales).
           Любая широкая специальность с ops-sheet=view читает ФОТ и маржу компании.
           <strong>Fix:</strong> отдельный capability «видеть ФОТ»; или view только агрегаты
           без персональных salary; self-only для менеджеров.
+          <div class="fix-note"><strong>2026-10-27 (локально):</strong> view → deep-redact salary/bonus_*/fact_profit/salary_paid/company_*; <code>payroll_hidden</code>; <code>/bonus-past-orders</code> только full.</div>
         </div>
       </div>
 
@@ -2519,7 +2523,7 @@
 <tr><td><a href="#F-WORK-02">F-WORK-02</a></td><td><span class="badge high">high</span></td><td>9</td><td>can_manage_users = WORK-admin</td><td>P0</td><td><span class="badge fixed">исправлено</span></td></tr>
 <tr><td><a href="#F-WORK-03">F-WORK-03</a></td><td><span class="badge high">high</span></td><td>9</td><td>view отдаёт plaintext секреты</td><td>P0</td><td><span class="badge fixed">исправлено</span></td></tr>
 <tr><td><a href="#F-WS-01">F-WS-01</a></td><td><span class="badge high">high</span></td><td>10</td><td>CRM clock shared secret</td><td>P1</td><td><span class="badge fixed">исправлено</span></td></tr>
-<tr><td><a href="#F-WS-02">F-WS-02</a></td><td><span class="badge high">high</span></td><td>10</td><td>Payroll ACL по имени specialty</td><td>P1</td><td>—</td></tr>
+<tr><td><a href="#F-WS-02">F-WS-02</a></td><td><span class="badge high">high</span></td><td>10</td><td>Payroll ACL по имени specialty</td><td>P1</td><td><span class="badge fixed">исправлено</span></td></tr>
 <tr><td><a href="#F-DBA-02">F-DBA-02</a></td><td><span class="badge high">high</span></td><td>11</td><td>can_manage_users = DBA</td><td>P0</td><td><span class="badge fixed">исправлено</span></td></tr>
 <tr><td><a href="#F-MS-01">F-MS-01</a></td><td><span class="badge high">high</span></td><td>12</td><td>Общий MS_TOKEN</td><td>P2</td><td>—</td></tr>
 <tr><td><a href="#F-MS-02">F-MS-02</a></td><td><span class="badge high">high</span></td><td>12</td><td>Unbounded mass-write МС</td><td>P1</td><td><span class="badge fixed">исправлено</span></td></tr>
@@ -2533,7 +2537,7 @@
 <tr><td><a href="#F-MPK-02">F-MPK-02</a></td><td><span class="badge high">high</span></td><td>16</td><td>Mass write в кабинеты МП</td><td>P1</td><td>—</td></tr>
 <tr><td><a href="#F-NP-01">F-NP-01</a></td><td><span class="badge high">high</span></td><td>17</td><td>Huckster password любому full</td><td>P0</td><td><span class="badge fixed">исправлено</span></td></tr>
 <tr><td><a href="#F-NP-02">F-NP-02</a></td><td><span class="badge high">high</span></td><td>17</td><td>dimensions sync-ms без confirm</td><td>P1</td><td><span class="badge fixed">исправлено</span></td></tr>
-<tr><td><a href="#F-OPS-01">F-OPS-01</a></td><td><span class="badge high">high</span></td><td>18</td><td>ops-sheet view = ФОТ всех</td><td>P1</td><td>—</td></tr>
+<tr><td><a href="#F-OPS-01">F-OPS-01</a></td><td><span class="badge high">high</span></td><td>18</td><td>ops-sheet view = ФОТ всех</td><td>P1</td><td><span class="badge fixed">исправлено</span></td></tr>
 <tr><td><a href="#F-OPS-02">F-OPS-02</a></td><td><span class="badge high">high</span></td><td>18</td><td>ACL dashboard ≠ API</td><td>P1</td><td><span class="badge fixed">исправлено</span></td></tr>
 <tr><td><a href="#F-PUB-01">F-PUB-01</a></td><td><span class="badge high">high</span></td><td>19</td><td>Open redirect then=//…</td><td>P1</td><td><span class="badge fixed">исправлено</span></td></tr>
         </tbody>

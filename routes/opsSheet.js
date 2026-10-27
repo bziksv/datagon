@@ -62,11 +62,39 @@ function pageMode(req) {
     const actor = req.datagonActor || {};
     if (actor.username === 'admin') return 'full';
     const raw = actor.page_modes && actor.page_modes['ops-sheet'];
-    return raw === 'view' || raw === 'hidden' || raw === 'full' ? raw : 'full';
+    return raw === 'view' || raw === 'hidden' || raw === 'full' ? raw : 'hidden';
 }
 
 function canWrite(req) {
     return pageMode(req) === 'full';
+}
+
+/** F-OPS-01: ops-sheet=view не отдаёт персональный ФОТ / премии / маржу после ФОТ. */
+const OPS_PAYROLL_KEY_SET = new Set([
+    'salary',
+    'bonus_past',
+    'bonus_past_auto',
+    'bonus_past_is_manual',
+    'bonus_past_source',
+    'bonus_past_orders_count',
+    'bonus_past_from_past',
+    'bonus_past_from_current',
+    'bonus_current',
+    'fact_profit',
+    'salary_paid',
+    'company_profit',
+    'company_pct',
+]);
+
+function deepRedactOpsPayroll(node) {
+    if (Array.isArray(node)) return node.map(deepRedactOpsPayroll);
+    if (!node || typeof node !== 'object') return node;
+    const out = {};
+    for (const [k, v] of Object.entries(node)) {
+        if (OPS_PAYROLL_KEY_SET.has(k)) out[k] = null;
+        else out[k] = deepRedactOpsPayroll(v);
+    }
+    return out;
 }
 
 function actorId(req) {
@@ -2888,6 +2916,13 @@ function opsSheetRouterFactory(db, appSettings) {
     router.get('/bonus-past-orders', async (req, res) => {
         try {
             await ensureSchema(db);
+            if (!canWrite(req)) {
+                return res.status(403).json({
+                    success: false,
+                    error: 'Премии доступны только при полном доступе к операционному листу',
+                    code: 'PAYROLL_HIDDEN',
+                });
+            }
             const year = normYear(req.query.year, null);
             const month = normMonth(req.query.month);
             const mid = Number(req.query.manager_user_id);
@@ -4096,7 +4131,8 @@ function opsSheetRouterFactory(db, appSettings) {
                 };
             });
 
-            res.json({
+            const write = canWrite(req);
+            let payload = {
                 success: true,
                 years: yearsDesc,
                 current_year: mskNow.year,
@@ -4110,8 +4146,12 @@ function opsSheetRouterFactory(db, appSettings) {
                 years_summary: yearsSummary,
                 monthly_yoy: monthlyYoy,
                 managers_by_year: managersByYear,
+                can_write: write,
+                payroll_hidden: !write,
                 ops_auto_from: OPS_AUTO_FROM,
-            });
+            };
+            if (!write) payload = deepRedactOpsPayroll(payload);
+            res.json(payload);
         } catch (e) {
             console.error('[ops-sheet/yearly]', e);
             res.status(500).json({ success: false, error: e.message || 'yearly load failed' });
@@ -4131,7 +4171,7 @@ function opsSheetRouterFactory(db, appSettings) {
                 fetchPlanfixAppCounts(db, year, managers),
                 fetchBonusPastByShipped(db, year, mids),
             ]);
-            const months = buildYearSnapshot(
+            let months = buildYearSnapshot(
                 managers,
                 year,
                 aggregates,
@@ -4140,12 +4180,15 @@ function opsSheetRouterFactory(db, appSettings) {
                 pfApps.countsLocal || {},
                 bonusPastMap
             );
+            const write = canWrite(req);
+            if (!write) months = deepRedactOpsPayroll(months);
             res.json({
                 success: true,
                 year,
                 managers,
                 months,
-                can_write: canWrite(req),
+                can_write: write,
+                payroll_hidden: !write,
                 planfix_unmatched: pfApps.unmatched || {},
                 ops_auto_from: OPS_AUTO_FROM,
             });
