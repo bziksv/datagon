@@ -10,6 +10,9 @@ const finCash = require('../lib/datagonFinanceCash');
 const finPlans = require('../lib/datagonFinancePlans');
 const finMsInv = require('../lib/datagonFinanceMsInventory');
 const finMsPo = require('../lib/datagonMsPurchaseOrders');
+const finOzon = require('../lib/datagonOzonFinance');
+const finWb = require('../lib/datagonWbFinance');
+const finYm = require('../lib/datagonYmFinance');
 
 const DEFAULT_TX_DAYS = 30;
 const MAX_TX_DAYS = 1095; // до ~3 лет (1 + 2)
@@ -2151,6 +2154,44 @@ function factory(db, appSettings) {
                     error: ePo && ePo.message ? String(ePo.message) : String(ePo),
                 };
             }
+            let ozon_finance = null;
+            try {
+                await finOzon.ensureOzonFinanceSchema(db);
+                ozon_finance = await finOzon.loadOzonFinanceForFinance(db);
+            } catch (eOz) {
+                ozon_finance = {
+                    owed: 0,
+                    source: 'error',
+                    error: eOz && eOz.message ? String(eOz.message) : String(eOz),
+                    sync_script: finOzon.getOzonFinanceSyncMeta(),
+                };
+            }
+            let wb_finance = null;
+            try {
+                await finWb.ensureWbFinanceSchema(db);
+                wb_finance = await finWb.loadWbFinanceForFinance(db);
+            } catch (eWb) {
+                wb_finance = {
+                    on_balance: 0,
+                    on_wire: 0,
+                    owed_total: 0,
+                    source: 'error',
+                    error: eWb && eWb.message ? String(eWb.message) : String(eWb),
+                    sync_script: finWb.getWbFinanceSyncMeta(),
+                };
+            }
+            let ym_finance = null;
+            try {
+                await finYm.ensureYmFinanceSchema(db);
+                ym_finance = await finYm.loadYmFinanceForFinance(db);
+            } catch (eYm) {
+                ym_finance = {
+                    owed: 0,
+                    source: 'error',
+                    error: eYm && eYm.message ? String(eYm.message) : String(eYm),
+                    sync_script: finYm.getYmFinanceSyncMeta(),
+                };
+            }
             res.json({
                 success: true,
                 accounts: rows || [],
@@ -2159,12 +2200,139 @@ function factory(db, appSettings) {
                 deposit_estimate,
                 ms_inventory,
                 ms_prepaid_orders,
+                ozon_finance,
+                wb_finance,
+                ym_finance,
                 can_write: pageMode(req) === 'full',
                 api_note:
-                    'Банк — в шапке организации (Точка / Райффайзен / Т‑Банк). Фонд: галка при редактировании названия (карандаш) или клик по бейджу типа. «На депозитах» — оценка из выписки (открытия − возвраты тела), всегда в карточках и в «Всего». «Товар (МС)» — оценка склада (остаток × себестоимость, только Товар со складской «Да»), привязана к Альмамед; официальный снимок — конец месяца. «В пути / недопринято» — оплаченные ЗП (purchaseorder), отдельно от товарного остатка.',
+                    'Банк — в шапке организации (Точка / Райффайзен / Т‑Банк). Фонд: галка при редактировании названия (карандаш) или клик по бейджу типа. «На депозитах» — оценка из выписки (открытия − возвраты тела), всегда в карточках и в «Всего». «Товар (МС)» — оценка склада (остаток × себестоимость, только Товар со складской «Да»), привязана к Альмамед; официальный снимок — конец месяца. «В пути / недопринято» — оплаченные ЗП (purchaseorder), отдельно от товарного остатка. «Ozon / WB / Я.М · к выплате» — долг МП (не входят в «Всего доступно»). Я.М — предстоящие по закрытым неделям из united-netting (rev.2), не полный «Баланс на сегодня» кабинета.',
             });
         } catch (e) {
             res.status(500).json({ success: false, error: e.message || String(e) });
+        }
+    });
+
+    /**
+     * Синк cash-flow Ozon (KPI «Ozon должен» = end_balance).
+     * Body: { backfill_months?: 18, tail_only?: false }
+     */
+    router.post('/mp/ozon-sync', async (req, res) => {
+        if (!requireFinanceAccess(req, res, true)) return;
+        try {
+            const body = req.body || {};
+            const tailOnly = body.tail_only === true || body.tail_only === 1 || body.tail_only === '1';
+            const backfillMonths =
+                body.backfill_months != null || body.backfillMonths != null
+                    ? Number(body.backfill_months != null ? body.backfill_months : body.backfillMonths)
+                    : undefined;
+            const result = await finOzon.runOzonFinanceSync(db, appSettings, {
+                tailOnly,
+                backfillMonths: Number.isFinite(backfillMonths) ? backfillMonths : undefined,
+            });
+            res.status(result && result.success === false ? 502 : 200).json(result);
+        } catch (e) {
+            res.status(500).json({
+                success: false,
+                error: e && e.message ? e.message : String(e),
+                sync_script: finOzon.getOzonFinanceSyncMeta(),
+            });
+        }
+    });
+
+    /**
+     * Синк баланса/отчётов WB + inflight (открытие/закрытие проводок).
+     * Body: { report_days?: 120 }
+     */
+    router.post('/mp/wb-sync', async (req, res) => {
+        if (!requireFinanceAccess(req, res, true)) return;
+        try {
+            const body = req.body || {};
+            const reportDays =
+                body.report_days != null || body.reportDays != null
+                    ? Number(body.report_days != null ? body.report_days : body.reportDays)
+                    : 120;
+            const result = await finWb.runWbFinanceSync(db, appSettings, {
+                reportDays: Number.isFinite(reportDays) ? reportDays : 120,
+            });
+            res.status(result && result.success === false ? 502 : 200).json(result);
+        } catch (e) {
+            res.status(500).json({
+                success: false,
+                error: e && e.message ? e.message : String(e),
+                sync_script: finWb.getWbFinanceSyncMeta(),
+            });
+        }
+    });
+
+    /**
+     * Бэкап месячных точек WB для графика («WB · выплаты» = Σ bankPaymentSum по date_to).
+     * Body: { from_ym?: "2024-01", to_ym?: "2026-10", force?: false }
+     */
+    router.post('/mp/wb-backfill', async (req, res) => {
+        if (!requireFinanceAccess(req, res, true)) return;
+        try {
+            const body = req.body || {};
+            const result = await finWb.backfillWbFinanceMonths(db, appSettings, {
+                fromYm: body.from_ym || body.fromYm,
+                toYm: body.to_ym || body.toYm,
+                force: body.force === true || body.force === 1 || body.force === '1',
+            });
+            res.status(result && result.success === false ? 502 : 200).json(result);
+        } catch (e) {
+            res.status(500).json({
+                success: false,
+                error: e && e.message ? e.message : String(e),
+                sync_script: finWb.getWbFinanceSyncMeta(),
+            });
+        }
+    });
+
+    /**
+     * Синк Я.М united-netting → KPI «к выплате» (закрытые недели Маркета, rev.2+).
+     * Body: { lookback_days?: 90 }
+     */
+    router.post('/mp/ym-sync', async (req, res) => {
+        if (!requireFinanceAccess(req, res, true)) return;
+        try {
+            const body = req.body || {};
+            const lookbackDays =
+                body.lookback_days != null || body.lookbackDays != null
+                    ? Number(body.lookback_days != null ? body.lookback_days : body.lookbackDays)
+                    : undefined;
+            const result = await finYm.runYmFinanceSync(db, appSettings, {
+                lookbackDays: Number.isFinite(lookbackDays) ? lookbackDays : undefined,
+            });
+            res.status(result && result.success === false ? 502 : 200).json(result);
+        } catch (e) {
+            res.status(500).json({
+                success: false,
+                error: e && e.message ? e.message : String(e),
+                sync_script: finYm.getYmFinanceSyncMeta(),
+            });
+        }
+    });
+
+    /**
+     * Бэкап месячных точек Я.М для графика (EOM из united-netting / bankSum).
+     * Body: { from_ym?: "2025-11", to_ym?: "2026-09", force?: false }
+     * Долго: несколько отчётов с паузой ~2 мин (лимит API).
+     */
+    router.post('/mp/ym-backfill', async (req, res) => {
+        if (!requireFinanceAccess(req, res, true)) return;
+        try {
+            const body = req.body || {};
+            const result = await finYm.backfillYmFinanceMonths(db, appSettings, {
+                fromYm: body.from_ym || body.fromYm,
+                toYm: body.to_ym || body.toYm,
+                force: body.force === true || body.force === 1 || body.force === '1',
+            });
+            res.status(result && result.success === false ? 502 : 200).json(result);
+        } catch (e) {
+            res.status(500).json({
+                success: false,
+                error: e && e.message ? e.message : String(e),
+                sync_script: finYm.getYmFinanceSyncMeta(),
+            });
         }
     });
 
@@ -3790,6 +3958,123 @@ function factory(db, appSettings) {
                     'Остаток на счетах недоступен при источнике «только наличные».';
             }
 
+            // Долг МП на график (не в «Всего доступно»): Ozon / WB / Я.М.
+            let ozonByYm = Object.create(null);
+            let wbByYm = Object.create(null);
+            let ymByYm = Object.create(null);
+            let ozonNow = null;
+            let wbNow = null;
+            let ymNow = null;
+            if (currency === 'RUB' && !accountId) {
+                try {
+                    await finOzon.ensureOzonFinanceSchema(db);
+                    ozonByYm = await finOzon.loadOzonBalanceByYm(db, monthKeys);
+                    const ozLive = await finOzon.loadOzonFinanceForFinance(db);
+                    ozonNow = ozLive && ozLive.source !== 'empty' ? Number(ozLive.owed) || 0 : null;
+                } catch (eOz) {
+                    ozonByYm = Object.create(null);
+                }
+                try {
+                    await finWb.ensureWbFinanceSchema(db);
+                    wbByYm = await finWb.loadWbOwedByYm(db, monthKeys);
+                    const wbLive = await finWb.loadWbFinanceForFinance(db);
+                    wbNow = wbLive && wbLive.source !== 'empty' ? Number(wbLive.owed_total) || 0 : null;
+                    // График: Σ bankPaymentSum; если paid_in_month пуст — досчитаем из sales-reports.
+                    const needPaid = monthKeys.filter((k) => {
+                        const row = wbByYm[k];
+                        return !row || row.paid_in_month == null;
+                    });
+                    if (needPaid.length) {
+                        const paidMap = await finWb.loadWbPaidByYmFromReports(db, needPaid);
+                        needPaid.forEach((k) => {
+                            const p = paidMap[k];
+                            if (!p || p.paid == null) return;
+                            if (!wbByYm[k]) {
+                                wbByYm[k] = {
+                                    ym: k,
+                                    owed_total: null,
+                                    paid_in_month: Number(p.paid) || 0,
+                                    source: 'reports',
+                                };
+                            } else {
+                                wbByYm[k].paid_in_month = Number(p.paid) || 0;
+                            }
+                        });
+                    }
+                } catch (eWb) {
+                    wbByYm = Object.create(null);
+                }
+                try {
+                    await finYm.ensureYmFinanceSchema(db);
+                    ymByYm = await finYm.loadYmOwedByYm(db, monthKeys);
+                    const ymLive = await finYm.loadYmFinanceForFinance(db);
+                    ymNow = ymLive && ymLive.source !== 'empty' ? Number(ymLive.owed) || 0 : null;
+                    const curYmYm = finYm.currentYmMsk();
+                    if (curYmYm && monthKeys.indexOf(curYmYm) >= 0 && !ymByYm[curYmYm] && ymNow != null) {
+                        ymByYm[curYmYm] = {
+                            ym: curYmYm,
+                            owed_upcoming: ymNow,
+                            source: 'live',
+                        };
+                    }
+                } catch (eYm) {
+                    ymByYm = Object.create(null);
+                }
+                const curYmMp = finWb.currentYmMsk();
+                series.forEach(function (row) {
+                    const oz = ozonByYm[row.month];
+                    row.ozon_owed =
+                        oz && oz.end_balance != null
+                            ? Math.round(Number(oz.end_balance) * 100) / 100
+                            : null;
+                    const wb = wbByYm[row.month];
+                    // series.wb_owed = выплаты за месяц (не live «должен»).
+                    row.wb_owed =
+                        wb && wb.paid_in_month != null
+                            ? Math.round(Number(wb.paid_in_month) * 100) / 100
+                            : null;
+                    const ymR = ymByYm[row.month];
+                    row.ym_owed =
+                        ymR && ymR.owed_upcoming != null
+                            ? Math.round(Number(ymR.owed_upcoming) * 100) / 100
+                            : null;
+
+                    // Долг МП для «С товаром + МП» (как карточка «С МП и товаром»):
+                    // Ozon end_balance; WB/Я.М — live «должен»/«к выплате» (не выплаты графика).
+                    const ozDebt = row.ozon_owed != null ? Number(row.ozon_owed) : 0;
+                    let wbDebt = 0;
+                    if (row.month === curYmMp && wbNow != null) {
+                        wbDebt = Number(wbNow) || 0;
+                    } else if (
+                        wb &&
+                        wb.owed_total != null &&
+                        (wb.source === 'live' || wb.source === 'eom')
+                    ) {
+                        wbDebt = Number(wb.owed_total) || 0;
+                    }
+                    let ymDebt = 0;
+                    if (row.month === curYmMp && ymNow != null) {
+                        ymDebt = Number(ymNow) || 0;
+                    }
+                    // Я.М history в month-таблице после rev 1.3 — выплаты, не долг; в сумму не берём.
+                    if (row.assets_with_inventory != null) {
+                        row.assets_with_inventory_mp =
+                            Math.round(
+                                (Number(row.assets_with_inventory) + ozDebt + wbDebt + ymDebt) * 100
+                            ) / 100;
+                    } else {
+                        row.assets_with_inventory_mp = null;
+                    }
+                });
+            } else {
+                series.forEach(function (row) {
+                    row.ozon_owed = null;
+                    row.wb_owed = null;
+                    row.ym_owed = null;
+                    row.assets_with_inventory_mp = null;
+                });
+            }
+
             res.json({
                 success: true,
                 months,
@@ -3822,11 +4107,29 @@ function factory(db, appSettings) {
                                   (Number(balanceMeta.balance_now) + Number(inventoryMeta.inventory_now)) * 100
                               ) / 100
                             : balanceMeta.balance_now,
+                    assets_with_inventory_mp: (function () {
+                        const base =
+                            balanceMeta.balance_now != null && inventoryMeta.inventory_now != null
+                                ? Number(balanceMeta.balance_now) + Number(inventoryMeta.inventory_now)
+                                : null;
+                        if (base == null) return null;
+                        const mp =
+                            (ozonNow != null ? Number(ozonNow) : 0) +
+                            (wbNow != null ? Number(wbNow) : 0) +
+                            (ymNow != null ? Number(ymNow) : 0);
+                        if (ozonNow == null && wbNow == null && ymNow == null) return null;
+                        return Math.round((base + mp) * 100) / 100;
+                    })(),
+                    ozon_owed: ozonNow,
+                    wb_owed: wbNow,
+                    ym_owed: ymNow,
                 },
                 balance_note: balanceMeta.balance_note,
                 ms_inventory_note: inventoryMeta.inventory_applies
                     ? 'Товар (МС) — снимок Σ(остаток×себестоимость) только «Товар», привязка к Альмамед; до EOM — оценка из ms_export.'
                     : null,
+                mp_finance_note:
+                    'Ozon на графике — end_balance. WB/Я.М на графике — Σ выплат за месяц (не «к выплате»); карточки WB/Я.М — текущий долг. «С товаром + МП» = остаток + товар + долг МП (Ozon/WB/Я.М). Не в «Всего доступно».',
                 end_ym: endYm,
             });
         } catch (e) {

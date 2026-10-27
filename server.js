@@ -126,6 +126,15 @@ let appSettings = {
     auto_sync_finance_tochka_time: '07:00',
     auto_sync_finance_tochka_days: 30,
     auto_sync_finance_tochka_weekdays: '',
+    auto_sync_ozon_finance_enabled: 1,
+    auto_sync_ozon_finance_time: '07:20',
+    auto_sync_ozon_finance_weekdays: '',
+    auto_sync_wb_finance_enabled: 1,
+    auto_sync_wb_finance_time: '07:25',
+    auto_sync_wb_finance_weekdays: '',
+    auto_sync_ym_finance_enabled: 1,
+    auto_sync_ym_finance_time: '07:30',
+    auto_sync_ym_finance_weekdays: '',
     auto_sync_ops_planfix_enabled: 1,
     auto_sync_ops_planfix_time: '20:00',
     auto_sync_ops_planfix_weekdays: '',
@@ -518,6 +527,15 @@ async function initDB() {
             ['auto_sync_finance_tochka_time','07:00'],
             ['auto_sync_finance_tochka_days','30'],
             ['auto_sync_finance_tochka_weekdays',''],
+            ['auto_sync_ozon_finance_enabled','1'],
+            ['auto_sync_ozon_finance_time','07:20'],
+            ['auto_sync_ozon_finance_weekdays',''],
+            ['auto_sync_wb_finance_enabled','1'],
+            ['auto_sync_wb_finance_time','07:25'],
+            ['auto_sync_wb_finance_weekdays',''],
+            ['auto_sync_ym_finance_enabled','1'],
+            ['auto_sync_ym_finance_time','07:30'],
+            ['auto_sync_ym_finance_weekdays',''],
             ['auto_sync_ops_planfix_enabled','1'],
             ['auto_sync_ops_planfix_time','20:00'],
             ['auto_sync_ops_planfix_weekdays',''],
@@ -2994,6 +3012,60 @@ async function processAutoSyncQueue() {
                 }
                 await finishAutoSyncRun('finance_tochka', statusFt, messageFt);
                 console.log(`[AUTO SYNC] Queue done: finance_tochka — ${statusFt}`);
+            } else if (task === 'ozon_finance') {
+                console.log('[AUTO SYNC] Queue start: ozon_finance');
+                await startAutoSyncRun('ozon_finance', triggerType);
+                let statusOz = 'failed';
+                let messageOz = 'Ошибка синка Ozon finance';
+                try {
+                    const finOzon = require('./lib/datagonOzonFinance');
+                    await touchAutoSyncRunMessage('ozon_finance', 'Ozon cash-flow: старт…').catch(() => {});
+                    // manual → 18 мес; scheduled без строк → DEFAULT 18; иначе хвост 90 дн.
+                    const result = await finOzon.runOzonFinanceSync(db, appSettings, {
+                        backfillMonths: triggerType === 'manual' ? 18 : undefined,
+                    });
+                    messageOz = String((result && result.message) || 'Готово').slice(0, 480);
+                    statusOz = result && result.success === false ? 'failed' : 'completed';
+                } catch (e) {
+                    messageOz = ('Ошибка Ozon finance: ' + (e && e.message ? e.message : e)).slice(0, 480);
+                }
+                await finishAutoSyncRun('ozon_finance', statusOz, messageOz);
+                console.log(`[AUTO SYNC] Queue done: ozon_finance — ${statusOz}`);
+            } else if (task === 'wb_finance') {
+                console.log('[AUTO SYNC] Queue start: wb_finance');
+                await startAutoSyncRun('wb_finance', triggerType);
+                let statusWb = 'failed';
+                let messageWb = 'Ошибка синка WB finance';
+                try {
+                    const finWb = require('./lib/datagonWbFinance');
+                    await touchAutoSyncRunMessage('wb_finance', 'WB finance: старт…').catch(() => {});
+                    const result = await finWb.runWbFinanceSync(db, appSettings, { reportDays: 120 });
+                    messageWb = String((result && result.message) || 'Готово').slice(0, 480);
+                    statusWb = result && result.success === false ? 'failed' : 'completed';
+                } catch (e) {
+                    messageWb = ('Ошибка WB finance: ' + (e && e.message ? e.message : e)).slice(0, 480);
+                }
+                await finishAutoSyncRun('wb_finance', statusWb, messageWb);
+                console.log(`[AUTO SYNC] Queue done: wb_finance — ${statusWb}`);
+            } else if (task === 'ym_finance') {
+                console.log('[AUTO SYNC] Queue start: ym_finance');
+                await startAutoSyncRun('ym_finance', triggerType);
+                let statusYm = 'failed';
+                let messageYm = 'Ошибка синка Я.М finance';
+                try {
+                    const finYm = require('./lib/datagonYmFinance');
+                    await touchAutoSyncRunMessage('ym_finance', 'Я.М united-netting: старт…').catch(() => {});
+                    const result = await finYm.runYmFinanceSync(db, appSettings, { lookbackDays: 75 });
+                    messageYm = String((result && result.message) || (result && result.error) || 'Готово').slice(
+                        0,
+                        480
+                    );
+                    statusYm = result && result.success === false ? 'failed' : 'completed';
+                } catch (e) {
+                    messageYm = ('Ошибка Я.М finance: ' + (e && e.message ? e.message : e)).slice(0, 480);
+                }
+                await finishAutoSyncRun('ym_finance', statusYm, messageYm);
+                console.log(`[AUTO SYNC] Queue done: ym_finance — ${statusYm}`);
             } else if (task === 'ops_planfix') {
                 console.log('[AUTO SYNC] Queue start: ops_planfix');
                 await startAutoSyncRun('ops_planfix', triggerType);
@@ -3570,6 +3642,24 @@ function startAutoSyncScheduler() {
                     enabled: Number(appSettings.auto_sync_finance_tochka_enabled || 0) === 1,
                     time: String(appSettings.auto_sync_finance_tochka_time || '07:00').slice(0, 5),
                     weekdays: parseAutoSyncWeekdaysMon17(appSettings.auto_sync_finance_tochka_weekdays)
+                },
+                {
+                    type: 'ozon_finance',
+                    enabled: Number(appSettings.auto_sync_ozon_finance_enabled || 0) === 1,
+                    time: String(appSettings.auto_sync_ozon_finance_time || '07:20').slice(0, 5),
+                    weekdays: parseAutoSyncWeekdaysMon17(appSettings.auto_sync_ozon_finance_weekdays)
+                },
+                {
+                    type: 'wb_finance',
+                    enabled: Number(appSettings.auto_sync_wb_finance_enabled || 0) === 1,
+                    time: String(appSettings.auto_sync_wb_finance_time || '07:25').slice(0, 5),
+                    weekdays: parseAutoSyncWeekdaysMon17(appSettings.auto_sync_wb_finance_weekdays)
+                },
+                {
+                    type: 'ym_finance',
+                    enabled: Number(appSettings.auto_sync_ym_finance_enabled || 0) === 1,
+                    time: String(appSettings.auto_sync_ym_finance_time || '07:30').slice(0, 5),
+                    weekdays: parseAutoSyncWeekdaysMon17(appSettings.auto_sync_ym_finance_weekdays)
                 },
                 {
                     type: 'ops_planfix',

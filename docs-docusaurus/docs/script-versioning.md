@@ -152,6 +152,32 @@ description: Обязательные ревизии при изменении �
 | 1 | 1.0.0 | 2026-10-21 | Шапки `purchaseorder` → `ms_purchase_order`; KPI A/B; без `entity/supply`. |
 | 2 | 1.0.1 | 2026-10-26 | Страница limit=50, timeout 300s + retry на timeout/5xx (фикс обрыва 120s). |
 
+## Финансы маркетплейсов (Ozon / WB)
+
+| Модуль | Реестр | API |
+|--------|--------|-----|
+| Ozon cash-flow | `lib/datagonOzonFinanceSyncRevision.js` | `ozon_finance` в `GET /api/finance/accounts`; `POST /api/finance/mp/ozon-sync` |
+| WB balance + inflight | `lib/datagonWbFinanceSyncRevision.js` | `wb_finance` в `GET /api/finance/accounts`; `POST /api/finance/mp/wb-sync`, `…/wb-backfill` |
+| Я.М к выплате | `lib/datagonYmFinanceSyncRevision.js` | `ym_finance` в `GET /api/finance/accounts`; `POST /api/finance/mp/ym-sync` |
+
+| rev | version | date | notes |
+|-----|---------|------|-------|
+| 1 | 1.0.0 | 2026-10-26 | Ozon: KPI = `end_balance` cash-flow; бэкап недель. WB: KPI = `current` + open inflight; открытие по дельте вывода / safety-net `bankPaymentSum` (лаг 14 дн.); закрытие по входящим РВБ. Не в «Всего доступно». Автосинк `ozon_finance` / `wb_finance` (воркер 2). |
+| 2 | 1.0.1 | 2026-10-26 | Ozon: балансы из `result.details`. WB: хвост невыплаченных до первой зачисленной; `direction=in`. |
+| 3 | 1.1.0 | 2026-10-26 | График analytics: Ozon `end_balance` по мес.; WB `dg_mp_wb_finance_month` (live/EOM). Автосинк вкл. по умолчанию, воркер 2. |
+| 4 | 1.2.0 | 2026-10-27 | WB график = Σ `bankPaymentSum` по месяцу `date_to` (`paid_in_month`); карточка — «должен». `POST /api/finance/mp/wb-backfill`. |
+
+### Я.М к выплате
+
+Реестр: `lib/datagonYmFinanceSyncRevision.js`.
+
+| rev | version | date | notes |
+|-----|---------|------|-------|
+| 1 | 1.0.0 | 2026-10-26 | Σ «Будет переведён по графику» (sign×sum). |
+| 2 | 1.1.0 | 2026-10-26 | Закрытые недели Маркета; период = max(доставка, транзакция); +«Будет удержан»; raw `transactionSum`; `details_json`. |
+| 3 | 1.2.0 | 2026-10-27 | Backfill EOM точек графика: `bankSum` выплат после asOf + UP; `POST /api/finance/mp/ym-backfill`. |
+| 4 | 1.3.0 | 2026-10-27 | График = Σ выплат за месяц по дате п/п (не EOM-хвост; май больше не ~53 тыс.). Карточка — «к выплате». |
+
 ## Cursor (для разработчиков)
 
 Правило агента: `.cursor/rules/datagon-script-version-revision.mdc` (always apply).

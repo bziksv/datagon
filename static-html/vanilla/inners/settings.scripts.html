@@ -147,6 +147,15 @@
         auto_sync_finance_tochka_time: "07:00",
         auto_sync_finance_tochka_days: 30,
         auto_sync_finance_tochka_weekdays: "",
+        auto_sync_ozon_finance_enabled: 1,
+        auto_sync_ozon_finance_time: "07:20",
+        auto_sync_ozon_finance_weekdays: "",
+        auto_sync_wb_finance_enabled: 1,
+        auto_sync_wb_finance_time: "07:25",
+        auto_sync_wb_finance_weekdays: "",
+        auto_sync_ym_finance_enabled: 1,
+        auto_sync_ym_finance_time: "07:30",
+        auto_sync_ym_finance_weekdays: "",
         auto_sync_ops_planfix_enabled: 1,
         auto_sync_ops_planfix_time: "20:00",
         auto_sync_ops_planfix_weekdays: "",
@@ -1207,6 +1216,18 @@
         set("dg-set-auto_finance_tochka_time", merged.auto_sync_finance_tochka_time || "07:00");
         set("dg-set-auto_finance_tochka_days", merged.auto_sync_finance_tochka_days != null ? String(merged.auto_sync_finance_tochka_days) : "30");
         applyAutoSyncWeekdayChecks("dg-set-auto_finance_tochka_wd", merged.auto_sync_finance_tochka_weekdays);
+        var ozonFinEn = document.getElementById("dg-set-auto_ozon_finance_en");
+        if (ozonFinEn) ozonFinEn.checked = Number(merged.auto_sync_ozon_finance_enabled) === 1;
+        set("dg-set-auto_ozon_finance_time", merged.auto_sync_ozon_finance_time || "07:20");
+        applyAutoSyncWeekdayChecks("dg-set-auto_ozon_finance_wd", merged.auto_sync_ozon_finance_weekdays);
+        var wbFinEn = document.getElementById("dg-set-auto_wb_finance_en");
+        if (wbFinEn) wbFinEn.checked = Number(merged.auto_sync_wb_finance_enabled) === 1;
+        set("dg-set-auto_wb_finance_time", merged.auto_sync_wb_finance_time || "07:25");
+        applyAutoSyncWeekdayChecks("dg-set-auto_wb_finance_wd", merged.auto_sync_wb_finance_weekdays);
+        var ymFinEn = document.getElementById("dg-set-auto_ym_finance_en");
+        if (ymFinEn) ymFinEn.checked = Number(merged.auto_sync_ym_finance_enabled) === 1;
+        set("dg-set-auto_ym_finance_time", merged.auto_sync_ym_finance_time || "07:30");
+        applyAutoSyncWeekdayChecks("dg-set-auto_ym_finance_wd", merged.auto_sync_ym_finance_weekdays);
         var opsPlanfixEn = document.getElementById("dg-set-auto_ops_planfix_en");
         if (opsPlanfixEn) opsPlanfixEn.checked = Number(merged.auto_sync_ops_planfix_enabled) === 1;
         set("dg-set-auto_ops_planfix_time", merged.auto_sync_ops_planfix_time || "20:00");
@@ -2488,6 +2509,21 @@
           auto_sync_finance_tochka_time: getStr("dg-set-auto_finance_tochka_time") || "07:00",
           auto_sync_finance_tochka_days: getStr("dg-set-auto_finance_tochka_days") || "30",
           auto_sync_finance_tochka_weekdays: collectAutoSyncWeekdayCsv("dg-set-auto_finance_tochka_wd"),
+          auto_sync_ozon_finance_enabled: document.getElementById("dg-set-auto_ozon_finance_en")
+            ? document.getElementById("dg-set-auto_ozon_finance_en").checked
+            : false,
+          auto_sync_ozon_finance_time: getStr("dg-set-auto_ozon_finance_time") || "07:20",
+          auto_sync_ozon_finance_weekdays: collectAutoSyncWeekdayCsv("dg-set-auto_ozon_finance_wd"),
+          auto_sync_wb_finance_enabled: document.getElementById("dg-set-auto_wb_finance_en")
+            ? document.getElementById("dg-set-auto_wb_finance_en").checked
+            : false,
+          auto_sync_wb_finance_time: getStr("dg-set-auto_wb_finance_time") || "07:25",
+          auto_sync_wb_finance_weekdays: collectAutoSyncWeekdayCsv("dg-set-auto_wb_finance_wd"),
+          auto_sync_ym_finance_enabled: document.getElementById("dg-set-auto_ym_finance_en")
+            ? document.getElementById("dg-set-auto_ym_finance_en").checked
+            : false,
+          auto_sync_ym_finance_time: getStr("dg-set-auto_ym_finance_time") || "07:30",
+          auto_sync_ym_finance_weekdays: collectAutoSyncWeekdayCsv("dg-set-auto_ym_finance_wd"),
           auto_sync_ops_planfix_enabled: document.getElementById("dg-set-auto_ops_planfix_en")
             ? document.getElementById("dg-set-auto_ops_planfix_en").checked
             : false,
@@ -2631,6 +2667,15 @@
             "auto_sync_finance_tochka_time",
             "auto_sync_finance_tochka_days",
             "auto_sync_finance_tochka_weekdays",
+            "auto_sync_ozon_finance_enabled",
+            "auto_sync_ozon_finance_time",
+            "auto_sync_ozon_finance_weekdays",
+            "auto_sync_wb_finance_enabled",
+            "auto_sync_wb_finance_time",
+            "auto_sync_wb_finance_weekdays",
+            "auto_sync_ym_finance_enabled",
+            "auto_sync_ym_finance_time",
+            "auto_sync_ym_finance_weekdays",
             "auto_sync_ops_planfix_enabled",
             "auto_sync_ops_planfix_time",
             "auto_sync_ops_planfix_weekdays",
@@ -2717,6 +2762,8 @@
         price_comp_sync: "Цены с конкурента (ДМ/МК)",
         network_prices: "Цены сети",
         finance_tochka: "Финансы: Точка",
+        ozon_finance: "Финансы: Ozon",
+        wb_finance: "Финансы: WB",
         ops_planfix: "Операционный лист: Planfix",
       };
       function escAutoRunHtml(s) {
@@ -4205,6 +4252,24 @@
       if (financeTochkaRunBtn) {
         financeTochkaRunBtn.addEventListener("click", function () {
           runAutoSyncNow("finance_tochka", "Финансы: Точка", "dg-set-auto_finance_tochka_run");
+        });
+      }
+      var ozonFinanceRunBtn = document.getElementById("dg-set-auto_ozon_finance_run");
+      if (ozonFinanceRunBtn) {
+        ozonFinanceRunBtn.addEventListener("click", function () {
+          runAutoSyncNow("ozon_finance", "Финансы: Ozon", "dg-set-auto_ozon_finance_run");
+        });
+      }
+      var wbFinanceRunBtn = document.getElementById("dg-set-auto_wb_finance_run");
+      if (wbFinanceRunBtn) {
+        wbFinanceRunBtn.addEventListener("click", function () {
+          runAutoSyncNow("wb_finance", "Финансы: WB", "dg-set-auto_wb_finance_run");
+        });
+      }
+      var ymFinanceRunBtn = document.getElementById("dg-set-auto_ym_finance_run");
+      if (ymFinanceRunBtn) {
+        ymFinanceRunBtn.addEventListener("click", function () {
+          runAutoSyncNow("ym_finance", "Финансы: Я.М", "dg-set-auto_ym_finance_run");
         });
       }
       var opsPlanfixRunBtn = document.getElementById("dg-set-auto_ops_planfix_run");

@@ -101,6 +101,9 @@
     depositEstimate: { items: [], totals: [], note: "", method: "" },
     msInventory: null,
     msPrepaidOrders: null,
+    ozonFinance: null,
+    wbFinance: null,
+    ymFinance: null,
     orgAliases: {},
     page: 1,
     total: 0,
@@ -765,6 +768,13 @@
           esc(fmtMoney(assets, cur)) +
           '</div><div class="dg-fin-kpi-sub">остаток + товар · без «В пути (ЗП)» и «Недопринято»</div></div>';
       }
+      var assetsMp = t.assets_with_inventory_mp != null ? Number(t.assets_with_inventory_mp) : null;
+      if (assetsMp != null && Number.isFinite(assetsMp)) {
+        invHtml +=
+          '<div class="dg-fin-kpi is-assets-mp"><div class="dg-fin-kpi-label">С товаром + МП</div><div class="dg-fin-kpi-value">' +
+          esc(fmtMoney(assetsMp, cur)) +
+          '</div><div class="dg-fin-kpi-sub">остаток + товар + Ozon/WB/Я.М</div></div>';
+      }
     }
     var prepaidHtml = "";
     var prepaid = state.msPrepaidOrders;
@@ -785,6 +795,28 @@
           esc(String(prepaid.count_partial || 0)) +
           ' док.</div></div>';
       }
+    }
+    var mpHtml = "";
+    var ozNow = t.ozon_owed != null ? Number(t.ozon_owed) : null;
+    if (ozNow != null && Number.isFinite(ozNow)) {
+      mpHtml +=
+        '<div class="dg-fin-kpi is-mp"><div class="dg-fin-kpi-label">Ozon · к выплате</div><div class="dg-fin-kpi-value">' +
+        esc(fmtMoney(ozNow, cur)) +
+        '</div><div class="dg-fin-kpi-sub">не в «Всего доступно»</div></div>';
+    }
+    var wbNow = t.wb_owed != null ? Number(t.wb_owed) : null;
+    if (wbNow != null && Number.isFinite(wbNow)) {
+      mpHtml +=
+        '<div class="dg-fin-kpi is-mp"><div class="dg-fin-kpi-label">WB · должен</div><div class="dg-fin-kpi-value">' +
+        esc(fmtMoney(wbNow, cur)) +
+        '</div><div class="dg-fin-kpi-sub">баланс + на проводке</div></div>';
+    }
+    var ymNowKpi = t.ym_owed != null ? Number(t.ym_owed) : null;
+    if (ymNowKpi != null && Number.isFinite(ymNowKpi)) {
+      mpHtml +=
+        '<div class="dg-fin-kpi is-mp"><div class="dg-fin-kpi-label">Я.М · к выплате</div><div class="dg-fin-kpi-value">' +
+        esc(fmtMoney(ymNowKpi, cur)) +
+        '</div><div class="dg-fin-kpi-sub">предстоящие по графику</div></div>';
     }
     box.innerHTML =
       '<div class="dg-fin-kpi is-in"><div class="dg-fin-kpi-label">Входящие</div><div class="dg-fin-kpi-value">' +
@@ -807,6 +839,7 @@
       diffHtml +
       invHtml +
       prepaidHtml +
+      mpHtml +
       '<div class="dg-fin-kpi"><div class="dg-fin-kpi-label">Операций</div><div class="dg-fin-kpi-value">' +
       esc(String(Number(t.count) || 0)) +
       '</div><div class="dg-fin-kpi-sub">в снимке за период</div></div>';
@@ -870,7 +903,10 @@
         Number(r.in) > 0 ||
         Number(r.out) > 0 ||
         (r.balance != null && Number.isFinite(Number(r.balance))) ||
-        (r.assets_with_inventory != null && Number.isFinite(Number(r.assets_with_inventory)))
+        (r.assets_with_inventory != null && Number.isFinite(Number(r.assets_with_inventory))) ||
+        (r.assets_with_inventory_mp != null && Number.isFinite(Number(r.assets_with_inventory_mp))) ||
+        (r.ozon_owed != null && Number.isFinite(Number(r.ozon_owed))) ||
+        (r.wb_owed != null && Number.isFinite(Number(r.wb_owed)))
       );
     });
     if (!hasAny) {
@@ -897,8 +933,26 @@
         ? Number(r.assets_with_inventory)
         : null;
     });
+    var assetsMpVals = rows.map(function (r) {
+      return r.assets_with_inventory_mp != null && Number.isFinite(Number(r.assets_with_inventory_mp))
+        ? Number(r.assets_with_inventory_mp)
+        : null;
+    });
+    var ozonVals = rows.map(function (r) {
+      return r.ozon_owed != null && Number.isFinite(Number(r.ozon_owed)) ? Number(r.ozon_owed) : null;
+    });
+    var wbVals = rows.map(function (r) {
+      return r.wb_owed != null && Number.isFinite(Number(r.wb_owed)) ? Number(r.wb_owed) : null;
+    });
+    var ymVals = rows.map(function (r) {
+      return r.ym_owed != null && Number.isFinite(Number(r.ym_owed)) ? Number(r.ym_owed) : null;
+    });
     var hasBalance = balVals.some(function (v) { return v != null; });
     var hasAssetsInv = assetsVals.some(function (v) { return v != null; });
+    var hasAssetsMp = assetsMpVals.some(function (v) { return v != null; });
+    var hasOzon = ozonVals.some(function (v) { return v != null; });
+    var hasWb = wbVals.some(function (v) { return v != null; });
+    var hasYm = ymVals.some(function (v) { return v != null; });
     var cur = currency || "RUB";
 
     loadChartJs()
@@ -997,6 +1051,85 @@
             order: 0,
           });
         }
+        if (hasAssetsMp) {
+          datasets.push({
+            type: "line",
+            label: "С товаром + МП",
+            data: assetsMpVals,
+            borderColor: "#0d9488",
+            backgroundColor: "rgba(13, 148, 136, 0.1)",
+            borderWidth: 2.5,
+            borderDash: [8, 4],
+            pointRadius: 3.5,
+            pointHoverRadius: 5,
+            pointBackgroundColor: "#fff",
+            pointBorderColor: "#0d9488",
+            pointBorderWidth: 2,
+            tension: 0.25,
+            spanGaps: true,
+            yAxisID: "yBal",
+            order: 0,
+          });
+        }
+        if (hasOzon) {
+          datasets.push({
+            type: "line",
+            label: "Ozon · к выплате",
+            data: ozonVals,
+            borderColor: "#0ea5e9",
+            backgroundColor: "rgba(14, 165, 233, 0.1)",
+            borderWidth: 2.5,
+            pointRadius: 3.5,
+            pointHoverRadius: 5,
+            pointBackgroundColor: "#fff",
+            pointBorderColor: "#0ea5e9",
+            pointBorderWidth: 2,
+            tension: 0.25,
+            spanGaps: true,
+            yAxisID: "yBal",
+            order: 0,
+          });
+        }
+        if (hasWb) {
+          datasets.push({
+            type: "line",
+            label: "WB · выплаты",
+            data: wbVals,
+            borderColor: "#a21caf",
+            backgroundColor: "rgba(162, 28, 175, 0.1)",
+            borderWidth: 2.5,
+            borderDash: [4, 3],
+            pointRadius: 3.5,
+            pointHoverRadius: 5,
+            pointBackgroundColor: "#fff",
+            pointBorderColor: "#a21caf",
+            pointBorderWidth: 2,
+            tension: 0.25,
+            spanGaps: true,
+            yAxisID: "yBal",
+            order: 0,
+          });
+        }
+        if (hasYm) {
+          datasets.push({
+            type: "line",
+            label: "Я.М · выплаты",
+            data: ymVals,
+            borderColor: "#f59e0b",
+            backgroundColor: "rgba(245, 158, 11, 0.1)",
+            borderWidth: 2.5,
+            borderDash: [2, 2],
+            pointRadius: 3.5,
+            pointHoverRadius: 5,
+            pointBackgroundColor: "#fff",
+            pointBorderColor: "#f59e0b",
+            pointBorderWidth: 2,
+            tension: 0.25,
+            spanGaps: true,
+            yAxisID: "yBal",
+            order: 0,
+          });
+        }
 
         var scales = {
           x: {
@@ -1019,13 +1152,13 @@
             grid: { color: "rgba(15, 23, 42, 0.06)" },
           },
         };
-        if (hasBalance || hasAssetsInv) {
+        if (hasBalance || hasAssetsInv || hasAssetsMp || hasOzon || hasWb || hasYm) {
           scales.yBal = {
             position: "right",
             beginAtZero: false,
             ticks: {
               font: { size: 11 },
-              color: hasAssetsInv ? "#7c3aed" : "#b45309",
+              color: hasAssetsMp ? "#0d9488" : hasAssetsInv ? "#7c3aed" : "#b45309",
               callback: function (v) {
                 var n = Number(v);
                 if (Math.abs(n) >= 1000000) return (n / 1000000).toLocaleString("ru-RU", { maximumFractionDigits: 1 }) + " млн";
@@ -1111,6 +1244,18 @@
                     }
                     if (src.assets_with_inventory != null && Number.isFinite(Number(src.assets_with_inventory))) {
                       lines.push("С товаром: " + fmtMoney(Number(src.assets_with_inventory), cur));
+                    }
+                    if (src.assets_with_inventory_mp != null && Number.isFinite(Number(src.assets_with_inventory_mp))) {
+                      lines.push("С товаром + МП: " + fmtMoney(Number(src.assets_with_inventory_mp), cur));
+                    }
+                    if (src.ozon_owed != null && Number.isFinite(Number(src.ozon_owed))) {
+                      lines.push("Ozon · к выплате: " + fmtMoney(Number(src.ozon_owed), cur));
+                    }
+                    if (src.wb_owed != null && Number.isFinite(Number(src.wb_owed))) {
+                      lines.push("WB · выплаты: " + fmtMoney(Number(src.wb_owed), cur));
+                    }
+                    if (src.ym_owed != null && Number.isFinite(Number(src.ym_owed))) {
+                      lines.push("Я.М · выплаты: " + fmtMoney(Number(src.ym_owed), cur));
                     }
                     lines.push("Клик — даты месяца в фильтр");
                     return lines;
@@ -2052,6 +2197,188 @@
     );
   }
 
+  function renderOzonFinanceCard(oz) {
+    if (!oz) return "";
+    var owed = Number(oz.owed) || 0;
+    var ver =
+      oz.sync_script && oz.sync_script.version
+        ? "v" + oz.sync_script.version + (oz.sync_script.revision != null ? " · rev." + oz.sync_script.revision : "")
+        : "";
+    var tip =
+      "Долг Ozon по API cash-flow (end_balance свежей недели). Не входит в «Всего доступно». " +
+      (oz.period_begin && oz.period_end ? "Период " + oz.period_begin + "…" + oz.period_end + ". " : "") +
+      ver;
+    var sub =
+      oz.source === "empty"
+        ? "нет данных — синк Ozon"
+        : oz.source === "error"
+          ? "ошибка: " + String(oz.error || "")
+          : "end_balance" + (oz.period_end ? " · до " + fmtDate(oz.period_end) : "");
+    return (
+      '<div class="col-sm-6 col-lg-4">' +
+      '<div class="card dg-fin-bal-card is-mp-ozon" title="' +
+      esc(tip) +
+      '">' +
+      '<div class="card-body">' +
+      '<div class="dg-fin-acc-top">' +
+      '<span class="dg-fin-type-pill is-mp">Ozon</span>' +
+      '<span class="dg-fin-acc-mask">МП</span>' +
+      "</div>" +
+      '<div class="dg-fin-acc-title-row"><span class="dg-fin-acc-title dg-fin-name-text">Ozon · к выплате</span></div>' +
+      '<div class="dg-fin-acc-amount dg-fin-bal-num">' +
+      esc(fmtMoney(owed, "RUB")) +
+      "</div>" +
+      '<div class="dg-fin-acc-blocked text-muted">' +
+      esc(sub) +
+      "</div>" +
+      "</div></div></div>"
+    );
+  }
+
+  function renderWbFinanceCard(wb) {
+    if (!wb) return "";
+    var total = Number(wb.owed_total) || 0;
+    var onBal = Number(wb.on_balance) || 0;
+    var onWire = Number(wb.on_wire) || 0;
+    var ver =
+      wb.sync_script && wb.sync_script.version
+        ? "v" + wb.sync_script.version + (wb.sync_script.revision != null ? " · rev." + wb.sync_script.revision : "")
+        : "";
+    var tip =
+      "WB должен = баланс кабинета + выплаты на проводке (ещё не на р/с). Не входит в «Всего доступно». " + ver;
+    var sub =
+      wb.source === "empty"
+        ? "нет данных — синк WB"
+        : wb.source === "error"
+          ? "ошибка: " + String(wb.error || "")
+          : "баланс " +
+            fmtMoney(onBal, "RUB") +
+            " · проводка " +
+            fmtMoney(onWire, "RUB") +
+            (wb.inflight && wb.inflight.length ? " (" + wb.inflight.length + ")" : "");
+    return (
+      '<div class="col-sm-6 col-lg-4">' +
+      '<div class="card dg-fin-bal-card is-mp-wb" title="' +
+      esc(tip) +
+      '">' +
+      '<div class="card-body">' +
+      '<div class="dg-fin-acc-top">' +
+      '<span class="dg-fin-type-pill is-mp">WB</span>' +
+      '<span class="dg-fin-acc-mask">МП</span>' +
+      "</div>" +
+      '<div class="dg-fin-acc-title-row"><span class="dg-fin-acc-title dg-fin-name-text">WB · должен</span></div>' +
+      '<div class="dg-fin-acc-amount dg-fin-bal-num">' +
+      esc(fmtMoney(total, "RUB")) +
+      "</div>" +
+      '<div class="dg-fin-acc-blocked text-muted">' +
+      esc(sub) +
+      "</div>" +
+      "</div></div></div>"
+    );
+  }
+
+  function renderYmFinanceCard(ym) {
+    if (!ym) return "";
+    var owed = Number(ym.owed) || 0;
+    var ver =
+      ym.sync_script && ym.sync_script.version
+        ? "v" + ym.sync_script.version + (ym.sync_script.revision != null ? " · rev." + ym.sync_script.revision : "")
+        : "";
+    var tip =
+      "Я.М · к выплате ≈ «Предстоящие выплаты» кабинета: united-netting по закрытым неделям Маркета " +
+      "(«Будет переведён» + «Будет удержан»; период = max доставка/транзакция). " +
+      "Незакрытая неделя в API не входит в KPI. " +
+      ver;
+    var periodBits = [];
+    if (Array.isArray(ym.periods)) {
+      ym.periods.forEach(function (p) {
+        if (!p || p.amount == null) return;
+        var label = p.payout_base ? fmtDate(p.payout_base) : String(p.period || "");
+        periodBits.push(label + ": " + fmtMoney(Number(p.amount) || 0, "RUB"));
+      });
+    }
+    var sub =
+      ym.source === "empty"
+        ? "нет данных — синк Я.М в настройках"
+        : ym.source === "error"
+          ? "ошибка: " + String(ym.error || "")
+          : periodBits.length
+            ? periodBits.join(" · ")
+            : "по графику" +
+              (ym.row_count ? " · " + ym.row_count + " опер." : "") +
+              (ym.as_of_date ? " · на " + fmtDate(ym.as_of_date) : "");
+    return (
+      '<div class="col-sm-6 col-lg-4">' +
+      '<div class="card dg-fin-bal-card is-mp-ym" title="' +
+      esc(tip) +
+      '">' +
+      '<div class="card-body">' +
+      '<div class="dg-fin-acc-top">' +
+      '<span class="dg-fin-type-pill is-mp">Я.М</span>' +
+      '<span class="dg-fin-acc-mask">МП</span>' +
+      "</div>" +
+      '<div class="dg-fin-acc-title-row"><span class="dg-fin-acc-title dg-fin-name-text">Я.М · к выплате</span></div>' +
+      '<div class="dg-fin-acc-amount dg-fin-bal-num">' +
+      esc(fmtMoney(owed, "RUB")) +
+      "</div>" +
+      '<div class="dg-fin-acc-blocked text-muted">' +
+      esc(sub) +
+      "</div>" +
+      "</div></div></div>"
+    );
+  }
+
+  /** Компактный блок Ozon/WB/Я.М рядом с «Всего доступно». */
+  function renderMpFinanceBlock() {
+    var ozCard = state.ozonFinance ? renderOzonFinanceCard(state.ozonFinance) : "";
+    var wbCard = state.wbFinance ? renderWbFinanceCard(state.wbFinance) : "";
+    var ymCard = state.ymFinance ? renderYmFinanceCard(state.ymFinance) : "";
+    if (!ozCard && !wbCard && !ymCard) return "";
+    return (
+      '<div class="dg-fin-bank-block dg-fin-mp-block dg-fin-mp-beside-total" data-fin-bank="marketplaces">' +
+      '<div class="dg-fin-bank-head"><div class="dg-fin-bank-head-left">' +
+      '<span class="dg-fin-bank-pill dg-fin-bank-pill-lg">Маркетплейсы</span>' +
+      '<div class="dg-fin-bank-title-wrap"><p class="dg-fin-bank-title">Ozon / WB / Я.М</p>' +
+      '<p class="dg-fin-bank-meta mb-0">долг МП · не в «Всего доступно» · синк в настройках</p></div></div></div>' +
+      '<div class="row g-3 dg-fin-balances-row">' +
+      ozCard +
+      wbCard +
+      ymCard +
+      "</div></div>"
+    );
+  }
+
+  /** Сводка: касса + долг МП (+ товар). */
+  function mpGrandTotalExtraHtml(cashRub, invAmt) {
+    var oz =
+      state.ozonFinance && state.ozonFinance.owed != null && Number.isFinite(Number(state.ozonFinance.owed))
+        ? Number(state.ozonFinance.owed)
+        : null;
+    var wb =
+      state.wbFinance && state.wbFinance.owed_total != null && Number.isFinite(Number(state.wbFinance.owed_total))
+        ? Number(state.wbFinance.owed_total)
+        : null;
+    var ym =
+      state.ymFinance && state.ymFinance.owed != null && Number.isFinite(Number(state.ymFinance.owed))
+        ? Number(state.ymFinance.owed)
+        : null;
+    if (oz == null && wb == null && ym == null) return "";
+    var mpSum = (oz || 0) + (wb || 0) + (ym || 0);
+    var cash = Number.isFinite(Number(cashRub)) ? Number(cashRub) : 0;
+    var withMp = cash + mpSum;
+    var html =
+      '<div class="dg-fin-total-extra small">С МП (касса + Ozon + WB + Я.М): <strong class="text-dark">' +
+      esc(fmtMoney(withMp, "RUB")) +
+      "</strong></div>";
+    if (invAmt != null && Number.isFinite(Number(invAmt))) {
+      html +=
+        '<div class="dg-fin-total-extra small">С МП и товаром: <strong class="text-dark">' +
+        esc(fmtMoney(withMp + Number(invAmt), "RUB")) +
+        "</strong></div>";
+    }
+    return html;
+  }
+
   function groupAccountsByBank(list) {
     var order = [];
     var map = Object.create(null);
@@ -2148,17 +2475,37 @@
     if (!totalWrap || !banksWrap) return;
 
     if (!state.accounts.length) {
-      totalWrap.innerHTML = "";
+      totalWrap.innerHTML =
+        '<div class="row g-3 dg-fin-top-summary align-items-stretch">' +
+        '<div class="col-lg-5"><div class="card dg-fin-total-card mb-0"><div class="card-body">' +
+        '<div class="dg-fin-total-label">Всего доступно</div>' +
+        '<p class="dg-fin-total-amount dg-fin-bal-num mb-0">—</p>' +
+        '<div class="dg-fin-total-meta">Счетов пока нет</div>' +
+        mpGrandTotalExtraHtml(0, null) +
+        "</div></div></div>" +
+        '<div class="col-lg-7">' +
+        (renderMpFinanceBlock() || '<p class="text-muted small mb-0">Нет данных МП</p>') +
+        "</div></div>";
       banksWrap.innerHTML =
-        '<p class="text-muted small mb-0">Счетов пока нет. Сохраните ключ Точки или Райфа и нажмите «Обновить» у организации.</p>';
+        '<p class="text-muted small mb-0">Сохраните ключ Точки или Райфа и нажмите «Обновить» у организации.</p>';
       return;
     }
 
     var viewAccounts = filteredAccounts(state.applied.org);
     if (!viewAccounts.length) {
-      totalWrap.innerHTML = "";
+      totalWrap.innerHTML =
+        '<div class="row g-3 dg-fin-top-summary align-items-stretch">' +
+        '<div class="col-lg-5"><div class="card dg-fin-total-card mb-0"><div class="card-body">' +
+        '<div class="dg-fin-total-label">Всего доступно</div>' +
+        '<p class="dg-fin-total-amount dg-fin-bal-num mb-0">—</p>' +
+        '<div class="dg-fin-total-meta">Нет счетов для выбранной организации</div>' +
+        mpGrandTotalExtraHtml(0, null) +
+        "</div></div></div>" +
+        '<div class="col-lg-7">' +
+        (renderMpFinanceBlock() || "") +
+        "</div></div>";
       banksWrap.innerHTML =
-        '<p class="text-muted small mb-0">Нет счетов для выбранной организации. Смените фильтр и нажмите «Применить».</p>';
+        '<p class="text-muted small mb-0">Смените фильтр организации и нажмите «Применить».</p>';
       return;
     }
 
@@ -2197,6 +2544,12 @@
         : "";
     var invVisible = msInventoryVisibleForOrgs(state.applied.org);
     var invAmt = invVisible && state.msInventory ? Number(state.msInventory.value_products) : null;
+    var cashMain =
+      main && Number.isFinite(Number(main.amount)) && (!main.currency || normalizeCurrency(main.currency) === "RUB")
+        ? Number(main.amount)
+        : main && Number.isFinite(Number(main.amount))
+          ? Number(main.amount)
+          : 0;
     var invExtra = "";
     var withInvExtra = "";
     if (invVisible && invAmt != null && Number.isFinite(invAmt)) {
@@ -2206,7 +2559,6 @@
         "): <strong class=\"text-dark\">" +
         esc(fmtMoney(invAmt, "RUB")) +
         "</strong></div>";
-      var cashMain = main && Number.isFinite(Number(main.amount)) ? Number(main.amount) : 0;
       if (!main || normalizeCurrency(main.currency) === "RUB") {
         withInvExtra =
           '<div class="dg-fin-total-extra small">Всего с товаром: <strong class="text-dark">' +
@@ -2215,8 +2567,15 @@
       }
     }
 
+    var mpGrand =
+      !main || normalizeCurrency(main.currency) === "RUB"
+        ? mpGrandTotalExtraHtml(cashMain, invVisible && invAmt != null && Number.isFinite(invAmt) ? invAmt : null)
+        : "";
+    var mpBlock = renderMpFinanceBlock();
     totalWrap.innerHTML =
-      '<div class="card dg-fin-total-card">' +
+      '<div class="row g-3 dg-fin-top-summary align-items-stretch">' +
+      '<div class="col-lg-5">' +
+      '<div class="card dg-fin-total-card mb-0">' +
       '<div class="card-body">' +
       '<div class="dg-fin-total-label">Всего доступно' +
       (normalizeOrgs(state.applied.org).length
@@ -2235,13 +2594,18 @@
       depositExtra +
       invExtra +
       withInvExtra +
+      mpGrand +
       multiCur +
       blockedHtml +
+      "</div></div></div>" +
+      '<div class="col-lg-7">' +
+      (mpBlock ||
+        '<div class="dg-fin-bank-block dg-fin-mp-block mb-0"><div class="card-body p-3 text-muted small">Нет данных Ozon/WB — нажмите «Обновить» после настройки ключей.</div></div>') +
       "</div></div>";
 
     var groups = groupAccountsByBank(viewAccounts);
     var inventoryCardAttached = false;
-    banksWrap.innerHTML = groups
+    var banksHtml = groups
       .map(function (g) {
         var depForG = depositEstimateForGroup(g);
         var bankAvail = formatMoneyList(
@@ -2398,6 +2762,7 @@
         );
       })
       .join("");
+    banksWrap.innerHTML = banksHtml;
   }
 
   function filteredAccounts(orgCodes) {
@@ -2924,6 +3289,53 @@
                 count_partial: Number(j.ms_prepaid_orders.count_partial) || 0,
                 as_of_at: j.ms_prepaid_orders.as_of_at || null,
                 sync_script: j.ms_prepaid_orders.sync_script || null,
+              }
+            : null;
+        state.ozonFinance =
+          j.ozon_finance && typeof j.ozon_finance === "object"
+            ? {
+                owed: Number(j.ozon_finance.owed) || 0,
+                begin_balance: Number(j.ozon_finance.begin_balance) || 0,
+                period_begin: j.ozon_finance.period_begin || null,
+                period_end: j.ozon_finance.period_end || null,
+                synced_at: j.ozon_finance.synced_at || null,
+                source: String(j.ozon_finance.source || ""),
+                error: j.ozon_finance.error || null,
+                sync_script: j.ozon_finance.sync_script || null,
+              }
+            : null;
+        state.wbFinance =
+          j.wb_finance && typeof j.wb_finance === "object"
+            ? {
+                on_balance: Number(j.wb_finance.on_balance) || 0,
+                for_withdraw: Number(j.wb_finance.for_withdraw) || 0,
+                on_wire: Number(j.wb_finance.on_wire) || 0,
+                owed_total: Number(j.wb_finance.owed_total) || 0,
+                as_of_date: j.wb_finance.as_of_date || null,
+                synced_at: j.wb_finance.synced_at || null,
+                inflight: Array.isArray(j.wb_finance.inflight) ? j.wb_finance.inflight : [],
+                source: String(j.wb_finance.source || ""),
+                error: j.wb_finance.error || null,
+                sync_script: j.wb_finance.sync_script || null,
+              }
+            : null;
+        state.ymFinance =
+          j.ym_finance && typeof j.ym_finance === "object"
+            ? {
+                owed: Number(j.ym_finance.owed) || 0,
+                row_count: Number(j.ym_finance.row_count) || 0,
+                as_of_date: j.ym_finance.as_of_date || null,
+                period_from: j.ym_finance.period_from || null,
+                period_to: j.ym_finance.period_to || null,
+                periods: Array.isArray(j.ym_finance.periods) ? j.ym_finance.periods : [],
+                open_week_skipped_sum:
+                  j.ym_finance.open_week_skipped_sum != null
+                    ? Number(j.ym_finance.open_week_skipped_sum)
+                    : null,
+                synced_at: j.ym_finance.synced_at || null,
+                source: String(j.ym_finance.source || ""),
+                error: j.ym_finance.error || null,
+                sync_script: j.ym_finance.sync_script || null,
               }
             : null;
         state.orgAliases = j.org_aliases && typeof j.org_aliases === "object" ? j.org_aliases : {};

@@ -2519,7 +2519,36 @@ Preflight матча «Менеджер по продажам» ↔ Planfix `/us
 - `prepaid_partial_gap` — корзина B (Σ сумма − принято)
 - `prepaid_total`, `count_full`, `count_partial`, `as_of_at`, `sync_script`
 
-В **`GET /api/finance/analytics/monthly`** при фильтре Альмамед/все: `totals.inventory`, `totals.assets_with_inventory`, в `series[]` — `inventory`, `assets_with_inventory` (линия графика «С товаром»).
+Дополнительно **`ozon_finance`**: долг Ozon (не в «Всего доступно»):
+
+- `owed` — `end_balance` свежей недели; `period_begin` / `period_end`; `recent_periods[]`
+- `sync_script` — `lib/datagonOzonFinanceSyncRevision.js`
+- Таблица: `dg_mp_ozon_cashflow_period`; автосинк `ozon_finance` (воркер 2)
+
+Дополнительно **`wb_finance`**: долг WB = баланс + на проводке:
+
+- `on_balance`, `for_withdraw`, `on_wire`, `owed_total`, `inflight[]` (`open`)
+- `sync_script` — `lib/datagonWbFinanceSyncRevision.js`
+- Таблицы: `dg_mp_wb_finance_balance`, `dg_mp_wb_sales_report`, `dg_mp_wb_payout_inflight`, `dg_mp_wb_finance_month` (`owed_*` + `paid_in_month`); автосинк `wb_finance`
+- В `GET /api/finance/analytics/monthly` поле `series[].wb_owed` = выплаты за месяц (`paid_in_month`), не live «должен»
+
+В **`GET /api/finance/analytics/monthly`** при фильтре Альмамед/все: `totals.inventory`, `totals.assets_with_inventory`, `totals.assets_with_inventory_mp` (остаток + товар + долг Ozon/WB/Я.М); в `series[]` — `inventory`, `assets_with_inventory` («С товаром»), `assets_with_inventory_mp` («С товаром + МП»).
+
+### POST `/api/finance/mp/ozon-sync`
+
+Только `full`. Body: `{ "backfill_months"?: 18, "tail_only"?: false }`. Тянет Ozon cash-flow → `dg_mp_ozon_cashflow_period`.
+
+### POST `/api/finance/mp/wb-sync`
+
+Только `full`. Body: `{ "report_days"?: 120 }`. Баланс WB + sales-reports + открытие/закрытие inflight. Пишет `paid_in_month` текущего месяца (Σ `bankPaymentSum` по `date_to`).
+
+**`POST /api/finance/mp/wb-backfill`** — бэкап месячных точек графика «WB · выплаты». Body: `{ "from_ym"?: "2024-01", "to_ym"?: "2026-10", "force"?: false }`. Тянет `sales-reports/list` (пагинация, пауза на 429) → `dg_mp_wb_sales_report`, затем `paid_in_month` = Σ `bankPaymentSum` по месяцу окончания недели. Карточка «WB · должен» не меняется.
+
+### POST `/api/finance/mp/ym-sync`
+
+Только `full`. Body: `{ "lookback_days"?: 90 }`. Отчёт `united-netting` → KPI «Я.М · к выплате» (rev **1.2.0**): сумма «Будет переведён» + «Будет удержан» по **закрытым** неделям Маркета; период строки = max(неделя доставки, неделя транзакции). В ответе синка — `periods[]`, `open_week_skipped_sum`. Лимит Partner API ~1 генерация / 2 мин. Автосинк `ym_finance`.
+
+**`POST /api/finance/mp/ym-backfill`** — бэкап месячных точек графика (EOM). Body: `{ "from_ym"?: "2025-11", "to_ym"?: "2026-09", "force"?: false }`. Долго: несколько отчётов с паузой ~2 мин. Историческая точка = Σ `bankSum` выплат с датой после 1-го числа следующего месяца (все недели доставки банка уже закрыты) + остаток UP.
 
 ### POST `/api/finance/ms-inventory/backfill`
 

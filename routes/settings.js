@@ -168,6 +168,9 @@ module.exports = (db, appSettings) => {
             auto_sync_network_prices_enabled, auto_sync_network_prices_time, auto_sync_network_prices_weekdays,
             auto_sync_results_reparse_products_enabled, auto_sync_results_reparse_products_time, auto_sync_results_reparse_products_weekdays,
             auto_sync_finance_tochka_enabled, auto_sync_finance_tochka_time, auto_sync_finance_tochka_days, auto_sync_finance_tochka_weekdays,
+            auto_sync_ozon_finance_enabled, auto_sync_ozon_finance_time, auto_sync_ozon_finance_weekdays,
+            auto_sync_wb_finance_enabled, auto_sync_wb_finance_time, auto_sync_wb_finance_weekdays,
+            auto_sync_ym_finance_enabled, auto_sync_ym_finance_time, auto_sync_ym_finance_weekdays,
             auto_sync_ops_planfix_enabled, auto_sync_ops_planfix_time, auto_sync_ops_planfix_weekdays,
             auto_sync_bitcop_hours_enabled, auto_sync_bitcop_hours_time, auto_sync_bitcop_hours_days, auto_sync_bitcop_hours_only_hourly, auto_sync_bitcop_hours_weekdays,
             auto_sync_moysklad_enabled, auto_sync_moysklad_time,
@@ -326,6 +329,42 @@ module.exports = (db, appSettings) => {
                 queries.push([
                     'auto_sync_finance_tochka_weekdays',
                     normalizeAutoSyncWeekdaysCsv(auto_sync_finance_tochka_weekdays),
+                ]);
+            }
+            if (auto_sync_ozon_finance_enabled !== undefined) {
+                queries.push(['auto_sync_ozon_finance_enabled', auto_sync_ozon_finance_enabled ? 1 : 0]);
+            }
+            if (auto_sync_ozon_finance_time !== undefined) {
+                queries.push(['auto_sync_ozon_finance_time', auto_sync_ozon_finance_time || '07:20']);
+            }
+            if (auto_sync_ozon_finance_weekdays !== undefined) {
+                queries.push([
+                    'auto_sync_ozon_finance_weekdays',
+                    normalizeAutoSyncWeekdaysCsv(auto_sync_ozon_finance_weekdays),
+                ]);
+            }
+            if (auto_sync_wb_finance_enabled !== undefined) {
+                queries.push(['auto_sync_wb_finance_enabled', auto_sync_wb_finance_enabled ? 1 : 0]);
+            }
+            if (auto_sync_wb_finance_time !== undefined) {
+                queries.push(['auto_sync_wb_finance_time', auto_sync_wb_finance_time || '07:25']);
+            }
+            if (auto_sync_wb_finance_weekdays !== undefined) {
+                queries.push([
+                    'auto_sync_wb_finance_weekdays',
+                    normalizeAutoSyncWeekdaysCsv(auto_sync_wb_finance_weekdays),
+                ]);
+            }
+            if (auto_sync_ym_finance_enabled !== undefined) {
+                queries.push(['auto_sync_ym_finance_enabled', auto_sync_ym_finance_enabled ? 1 : 0]);
+            }
+            if (auto_sync_ym_finance_time !== undefined) {
+                queries.push(['auto_sync_ym_finance_time', auto_sync_ym_finance_time || '07:30']);
+            }
+            if (auto_sync_ym_finance_weekdays !== undefined) {
+                queries.push([
+                    'auto_sync_ym_finance_weekdays',
+                    normalizeAutoSyncWeekdaysCsv(auto_sync_ym_finance_weekdays),
                 ]);
             }
             if (auto_sync_ops_planfix_enabled !== undefined) {
@@ -762,6 +801,33 @@ module.exports = (db, appSettings) => {
             }
             if(auto_sync_finance_tochka_weekdays !== undefined) {
                 appSettings.auto_sync_finance_tochka_weekdays = normalizeAutoSyncWeekdaysCsv(auto_sync_finance_tochka_weekdays);
+            }
+            if(auto_sync_ozon_finance_enabled !== undefined) {
+                appSettings.auto_sync_ozon_finance_enabled = auto_sync_ozon_finance_enabled ? 1 : 0;
+            }
+            if(auto_sync_ozon_finance_time !== undefined) {
+                appSettings.auto_sync_ozon_finance_time = auto_sync_ozon_finance_time || '07:20';
+            }
+            if(auto_sync_ozon_finance_weekdays !== undefined) {
+                appSettings.auto_sync_ozon_finance_weekdays = normalizeAutoSyncWeekdaysCsv(auto_sync_ozon_finance_weekdays);
+            }
+            if(auto_sync_wb_finance_enabled !== undefined) {
+                appSettings.auto_sync_wb_finance_enabled = auto_sync_wb_finance_enabled ? 1 : 0;
+            }
+            if(auto_sync_wb_finance_time !== undefined) {
+                appSettings.auto_sync_wb_finance_time = auto_sync_wb_finance_time || '07:25';
+            }
+            if(auto_sync_wb_finance_weekdays !== undefined) {
+                appSettings.auto_sync_wb_finance_weekdays = normalizeAutoSyncWeekdaysCsv(auto_sync_wb_finance_weekdays);
+            }
+            if(auto_sync_ym_finance_enabled !== undefined) {
+                appSettings.auto_sync_ym_finance_enabled = auto_sync_ym_finance_enabled ? 1 : 0;
+            }
+            if(auto_sync_ym_finance_time !== undefined) {
+                appSettings.auto_sync_ym_finance_time = auto_sync_ym_finance_time || '07:30';
+            }
+            if(auto_sync_ym_finance_weekdays !== undefined) {
+                appSettings.auto_sync_ym_finance_weekdays = normalizeAutoSyncWeekdaysCsv(auto_sync_ym_finance_weekdays);
             }
             if(auto_sync_ops_planfix_enabled !== undefined) {
                 appSettings.auto_sync_ops_planfix_enabled = auto_sync_ops_planfix_enabled ? 1 : 0;
