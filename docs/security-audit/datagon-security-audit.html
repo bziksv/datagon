@@ -824,7 +824,7 @@
           При выкладке «упрощённого» примера сессия идёт cleartext; усиливает F-AUTH-03 (cookie без <code>Secure</code>).
           <strong>Fix:</strong> единый канон = frontend-паттерн (301 + HSTS); упрощённый conf либо удалить, либо
           сделать таким же; в deploy.md явно «не использовать conf без HTTPS-redirect».
-          <div class="fix-note"><strong>2026-10-27 (локально):</strong> упрощённый conf → <code>return 301</code> на :80 + HSTS/security headers на :443; предупреждение в <code>deploy.md</code>. Прод уже на frontend-conf с 301.</div>
+          <div class="fix-note"><strong>2026-10-27 (прод <code>e9f137a</code>):</strong> упрощённый conf → <code>return 301</code> на :80 + HSTS/security headers на :443; предупреждение в <code>deploy.md</code>. Прод уже на frontend-conf с 301.</div>
         </div>
       </div>
 
@@ -1344,7 +1344,7 @@
           Сравнение через <code>===</code>, не <code>timingSafeEqual</code>.
           <strong>Fix:</strong> длинный random secret только в env; только header; timingSafeEqual;
           IP allowlist CRM; не логировать body; ротация при утечке config.
-          <div class="fix-note"><strong>2026-10-27 (локально):</strong> только header <code>X-Datagon-Clock-Sync</code> / <code>X-Datagon-Sync-Secret</code>; <code>crypto.timingSafeEqual</code>; <code>body.secret</code> отвергнут. IP allowlist / вынос из config.js — отдельно (F-SEC-03).</div>
+          <div class="fix-note"><strong>2026-10-27 (прод <code>e9f137a</code>):</strong> только header <code>X-Datagon-Clock-Sync</code> / <code>X-Datagon-Sync-Secret</code>; <code>crypto.timingSafeEqual</code>; <code>body.secret</code> отвергнут. IP allowlist / вынос из config.js — отдельно (F-SEC-03).</div>
         </div>
       </div>
 
@@ -1799,7 +1799,7 @@
           историю парсинга всех проектов. UI-confirm не виден в API.
           <strong>Fix:</strong> запретить wipe без явного <code>confirm_all: true</code> + admin;
           по умолчанию требовать конкретный <code>project_id</code>.
-          <div class="fix-note"><strong>2026-10-27 (локально):</strong> wipe-all → 403 без admin+<code>confirm_all: true</code>; UI шлёт confirm_all только при «все проекты».</div>
+          <div class="fix-note"><strong>2026-10-27 (прод <code>e9f137a</code>):</strong> wipe-all → 403 без admin+<code>confirm_all: true</code>; UI шлёт confirm_all только при «все проекты».</div>
         </div>
       </div>
 
@@ -2109,7 +2109,7 @@
           попадание в access/proxy logs). Связка F-SEC-02 (GET settings отдаёт пароль).
           <strong>Fix:</strong> credentials только admin/settings; sync только из БД;
           не принимать password в body; encrypt-at-rest.
-          <div class="fix-note"><strong>2026-10-27 (локально):</strong> credentials — admin или settings=full; password → vault encrypt; sync берёт креды только из app_settings (body email/password игнор). Пересохранить пароль в UI после выката, чтобы зашифровать legacy plaintext.</div>
+          <div class="fix-note"><strong>2026-10-27 (прод <code>e9f137a</code>):</strong> credentials — admin или settings=full; password → vault encrypt; sync берёт креды только из app_settings (body email/password игнор). Пересохранить пароль Huckster в UI, чтобы зашифровать legacy plaintext.</div>
         </div>
       </div>
 
@@ -2324,7 +2324,7 @@
           после логина (фишинг сессии / token в localStorage).
           <strong>Fix:</strong> запретить <code>//</code>, требовать один ведущий <code>/</code>
           без authority; allowlist leaf из PAGE_DEFS.
-          <div class="fix-note"><strong>2026-10-27 (локально):</strong> сервер — regex <code>/leaf.html(?query)</code>, запрет <code>//</code>/scheme; login.html <code>thenPath()</code> зеркалит. Leaf allowlist через существующий <code>resolveRedirectAfterLogin</code>.</div>
+          <div class="fix-note"><strong>2026-10-27 (прод <code>e9f137a</code>):</strong> сервер — regex <code>/leaf.html(?query)</code>, запрет <code>//</code>/scheme; login.html <code>thenPath()</code> зеркалит. Leaf allowlist через существующий <code>resolveRedirectAfterLogin</code>.</div>
         </div>
       </div>
 
@@ -2589,7 +2589,7 @@
         <tbody>
           <tr>
             <td class="mono">2026-10-27</td>
-            <td><strong>Локально (ещё не в прод)</strong>: F-NP-01 (admin/settings credentials + vault + sync без password в body), F-PUB-01 (open redirect <code>//</code>), F-DEP-01 (упрощ. nginx 301+HSTS), F-WS-01 (header-only + timingSafeEqual), F-PAR-02 (results/clear confirm_all+admin).</td>
+            <td><strong>Прод <code>e9f137a</code></strong>: F-NP-01 (admin/settings credentials + vault + sync без password в body), F-PUB-01 (open redirect <code>//</code>), F-DEP-01 (упрощ. nginx 301+HSTS), F-WS-01 (header-only + timingSafeEqual), F-PAR-02 (results/clear confirm_all+admin). pm2 restart; nginx conf пример в репо (live frontend уже с 301).</td>
           </tr>
           <tr>
             <td class="mono">2026-10-27</td>
