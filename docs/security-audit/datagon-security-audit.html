@@ -326,7 +326,7 @@
       <div class="finding fixed-out" id="F-AUTH-07">
         <div class="title"><span class="badge low">low</span> <span class="badge fixed">исправлено</span> F-AUTH-07 · Admin без лимита сессий</div>
         <div class="ev">Украденные admin-токены живут параллельно. Fix: лимит + UI revoke/list сессий.
-          <div class="fix-note"><strong>2026-10-28 (local):</strong> при логине лимит <code>auth_session_user_limit</code> применяется и к <code>admin</code> (старые сессии revoke). UI списка сессий — отдельно.</div>
+          <div class="fix-note"><strong>2026-10-28 (прод <code>0401472</code>):</strong> при логине лимит <code>auth_session_user_limit</code> применяется и к <code>admin</code> (старые сессии revoke). UI списка сессий — отдельно.</div>
         </div>
       </div>
 
@@ -904,7 +904,7 @@
           Клиент, бьющий Node напрямую (F-DEP-02) или при неверной схеме proxy, подставляет любой IP в audit/clock.
           <strong>Fix:</strong> <code>app.set('trust proxy', 1)</code> только за nginx; IP = <code>req.ip</code>;
           не принимать XFF от не-прокси.
-          <div class="fix-note"><strong>2026-10-28 (local):</strong> trust proxy по умолчанию 1 (<code>DATAGON_TRUST_PROXY</code>); login rate-limit и clock на <code>req.ip</code>.</div>
+          <div class="fix-note"><strong>2026-10-28 (прод <code>0401472</code>):</strong> trust proxy по умолчанию 1 (<code>DATAGON_TRUST_PROXY</code>); login rate-limit и clock на <code>req.ip</code>.</div>
         </div>
       </div>
 
@@ -1186,7 +1186,7 @@
         <div class="ev">
           Переопределение base URL отправит JWT на чужой host при компрометации env/деплоя.
           <strong>Fix:</strong> allowlist host <code>enter.tochka.com</code> (и sandbox); то же для других банков.
-          <div class="fix-note"><strong>2026-10-28 (local):</strong> только <code>enter.tochka.com</code> / <code>pre.tochka.com</code> + https; иначе default.</div>
+          <div class="fix-note"><strong>2026-10-28 (прод <code>0401472</code>):</strong> только <code>enter.tochka.com</code> / <code>pre.tochka.com</code> + https; иначе default.</div>
         </div>
       </div>
 
@@ -1410,7 +1410,7 @@
           <code>clientIp</code> берёт первый XFF без trust proxy (F-DEP-07). В clock log пишется
           произвольный IP при прямом доступе к Node.
           <strong>Fix:</strong> trust proxy=1 за nginx; иначе только socket.remoteAddress.
-          <div class="fix-note"><strong>2026-10-28 (local):</strong> <code>app.set('trust proxy', 1)</code>; clock/login rate — <code>req.ip</code>, не сырой XFF.</div>
+          <div class="fix-note"><strong>2026-10-28 (прод <code>0401472</code>):</strong> <code>app.set('trust proxy', 1)</code>; clock/login rate — <code>req.ip</code>, не сырой XFF.</div>
         </div>
       </div>
 
@@ -1505,7 +1505,7 @@
           размеры <code>.git</code>, <code>node_modules</code>, <code>vendor</code>, …
           Разведка ФС для любого с доступом к дашборду.
           <strong>Fix:</strong> только admin; не отдавать absolute path; агрегировать без имён скрытых dirs.
-          <div class="fix-note"><strong>2026-10-28 (local):</strong> API под <code>processes</code>; не-admin — без <code>projectPath</code> и без скрытых папок (<code>.git</code> и т.п.).</div>
+          <div class="fix-note"><strong>2026-10-28 (прод <code>0401472</code>):</strong> API под <code>processes</code>; не-admin — без <code>projectPath</code> и без скрытых папок (<code>.git</code> и т.п.).</div>
         </div>
       </div>
 
@@ -1517,7 +1517,7 @@
           лишняя поверхность (паттерны ошибок API, тайминги).
           <strong>Fix:</strong> чувствительные куски (полные error stacks / runtime internals) — full only
           или admin; view — KPI без деталей.
-          <div class="fix-note"><strong>2026-10-28 (local):</strong> при <code>processes=view</code> — без логов МС/матчинга, укороченные <code>message</code>, без <code>pid</code>/loadAvg; <code>view_safe: true</code>.</div>
+          <div class="fix-note"><strong>2026-10-28 (прод <code>0401472</code>):</strong> при <code>processes=view</code> — без логов МС/матчинга, укороченные <code>message</code>, без <code>pid</code>/loadAvg; <code>view_safe: true</code>.</div>
         </div>
       </div>
 
@@ -1527,7 +1527,7 @@
           Клиент пишет detail в track; админ/менеджер читает в UI (XSS шаг 5, если innerHTML).
           Возможен spam журнала (25 events/req) любым auth.
           <strong>Fix:</strong> esc на фронте; rate-limit track; не класть секреты в label/detail с клиента.
-          <div class="fix-note"><strong>2026-10-28 (local):</strong> track ≤30 req/мин/user → 429; detail sanitize+cap 2KB (write+read); UI уже <code>textContent</code>.</div>
+          <div class="fix-note"><strong>2026-10-28 (прод <code>0401472</code>):</strong> track ≤30 req/мин/user → 429; detail sanitize+cap 2KB (write+read); UI уже <code>textContent</code>.</div>
         </div>
       </div>
 
@@ -1536,7 +1536,7 @@
         <div class="ev">
           Критичное чтение app_settings через preview не логируется в activity.
           <strong>Fix:</strong> recordDatagonActivity на каждый preview/optimize с table name.
-          <div class="fix-note"><strong>2026-10-28 (local):</strong> preview → <code>db_preview</code>; analyze/optimize → <code>db_maintain</code> (app_settings preview по-прежнему 403).</div>
+          <div class="fix-note"><strong>2026-10-28 (прод <code>0401472</code>):</strong> preview → <code>db_preview</code>; analyze/optimize → <code>db_maintain</code> (app_settings preview по-прежнему 403).</div>
         </div>
       </div>
 
@@ -2298,7 +2298,7 @@
           ops-sheet=full запускает sync с <code>planfix_rest_api_key</code> (plaintext F-SEC).
           Нет shop-style dual-control; dry_run есть. Abuse → API Planfix / перезапись статусов.
           <strong>Fix:</strong> rate-limit; audit; ключ не в settings GET.
-          <div class="fix-note"><strong>2026-10-28 (local):</strong> ≤8 боевых sync/час/user → 429; activity <code>ops_planfix_sync</code>; ключ уже в <code>publicSettingsSnapshot</code> mask (F-SET-02).</div>
+          <div class="fix-note"><strong>2026-10-28 (прод <code>0401472</code>):</strong> ≤8 боевых sync/час/user → 429; activity <code>ops_planfix_sync</code>; ключ уже в <code>publicSettingsSnapshot</code> mask (F-SET-02).</div>
         </div>
       </div>
 
@@ -2383,7 +2383,7 @@
           Полный CRA demo и скриншоты справки доступны анониму. Не секреты, но fingerprint
           стека / UX панели и нагрузка на CDN-подобные ассеты.
           <strong>Fix:</strong> demo только за VPN/auth или отдельный хост; screenshots за сессией.
-          <div class="fix-note"><strong>2026-10-28 (local):</strong> <code>/doc-screenshots/*</code> через HTML-gate (сессия); <code>/architectui-react-pro</code> — middleware getActor → login.</div>
+          <div class="fix-note"><strong>2026-10-28 (прод <code>0401472</code>):</strong> <code>/doc-screenshots/*</code> через HTML-gate (сессия); <code>/architectui-react-pro</code> — middleware getActor → login.</div>
         </div>
       </div>
 
@@ -2413,7 +2413,7 @@
           После входа любой пользователь читает <code>/docs/api</code> (ключи настроек, контракты
           mutate). Нет отдельной матрицы «документация». Усиливает разведку перед abuse.
           <strong>Fix:</strong> docs только admin / роль; или урезать api.md для non-admin.
-          <div class="fix-note"><strong>2026-10-28 (local):</strong> <code>protectDocumentationRoutes</code> — после сессии только <code>admin</code>, иначе <code>/no-access.html</code>.</div>
+          <div class="fix-note"><strong>2026-10-28 (прод <code>0401472</code>):</strong> <code>protectDocumentationRoutes</code> — после сессии только <code>admin</code>, иначе <code>/no-access.html</code>.</div>
         </div>
       </div>
 
@@ -2639,6 +2639,10 @@
       <table>
         <thead><tr><th>дата</th><th>что</th></tr></thead>
         <tbody>
+          <tr>
+            <td class="mono">2026-10-28</td>
+            <td><strong>Прод <code>0401472</code></strong>: F-PUB-02/05, F-FIN-07, F-WS-05/DEP-07, F-DBA-03/04/05/06, F-AUTH-07, F-OPS-04 (trust proxy + req.ip, docs/screenshots/architectui gate, Tochka host allowlist, view-safe processes, activity rate/sanitize, db preview audit, admin session limit, Planfix sync rate+audit). pm2 restart.</td>
+          </tr>
           <tr>
             <td class="mono">2026-10-27</td>
             <td><strong>Прод <code>076257a</code></strong>: F-MS-02, F-MP-01/02/03, F-NP-03, F-OPS-02 (confirm CMS/MS writes, network settings ACL, huckster snapshot admin, db/disk → processes). pm2 restart.</td>
