@@ -2784,6 +2784,14 @@
       if (p.length !== 3) return "—";
       return p[2] + "-" + p[1] + "-" + p[0];
     }
+    function escapeHtml(s) {
+      return String(s == null ? "" : s)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
     var prev = window.DatagonFmt || {};
     window.DatagonFmt = {
       normalizeSpaces: prev.normalizeSpaces || normalizeSpaces,
@@ -2794,6 +2802,7 @@
       // даты всегда перезаписываем — старый кэш без formatDate иначе отдаёт YYYY-MM-DD
       dateOnlyYmd: dateOnlyYmd,
       formatDate: formatDate,
+      escapeHtml: prev.escapeHtml || escapeHtml,
     };
   })();
 })();

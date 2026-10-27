@@ -182,7 +182,7 @@
     <h1>Datagon — аудит безопасности</h1>
     <div class="meta">
       Живой отчёт · старт: 2026-10-25 · файл вне <code>public/</code> ·
-      <strong>шаг 20/20</strong> · P0 отмечены в отчёте · <code>270624f</code>
+      <strong>шаг 20/20</strong> · P0 отмечены · <code>270624f</code> · vault <code>3e42a90</code>
     </div>
   </header>
 
@@ -280,19 +280,21 @@
         </div>
       </div>
 
-      <div class="finding" id="F-AUTH-02">
-        <div class="title"><span class="badge high">high</span> F-AUTH-02 · Нет rate-limit / lockout на login</div>
+      <div class="finding fixed-out" id="F-AUTH-02">
+        <div class="title"><span class="badge high">high</span> <span class="badge fixed">исправлено</span> F-AUTH-02 · Нет rate-limit / lockout на login</div>
         <div class="ev">
           Публичный <code>POST /api/auth/login</code> без throttle/CAPTCHA (rateLimit/helmet отсутствуют).
           <strong>Fix:</strong> limit_req / 5 попыток на IP+user / backoff + алерт в activity.
+          <div class="fix-note"><strong>2026-10-27 (local):</strong> in-memory 5 fails / 15 мин на IP+username → 429 <code>LOGIN_RATE_LIMIT</code> (<code>routes/auth.js</code>). Nginx <code>limit_req</code> / CAPTCHA — отдельно (F-DEP).</div>
         </div>
       </div>
 
-      <div class="finding" id="F-AUTH-03">
-        <div class="title"><span class="badge high">high</span> F-AUTH-03 · Cookie без флага Secure</div>
+      <div class="finding fixed-out" id="F-AUTH-03">
+        <div class="title"><span class="badge high">high</span> <span class="badge fixed">исправлено</span> F-AUTH-03 · Cookie без флага Secure</div>
         <div class="ev">
           <code>attachSessionCookie</code>: httpOnly + SameSite=Lax, <code>secure</code> не задан.
           <strong>Fix:</strong> <code>secure: true</code> за TLS; те же атрибуты в <code>clearCookie</code>.
+          <div class="fix-note"><strong>2026-10-27 (local):</strong> <code>shouldSecureCookie</code> — TLS via <code>X-Forwarded-Proto</code>/<code>req.secure</code> или <code>DATAGON_COOKIE_SECURE</code>; apply + clear.</div>
         </div>
       </div>
 
@@ -371,22 +373,24 @@
 
       <h3>Findings</h3>
 
-      <div class="finding" id="F-ACL-01">
-        <div class="title"><span class="badge high">high</span> F-ACL-01 · Fail-open: неизвестный API path = любой авторизованный</div>
+      <div class="finding fixed-out" id="F-ACL-01">
+        <div class="title"><span class="badge high">high</span> <span class="badge fixed">исправлено</span> F-ACL-01 · Fail-open: неизвестный API path = любой авторизованный</div>
         <div class="ev">
           <code>if (pageKey == null) return next()</code> в <code>server.js</code>.
           Любой новый/забытый <code>/api/…</code> без записи в <code>API_PREFIX_RULES</code> доступен всем с сессией.
           Пример: <code>/something-unknown → NULL</code>.
           <strong>Fix:</strong> fail-closed (403 если не matched), whitelist null только для явного списка (<code>/auth/me</code>, track, …).
+          <div class="fix-note"><strong>2026-10-27 (local):</strong> <code>resolveApiPathAccess</code> → unmatched 403 <code>API_UNMATCHED</code>; явный <code>pageKey: null</code> только для whitelist-префиксов в <code>API_PREFIX_RULES</code>.</div>
         </div>
       </div>
 
-      <div class="finding" id="F-ACL-02">
-        <div class="title"><span class="badge high">high</span> F-ACL-02 · Fail-open mode: нет ключа в page_modes → <code>full</code></div>
+      <div class="finding fixed-out" id="F-ACL-02">
+        <div class="title"><span class="badge high">high</span> <span class="badge fixed">исправлено</span> F-ACL-02 · Fail-open mode: нет ключа в page_modes → <code>full</code></div>
         <div class="ev">
           <code>getApiPageModeForActor</code> / <code>getActorPageMode</code>: <code>pm[pageKey] || 'full'</code>.
           При рассинхроне матрицы (нет строки) пользователь получает полный доступ к разделу вместо hidden.
           <strong>Fix:</strong> default <code>hidden</code> (fail-closed); admin по-прежнему full.
+          <div class="fix-note"><strong>2026-10-27 (local):</strong> default <code>hidden</code> в <code>getActorPageMode</code> / <code>getApiPageModeForActor</code>.</div>
         </div>
       </div>
 
@@ -593,12 +597,13 @@
       </div>
 
       <div class="finding fixed-out" id="F-SQL-02">
-        <div class="title"><span class="badge high">high</span> <span class="badge partial">частично</span> F-SQL-02 · Пароли CMS БД в my_sites + коннект с произвольного host</div>
+        <div class="title"><span class="badge high">high</span> <span class="badge fixed">исправлено</span> F-SQL-02 · Пароли CMS БД в my_sites + коннект с произвольного host</div>
         <div class="ev">
           Связано с F-SQL-01: <code>db_host/user/pass</code> хранятся и сервер коннектится наружу (SSRF-подобный к MySQL).
           Комбинация: подставить host + инъекция в field → exfil. Детали SSRF — шаг 14; здесь — SQL surface.
           <strong>Fix:</strong> allowlist хостов/VPN; encrypt db_pass; валидация идентификаторов (F-SQL-01).
-          <div class="fix-note partial"><strong>2026-10-25 · <code>270624f</code>:</strong> idents закрыты; GET маскирует <code>db_pass</code>; PUT пустой = keep. Allowlist host / encrypt — ещё нет.</div>
+          <div class="fix-note"><strong>2026-10-25 · <code>270624f</code>:</strong> idents закрыты; GET маскирует <code>db_pass</code>; PUT пустой = keep.</div>
+          <div class="fix-note"><strong>2026-10-27 (local):</strong> <code>lib/datagonCmsDb.js</code> — allowlist host (+ <code>DATAGON_CMS_DB_HOSTS</code>), AES-GCM <code>db_pass</code> (тот же <code>DATAGON_VAULT_KEY</code>), <code>openCmsDbConnection</code> во всех CMS-коннектах (mysites / myproducts / server sync / sync-worker / CmsPriceWrite). Миграция legacy: <code>scripts/migrate-cms-db-pass-encrypt.mjs</code> (на прод — после выкладки ключа).</div>
         </div>
       </div>
 
@@ -679,8 +684,8 @@
 
       <h3>Findings</h3>
 
-      <div class="finding" id="F-XSS-01">
-        <div class="title"><span class="badge high">high</span> F-XSS-01 · Action-log HTML: фильтры и ошибки без escape</div>
+      <div class="finding fixed-out" id="F-XSS-01">
+        <div class="title"><span class="badge high">high</span> <span class="badge fixed">исправлено</span> F-XSS-01 · Action-log HTML: фильтры и ошибки без escape</div>
         <div class="ev">
           <code>medmarket.scripts.html</code>: <code>describeAppliedFilters()</code> вставляет
           <code>f.search</code> / code / name / medmarket_code <strong>сырьём</strong> в строку →
@@ -693,6 +698,7 @@
           <code>formatBulkSyncPriceSummary</code> / hold → <code>showMpActionLog(…, true)</code>.
           Issues/ops-sheet/finance имеют тот же API <code>asHtml</code> (finance в итогах обычно esc’ает).
           <strong>Impact:</strong> кража <code>localStorage</code> токена / CSRF-подобные действия от имени жертвы.
+          <div class="fix-note"><strong>2026-10-27 (local):</strong> <code>DatagonFmt.escapeHtml</code>; medmarket + my-products describe/summary/errors экранируют user/API строки перед <code>innerHTML</code>. CSP (F-XSS-02) — отдельно.</div>
           <strong>Fix:</strong> единый <code>DatagonFmt.escapeHtml</code> (или DOMPurify allowlist) на
           <em>все</em> пользовательские/внешние поля перед склейкой HTML; фильтры — только через esc;
           для ошибок API — esc; предпочтительно собирать DOM через <code>createElement</code>/<code>textContent</code>.
@@ -1086,14 +1092,15 @@
 
       <h3>Findings</h3>
 
-      <div class="finding" id="F-FIN-01">
-        <div class="title"><span class="badge high">high</span> F-FIN-01 · JWT/токены банков plaintext в <code>app_settings</code></div>
+      <div class="finding fixed-out" id="F-FIN-01">
+        <div class="title"><span class="badge high">high</span> <span class="badge fixed">исправлено</span> F-FIN-01 · JWT/токены банков plaintext в <code>app_settings</code></div>
         <div class="ev">
           Полные JWT Точки, refresh/client_secret Райфа, token Т‑Банка лежат JSON’ом в MySQL
           (и дубль legacy JWT). Дамп БД / F-SQL / db-admin / F-SEC-01 лог = полный доступ к счетам организаций.
           At-rest encryption нет (связка F-SEC-04).
           <strong>Fix:</strong> encrypt-at-rest (KMS); не писать legacy plaintext JWT;
           ротация при любом подозрении на утечку логов/бэкапа.
+          <div class="fix-note"><strong>2026-10-27 (local):</strong> blob’ы <code>finance_*_credentials</code> → AES-GCM (<code>DATAGON_VAULT_KEY</code>, тот же vault); legacy <code>finance_tochka_jwt</code> очищается при save; migrate <code>scripts/migrate-finance-credentials-encrypt.mjs</code>. Полный F-SEC-04 (все app_settings) — отдельно.</div>
         </div>
       </div>
 
@@ -1211,7 +1218,7 @@
           <strong>Fix:</strong> encrypt-at-rest (KMS/app key); API — mask + отдельный
           <code>GET …/reveal</code> с audit; не класть секреты в list payload; clipboard только после reveal.
           <div class="fix-note"><strong>2026-10-25 · <code>270624f</code>:</strong> list/detail маскируют секреты; <code>GET /:slug/:id/reveal?field=</code> + activity; UI «показать».</div>
-          <div class="fix-note"><strong>2026-10-27 · local:</strong> AES-256-GCM at-rest (<code>lib/datagonVaultCrypto.js</code>, префикс <code>enc:v1:</code>, ключ <code>DATAGON_VAULT_KEY</code>); encrypt на create/PUT; decrypt на reveal; колонки vault → TEXT; массовая миграция — <code>scripts/migrate-work-vault-encrypt.mjs</code> / <code>DATAGON_VAULT_MIGRATE=1</code> (только вместе с ключом на проде).</div>
+          <div class="fix-note"><strong>2026-10-27 · <code>3e42a90</code> (прод):</strong> AES-256-GCM at-rest (<code>lib/datagonVaultCrypto.js</code>, <code>enc:v1:</code>, env <code>DATAGON_VAULT_KEY</code> в pm2 + <code>certs/datagon-vault.key</code>); encrypt на create/PUT; decrypt на reveal; колонки → TEXT; миграция legacy <strong>383</strong> строк через <code>scripts/migrate-work-vault-encrypt.mjs</code>.</div>
         </div>
       </div>
 
@@ -1247,7 +1254,7 @@
           <code>GET /meta/users</code> — полный список логинов/ФИО всем с доступом к SEO-проектам
           (даже без seo-staff). <code>meta/entities</code> светит схему парольных полей.
           <strong>Fix:</strong> meta/users только unscoped или staff page; entities — по pageKey актора.
-          <div class="fix-note"><strong>2026-10-27 · local:</strong> <code>meta/users</code> — admin или page <code>work-seo-staff</code>; <code>meta/entities</code> фильтр по page_modes; sensitive formFields только admin/full.</div>
+          <div class="fix-note"><strong>2026-10-27 · <code>3e42a90</code>:</strong> <code>meta/users</code> — admin или page <code>work-seo-staff</code>; <code>meta/entities</code> фильтр по page_modes; sensitive formFields только admin/full.</div>
         </div>
       </div>
 
@@ -1258,7 +1265,7 @@
           После инцидента невозможно доказать ротацию.
           <strong>Fix:</strong> recordDatagonActivity на create/update/reveal/delete sensitive fields
           (без значения секрета в detail).
-          <div class="fix-note"><strong>2026-10-27 · local:</strong> activity <code>work_create</code> / <code>work_update_secret</code> / <code>work_reveal</code> / <code>work_archive</code> / <code>work_hard_delete</code> (поля без значений).</div>
+          <div class="fix-note"><strong>2026-10-27 · <code>3e42a90</code>:</strong> activity <code>work_create</code> / <code>work_update_secret</code> / <code>work_reveal</code> / <code>work_archive</code> / <code>work_hard_delete</code> (поля без значений).</div>
         </div>
       </div>
 
@@ -1268,7 +1275,7 @@
           DELETE без <code>hard=1</code> ставит status=0 на доступной строке — специалист может
           «архивировать» общий пароль проекта. Hard — только unscoped (ок).
           <strong>Fix:</strong> archive тоже только head/admin; или подтверждение.
-          <div class="fix-note"><strong>2026-10-27 · local:</strong> soft-archive только <code>username=admin</code> (unscoped), как hard-delete.</div>
+          <div class="fix-note"><strong>2026-10-27 · <code>3e42a90</code>:</strong> soft-archive только <code>username=admin</code> (unscoped), как hard-delete.</div>
         </div>
       </div>
 
@@ -1282,7 +1289,7 @@
 
       <h3>Приоритет фиксов (шаг 9)</h3>
       <ol>
-        <li><span class="badge fixed">исправлено</span> P0: mask list + reveal+audit + encrypt-at-rest (F-WORK-01) — выкат ключа на прод ещё нужен</li>
+        <li><span class="badge fixed">исправлено</span> P0: mask list + reveal+audit + encrypt-at-rest (F-WORK-01) — прод <code>3e42a90</code>, ключ + миграция 383</li>
         <li><span class="badge fixed">исправлено</span> P0: can_manage_users ≠ WORK unscoped (F-WORK-02)</li>
         <li><span class="badge fixed">исправлено</span> P1: audit mutate; сузить meta/users (F-WORK-04/05); step-up сессии — не делали</li>
         <li><span class="badge fixed">исправлено</span> P2: soft-archive только admin (F-WORK-06)</li>
@@ -1808,12 +1815,13 @@
         </div>
       </div>
 
-      <div class="finding" id="F-PAR-05">
-        <div class="title"><span class="badge med">medium</span> F-PAR-05 · GET /api/my-sites → db_pass (cross F-SQL-02)</div>
+      <div class="finding fixed-out" id="F-PAR-05">
+        <div class="title"><span class="badge med">medium</span> <span class="badge fixed">исправлено</span> F-PAR-05 · GET /api/my-sites → db_pass (cross F-SQL-02)</div>
         <div class="ev">
           <code>SELECT *</code> отдаёт пароли CMS БД любому с my-sites view/full.
           Плюс second-order SQLi на sync (F-SQL-01) и коннект к произвольному host.
           <strong>Fix:</strong> маска в list; reveal+audit; allowlist host (уже в шаге 4).
+          <div class="fix-note"><strong>2026-10-27:</strong> list через <code>maskCmsDbPassFields</code>; allowlist+encrypt — F-SQL-02. Отдельный reveal endpoint для CMS pass не делали (пароль не нужен в UI после сохранения).</div>
         </div>
       </div>
 
@@ -2406,7 +2414,7 @@
         <li><span class="badge fixed">исправлено</span> Убрать dump <code>appSettings</code> из startup log (<a href="#F-SEC-01">F-SEC-01</a>).</li>
         <li><span class="badge fixed">исправлено</span> Маскировать секреты в <code>GET /api/settings</code> и запретить preview секретных таблиц в db-admin (<a href="#F-SEC-02">F-SEC-02</a>, <a href="#F-DBA-01">F-DBA-01</a>).</li>
         <li><span class="badge fixed">исправлено</span> Параметризовать / экранировать SQL из полей my-sites (CMS) (<a href="#F-SQL-01">F-SQL-01</a>).</li>
-        <li><span class="badge fixed">исправлено</span> Убрать plaintext из WORK list API; reveal + audit; encrypt vault (<a href="#F-WORK-01">F-WORK-01</a>) — AES-GCM + <code>DATAGON_VAULT_KEY</code> (local 2026-10-27).</li>
+        <li><span class="badge fixed">исправлено</span> Убрать plaintext из WORK list API; reveal + audit; encrypt vault (<a href="#F-WORK-01">F-WORK-01</a>) — AES-GCM + <code>DATAGON_VAULT_KEY</code> на прод (<code>3e42a90</code>, миграция 383).</li>
         <li><span class="badge fixed">исправлено</span> Отделить <code>can_manage_users</code> от db-admin / WORK-unscoped (<a href="#F-DBA-02">F-DBA-02</a>, <a href="#F-WORK-02">F-WORK-02</a>).</li>
         <li><span class="badge todo">вручную</span> <strong>Ротация</strong> всех ключей, попавших в логи/бэкапы (МС, МП, банки, CRM, Huckster, proxies).</li>
       </ol>
@@ -2471,22 +2479,22 @@
 <tr><td><a href="#F-WORK-01">F-WORK-01</a></td><td><span class="badge crit">critical</span></td><td>9</td><td>WORK vault plaintext в БД+API</td><td>P0</td><td><span class="badge fixed">исправлено</span></td></tr>
 <tr><td><a href="#F-DBA-01">F-DBA-01</a></td><td><span class="badge crit">critical</span></td><td>11</td><td>db-admin preview = dump секретов</td><td>P0</td><td><span class="badge fixed">исправлено</span></td></tr>
 <tr><td><a href="#F-AUTH-01">F-AUTH-01</a></td><td><span class="badge high">high</span></td><td>1</td><td>Token в localStorage</td><td>P2</td><td>—</td></tr>
-<tr><td><a href="#F-AUTH-02">F-AUTH-02</a></td><td><span class="badge high">high</span></td><td>1</td><td>Нет rate-limit login</td><td>P1</td><td>—</td></tr>
-<tr><td><a href="#F-AUTH-03">F-AUTH-03</a></td><td><span class="badge high">high</span></td><td>1</td><td>Cookie без Secure</td><td>P1</td><td>—</td></tr>
-<tr><td><a href="#F-ACL-01">F-ACL-01</a></td><td><span class="badge high">high</span></td><td>2</td><td>Fail-open неизвестный API</td><td>P1</td><td>—</td></tr>
-<tr><td><a href="#F-ACL-02">F-ACL-02</a></td><td><span class="badge high">high</span></td><td>2</td><td>Missing page_mode → full</td><td>P1</td><td>—</td></tr>
+<tr><td><a href="#F-AUTH-02">F-AUTH-02</a></td><td><span class="badge high">high</span></td><td>1</td><td>Нет rate-limit login</td><td>P1</td><td><span class="badge fixed">исправлено</span></td></tr>
+<tr><td><a href="#F-AUTH-03">F-AUTH-03</a></td><td><span class="badge high">high</span></td><td>1</td><td>Cookie без Secure</td><td>P1</td><td><span class="badge fixed">исправлено</span></td></tr>
+<tr><td><a href="#F-ACL-01">F-ACL-01</a></td><td><span class="badge high">high</span></td><td>2</td><td>Fail-open неизвестный API</td><td>P1</td><td><span class="badge fixed">исправлено</span></td></tr>
+<tr><td><a href="#F-ACL-02">F-ACL-02</a></td><td><span class="badge high">high</span></td><td>2</td><td>Missing page_mode → full</td><td>P1</td><td><span class="badge fixed">исправлено</span></td></tr>
 <tr><td><a href="#F-ACL-03">F-ACL-03</a></td><td><span class="badge high">high</span></td><td>2</td><td>Грубый ACL маркетплейсов</td><td>P1</td><td>—</td></tr>
 <tr><td><a href="#F-SEC-03">F-SEC-03</a></td><td><span class="badge high">high</span></td><td>3</td><td>Секреты в config.js</td><td>P2</td><td>—</td></tr>
 <tr><td><a href="#F-SEC-04">F-SEC-04</a></td><td><span class="badge high">high</span></td><td>3</td><td>app_settings без encryption</td><td>P2</td><td>—</td></tr>
-<tr><td><a href="#F-SQL-02">F-SQL-02</a></td><td><span class="badge high">high</span></td><td>4</td><td>CMS db_pass + arbitrary host</td><td>P0</td><td><span class="badge partial">частично</span></td></tr>
-<tr><td><a href="#F-XSS-01">F-XSS-01</a></td><td><span class="badge high">high</span></td><td>5</td><td>Action-log HTML без escape</td><td>P1</td><td>—</td></tr>
+<tr><td><a href="#F-SQL-02">F-SQL-02</a></td><td><span class="badge high">high</span></td><td>4</td><td>CMS db_pass + arbitrary host</td><td>P0</td><td><span class="badge fixed">исправлено</span></td></tr>
+<tr><td><a href="#F-XSS-01">F-XSS-01</a></td><td><span class="badge high">high</span></td><td>5</td><td>Action-log HTML без escape</td><td>P1</td><td><span class="badge fixed">исправлено</span></td></tr>
 <tr><td><a href="#F-XSS-02">F-XSS-02</a></td><td><span class="badge high">high</span></td><td>5</td><td>Нет CSP</td><td>P1</td><td>—</td></tr>
 <tr><td><a href="#F-DEP-01">F-DEP-01</a></td><td><span class="badge high">high</span></td><td>6</td><td>HTTP без redirect/HSTS (упрощ. nginx)</td><td>P1</td><td>—</td></tr>
 <tr><td><a href="#F-DEP-02">F-DEP-02</a></td><td><span class="badge high">high</span></td><td>6</td><td>Node 0.0.0.0:3000</td><td>P1</td><td>—</td></tr>
 <tr><td><a href="#F-DEP-03">F-DEP-03</a></td><td><span class="badge high">high</span></td><td>6</td><td>Мало security headers</td><td>P1</td><td>—</td></tr>
 <tr><td><a href="#F-SET-01">F-SET-01</a></td><td><span class="badge high">high</span></td><td>7</td><td>Один settings key = всё</td><td>P1</td><td>—</td></tr>
 <tr><td><a href="#F-SET-02">F-SET-02</a></td><td><span class="badge high">high</span></td><td>7</td><td>auto-sync-run любому settings=full</td><td>P1</td><td>—</td></tr>
-<tr><td><a href="#F-FIN-01">F-FIN-01</a></td><td><span class="badge high">high</span></td><td>8</td><td>Банковские JWT plaintext</td><td>P0</td><td>—</td></tr>
+<tr><td><a href="#F-FIN-01">F-FIN-01</a></td><td><span class="badge high">high</span></td><td>8</td><td>Банковские JWT plaintext</td><td>P0</td><td><span class="badge fixed">исправлено</span></td></tr>
 <tr><td><a href="#F-FIN-02">F-FIN-02</a></td><td><span class="badge high">high</span></td><td>8</td><td>finance=view = полная разведка</td><td>P1</td><td>—</td></tr>
 <tr><td><a href="#F-WORK-02">F-WORK-02</a></td><td><span class="badge high">high</span></td><td>9</td><td>can_manage_users = WORK-admin</td><td>P0</td><td><span class="badge fixed">исправлено</span></td></tr>
 <tr><td><a href="#F-WORK-03">F-WORK-03</a></td><td><span class="badge high">high</span></td><td>9</td><td>view отдаёт plaintext секреты</td><td>P0</td><td><span class="badge fixed">исправлено</span></td></tr>
@@ -2571,8 +2579,12 @@
         <thead><tr><th>дата</th><th>что</th></tr></thead>
         <tbody>
           <tr>
+            <td class="mono">2026-10-27</td>
+            <td><strong>Local batch</strong>: F-SQL-02, F-AUTH-02/03, F-ACL-01/02, F-PAR-05; затем F-FIN-01 (vault bank credentials) + F-XSS-01 (action-log escape). Прод: <code>migrate-cms-db-pass-encrypt.mjs</code> + <code>migrate-finance-credentials-encrypt.mjs</code>. Частично: F-SEC-05, F-NP-01.</td>
+          </tr>
+          <tr>
             <td class="mono">2026-10-25</td>
-            <td><strong>P0 фиксы отмечены</strong>: коммит <code>270624f</code> (прод). Исправлено: F-SEC-01/02, F-SQL-01, F-DBA-01/02, F-WORK-02/03. Частично: F-WORK-01, F-SQL-02, F-SEC-05, F-NP-01. Ротация ключей — вручную.</td>
+            <td><strong>P0 фиксы отмечены</strong>: <code>270624f</code> + vault <code>3e42a90</code> (прод). Исправлено: F-SEC-01/02, F-SQL-01, F-DBA-01/02, F-WORK-01/02/03/04/05/06. Частично: F-SQL-02, F-SEC-05, F-NP-01. Ротация внешних ключей МП/банков — вручную.</td>
           </tr>
           <tr>
             <td class="mono">2026-10-25</td>
@@ -2663,7 +2675,7 @@
     </section>
 
     <footer>
-      Datagon security audit · 20/20 · P0 отмечены (<code>270624f</code>) · дальше: P1 или ротация ключей
+      Datagon security audit · 20/20 · P0 + WORK vault (<code>270624f</code>/<code>3e42a90</code>) · дальше: P1 или ротация внешних ключей
     </footer>
   </div>
 </body>

@@ -9,6 +9,7 @@ const os = require('os');
 const config = require('./config');
 const { parseAutoSyncWeekdaysMon17, getAutoSyncTaskWorker, getAutoSyncTaskKeys } = require('./lib/datagonAutoSyncRegistry');
 const { attachBitrixUrlKeys } = require('./lib/datagonBitrixProductUrl');
+const { openCmsDbConnection } = require('./lib/datagonCmsDb');
 
 const app = express();
 const PORT = config.port || 3000;
@@ -1155,9 +1156,7 @@ function startGlobalSyncBackground(targetSiteId = null) {
                 
                 let conn;
                 try {
-                    conn = await mysql.createConnection({ 
-                        host: site.db_host, user: site.db_user, password: site.db_pass, database: site.db_name, connectTimeout: 10000 
-                    });
+                    conn = await openCmsDbConnection(site, { connectTimeout: 10000 });
                 } catch (e) {
                     console.error(`[SYNC] Connect error ${site.name}:`, e.message);
                     continue;
@@ -3800,7 +3799,7 @@ initDB().then(async () => {
     });
 
     const {
-        apiRelativePathToPageKey,
+        resolveApiPathAccess,
         isHttpReadMethod,
         getApiPageModeForActor,
     } = require('./lib/datagonPageRegistry');
@@ -3815,9 +3814,17 @@ initDB().then(async () => {
                 return next();
             }
         }
-        const pageKey = apiRelativePathToPageKey(pathOnly);
-        if (pageKey == null) return next();
-        const mode = getApiPageModeForActor(req.datagonActor, pageKey);
+        // F-ACL-01: неизвестный /api/* без записи в API_PREFIX_RULES → 403.
+        const access = resolveApiPathAccess(pathOnly);
+        if (!access.matched) {
+            res.status(403);
+            return res.json({
+                error: 'Неизвестный API-путь',
+                code: 'API_UNMATCHED',
+            });
+        }
+        if (access.pageKey == null) return next();
+        const mode = getApiPageModeForActor(req.datagonActor, access.pageKey);
         if (mode === 'hidden') {
             res.status(403);
             return res.json({ error: 'Нет доступа к разделу', code: 'PAGE_HIDDEN' });

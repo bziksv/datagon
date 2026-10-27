@@ -13,6 +13,7 @@ const {
     applyPriceToCms: applyPriceToCmsShared,
     clearBitrixStorefrontCache,
 } = require('../lib/datagonCmsPriceWrite');
+const { openCmsDbConnection } = require('../lib/datagonCmsDb');
 let myProductsPerfReady = false;
 let myProductsSyncAuditReady = false;
 let myProductsPriceHoldReady = false;
@@ -1287,13 +1288,7 @@ function myProductsRouterFactory(db, settings) {
             const s = sites[0];
 
             // Подключаемся к удаленной базе донора
-            const conn = await mysql.createConnection({
-                host: s.db_host,
-                user: s.db_user,
-                password: s.db_pass,
-                database: s.db_name,
-                connectTimeout: 10000
-            });
+            const conn = await openCmsDbConnection(s, { connectTimeout: 10000 });
 
             let query = '';
             let params = [source_id || sku];
@@ -2120,13 +2115,7 @@ function myProductsRouterFactory(db, settings) {
                 const pool = [];
                 for (let i = 0; i < PRICE_SYNC_CMS_CONCURRENCY; i += 1) {
                     // eslint-disable-next-line no-await-in-loop
-                    const conn = await mysql.createConnection({
-                        host: site.db_host,
-                        user: site.db_user,
-                        password: site.db_pass,
-                        database: site.db_name,
-                        connectTimeout: 10000
-                    });
+                    const conn = await openCmsDbConnection(site, { connectTimeout: 10000 });
                     pool.push(conn);
                 }
                 siteCache.set(sid, site);
@@ -2330,13 +2319,7 @@ function myProductsRouterFactory(db, settings) {
                 return res.status(404).json({ error: 'Сайт не найден' });
             }
             const s = sites[0];
-            const conn = await mysql.createConnection({
-                host: s.db_host,
-                user: s.db_user,
-                password: s.db_pass,
-                database: s.db_name,
-                connectTimeout: 10000
-            });
+            const conn = await openCmsDbConnection(s, { connectTimeout: 10000 });
             try {
                 await applyPriceToCms(conn, s, product, priceNum);
             } finally {
@@ -2686,13 +2669,7 @@ function myProductsRouterFactory(db, settings) {
                 return res.status(404).json({ error: 'Сайт не найден' });
             }
             const s = sites[0];
-            const conn = await mysql.createConnection({
-                host: s.db_host,
-                user: s.db_user,
-                password: s.db_pass,
-                database: s.db_name,
-                connectTimeout: 10000
-            });
+            const conn = await openCmsDbConnection(s, { connectTimeout: 10000 });
             try {
                 await applyPriceToCms(conn, s, product, computed.finalPrice);
             } finally {

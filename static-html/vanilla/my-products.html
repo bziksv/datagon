@@ -1763,12 +1763,22 @@
         box.innerHTML = "";
       }
 
+      function escHtml(s) {
+        if (window.DatagonFmt && window.DatagonFmt.escapeHtml) return window.DatagonFmt.escapeHtml(s);
+        return String(s == null ? "" : s)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      }
+
       function describeMpAppliedFilters() {
         var f = collectApiFilters();
         var parts = [];
         if (f.site_id && f.site_id !== "all") {
           var siteLabel = siteNameById[f.site_id] || ("#" + f.site_id);
-          parts.push("сайт: " + siteLabel);
+          parts.push("сайт: " + escHtml(siteLabel));
         } else parts.push("сайт: все");
         if (f.status !== undefined && f.status !== "" && f.status !== "all") {
           parts.push(String(f.status) === "1" ? "статус: активные" : "статус: неактивные");
@@ -1778,35 +1788,35 @@
         }
         if (f.ms_linked === "1") parts.push("МС: связаны");
         else if (f.ms_linked === "0") parts.push("МС: без связи");
-        if (f.match_audit && f.match_audit !== "all") parts.push("сопоставление: " + f.match_audit);
+        if (f.match_audit && f.match_audit !== "all") parts.push("сопоставление: " + escHtml(f.match_audit));
         if (f.price_hold === "1") parts.push("заморозка: да");
         else if (f.price_hold === "0") parts.push("заморозка: нет");
-        if (f.search) parts.push("поиск: «" + f.search + "»");
-        if (f.stock_min) parts.push("остаток от " + f.stock_min);
-        if (f.stock_max) parts.push("остаток до " + f.stock_max);
+        if (f.search) parts.push("поиск: «" + escHtml(f.search) + "»");
+        if (f.stock_min) parts.push("остаток от " + escHtml(f.stock_min));
+        if (f.stock_max) parts.push("остаток до " + escHtml(f.stock_max));
         if (String(f.gap_filter_enabled) === "1") {
           parts.push(
             "Δ: " +
-              (f.gap_competitor || "all") +
+              escHtml(f.gap_competitor || "all") +
               " [" +
-              (f.gap_min_pct || "-100") +
+              escHtml(f.gap_min_pct || "-100") +
               "…" +
-              (f.gap_max_pct || "-2") +
+              escHtml(f.gap_max_pct || "-2") +
               "%]" +
               (f.gap_min_pct_2 !== "" &&
               f.gap_min_pct_2 != null &&
               f.gap_max_pct_2 !== "" &&
               f.gap_max_pct_2 != null
-                ? " или [" + f.gap_min_pct_2 + "…" + f.gap_max_pct_2 + "%]"
+                ? " или [" + escHtml(f.gap_min_pct_2) + "…" + escHtml(f.gap_max_pct_2) + "%]"
                 : "") +
               (String(f.gap_exclude_zero) === "1" ? ", скрыть 0%" : "")
           );
         }
         parts.push(
           "рандом −" +
-            (f.comp_sync_rand_min || "0.1") +
+            escHtml(f.comp_sync_rand_min || "0.1") +
             "…−" +
-            (f.comp_sync_rand_max || "0.99") +
+            escHtml(f.comp_sync_rand_max || "0.99") +
             "%"
         );
         return parts.join("; ");
@@ -1846,7 +1856,7 @@
           lines.push(
             "<small>Фильтр «подтверждено» ≠ цена Dealmed/Медкомплекс: «без цены ДМ/МК» — нет пригодной цены ДМ/МК (>0), своя цена не меняется.</small>"
           );
-          if (j.note) lines.push(String(j.note));
+          if (j.note) lines.push(escHtml(j.note));
           if (totalSql >= 2000) {
             lines.push(
               "<strong>Оценка:</strong> при ~" +
@@ -1856,7 +1866,7 @@
           }
           return lines.join("<br>");
         }
-        if (st.message) lines.push(String(st.message));
+        if (st.message) lines.push(escHtml(st.message));
         if (scanned > 0 || st.active) {
           lines.push(
             "Просмотрено: " +
@@ -1889,10 +1899,10 @@
           st.errors.slice(0, 10).forEach(function (er) {
             lines.push(
               "• " +
-                (er.code || "?") +
-                (er.site_id != null ? " (сайт #" + er.site_id + ")" : "") +
+                escHtml(er.code || "?") +
+                (er.site_id != null ? " (сайт #" + escHtml(er.site_id) + ")" : "") +
                 " — " +
-                (er.error || "ошибка")
+                escHtml(er.error || "ошибка")
             );
           });
         }

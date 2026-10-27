@@ -2,6 +2,7 @@ const mysql = require('mysql2/promise');
 const config = require('./config');
 const { attachBitrixUrlKeys } = require('./lib/datagonBitrixProductUrl');
 const { assertMySiteSqlIdents, quoteSqlIdent } = require('./lib/datagonSecretRedact');
+const { openCmsDbConnection } = require('./lib/datagonCmsDb');
 
 // НАСТРОЙКИ (можно вынести в аргументы или ENV, пока берем дефолтные)
 const SYNC_BATCH_SIZE = 500;
@@ -62,13 +63,7 @@ async function runSync(siteId) {
         `);
 
         // Подключение к удаленной БД (донор)
-        dbRemote = await mysql.createConnection({
-            host: site.db_host,
-            user: site.db_user,
-            password: site.db_pass,
-            database: site.db_name,
-            connectTimeout: 10000
-        });
+        dbRemote = await openCmsDbConnection(site, { connectTimeout: 10000 });
         console.log(`[Sync] Подключено к удаленной БД.`);
 
         // 1. Сброс всех товаров этого сайта в is_active = 0

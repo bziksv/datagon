@@ -65,14 +65,24 @@
         }
       }
 
+      function escHtml(s) {
+        if (window.DatagonFmt && window.DatagonFmt.escapeHtml) return window.DatagonFmt.escapeHtml(s);
+        return String(s == null ? "" : s)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      }
+
       function describeAppliedFilters() {
         var f = applied;
         var parts = [];
-        if (f.search) parts.push("поиск: «" + f.search + "»");
-        if (f.code) parts.push("код: «" + f.code + "»");
-        if (f.name) parts.push("наименование: «" + f.name + "»");
-        if (f.item_type && f.item_type !== "all") parts.push("тип: " + f.item_type);
-        if (f.medmarket_code) parts.push("код Медмаркета: «" + f.medmarket_code + "»");
+        if (f.search) parts.push("поиск: «" + escHtml(f.search) + "»");
+        if (f.code) parts.push("код: «" + escHtml(f.code) + "»");
+        if (f.name) parts.push("наименование: «" + escHtml(f.name) + "»");
+        if (f.item_type && f.item_type !== "all") parts.push("тип: " + escHtml(f.item_type));
+        if (f.medmarket_code) parts.push("код Медмаркета: «" + escHtml(f.medmarket_code) + "»");
         if (f.mapped === "1") parts.push("стыковка: со стыковкой (код+тип)");
         else if (f.mapped === "0") parts.push("стыковка: без стыковки (код+тип)");
         else parts.push("стыковка: все");
@@ -104,7 +114,7 @@
         if (j.ms_failed > 0 && j.errors && j.errors.length) {
           lines.push("<strong>Примеры ошибок:</strong>");
           j.errors.slice(0, 10).forEach(function (er) {
-            lines.push("• " + (er.code || "?") + " — " + (er.error || "ошибка"));
+            lines.push("• " + escHtml(er.code || "?") + " — " + escHtml(er.error || "ошибка"));
           });
           if (j.errors.length > 10) lines.push("… и ещё " + (j.errors.length - 10));
         }

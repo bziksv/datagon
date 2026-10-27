@@ -115,7 +115,7 @@ Body:
 { "username": "admin", "password": "...", "then": "/dashboard.html" }
 ```
 
-`then` опционален. В ответе — `auth_token`, `page_modes`, **`redirect_after_login`** (безопасный путь; при полностью закрытой матрице — `/no-access.html`).
+`then` опционален. В ответе — `auth_token`, `page_modes`, **`redirect_after_login`** (безопасный путь; при полностью закрытой матрице — `/no-access.html`). Cookie сессии `dg_session`: `httpOnly` + `SameSite=Lax` + **`Secure`** за TLS (`X-Forwarded-Proto` / `req.secure`, либо `DATAGON_COOKIE_SECURE=1|0`). Rate-limit: **5** неудачных попыток на IP+username за **15** мин → **429** `LOGIN_RATE_LIMIT`. Неизвестный `/api/*` без записи в `API_PREFIX_RULES` → **403** `API_UNMATCHED`; отсутствие ключа в `page_modes` → **`hidden`** (не `full`).
 
 ### POST `/api/login`
 Legacy-алиас входа (тот же обработчик, что и выше).
@@ -435,14 +435,16 @@ Query:
 
 ## My sites
 
+Подключение к CMS MySQL (F-SQL-02): host только из allowlist (`DATAGON_CMS_DB_HOSTS` + дефолтные прод-IP в `lib/datagonCmsDb.js`); `db_pass` at-rest AES-GCM (`enc:v1:…`, тот же `DATAGON_VAULT_KEY`, что WORK vault); list/detail маскируют пароль (`db_pass=""`, `db_pass_set` / `db_pass_mask`); PUT с пустым паролем не затирает. Миграция legacy: `node scripts/migrate-cms-db-pass-encrypt.mjs`.
+
 ### GET `/api/my-sites`
-Список подключенных сайтов-источников.
+Список подключенных сайтов-источников (без plaintext `db_pass`).
 
 ### POST `/api/my-sites`
-Добавить источник и проверить подключение к внешней БД.
+Добавить источник и проверить подключение к внешней БД (host allowlist + encrypt pass).
 
 ### PUT `/api/my-sites/:id`
-Изменить настройки источника.
+Изменить настройки источника (пустой `db_pass` = keep).
 
 ### DELETE `/api/my-sites/:id`
 Удалить источник.
@@ -2458,7 +2460,7 @@ Preflight матча «Менеджер по продажам» ↔ Planfix `/us
 
 Страница `/finance.html`, роутер `routes/finance.js`, клиенты `lib/datagonTochkaClient.js`, `lib/datagonRaiffeisenClient.js`, `lib/datagonTbankClient.js`, учётные записи `lib/datagonFinanceCredentials.js`, наличные `lib/datagonFinanceCash.js`. Банки **Точка** (JWT), **Райффайзен** (`client_id` / `client_secret` / `refresh_token`) и **Т‑Банк** (Bearer T‑API). Банковские выписки — только чтение; наличные — ручной ввод. Матрица: ключ **`finance`**. POST config/sync/cash — только **`full`**.
 
-**Несколько организаций Точки:** `app_settings.finance_tochka_credentials` (JSON). Legacy `finance_tochka_jwt` мигрирует в первую запись. Синк идёт по всем `enabled` ключам. JWT **не** в `GET /api/settings`.
+**Несколько организаций Точки:** `app_settings.finance_tochka_credentials` (JSON, at-rest AES-GCM `enc:v1:…` при `DATAGON_VAULT_KEY`). Legacy `finance_tochka_jwt` мигрирует в первую запись и **очищается** (больше не дублируем plaintext). То же шифрование для `finance_raiffeisen_credentials` / `finance_tbank_credentials`. Миграция: `node scripts/migrate-finance-credentials-encrypt.mjs`. Синк по всем `enabled` ключам. JWT **не** в `GET /api/settings` (только masks через `/api/finance/config`).
 
 **Райффайзен:** `app_settings.finance_raiffeisen_credentials`. Refresh обменивается на access/id token через `sso.rbo.raiffeisen.ru`; новый refresh сохраняется. Счета и проводки в тех же таблицах с `bank='raiffeisen'`.
 

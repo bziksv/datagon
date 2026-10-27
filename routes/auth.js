@@ -91,14 +91,98 @@ module.exports = (db, appSettings = {}) => {
         return String(req.headers['x-auth-token'] || cookies[AUTH_SESSION_COOKIE] || '').trim();
     }
 
-    function attachSessionCookie(res, token) {
+    /** F-AUTH-03: Secure за TLS (или DATAGON_COOKIE_SECURE=1/0). */
+    function shouldSecureCookie(req) {
+        const env = String(process.env.DATAGON_COOKIE_SECURE || '').trim().toLowerCase();
+        if (env === '1' || env === 'true' || env === 'yes') return true;
+        if (env === '0' || env === 'false' || env === 'no') return false;
+        const xf = String(req && req.headers && req.headers['x-forwarded-proto'] || '')
+            .split(',')[0]
+            .trim()
+            .toLowerCase();
+        if (xf === 'https') return true;
+        return !!(req && req.secure);
+    }
+
+    function attachSessionCookie(res, token, req) {
         const { ttlDays } = getSessionPolicy();
         res.cookie(AUTH_SESSION_COOKIE, token, {
             httpOnly: true,
             sameSite: 'lax',
+            secure: shouldSecureCookie(req),
             path: '/',
-            maxAge: ttlDays * 86400000
+            maxAge: ttlDays * 86400000,
         });
+    }
+
+    function clearSessionCookie(res, req) {
+        res.clearCookie(AUTH_SESSION_COOKIE, {
+            path: '/',
+            httpOnly: true,
+            sameSite: 'lax',
+            secure: shouldSecureCookie(req),
+        });
+    }
+
+    /** F-AUTH-02: rate-limit login по IP+username. */
+    const loginFailBuckets = new Map();
+    const LOGIN_FAIL_MAX = 5;
+    const LOGIN_FAIL_WINDOW_MS = 15 * 60 * 1000;
+
+    function loginRateKey(req, username) {
+        const ip = String(
+            (req.headers && (req.headers['x-forwarded-for'] || req.headers['x-real-ip'])) ||
+                req.ip ||
+                req.socket?.remoteAddress ||
+                ''
+        )
+            .split(',')[0]
+            .trim();
+        return `${ip}|${String(username || '').toLowerCase()}`;
+    }
+
+    function assertLoginNotRateLimited(req, username) {
+        const key = loginRateKey(req, username);
+        const now = Date.now();
+        const b = loginFailBuckets.get(key);
+        if (!b) return;
+        if (now > b.resetAt) {
+            loginFailBuckets.delete(key);
+            return;
+        }
+        if (b.count >= LOGIN_FAIL_MAX) {
+            const err = new Error(
+                'Слишком много попыток входа. Подождите 15 минут или обратитесь к администратору.'
+            );
+            err.code = 'LOGIN_RATE_LIMIT';
+            err.retryAfterSec = Math.max(1, Math.ceil((b.resetAt - now) / 1000));
+            throw err;
+        }
+    }
+
+    function recordLoginFailure(req, username) {
+        const key = loginRateKey(req, username);
+        const now = Date.now();
+        let b = loginFailBuckets.get(key);
+        if (!b || now > b.resetAt) {
+            b = { count: 0, resetAt: now + LOGIN_FAIL_WINDOW_MS };
+        }
+        b.count += 1;
+        loginFailBuckets.set(key, b);
+    }
+
+    function clearLoginFailures(req, username) {
+        loginFailBuckets.delete(loginRateKey(req, username));
+    }
+
+    /** Dummy bcrypt для выравнивания timing при неизвестном пользователе (F-AUTH-05). */
+    let dummyBcryptHashPromise = null;
+    async function burnLoginCompare(password) {
+        if (!dummyBcryptHashPromise) {
+            dummyBcryptHashPromise = bcrypt.hash('datagon-login-timing-dummy', 10);
+        }
+        const h = await dummyBcryptHashPromise;
+        await bcrypt.compare(String(password || ''), h);
     }
 
     async function resolveActorFromToken(token) {
@@ -364,7 +448,7 @@ module.exports = (db, appSettings = {}) => {
             if (!actor) return res.status(401).json({ success: false, error: 'Не авторизован' });
             const token = getBearerToken(req);
             if (!token) return res.status(401).json({ success: false, error: 'Нет токена' });
-            attachSessionCookie(res, token);
+            attachSessionCookie(res, token, req);
             return res.json({ success: true });
         } catch (e) {
             return res.status(500).json({ error: e.message });
@@ -715,8 +799,27 @@ module.exports = (db, appSettings = {}) => {
         const { username, password, then: thenBody } = req.body;
         try {
             await ensureAuthSchema();
+            try {
+                assertLoginNotRateLimited(req, username);
+            } catch (rl) {
+                if (rl && rl.code === 'LOGIN_RATE_LIMIT') {
+                    res.setHeader('Retry-After', String(rl.retryAfterSec || 900));
+                    return res.status(429).json({
+                        error: rl.message,
+                        code: 'LOGIN_RATE_LIMIT',
+                    });
+                }
+                throw rl;
+            }
             const [users] = await db.query('SELECT * FROM users WHERE username = ?', [username]);
-            if (users.length === 0 || !(await bcrypt.compare(password, users[0].password_hash))) {
+            let ok = false;
+            if (!users.length) {
+                await burnLoginCompare(password);
+            } else {
+                ok = await bcrypt.compare(password, users[0].password_hash);
+            }
+            if (!ok) {
+                recordLoginFailure(req, username);
                 return res.status(401).json({ error: 'Неверный логин или пароль' });
             }
             const user = users[0];
@@ -756,6 +859,7 @@ module.exports = (db, appSettings = {}) => {
                 'INSERT INTO auth_sessions (user_id, token_hash, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL ? DAY))',
                 [user.id, tokenHash, ttlDays]
             );
+            clearLoginFailures(req, username);
             await recordDatagonActivity(db, {
                 userId: user.id,
                 kind: 'login',
@@ -765,7 +869,7 @@ module.exports = (db, appSettings = {}) => {
                     ua: String(req.headers['user-agent'] || '').slice(0, 400),
                 }),
             });
-            attachSessionCookie(res, token);
+            attachSessionCookie(res, token, req);
             let page_modes = {};
             let specialty_name = null;
             try {
@@ -822,10 +926,10 @@ module.exports = (db, appSettings = {}) => {
                     [tokenHash]
                 );
             }
-            res.clearCookie(AUTH_SESSION_COOKIE, { path: '/' });
+            clearSessionCookie(res, req);
             return res.json({ success: true });
         } catch (e) {
-            res.clearCookie(AUTH_SESSION_COOKIE, { path: '/' });
+            clearSessionCookie(res, req);
             return res.status(500).json({ error: e.message });
         }
     });
@@ -867,7 +971,7 @@ module.exports = (db, appSettings = {}) => {
             await ensureAuthSchema();
             await db.query('UPDATE auth_sessions SET revoked = 1 WHERE user_id = ? AND revoked = 0', [user.id]);
 
-            res.clearCookie(AUTH_SESSION_COOKIE, { path: '/' });
+            clearSessionCookie(res, req);
             return res.json({ success: true, sessions_revoked: true });
         } catch (e) {
             return res.status(500).json({ error: e.message });

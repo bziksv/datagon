@@ -26,7 +26,7 @@ description: Счета и движение по Точке, Райффайзе�
 
 На `/finance.html` можно сохранить **несколько JWT** — по одному на организацию (или один ключ с правами на все компании).
 
-Хранение: `app_settings.finance_tochka_credentials` (JSON-массив `{ id, label, jwt, enabled, customer_codes, customer_names }`). Старый одиночный ключ `finance_tochka_jwt` при первом чтении **мигрирует** в первую запись списка и дальше дублирует JWT первого включённого ключа (back-compat).
+Хранение: `app_settings.finance_tochka_credentials` (JSON-массив `{ id, label, jwt, enabled, customer_codes, customer_names }`). При `DATAGON_VAULT_KEY` весь JSON шифруется at-rest (`enc:v1:…`, F-FIN-01); то же для Райфа/Т‑Банка. Старый `finance_tochka_jwt` при первом чтении **мигрирует** в первую запись и затем очищается (plaintext-дубль больше не пишем). Миграция legacy: `node scripts/migrate-finance-credentials-encrypt.mjs`.
 
 Колонка **«Организация»** — ручное `label` (или авто из первого ООО в клиентах JWT, без склейки «ООО · ИП»). Колонка **«Клиенты»** показывает всех `customer_names` по ключу (у одного JWT в кабинете Точки может быть несколько юрлиц).
 
