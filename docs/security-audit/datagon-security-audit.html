@@ -323,9 +323,11 @@
         </div>
       </div>
 
-      <div class="finding" id="F-AUTH-07">
-        <div class="title"><span class="badge low">low</span> F-AUTH-07 · Admin без лимита сессий</div>
-        <div class="ev">Украденные admin-токены живут параллельно. Fix: лимит + UI revoke/list сессий.</div>
+      <div class="finding fixed-out" id="F-AUTH-07">
+        <div class="title"><span class="badge low">low</span> <span class="badge fixed">исправлено</span> F-AUTH-07 · Admin без лимита сессий</div>
+        <div class="ev">Украденные admin-токены живут параллельно. Fix: лимит + UI revoke/list сессий.
+          <div class="fix-note"><strong>2026-10-28 (local):</strong> при логине лимит <code>auth_session_user_limit</code> применяется и к <code>admin</code> (старые сессии revoke). UI списка сессий — отдельно.</div>
+        </div>
       </div>
 
       <div class="finding fixed-out" id="F-AUTH-08">
@@ -895,13 +897,14 @@
         </div>
       </div>
 
-      <div class="finding" id="F-DEP-07">
-        <div class="title"><span class="badge med">medium</span> F-DEP-07 · Доверие к <code>X-Forwarded-For</code> без <code>trust proxy</code></div>
+      <div class="finding fixed-out" id="F-DEP-07">
+        <div class="title"><span class="badge med">medium</span> <span class="badge fixed">исправлено</span> F-DEP-07 · Доверие к <code>X-Forwarded-For</code> без <code>trust proxy</code></div>
         <div class="ev">
           <code>workSchedule.clientIp</code> берёт первый IP из XFF. Express <code>trust proxy</code> не включён.
           Клиент, бьющий Node напрямую (F-DEP-02) или при неверной схеме proxy, подставляет любой IP в audit/clock.
           <strong>Fix:</strong> <code>app.set('trust proxy', 1)</code> только за nginx; IP = <code>req.ip</code>;
           не принимать XFF от не-прокси.
+          <div class="fix-note"><strong>2026-10-28 (local):</strong> trust proxy по умолчанию 1 (<code>DATAGON_TRUST_PROXY</code>); login rate-limit и clock на <code>req.ip</code>.</div>
         </div>
       </div>
 
@@ -1178,20 +1181,22 @@
         </div>
       </div>
 
-      <div class="finding" id="F-FIN-07">
-        <div class="title"><span class="badge low">low</span> F-FIN-07 · <code>TOCHKA_API_BASE</code> из env без allowlist</div>
+      <div class="finding fixed-out" id="F-FIN-07">
+        <div class="title"><span class="badge low">low</span> <span class="badge fixed">исправлено</span> F-FIN-07 · <code>TOCHKA_API_BASE</code> из env без allowlist</div>
         <div class="ev">
           Переопределение base URL отправит JWT на чужой host при компрометации env/деплоя.
           <strong>Fix:</strong> allowlist host <code>enter.tochka.com</code> (и sandbox); то же для других банков.
+          <div class="fix-note"><strong>2026-10-28 (local):</strong> только <code>enter.tochka.com</code> / <code>pre.tochka.com</code> + https; иначе default.</div>
         </div>
       </div>
 
-      <div class="finding" id="F-FIN-08">
-        <div class="title"><span class="badge info">info</span> F-FIN-08 · Локальный fail-closed vs глобальный fail-open</div>
+      <div class="finding fixed-out" id="F-FIN-08">
+        <div class="title"><span class="badge info">info</span> <span class="badge fixed">исправлено</span> F-FIN-08 · Локальный fail-closed vs глобальный fail-open</div>
         <div class="ev">
           Finance роутер: нет ключа в матрице → hidden. Глобальный middleware: нет ключа → full.
           Итог для finance всё равно deny (хорошо). Имеет смысл выровнять глобальный default на hidden
           (шаг 2), чтобы другие модули вели себя так же.
+          <div class="fix-note"><strong>2026-10-27+</strong>: глобальный default <code>hidden</code> (F-ACL-02 / <code>452287d</code>); локальный finance fail-closed согласован.</div>
         </div>
       </div>
 
@@ -1399,12 +1404,13 @@
         </div>
       </div>
 
-      <div class="finding" id="F-WS-05">
-        <div class="title"><span class="badge med">medium</span> F-WS-05 · Подделка IP в audit смены (X-Forwarded-For)</div>
+      <div class="finding fixed-out" id="F-WS-05">
+        <div class="title"><span class="badge med">medium</span> <span class="badge fixed">исправлено</span> F-WS-05 · Подделка IP в audit смены (X-Forwarded-For)</div>
         <div class="ev">
           <code>clientIp</code> берёт первый XFF без trust proxy (F-DEP-07). В clock log пишется
           произвольный IP при прямом доступе к Node.
           <strong>Fix:</strong> trust proxy=1 за nginx; иначе только socket.remoteAddress.
+          <div class="fix-note"><strong>2026-10-28 (local):</strong> <code>app.set('trust proxy', 1)</code>; clock/login rate — <code>req.ip</code>, не сырой XFF.</div>
         </div>
       </div>
 
@@ -1492,41 +1498,45 @@
         </div>
       </div>
 
-      <div class="finding" id="F-DBA-03">
-        <div class="title"><span class="badge med">medium</span> F-DBA-03 · disk-usage отдаёт абсолютный путь и карту каталогов</div>
+      <div class="finding fixed-out" id="F-DBA-03">
+        <div class="title"><span class="badge med">medium</span> <span class="badge fixed">исправлено</span> F-DBA-03 · disk-usage отдаёт абсолютный путь и карту каталогов</div>
         <div class="ev">
           <code>GET /api/processes/disk-usage</code> (page dashboard): <code>projectPath</code>,
           размеры <code>.git</code>, <code>node_modules</code>, <code>vendor</code>, …
           Разведка ФС для любого с доступом к дашборду.
           <strong>Fix:</strong> только admin; не отдавать absolute path; агрегировать без имён скрытых dirs.
+          <div class="fix-note"><strong>2026-10-28 (local):</strong> API под <code>processes</code>; не-admin — без <code>projectPath</code> и без скрытых папок (<code>.git</code> и т.п.).</div>
         </div>
       </div>
 
-      <div class="finding" id="F-DBA-04">
-        <div class="title"><span class="badge med">medium</span> F-DBA-04 · processes/overview — внутренняя операционка широкой аудитории</div>
+      <div class="finding fixed-out" id="F-DBA-04">
+        <div class="title"><span class="badge med">medium</span> <span class="badge fixed">исправлено</span> F-DBA-04 · processes/overview — внутренняя операционка широкой аудитории</div>
         <div class="ev">
           Расписание auto-sync, очередь, running_tasks, логи синка МС, messages ошибок —
           всем с <code>processes</code> view/full. Полезно операторам; для узкой специальности —
           лишняя поверхность (паттерны ошибок API, тайминги).
-          <strong>Fix:</strong> чувствительные куски (полные error stacks / queue internals) — full only
+          <strong>Fix:</strong> чувствительные куски (полные error stacks / runtime internals) — full only
           или admin; view — KPI без деталей.
+          <div class="fix-note"><strong>2026-10-28 (local):</strong> при <code>processes=view</code> — без логов МС/матчинга, укороченные <code>message</code>, без <code>pid</code>/loadAvg; <code>view_safe: true</code>.</div>
         </div>
       </div>
 
-      <div class="finding" id="F-DBA-05">
-        <div class="title"><span class="badge med">medium</span> F-DBA-05 · Activity <code>detail</code> до 8KB без санитайза на чтении</div>
+      <div class="finding fixed-out" id="F-DBA-05">
+        <div class="title"><span class="badge med">medium</span> <span class="badge fixed">исправлено</span> F-DBA-05 · Activity <code>detail</code> до 8KB без санитайза на чтении</div>
         <div class="ev">
           Клиент пишет detail в track; админ/менеджер читает в UI (XSS шаг 5, если innerHTML).
           Возможен spam журнала (25 events/req) любым auth.
           <strong>Fix:</strong> esc на фронте; rate-limit track; не класть секреты в label/detail с клиента.
+          <div class="fix-note"><strong>2026-10-28 (local):</strong> track ≤30 req/мин/user → 429; detail sanitize+cap 2KB (write+read); UI уже <code>textContent</code>.</div>
         </div>
       </div>
 
-      <div class="finding" id="F-DBA-06">
-        <div class="title"><span class="badge low">low</span> F-DBA-06 · Нет audit «кто смотрел preview таблицы X»</div>
+      <div class="finding fixed-out" id="F-DBA-06">
+        <div class="title"><span class="badge low">low</span> <span class="badge fixed">исправлено</span> F-DBA-06 · Нет audit «кто смотрел preview таблицы X»</div>
         <div class="ev">
           Критичное чтение app_settings через preview не логируется в activity.
           <strong>Fix:</strong> recordDatagonActivity на каждый preview/optimize с table name.
+          <div class="fix-note"><strong>2026-10-28 (local):</strong> preview → <code>db_preview</code>; analyze/optimize → <code>db_maintain</code> (app_settings preview по-прежнему 403).</div>
         </div>
       </div>
 
@@ -1541,8 +1551,8 @@
       <h3>Приоритет фиксов (шаг 11)</h3>
       <ol>
         <li><span class="badge fixed">исправлено</span> P0: убрать can_manage_users с db-admin; redact/forbid preview секретных таблиц (F-DBA-01/02)</li>
-        <li>P1: audit preview; disk-usage сузить (activity уже admin)</li>
-        <li>P2: rate-limit activity track; view-safe processes overview</li>
+        <li><span class="badge fixed">исправлено</span> P1: audit preview; disk-usage сузить (activity уже admin)</li>
+        <li><span class="badge fixed">исправлено</span> P2: rate-limit activity track; view-safe processes overview</li>
       </ol>
     </section>
 
@@ -2282,12 +2292,13 @@
         </div>
       </div>
 
-      <div class="finding" id="F-OPS-04">
-        <div class="title"><span class="badge med">medium</span> F-OPS-04 · Planfix sync = shared token + нагрузка</div>
+      <div class="finding fixed-out" id="F-OPS-04">
+        <div class="title"><span class="badge med">medium</span> <span class="badge fixed">исправлено</span> F-OPS-04 · Planfix sync = shared token + нагрузка</div>
         <div class="ev">
           ops-sheet=full запускает sync с <code>planfix_rest_api_key</code> (plaintext F-SEC).
           Нет shop-style dual-control; dry_run есть. Abuse → API Planfix / перезапись статусов.
           <strong>Fix:</strong> rate-limit; audit; ключ не в settings GET.
+          <div class="fix-note"><strong>2026-10-28 (local):</strong> ≤8 боевых sync/час/user → 429; activity <code>ops_planfix_sync</code>; ключ уже в <code>publicSettingsSnapshot</code> mask (F-SET-02).</div>
         </div>
       </div>
 
@@ -2366,12 +2377,13 @@
         </div>
       </div>
 
-      <div class="finding" id="F-PUB-02">
-        <div class="title"><span class="badge med">medium</span> F-PUB-02 · ArchitectUI demo + doc-screenshots без auth</div>
+      <div class="finding fixed-out" id="F-PUB-02">
+        <div class="title"><span class="badge med">medium</span> <span class="badge fixed">исправлено</span> F-PUB-02 · ArchitectUI demo + doc-screenshots без auth</div>
         <div class="ev">
           Полный CRA demo и скриншоты справки доступны анониму. Не секреты, но fingerprint
           стека / UX панели и нагрузка на CDN-подобные ассеты.
           <strong>Fix:</strong> demo только за VPN/auth или отдельный хост; screenshots за сессией.
+          <div class="fix-note"><strong>2026-10-28 (local):</strong> <code>/doc-screenshots/*</code> через HTML-gate (сессия); <code>/architectui-react-pro</code> — middleware getActor → login.</div>
         </div>
       </div>
 
@@ -2395,12 +2407,13 @@
         </div>
       </div>
 
-      <div class="finding" id="F-PUB-05">
-        <div class="title"><span class="badge med">medium</span> F-PUB-05 · Docs раскрывают полную карту API</div>
+      <div class="finding fixed-out" id="F-PUB-05">
+        <div class="title"><span class="badge med">medium</span> <span class="badge fixed">исправлено</span> F-PUB-05 · Docs раскрывают полную карту API</div>
         <div class="ev">
           После входа любой пользователь читает <code>/docs/api</code> (ключи настроек, контракты
           mutate). Нет отдельной матрицы «документация». Усиливает разведку перед abuse.
           <strong>Fix:</strong> docs только admin / роль; или урезать api.md для non-admin.
+          <div class="fix-note"><strong>2026-10-28 (local):</strong> <code>protectDocumentationRoutes</code> — после сессии только <code>admin</code>, иначе <code>/no-access.html</code>.</div>
         </div>
       </div>
 

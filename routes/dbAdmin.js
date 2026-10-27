@@ -8,6 +8,7 @@ const {
     isDbAdminPreviewForbidden,
     redactDbAdminPreviewRows,
 } = require('../lib/datagonSecretRedact');
+const { recordDatagonActivity } = require('../lib/datagonActivity');
 
 const IDENT_RE = /^[A-Za-z0-9_]+$/;
 const PREVIEW_MAX = 50;
@@ -252,6 +253,23 @@ module.exports = (db) => {
 
             const meta = getTableMeta(name);
             const safeRows = redactDbAdminPreviewRows(rows || [], cols || []);
+            // F-DBA-06: audit «кто смотрел preview».
+            const actor = req.datagonActor || {};
+            const uid = Number(actor.id);
+            if (Number.isFinite(uid) && uid > 0) {
+                recordDatagonActivity(db, {
+                    userId: uid,
+                    kind: 'db_preview',
+                    section: 'db-admin',
+                    label: `preview ${name}`,
+                    detail: JSON.stringify({
+                        username: actor.username || null,
+                        table: name,
+                        limit,
+                        row_count: safeRows.length,
+                    }),
+                }).catch(() => {});
+            }
             return res.json({
                 success: true,
                 table: name,
@@ -267,10 +285,28 @@ module.exports = (db) => {
         }
     });
 
+    async function auditMaintain(req, kind, tables) {
+        const actor = req.datagonActor || {};
+        const uid = Number(actor.id);
+        if (!Number.isFinite(uid) || uid <= 0) return;
+        await recordDatagonActivity(db, {
+            userId: uid,
+            kind: 'db_maintain',
+            section: 'db-admin',
+            label: `${kind} ${tables.length} table(s)`,
+            detail: JSON.stringify({
+                username: actor.username || null,
+                action: kind,
+                tables: tables.slice(0, 40),
+            }),
+        });
+    }
+
     router.post('/analyze', async (req, res) => {
         try {
             const tables = await assertTablesExist(db, (req.body && req.body.tables) || []);
             const result = await runMaintain(db, 'analyze', tables);
+            auditMaintain(req, 'analyze', tables).catch(() => {});
             return res.json(result);
         } catch (e) {
             const status = e.code === 'NOT_FOUND' || e.code === 'BAD_NAME' || e.code === 'NO_TABLES' || e.code === 'TOO_MANY' ? 400 : 500;
@@ -282,6 +318,7 @@ module.exports = (db) => {
         try {
             const tables = await assertTablesExist(db, (req.body && req.body.tables) || []);
             const result = await runMaintain(db, 'optimize', tables);
+            auditMaintain(req, 'optimize', tables).catch(() => {});
             return res.json(result);
         } catch (e) {
             const status = e.code === 'NOT_FOUND' || e.code === 'BAD_NAME' || e.code === 'NO_TABLES' || e.code === 'TOO_MANY' ? 400 : 500;

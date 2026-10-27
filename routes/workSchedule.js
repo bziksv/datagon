@@ -90,10 +90,12 @@ function isCompanyAccounting(actor) {
     return !!(actor && actor.can_payroll === true);
 }
 
+/** F-WS-05 / F-DEP-07: IP через Express trust proxy (`req.ip`), не сырой первый XFF. */
 function clientIp(req) {
-    const xf = req.headers['x-forwarded-for'];
-    if (xf) return String(xf).split(',')[0].trim().slice(0, 64);
-    return String(req.socket?.remoteAddress || '').slice(0, 64);
+    const raw = String(req.ip || req.socket?.remoteAddress || '')
+        .replace(/^::ffff:/i, '')
+        .trim();
+    return raw.slice(0, 64);
 }
 
 function userAgent(req) {

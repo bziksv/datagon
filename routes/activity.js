@@ -4,10 +4,34 @@ const {
     ensureActivityTable,
     normalizeActivitySectionKey,
     maybePruneActivityEvents,
+    sanitizeActivityClientDetail,
     ACTIVITY_RETENTION_DAYS,
+    ACTIVITY_CLIENT_DETAIL_MAX,
 } = require('../lib/datagonActivity');
 
 const UI_KINDS = new Set(['page_view', 'click', 'ui']);
+
+/** F-DBA-05: rate-limit POST /track (spam журнала). */
+const TRACK_WINDOW_MS = 60 * 1000;
+const TRACK_MAX_REQ_PER_WINDOW = 30;
+const trackBuckets = new Map();
+
+function assertTrackNotRateLimited(userId) {
+    const key = String(userId || 0);
+    const now = Date.now();
+    let b = trackBuckets.get(key);
+    if (!b || now > b.resetAt) {
+        b = { count: 0, resetAt: now + TRACK_WINDOW_MS };
+        trackBuckets.set(key, b);
+    }
+    b.count += 1;
+    if (b.count > TRACK_MAX_REQ_PER_WINDOW) {
+        const err = new Error('Слишком много событий активности. Подождите минуту.');
+        err.code = 'ACTIVITY_TRACK_RATE_LIMIT';
+        err.retryAfterSec = Math.max(1, Math.ceil((b.resetAt - now) / 1000));
+        throw err;
+    }
+}
 
 /** Полный список разделов приложения (для фильтра + подписей); объединяется с фактическими ключами из БД. */
 const PAGE_REGISTRY = [
@@ -132,8 +156,16 @@ module.exports = (db) => {
                  LIMIT ? OFFSET ?`,
                 [...params, limit, offset]
             );
+            // F-DBA-05: sanitize detail on read (legacy rows + defense).
+            const safeRows = (rows || []).map((r) => ({
+                ...r,
+                detail:
+                    r.detail != null
+                        ? sanitizeActivityClientDetail(r.detail, ACTIVITY_CLIENT_DETAIL_MAX)
+                        : null,
+            }));
             return res.json({
-                rows,
+                rows: safeRows,
                 total,
                 users,
                 pageOptions,
@@ -149,6 +181,18 @@ module.exports = (db) => {
         try {
             const actor = req.datagonActor;
             if (!actor) return res.status(401).json({ error: 'Не авторизован' });
+            try {
+                assertTrackNotRateLimited(actor.id);
+            } catch (rl) {
+                if (rl && rl.code === 'ACTIVITY_TRACK_RATE_LIMIT') {
+                    res.setHeader('Retry-After', String(rl.retryAfterSec || 60));
+                    return res.status(429).json({
+                        error: rl.message,
+                        code: 'ACTIVITY_TRACK_RATE_LIMIT',
+                    });
+                }
+                throw rl;
+            }
             await ensureActivityTable(db);
             const raw = Array.isArray(req.body?.events) ? req.body.events : [];
             const events = raw.slice(0, 25);
@@ -165,7 +209,11 @@ module.exports = (db) => {
                         : normalizeActivitySectionKey(sectionRaw);
                 const label = String(ev?.label || '').trim().slice(0, 512);
                 if (!label) continue;
-                const detail = ev?.detail != null ? String(ev.detail).slice(0, 8000) : null;
+                // F-DBA-05: не принимать сырой 8KB; redact secret-ish + cap.
+                const detail =
+                    ev?.detail != null
+                        ? sanitizeActivityClientDetail(ev.detail, ACTIVITY_CLIENT_DETAIL_MAX)
+                        : null;
                 values.push('(?,?,?,?,?)');
                 flat.push(actor.id, kind, section, label, detail);
             }

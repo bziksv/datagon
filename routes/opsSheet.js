@@ -23,10 +23,35 @@ const {
 const { restJson, credsFromSettings } = require('../lib/planfixClient');
 const pf = require('../lib/opsSheetPlanfix');
 const { getOpsPlanfixSyncMeta } = require('../lib/opsSheetPlanfixSyncRevision');
+const { recordDatagonActivity } = require('../lib/datagonActivity');
 
 const SALES_SPECIALTY_NAME = 'Менеджер по продажам';
 const MIN_YEAR = 2019;
 const MAX_YEAR = 2100;
+
+/** F-OPS-04: rate-limit ручного Planfix sync (burn API + нагрузка). */
+const PF_SYNC_RATE_WINDOW_MS = 60 * 60 * 1000;
+const PF_SYNC_RATE_MAX = 8;
+const pfSyncRateBuckets = new Map();
+
+function assertPlanfixSyncNotRateLimited(userId) {
+    const key = String(userId || 0);
+    const now = Date.now();
+    let b = pfSyncRateBuckets.get(key);
+    if (!b || now > b.resetAt) {
+        b = { count: 0, resetAt: now + PF_SYNC_RATE_WINDOW_MS };
+        pfSyncRateBuckets.set(key, b);
+    }
+    if (b.count >= PF_SYNC_RATE_MAX) {
+        const err = new Error(
+            `Слишком много запусков Planfix sync (${PF_SYNC_RATE_MAX}/час). Подождите или дождитесь автосинка.`
+        );
+        err.code = 'PLANFIX_SYNC_RATE_LIMIT';
+        err.retryAfterSec = Math.max(1, Math.ceil((b.resetAt - now) / 1000));
+        throw err;
+    }
+    b.count += 1;
+}
 
 let schemaReady = false;
 
@@ -3300,6 +3325,24 @@ function opsSheetRouterFactory(db, appSettings) {
                 });
             }
 
+            // F-OPS-04: rate-limit боевых запусков (dry_run не считаем).
+            const actor = req.datagonActor || {};
+            if (!dryRun) {
+                try {
+                    assertPlanfixSyncNotRateLimited(actor.id);
+                } catch (rl) {
+                    if (rl && rl.code === 'PLANFIX_SYNC_RATE_LIMIT') {
+                        res.setHeader('Retry-After', String(rl.retryAfterSec || 3600));
+                        return res.status(429).json({
+                            success: false,
+                            error: rl.message,
+                            code: 'PLANFIX_SYNC_RATE_LIMIT',
+                        });
+                    }
+                    throw rl;
+                }
+            }
+
             markPfSync({
                 active: true,
                 dry_run: dryRun,
@@ -3321,6 +3364,29 @@ function opsSheetRouterFactory(db, appSettings) {
                 started_ms: started,
             });
             ownsJob = true;
+
+            // F-OPS-04: audit actor + период (ключ Planfix в GET settings уже маскируется).
+            const uid = Number(actor.id);
+            if (Number.isFinite(uid) && uid > 0) {
+                recordDatagonActivity(db, {
+                    userId: uid,
+                    kind: 'ops_planfix_sync',
+                    section: 'ops-sheet',
+                    label: dryRun
+                        ? 'Planfix sync dry_run'
+                        : reportOnly
+                          ? 'Planfix sync report_only'
+                          : 'Planfix sync',
+                    detail: JSON.stringify({
+                        username: actor.username || null,
+                        year,
+                        months: monthsQueue,
+                        dry_run: !!dryRun,
+                        report_only: !!reportOnly,
+                        period: periodLabel,
+                    }),
+                }).catch(() => {});
+            }
             setImmediate(() => {
                 (async () => {
             if (reportOnly && !dryRun) {

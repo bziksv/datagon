@@ -132,13 +132,9 @@ module.exports = (db, appSettings = {}) => {
     const LOGIN_FAIL_WINDOW_MS = 15 * 60 * 1000;
 
     function loginRateKey(req, username) {
-        const ip = String(
-            (req.headers && (req.headers['x-forwarded-for'] || req.headers['x-real-ip'])) ||
-                req.ip ||
-                req.socket?.remoteAddress ||
-                ''
-        )
-            .split(',')[0]
+        // F-DEP-07: при trust proxy используем req.ip; иначе socket (не сырой XFF от клиента).
+        const ip = String(req.ip || req.socket?.remoteAddress || '')
+            .replace(/^::ffff:/i, '')
             .trim();
         return `${ip}|${String(username || '').toLowerCase()}`;
     }
@@ -295,6 +291,11 @@ module.exports = (db, appSettings = {}) => {
             .then((actor) => {
                 if (!actor) {
                     redirectToBridge();
+                    return;
+                }
+                // F-PUB-05: полная карта API/справка — только admin.
+                if (actor.username !== 'admin') {
+                    res.redirect(302, '/no-access.html');
                     return;
                 }
                 if (p === '/docs/manual' || p === '/docs/manual/') {
@@ -842,8 +843,8 @@ module.exports = (db, appSettings = {}) => {
             }
             const { ttlDays, userLimit } = getSessionPolicy();
 
-            if (user.username !== 'admin') {
-                // Keep only the newest sessions within configured limit.
+            // F-AUTH-07: лимит активных сессий и для admin (раньше обходили).
+            {
                 const [activeSessions] = await db.query(`
                     SELECT id
                     FROM auth_sessions

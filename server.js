@@ -15,6 +15,12 @@ const app = express();
 const PORT = config.port || 3000;
 /** F-DEP-02: по умолчанию только localhost (nginx → 127.0.0.1:3000). DATAGON_BIND_HOST=0.0.0.0 для отладки. */
 const BIND_HOST = String(process.env.DATAGON_BIND_HOST || '127.0.0.1').trim() || '127.0.0.1';
+/** F-DEP-07 / F-WS-05: доверяем один hop (nginx). DATAGON_TRUST_PROXY=0|false — выкл. */
+const TRUST_PROXY_RAW = String(process.env.DATAGON_TRUST_PROXY || '1').trim().toLowerCase();
+if (TRUST_PROXY_RAW !== '0' && TRUST_PROXY_RAW !== 'false' && TRUST_PROXY_RAW !== 'off') {
+    const n = Number(TRUST_PROXY_RAW);
+    app.set('trust proxy', Number.isFinite(n) && n >= 0 ? n : 1);
+}
 let db;
 const postInitTasks = [];
 
@@ -4051,7 +4057,17 @@ initDB().then(async () => {
         try {
             const forceRefresh = String(req.query.refresh || '') === '1';
             const diskUsage = await getDiskUsageMetrics(forceRefresh);
-            return res.json({ success: true, diskUsage });
+            const actor = req.datagonActor || {};
+            const isAdmin = actor.username === 'admin';
+            // F-DBA-03: absolute path и скрытые dirs (.git) — только admin.
+            const out = { ...diskUsage };
+            if (!isAdmin) {
+                delete out.projectPath;
+                if (Array.isArray(out.folders)) {
+                    out.folders = out.folders.filter((f) => f && !f.isHidden && !String(f.name || '').startsWith('.'));
+                }
+            }
+            return res.json({ success: true, diskUsage: out });
         } catch (e) {
             return res.status(500).json({ success: false, error: e.message || 'Не удалось получить разбивку диска' });
         }
@@ -4319,7 +4335,8 @@ initDB().then(async () => {
                 }
             }
 
-            return res.json({
+            const runtime = getRuntimeMetrics();
+            let payload = {
                 refreshedAt: new Date().toISOString(),
                 forDate,
                 forDateOptions,
@@ -4335,8 +4352,81 @@ initDB().then(async () => {
                 matchesSites,
                 matches,
                 databaseSize,
-                runtime: getRuntimeMetrics()
-            });
+                runtime,
+            };
+            // F-DBA-04: processes=view — KPI без полных логов / stacks / pid.
+            const actor = req.datagonActor || {};
+            const procMode =
+                actor.username === 'admin'
+                    ? 'full'
+                    : getApiPageModeForActor(actor, 'processes');
+            if (procMode === 'view') {
+                const shortMsg = (m, n) => {
+                    const s = String(m || '').trim();
+                    if (!s) return '';
+                    return s.length > n ? `${s.slice(0, n)}…` : s;
+                };
+                payload = {
+                    ...payload,
+                    view_safe: true,
+                    globalSync: {
+                        ...payload.globalSync,
+                        message: shortMsg(payload.globalSync && payload.globalSync.message, 120),
+                    },
+                    moysklad: {
+                        ...payload.moysklad,
+                        message: shortMsg(payload.moysklad && payload.moysklad.message, 120),
+                        logs: [],
+                    },
+                    moyskladPersistedLogs: [],
+                    autoSync: {
+                        ...payload.autoSync,
+                        queue: (payload.autoSync.queue || []).map((q) => ({
+                            type: q.type,
+                            triggerType: q.triggerType,
+                        })),
+                        tasks_live: Object.fromEntries(
+                            Object.entries(payload.autoSync.tasks_live || {}).map(([k, lv]) => [
+                                k,
+                                lv && typeof lv === 'object'
+                                    ? {
+                                          ...lv,
+                                          message: shortMsg(lv.message, 100),
+                                          status_text: shortMsg(lv.status_text, 100),
+                                          last_error: lv.last_error ? '[скрыто в view]' : null,
+                                      }
+                                    : lv,
+                            ])
+                        ),
+                    },
+                    autoSyncRuns: (payload.autoSyncRuns || []).map((r) => ({
+                        ...r,
+                        message: shortMsg(r.message, 80),
+                    })),
+                    discovery: (payload.discovery || []).map((d) => ({
+                        ...d,
+                        message: shortMsg(d.message, 80),
+                        logs: undefined,
+                    })),
+                    matches: {
+                        ...payload.matches,
+                        message: shortMsg(payload.matches && payload.matches.message, 120),
+                        logs: [],
+                        phases: [],
+                    },
+                    runtime: {
+                        uptimeSec: runtime.uptimeSec,
+                        cpuPercent: runtime.cpuPercent,
+                        memory: runtime.memory
+                            ? {
+                                  rssBytes: runtime.memory.rssBytes,
+                                  rssPercentOfSystem: runtime.memory.rssPercentOfSystem,
+                              }
+                            : undefined,
+                    },
+                };
+            }
+            return res.json(payload);
         } catch (e) {
             return res.status(500).json({ error: e.message });
         }
@@ -4452,10 +4542,9 @@ initDB().then(async () => {
         const raw = String(req.path || '').split('?')[0];
         if (!raw.toLowerCase().endsWith('.html')) return next();
         if (raw.includes('..')) return res.status(400).end();
-        if (raw.startsWith('/doc-screenshots/')) {
-            return next();
-        }
-        if (raw.startsWith('/docs') || raw.startsWith('/architectui-react-pro')) {
+        // F-PUB-02: doc-screenshots и ArchitectUI demo — только с сессией (не анонимно).
+        // /docs* обрабатывает protectDocumentationRoutes (F-PUB-05: admin).
+        if (raw.startsWith('/docs')) {
             return next();
         }
         /** Юридические страницы (политики) — без авторизации. */
@@ -4524,8 +4613,22 @@ initDB().then(async () => {
                 return res.redirect(302, '/architectui-react-pro' + req.path + qs);
             });
         }
-        // Router: сначала статика, затем index.html для любых оставшихся GET (надёжнее, чем отдельный app.get после static).
+        // Router: auth → статика → index.html (F-PUB-02: demo не анонимный).
         const architectuiRouter = express.Router();
+        architectuiRouter.use(async (req, res, next) => {
+            try {
+                const actor = await authModule.getActor(req);
+                if (!actor) {
+                    const then = encodeURIComponent(
+                        String(req.originalUrl || '/architectui-react-pro/').split('#')[0]
+                    );
+                    return res.redirect(302, `/login.html?then=${then}`);
+                }
+                return next();
+            } catch (e) {
+                return next(e);
+            }
+        });
         architectuiRouter.use(express.static(architectuiDemoDir));
         architectuiRouter.get(/.*/, (req, res, next) => {
             if (req.method !== 'GET' && req.method !== 'HEAD') return next();

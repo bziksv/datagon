@@ -115,7 +115,7 @@ Body:
 { "username": "admin", "password": "...", "then": "/dashboard.html" }
 ```
 
-`then` опционален. В ответе — `auth_token`, `page_modes`, **`redirect_after_login`** (безопасный путь; при полностью закрытой матрице — `/no-access.html`). Cookie сессии `dg_session`: `httpOnly` + `SameSite=Lax` + **`Secure`** за TLS (`X-Forwarded-Proto` / `req.secure`, либо `DATAGON_COOKIE_SECURE=1|0`). Rate-limit: **5** неудачных попыток на IP+username за **15** мин → **429** `LOGIN_RATE_LIMIT`. Неизвестный `/api/*` без записи в `API_PREFIX_RULES` → **403** `API_UNMATCHED`; отсутствие ключа в `page_modes` → **`hidden`** (не `full`). HTML-лист вне `PAGE_DEFS` (напр. `/ref/*.html`) для не-admin → redirect **`/no-access.html`** (F-ACL-04); `login` / `legal` / admin — без изменений.
+`then` опционален. В ответе — `auth_token`, `page_modes`, **`redirect_after_login`** (безопасный путь; при полностью закрытой матрице — `/no-access.html`). Cookie сессии `dg_session`: `httpOnly` + `SameSite=Lax` + **`Secure`** за TLS (`X-Forwarded-Proto` / `req.secure`, либо `DATAGON_COOKIE_SECURE=1|0`). Rate-limit: **5** неудачных попыток на IP+username за **15** мин → **429** `LOGIN_RATE_LIMIT`. Лимит параллельных сессий (`auth_session_user_limit`, по умолчанию 1) применяется **и к admin** (F-AUTH-07): лишние старые revoke при новом логине. Неизвестный `/api/*` без записи в `API_PREFIX_RULES` → **403** `API_UNMATCHED`; отсутствие ключа в `page_modes` → **`hidden`** (не `full`). HTML-лист вне `PAGE_DEFS` (напр. `/ref/*.html`) для не-admin → redirect **`/no-access.html`** (F-ACL-04); `login` / `legal` / admin — без изменений. **`/docs/*`** — только **admin** (F-PUB-05); **`/doc-screenshots/*`** и **`/architectui-react-pro`** требуют сессию (F-PUB-02). Express **`trust proxy`** по умолчанию 1 (F-DEP-07).
 
 ### POST `/api/login`
 Legacy-алиас входа (тот же обработчик, что и выше).
@@ -2197,6 +2197,8 @@ Body: `{ days }` (max = **`ms_orders_sync_days`**; если не передан�
 
 Дополнительные поля ответа: `forDate` (фактически применённая дата), `forDateOptions` (массив из 14 допустимых дат, новейшая первая), `moscowToday`, `isToday`.
 
+**F-DBA-04:** при `processes=view` (не admin) ответ урезан: пустые `moysklad.logs` / `moyskladPersistedLogs` / `matches.logs` / `matches.phases`, короткие `message`, без `runtime.pid` / `loadAvg`; флаг `view_safe: true`. Режим `full` и admin — полный снимок.
+
 Размер базы считается через `information_schema.TABLES` и кэшируется на 5 минут.
 
 ### GET `/api/processes/db-size`
@@ -2207,7 +2209,7 @@ Body: `{ days }` (max = **`ms_orders_sync_days`**; если не передан�
 
 Используется виджетом «Дисковое пространство» на дашборде (`/dashboard.html`). Матрица API (F-OPS-02): ключ **`processes`** (как `GET /db-size`) — не `dashboard=view`. Принудительный пересчёт также выполняется в составе ежедневной фоновой задачи `db_size` (галка «Размер БД и диска» в `/settings.html` → раздел «Авто-синхронизация»; одна задача `auto_sync_runs.task_type = 'db_size'` обновляет и размер БД, и разбивку диска). Возвращает:
 
-- `projectPath` — абсолютный путь к корню проекта (`__dirname` сервера);
+- `projectPath` — абсолютный путь к корню проекта (`__dirname` сервера); **только admin** (F-DBA-03; не-admin — поле отсутствует, скрытые папки из `folders` убраны);
 - `projectSizeBytes`, `projectFileCount`, `rootFilesBytes`, `rootFilesCount` — суммарный размер всех каталогов проекта, общее число файлов и размер/количество файлов в самом корне;
 - `folders` — массив верхнеуровневых каталогов (включая `.git`, `node_modules`, `vendor`, `docs-docusaurus` и т.д.), отсортированный по убыванию размера. Каждый элемент: `{ name, isHidden, sizeBytes, fileCount, dirCount, errorCount }`. `errorCount` показывает, сколько файлов не удалось прочитать (нет доступа) — отражается badge «нет доступа: N» на UI;
 - `fileSystem` — объём ФС, в которой лежит проект, через `fs.statfs`: `{ sizeBytes, freeBytes, usedBytes, usedPercent }` (или `{ error }`, если `fs.statfs` недоступен в текущей версии Node);
@@ -2413,6 +2415,8 @@ Preflight матча «Менеджер по продажам» ↔ Planfix `/us
 Перед синком в UI Planfix у отчёта выставьте тот же период (API generate даты не принимает). Обрыв TLS Planfix повторяется до 4 раз.
 
 Повторный POST, пока синк жив: **409** `{ success: false, error, attached: true, …planfix-sync-status }`. Лок сбрасывается, если нет прогресса **> 45 мин**.
+
+**F-OPS-04:** боевой sync (не `dry_run`) — не больше **8** запусков / час / пользователь → **429** `PLANFIX_SYNC_RATE_LIMIT`. Старт пишется в activity (`kind: ops_planfix_sync`). `planfix_rest_api_key` в `GET /api/settings` маскируется.
 
 ### PUT `/api/ops-sheet/planfix-status-map`
 
@@ -2650,7 +2654,7 @@ Body: `{ "days": 30, "date_from?", "date_to?", "customer_code?", "customer_codes
 
 ## Управление БД
 
-Страница `/db-admin.html`, роутер `routes/dbAdmin.js`, каталог связей `lib/datagonDbRelations.js`. Только **основная** MySQL Datagon (не CMS сайтов). Доступ API: **строго `username === admin`** (не `can_manage_users`). Ключ матрицы HTML: `db-admin`. UI: [Управление БД](/docs/db-admin/). Имена таблиц для preview/ANALYZE/OPTIMIZE сверяются с `information_schema` текущей схемы — произвольный SQL запрещён. **Превью запрещено** для `app_settings`, `users`, `auth_sessions`, `work_*_passwords`, `work_services`. В остальных таблицах колонки с `password`/`token`/`secret`/`api_key`/`hash` маскируются.
+Страница `/db-admin.html`, роутер `routes/dbAdmin.js`, каталог связей `lib/datagonDbRelations.js`. Только **основная** MySQL Datagon (не CMS сайтов). Доступ API: **строго `username === admin`** (не `can_manage_users`). Ключ матрицы HTML: `db-admin`. UI: [Управление БД](/docs/db-admin/). Имена таблиц для preview/ANALYZE/OPTIMIZE сверяются с `information_schema` текущей схемы — произвольный SQL запрещён. **Превью запрещено** для `app_settings`, `users`, `auth_sessions`, `work_*_passwords`, `work_services`. В остальных таблицах колонки с `password`/`token`/`secret`/`api_key`/`hash` маскируются. **F-DBA-06:** каждый preview → activity `db_preview`; ANALYZE/OPTIMIZE → `db_maintain`.
 
 ### GET `/api/db-admin/overview`
 
@@ -3411,15 +3415,15 @@ Query: `days` (default 90, max 1825).
 
 ## Активность
 
-Маршруты `routes/activity.js`. UI — верх `/processes.html` ([Активность / Логи](/docs/processes/)). `GET /events`: только **admin** или `can_manage_users`. `POST /track`: любая сессия (pageKey API `null`). Префикс `/activity/events` в матрице привязан к ключу **`processes`**, но роутер дополнительно режет по manage-users.
+Маршруты `routes/activity.js`. UI — верх `/processes.html` ([Активность / Логи](/docs/processes/)). `GET /events`: только **admin** (F-DBA-02). `POST /track`: любая сессия (pageKey API `null`). Префикс `/activity/events` в матрице привязан к ключу **`processes`**, но роутер дополнительно режет по admin.
 
 ### GET `/api/activity/events`
 
-Выборка событий (фильтры/пагинация — в роутере).
+Выборка событий (фильтры/пагинация — в роутере). `detail` на чтении проходит sanitize (F-DBA-05).
 
 ### POST `/api/activity/track`
 
-Регистрация события с клиента.
+Регистрация события с клиента. До **25** событий/запрос; **≤30** запросов/мин/user → **429** `ACTIVITY_TRACK_RATE_LIMIT`. `detail` — sanitize + cap **2KB** (не 8KB).
 
 ## Минимальные проверки через curl
 
