@@ -1,0 +1,2670 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Datagon — аудит безопасности (живой отчёт)</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: #1a2332;
+      --panel2: #243044;
+      --text: #e7ecf3;
+      --muted: #9aa8bc;
+      --accent: #3d8bfd;
+      --ok: #3dd68c;
+      --warn: #f0b429;
+      --crit: #f07178;
+      --info: #7aa2f7;
+      --border: #2e3a4d;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      --sans: "Segoe UI", system-ui, -apple-system, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: var(--sans);
+      font-size: 15px;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.55;
+    }
+    a { color: var(--accent); }
+    header.app {
+      position: sticky; top: 0; z-index: 20;
+      background: rgba(15, 20, 25, 0.92);
+      backdrop-filter: blur(8px);
+      border-bottom: 1px solid var(--border);
+      padding: 0.9rem 1.25rem;
+      display: flex; flex-wrap: wrap; gap: 0.75rem 1.5rem;
+      align-items: baseline; justify-content: space-between;
+    }
+    header.app h1 {
+      margin: 0;
+      font-size: 1.55rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      line-height: 1.2;
+    }
+    header.app .meta { color: var(--muted); font-size: 0.85rem; }
+    .wrap { max-width: 1100px; margin: 0 auto; padding: 1.25rem; }
+    nav.toc {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem 1.15rem;
+      margin-bottom: 1.5rem;
+    }
+    nav.toc h2 {
+      margin: 0 0 0.75rem;
+      font-size: 1.2rem;
+      font-weight: 700;
+      line-height: 1.25;
+    }
+    nav.toc ol { margin: 0; padding-left: 1.2rem; columns: 2; gap: 1.5rem; }
+    nav.toc li { break-inside: avoid; margin: 0.25rem 0; font-size: 0.9rem; }
+    @media (max-width: 720px) { nav.toc ol { columns: 1; } }
+    .badge {
+      display: inline-block;
+      font-size: 0.72rem;
+      font-weight: 650;
+      letter-spacing: 0.02em;
+      padding: 0.12rem 0.45rem;
+      border-radius: 999px;
+      border: 1px solid transparent;
+      vertical-align: middle;
+      text-transform: uppercase;
+    }
+    .badge.todo { background: #2a3344; color: var(--muted); border-color: var(--border); }
+    .badge.wip { background: #2a3a55; color: var(--info); border-color: #3a5080; }
+    .badge.done { background: #1e3d32; color: var(--ok); border-color: #2f6b52; }
+    .badge.crit { background: #3d1f24; color: var(--crit); border-color: #6b3038; }
+    .badge.high { background: #3d2e14; color: var(--warn); border-color: #6b5220; }
+    .badge.med { background: #2a3344; color: #c0cad8; border-color: var(--border); }
+    .badge.low { background: #1e2a3a; color: #8fa0b8; border-color: var(--border); }
+    .badge.info { background: #1e2a44; color: var(--info); border-color: #334a7a; }
+    .badge.fixed { background: #1a3d2e; color: #5dffb0; border-color: #2f8b5c; }
+    .badge.partial { background: #3d3520; color: #e6c35c; border-color: #6b5a28; }
+    .finding.fixed-out { opacity: 0.92; border-left: 3px solid #2f8b5c; padding-left: 0.65rem; }
+    .finding .fix-note {
+      margin-top: 0.55rem; padding: 0.45rem 0.6rem;
+      background: #1a3d2e; border: 1px solid #2f8b5c; border-radius: 6px;
+      font-size: 0.88rem; color: #c8f0dc;
+    }
+    .finding .fix-note.partial {
+      background: #3d3520; border-color: #6b5a28; color: #f0e2b0;
+    }
+    section.block {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.15rem 1.3rem 1.35rem;
+      margin-bottom: 1.15rem;
+    }
+    section.block > h2 {
+      margin: 0 0 0.4rem;
+      font-size: 1.35rem;
+      font-weight: 700;
+      line-height: 1.25;
+      letter-spacing: -0.015em;
+      display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center;
+    }
+    section.block .sub { color: var(--muted); font-size: 0.92rem; margin-bottom: 0.9rem; }
+    section.block h3 {
+      margin: 1.15rem 0 0.45rem;
+      font-size: 1.05rem;
+      font-weight: 650;
+      line-height: 1.3;
+    }
+    .grid-stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 0.65rem;
+      margin: 0.85rem 0 1rem;
+    }
+    .stat {
+      background: var(--panel2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.65rem 0.75rem;
+    }
+    .stat .n { font-size: 1.45rem; font-weight: 750; line-height: 1.1; }
+    .stat .l { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin-top: 0.2rem; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9rem;
+    }
+    th, td {
+      border-bottom: 1px solid var(--border);
+      padding: 0.45rem 0.55rem;
+      text-align: left;
+      vertical-align: top;
+    }
+    th { color: var(--muted); font-weight: 600; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.03em; }
+    code, .mono { font-family: var(--mono); font-size: 0.84em; }
+    .finding {
+      border: 1px solid var(--border);
+      background: var(--panel2);
+      padding: 0.65rem 0.85rem;
+      margin: 0.5rem 0;
+      border-radius: 6px;
+    }
+    .finding .title { font-weight: 650; margin-bottom: 0.25rem; }
+    .finding .ev { color: var(--muted); font-size: 0.88rem; }
+    .placeholder {
+      color: var(--muted);
+      font-style: italic;
+      font-size: 0.92rem;
+      padding: 0.5rem 0;
+    }
+    .warn-box {
+      background: #3d2e14;
+      border: 1px solid #6b5220;
+      color: #f5d78e;
+      border-radius: 8px;
+      padding: 0.85rem 1rem;
+      font-size: 0.92rem;
+      margin: 0.75rem 0 1.1rem;
+    }
+    footer {
+      color: var(--muted);
+      font-size: 0.8rem;
+      padding: 1.5rem 0 2.5rem;
+      text-align: center;
+    }
+    ul.compact { margin: 0.3rem 0; padding-left: 1.2rem; }
+    ul.compact li { margin: 0.18rem 0; }
+  </style>
+</head>
+<body>
+  <header class="app">
+    <h1>Datagon — аудит безопасности</h1>
+    <div class="meta">
+      Живой отчёт · старт: 2026-10-25 · файл вне <code>public/</code> ·
+      <strong>шаг 20/20</strong> · P0 отмечены в отчёте · <code>270624f</code>
+    </div>
+  </header>
+
+  <div class="wrap">
+    <div class="warn-box">
+      <strong>Конфиденциально.</strong> Отчёт лежит в <code>docs/security-audit/</code> и
+      <strong>не</strong> должен попадать в раздачу nginx/<code>public/</code>.
+      Находки могут содержать пути и описание векторов — не публиковать наружу.
+      Режим работы: <strong>1 итерация чата = 1 шаг</strong>, глубокое погружение, без «всё сразу».
+    </div>
+
+    <section class="block" id="overview">
+      <h2>Обзор <span class="badge done">каркас</span></h2>
+      <div class="sub">Цель: систематический security-review панели Datagon (vanilla + Node API + доступ по специальностям).</div>
+      <div class="grid-stats">
+        <div class="stat"><div class="n">20</div><div class="l">шагов аудита</div></div>
+        <div class="stat"><div class="n">20</div><div class="l">заполнено</div></div>
+        <div class="stat"><div class="n">5</div><div class="l">critical</div></div>
+        <div class="stat"><div class="n">38</div><div class="l">high</div></div>
+        <div class="stat"><div class="n">145</div><div class="l">findings всего</div></div>
+        <div class="stat"><div class="n">~55</div><div class="l">страниц / ключей матрицы</div></div>
+        <div class="stat"><div class="n">34</div><div class="l">файлов routes/*</div></div>
+      </div>
+      <h3>Метод на каждый шаг</h3>
+      <ul class="compact">
+        <li>Код: <code>static-html/vanilla</code>, <code>routes/</code>, <code>lib/</code>, <code>server.js</code>, deploy.</li>
+        <li>Контракты: auth / матрица <code>specialty_page_modes</code> / API prefix rules.</li>
+        <li>Угрозы: IDOR, privilege escalation, XSS, SQLi, CSRF, SSRF, secret leak, mass-assignment, path traversal.</li>
+        <li>Результат шага: секция + findings (severity / evidence / risk / fix).</li>
+      </ul>
+      <h3>Легенда severity</h3>
+      <p>
+        <span class="badge crit">critical</span> компрометация системы / массовый доступ к данным<br />
+        <span class="badge high">high</span> обход ACL / утечка секретов / опасная запись<br />
+        <span class="badge med">medium</span> ограниченный impact или нужна цепочка<br />
+        <span class="badge low">low</span> hardening / defense-in-depth<br />
+        <span class="badge info">info</span> наблюдение без прямой угрозы
+      </p>
+    </section>
+
+    <nav class="toc" id="toc">
+      <h2>План шагов (20) — по одному за итерацию</h2>
+      <ol>
+        <li><a href="#step-01">Шаг 1 · Auth / сессии / cookies / login</a> <span class="badge done">готово</span></li>
+        <li><a href="#step-02">Шаг 2 · Матрица доступа + API_PREFIX_RULES</a> <span class="badge done">готово</span></li>
+        <li><a href="#step-03">Шаг 3 · Секреты, config, env, логи</a> <span class="badge done">готово</span></li>
+        <li><a href="#step-04">Шаг 4 · SQL / инъекции / query builders</a> <span class="badge done">готово</span></li>
+        <li><a href="#step-05">Шаг 5 · XSS / CSP / HTML-вывод</a> <span class="badge done">готово</span></li>
+        <li><a href="#step-06">Шаг 6 · Deploy / nginx / headers / TLS / CORS</a> <span class="badge done">готово</span></li>
+        <li><a href="#step-07">Шаг 7 · Settings + users + specialties</a> <span class="badge done">готово</span></li>
+        <li><a href="#step-08">Шаг 8 · Finance (API + UI)</a> <span class="badge done">готово</span></li>
+        <li><a href="#step-09">Шаг 9 · WORK пароли / сервисы</a> <span class="badge done">готово</span></li>
+        <li><a href="#step-10">Шаг 10 · Work-schedule + CRM sync</a> <span class="badge done">готово</span></li>
+        <li><a href="#step-11">Шаг 11 · db-admin + processes / auto-sync</a> <span class="badge done">готово</span></li>
+        <li><a href="#step-12">Шаг 12 · МойСклад-кластер</a> <span class="badge done">готово</span></li>
+        <li><a href="#step-13">Шаг 13 · Закупки / поставщики / анализ / product</a> <span class="badge done">готово</span></li>
+        <li><a href="#step-14">Шаг 14 · Парсинг: sites / projects / queue / results / matches</a> <span class="badge done">готово</span></li>
+        <li><a href="#step-15">Шаг 15 · my-products + network-prices</a> <span class="badge done">готово</span></li>
+        <li><a href="#step-16">Шаг 16 · Маркетплейсы (config + shop + issues)</a> <span class="badge done">готово</span></li>
+        <li><a href="#step-17">Шаг 17 · New products / photoshoot / huckster / dimensions</a> <span class="badge done">готово</span></li>
+        <li><a href="#step-18">Шаг 18 · Dashboard / manager-sales / ops-sheet</a> <span class="badge done">готово</span></li>
+        <li><a href="#step-19">Шаг 19 · Публичное: login, docs, static, ref</a> <span class="badge done">готово</span></li>
+        <li><a href="#step-20">Шаг 20 · Сводка, приоритеты, план фиксов</a> <span class="badge done">готово</span></li>
+      </ol>
+    </nav>
+
+    <section class="block" id="step-01">
+      <h2>Шаг 1 · Auth / сессии / cookies / login <span class="badge done">готово</span></h2>
+      <div class="sub">
+        Дата: 2026-10-25 · Код: <code>routes/auth.js</code>, <code>server.js</code> (gate <code>/api</code>),
+        <code>public/login.html</code>, <code>lib/datagonPageRegistry.js#resolveRedirectAfterLogin</code>.
+      </div>
+
+      <h3>Модель</h3>
+      <ul class="compact">
+        <li>Токен: <code>randomBytes(32)</code> → в БД только <code>SHA-256</code> hash. Cookie <code>dg_session</code> httpOnly + SameSite=Lax <strong>и</strong> дубль в localStorage + <code>x-auth-token</code>.</li>
+        <li>Gate: почти весь <code>/api/*</code> требует актёра (исключения: login/logout, CRM clock sync).</li>
+        <li>Пароли: bcrypt cost 10, мин. 15 символов. Лимит сессий (дефолт 1), admin без лимита. TTL 14 дней.</li>
+        <li>Redirect <code>then</code>: только внутренние <code>*.html</code> без <code>..</code> + проверка матрицы.</li>
+      </ul>
+
+      <h3>Сильные стороны</h3>
+      <ul class="compact">
+        <li>Hash токена в БД; httpOnly cookie; единый текст ошибки логина; revoke сессий при смене пароля / архиве; санитизация redirect.</li>
+      </ul>
+
+      <h3>Findings</h3>
+
+      <div class="finding" id="F-AUTH-01">
+        <div class="title"><span class="badge high">high</span> F-AUTH-01 · Session token в localStorage + login JSON</div>
+        <div class="ev">
+          Login отдаёт <code>auth_token</code>; клиент кладёт в <code>localStorage</code> и шлёт <code>x-auth-token</code>.
+          XSS = кража сессии до 14 дней, минуя httpOnly.
+          <strong>Fix:</strong> cookie-only, убрать token из JSON/localStorage.
+        </div>
+      </div>
+
+      <div class="finding" id="F-AUTH-02">
+        <div class="title"><span class="badge high">high</span> F-AUTH-02 · Нет rate-limit / lockout на login</div>
+        <div class="ev">
+          Публичный <code>POST /api/auth/login</code> без throttle/CAPTCHA (rateLimit/helmet отсутствуют).
+          <strong>Fix:</strong> limit_req / 5 попыток на IP+user / backoff + алерт в activity.
+        </div>
+      </div>
+
+      <div class="finding" id="F-AUTH-03">
+        <div class="title"><span class="badge high">high</span> F-AUTH-03 · Cookie без флага Secure</div>
+        <div class="ev">
+          <code>attachSessionCookie</code>: httpOnly + SameSite=Lax, <code>secure</code> не задан.
+          <strong>Fix:</strong> <code>secure: true</code> за TLS; те же атрибуты в <code>clearCookie</code>.
+        </div>
+      </div>
+
+      <div class="finding" id="F-AUTH-04">
+        <div class="title"><span class="badge med">medium</span> F-AUTH-04 · Смена пароля без текущего (self)</div>
+        <div class="ev">
+          <code>POST /change-password</code> для своего аккаунта не требует old password → украденная сессия = полный захват.
+          <strong>Fix:</strong> требовать <code>currentPassword</code> для non-admin.
+        </div>
+      </div>
+
+      <div class="finding" id="F-AUTH-05">
+        <div class="title"><span class="badge med">medium</span> F-AUTH-05 · Timing user-enumeration</div>
+        <div class="ev">
+          Нет пользователя → быстрый 401; есть → bcrypt.compare. <strong>Fix:</strong> dummy bcrypt на miss.
+        </div>
+      </div>
+
+      <div class="finding" id="F-AUTH-06">
+        <div class="title"><span class="badge med">medium</span> F-AUTH-06 · Нет CSRF-токена</div>
+        <div class="ev">
+          Cookie-auth без CSRF token; SameSite=Lax частично закрывает classic CSRF.
+          <strong>Fix:</strong> double-submit / Strict + отказ от localStorage token (связка с F-AUTH-01).
+        </div>
+      </div>
+
+      <div class="finding" id="F-AUTH-07">
+        <div class="title"><span class="badge low">low</span> F-AUTH-07 · Admin без лимита сессий</div>
+        <div class="ev">Украденные admin-токены живут параллельно. Fix: лимит + UI revoke/list сессий.</div>
+      </div>
+
+      <div class="finding" id="F-AUTH-08">
+        <div class="title"><span class="badge low">low</span> F-AUTH-08 · bcrypt 10; DELETE user без revoke sessions</div>
+        <div class="ev">Поднятие rounds до 12; перед delete — revoke sessions.</div>
+      </div>
+
+      <div class="finding" id="F-AUTH-09">
+        <div class="title"><span class="badge info">info</span> F-AUTH-09 · <code>x-auth-username</code> не используется сервером</div>
+        <div class="ev">Auth только по token. Убрать header с клиента или задокументировать как display-only.</div>
+      </div>
+
+      <h3>Приоритет фиксов (шаг 1)</h3>
+      <ol>
+        <li>P0: Secure cookie + rate-limit login</li>
+        <li>P0/P1: cookie-only (без localStorage token)</li>
+        <li>P1: currentPassword; dummy bcrypt</li>
+        <li>P2: CSRF/Strict; лимит admin; bcrypt 12</li>
+      </ol>
+    </section>
+
+    <section class="block" id="step-02">
+      <h2>Шаг 2 · Матрица доступа + API_PREFIX_RULES <span class="badge done">готово</span></h2>
+      <div class="sub">
+        Дата: 2026-10-25 · Код: <code>lib/datagonPageRegistry.js</code>, <code>lib/datagonSpecialties.js</code>,
+        middleware в <code>server.js</code> (~3674), HTML gate (~4251), <code>routes/specialties.js</code>.
+      </div>
+
+      <h3>Модель</h3>
+      <ul class="compact">
+        <li>Специальность → <code>specialty_page_modes</code> (<code>hidden</code> / <code>view</code> / <code>full</code>) на каждый <code>PAGE_DEFS.key</code>.</li>
+        <li>Новые страницы для не-default специальностей дозаливаются как <strong>hidden</strong>; «Полный доступ» — <strong>full</strong>.</li>
+        <li>API: <code>API_PREFIX_RULES</code> → pageKey; middleware: hidden→403, view→только GET/HEAD/OPTIONS; admin обходит всё.</li>
+        <li><code>pageKey == null</code> → <strong>ACL не применяется</strong> (достаточно сессии).</li>
+        <li>HTML: любой <code>*.html</code> (кроме login/legal/docs/architectui) требует сессию; матрица — только если leaf есть в <code>HTML_FILE_TO_KEY</code>.</li>
+        <li>МП-дочерние: parent <code>exports-marketplaces=hidden</code>, но child <code>view|full</code> открывает HTML; API shop в основном на parent key.</li>
+        <li><code>can_manage_users</code>: открывает settings HTML + <code>/auth/users*</code> + GET specialties (запись specialties — только admin).</li>
+      </ul>
+
+      <h3>Сильные стороны</h3>
+      <ul class="compact">
+        <li>Единый реестр страниц + режимы; view/full на уровне HTTP-метода; длинные API-префиксы раньше коротких.</li>
+        <li>crm-task-links / product-updates делают доп. <code>assertActorPageAccess</code> внутри роутера (не только prefix).</li>
+        <li>Дочерние МП можно выдать без всего блока parent (HTML) — осознанный UX.</li>
+        <li>Менеджер пользователей не может писать матрицу specialties (только admin).</li>
+      </ul>
+
+      <h3>Findings</h3>
+
+      <div class="finding" id="F-ACL-01">
+        <div class="title"><span class="badge high">high</span> F-ACL-01 · Fail-open: неизвестный API path = любой авторизованный</div>
+        <div class="ev">
+          <code>if (pageKey == null) return next()</code> в <code>server.js</code>.
+          Любой новый/забытый <code>/api/…</code> без записи в <code>API_PREFIX_RULES</code> доступен всем с сессией.
+          Пример: <code>/something-unknown → NULL</code>.
+          <strong>Fix:</strong> fail-closed (403 если не matched), whitelist null только для явного списка (<code>/auth/me</code>, track, …).
+        </div>
+      </div>
+
+      <div class="finding" id="F-ACL-02">
+        <div class="title"><span class="badge high">high</span> F-ACL-02 · Fail-open mode: нет ключа в page_modes → <code>full</code></div>
+        <div class="ev">
+          <code>getApiPageModeForActor</code> / <code>getActorPageMode</code>: <code>pm[pageKey] || 'full'</code>.
+          При рассинхроне матрицы (нет строки) пользователь получает полный доступ к разделу вместо hidden.
+          <strong>Fix:</strong> default <code>hidden</code> (fail-closed); admin по-прежнему full.
+        </div>
+      </div>
+
+      <div class="finding" id="F-ACL-03">
+        <div class="title"><span class="badge high">high</span> F-ACL-03 · Грубый ACL API маркетплейсов vs матрица по магазинам</div>
+        <div class="ev">
+          HTML: ozon/wb/yandex/issues/… — отдельные ключи; API почти всё под <code>/exports/marketplaces</code> → pageKey
+          <code>exports-marketplaces</code>. Пользователь с parent=<code>full</code> и child=<code>hidden</code> всё равно дергает общий API всех магазинов.
+          Обратно: только child full + parent hidden → HTML открыт, API parent hidden → 403 (ломает UX).
+          <strong>Fix:</strong> scope в API (shop/channel) + проверка соответствующего pageKey; или отдельные prefix rules.
+        </div>
+      </div>
+
+      <div class="finding" id="F-ACL-04">
+        <div class="title"><span class="badge med">medium</span> F-ACL-04 · HTML вне реестра открыт любому с сессией</div>
+        <div class="ev">
+          <code>isHtmlLeafAccessHidden</code>: <code>if (!pk) return false</code> — незарегистрированный leaf (напр. <code>ref/*.html</code>, забытый экран)
+          не скрывается матрицей. Нужна только валидная сессия.
+          <strong>Fix:</strong> неизвестный leaf → redirect no-access (кроме явного allowlist: login, legal).
+        </div>
+      </div>
+
+      <div class="finding" id="F-ACL-05">
+        <div class="title"><span class="badge med">medium</span> F-ACL-05 · Страницы без API_PREFIX (дыра покрытия)</div>
+        <div class="ev">
+          Нет отдельного API rule: <code>exports-marketplaces-ozon|wildberries|yandex|issues|reglament</code>,
+          <code>work-schedule-settings</code>, <code>product</code> (API <code>/product</code> → <code>purchase</code>), <code>sections</code>.
+          Часть ок (статика), часть — связка F-ACL-03 / путаница purchase vs product.
+        </div>
+      </div>
+
+      <div class="finding" id="F-ACL-06">
+        <div class="title"><span class="badge med">medium</span> F-ACL-06 · view = любой GET, включая потенциально «тяжёлые»/side-effect GET</div>
+        <div class="ev">
+          Middleware смотрит только метод. Если где-то GET запускает sync/export — view-пользователь пройдёт.
+          <strong>Fix:</strong> audit GET с side effects (шаги доменов); mutating только POST + assert write.
+        </div>
+      </div>
+
+      <div class="finding" id="F-ACL-07">
+        <div class="title"><span class="badge low">low</span> F-ACL-07 · <code>can_manage_users</code> обходит hidden settings</div>
+        <div class="ev">
+          Осознанно для управления пользователями. Риск: доступ к UI настроек шире, чем «только юзеры»
+          (остальные секции settings зависят от фронта). Ужесточить: отдельная страница users или server-side hide блоков.
+        </div>
+      </div>
+
+      <div class="finding" id="F-ACL-08">
+        <div class="title"><span class="badge info">info</span> F-ACL-08 · work-schedule OR settings; crm-task-links null на prefix</div>
+        <div class="ev">
+          work-schedule API берёт max(work-schedule, work-schedule-settings) — ок для бухгалтерии.
+          <code>/exports/new-products/crm-task-links</code> в rules = null, но роутер сам зовёт <code>assertActorPageAccess</code> — компенсировано.
+        </div>
+      </div>
+
+      <h3>Приоритет фиксов (шаг 2)</h3>
+      <ol>
+        <li>P0: fail-closed на unmatched API + default mode hidden</li>
+        <li>P1: shop-scoped ACL для marketplaces API</li>
+        <li>P1: неизвестный HTML leaf → deny</li>
+        <li>P2: инвентаризация GET side-effects; сузить can_manage_users UI</li>
+      </ol>
+    </section>
+
+    <section class="block" id="step-03">
+      <h2>Шаг 3 · Секреты, config, env, логи <span class="badge done">готово</span></h2>
+      <div class="sub">
+        Дата: 2026-10-25 · Код: <code>config.js</code> (gitignore), <code>server.js</code> load log,
+        <code>routes/settings.js</code> GET <code>/</code>, <code>lib/datagonFinanceCredentials.js</code> (mask),
+        env fallbacks <code>MS_TOKEN</code> / <code>CRM_PRIME_DB_*</code>.
+        <strong>В отчёт не копируются значения секретов</strong> — только классы и пути.
+      </div>
+
+      <h3>Где лежат секреты</h3>
+      <ul class="compact">
+        <li><code>config.js</code> (локально, в <code>.gitignore</code>): DB host/user/password, <code>msToken</code>, CRM Prime DB password.</li>
+        <li>Env override: <code>MS_TOKEN</code>, <code>CRM_PRIME_DB_*</code>, <code>DATAGON_CLOCK_SYNC_SECRET</code> (sync CRM), proxy/heap flags.</li>
+        <li>БД <code>app_settings</code>: ozon/wb/ym keys, huckster email/password, planfix key, <code>fetch_proxy_list</code> (часто с user:pass), finance JWT/tokens (отдельные ключи).</li>
+        <li>Финансы: публичные API отдают <code>*_mask</code> через <code>maskSecret</code> — хорошо; сырьё в БД plaintext.</li>
+      </ul>
+
+      <h3>Сильные стороны</h3>
+      <ul class="compact">
+        <li><code>config.js</code> в gitignore; в истории git файла не видно (проверка <code>git log -- config.js</code> пуста).</li>
+        <li>GET settings вычищает <code>finance_*_credentials</code> / legacy jwt из ответа.</li>
+        <li>Finance credentials API использует маски; marketplace status — <code>maskSet</code> (есть/нет), не полный ключ в status.</li>
+      </ul>
+
+      <h3>Findings</h3>
+
+      <div class="finding fixed-out" id="F-SEC-01">
+        <div class="title"><span class="badge crit">critical</span> <span class="badge fixed">исправлено</span> F-SEC-01 · Startup log дампит весь <code>appSettings</code></div>
+        <div class="ev">
+          <code>server.js</code>: <code>console.log('[Settings] Loaded', appSettings)</code> —
+          в stdout/pm2 попадают ozon/wb/ym keys, huckster_password, proxy list с паролями и т.д.
+          Любой с доступом к логам сервера = полный набор интеграционных секретов.
+          <strong>Fix:</strong> логировать только несекретные ключи / counts; redact по denylist (<code>*password*</code>, <code>*api_key*</code>, <code>*token*</code>, <code>*secret*</code>, <code>*jwt*</code>, <code>fetch_proxy_list</code>).
+          <div class="fix-note"><strong>2026-10-25 · <code>270624f</code>:</strong> <code>redactAppSettingsForLog</code> в <code>lib/datagonSecretRedact.js</code>; на проде в логе маски (<code>3c24…7b60</code>).</div>
+        </div>
+      </div>
+
+      <div class="finding fixed-out" id="F-SEC-02">
+        <div class="title"><span class="badge crit">critical</span> <span class="badge fixed">исправлено</span> F-SEC-02 · <code>GET /api/settings</code> отдаёт секреты plaintext</div>
+        <div class="ev">
+          После delete finance_* в ответе остаются <code>ozon_api_key</code>, <code>wb_api_key</code>, <code>ym_api_key</code>,
+          <code>huckster_password</code>, <code>planfix_rest_api_key</code>, <code>fetch_proxy_list</code> и др. целиком.
+          Любой с доступом к settings (full / can_manage_users UI / ACL-дыры шага 2) читает боевые ключи.
+          <strong>Fix:</strong> в GET — только masks + length; запись — отдельный POST с «оставить как было» если пустое поле;
+          UI уже умеет verify с маской (<code>datagon-settings-save-feedback</code>).
+          <div class="fix-note"><strong>2026-10-25 · <code>270624f</code>:</strong> <code>publicSettingsSnapshot</code> → <code>""</code> + <code>*_set</code>/<code>*_mask</code>; POST пустой секрет = не менять; UI placeholder.</div>
+        </div>
+      </div>
+
+      <div class="finding" id="F-SEC-03">
+        <div class="title"><span class="badge high">high</span> F-SEC-03 · Секреты в <code>config.js</code> на диске + MS/CRM plaintext</div>
+        <div class="ev">
+          Файл содержит пароли MySQL Datagon, CRM Prime, MoySklad token. Gitignore есть, но файл на серверах/ноутбуках,
+          бэкапах, агентских копиях. Нет обязательного перехода на env-only.
+          <strong>Fix:</strong> только env / secret store; ротация всех значений из текущего <code>config.js</code>;
+          шаблон <code>config.example.js</code> без секретов; права файла 600.
+          <em>Рекомендация: ротировать DB/MS/CRM креды, т.к. файл читался в ходе аудита на рабочей машине.</em>
+        </div>
+      </div>
+
+      <div class="finding" id="F-SEC-04">
+        <div class="title"><span class="badge high">high</span> F-SEC-04 · Секреты в <code>app_settings</code> без at-rest encryption</div>
+        <div class="ev">
+          Маркетплейсы, huckster, proxy, bank tokens — plaintext в MySQL. Дамп БД / SQL injection / db-admin =
+          полная компрометация интеграций.
+          <strong>Fix:</strong> encrypt-at-rest (KMS/app key), ограничить db-admin (шаг 11), бэкапы шифровать.
+        </div>
+      </div>
+
+      <div class="finding fixed-out" id="F-SEC-05">
+        <div class="title"><span class="badge med">medium</span> <span class="badge partial">частично</span> F-SEC-05 · Proxy list с credentials в settings + логах</div>
+        <div class="ev">
+          <code>fetch_proxy_list</code> часто <code>socks5://user:pass@host</code>; попадает в F-SEC-01/02.
+          <strong>Fix:</strong> хранить отдельно, в API — только host:port count; пароли write-only.
+          <div class="fix-note partial"><strong>2026-10-25 · <code>270624f</code>:</strong> GET/log маскируют список; POST пустой = keep. Отдельное хранилище / count-only — ещё нет.</div>
+        </div>
+      </div>
+
+      <div class="finding" id="F-SEC-06">
+        <div class="title"><span class="badge med">medium</span> F-SEC-06 · Нет <code>.env.example</code> / единой политики секретов</div>
+        <div class="ev">
+          Смесь config.js + process.env + app_settings без чеклиста «что куда». Риск деплоя с дефолтами / копипастой.
+          <strong>Fix:</strong> документ + example env; запрет секретов в репо (secret scan в CI).
+        </div>
+      </div>
+
+      <div class="finding" id="F-SEC-07">
+        <div class="title"><span class="badge low">low</span> F-SEC-07 · .gitignore не покрывает <code>.env</code> явно (но config.js да)</div>
+        <div class="ev">
+          В корневом gitignore первая строка — <code>config.js</code>; <code>.env</code> не перечислен (файла сейчас нет).
+          Добавить <code>.env</code>, <code>.env.*</code>, <code>!.env.example</code>.
+        </div>
+      </div>
+
+      <div class="finding" id="F-SEC-08">
+        <div class="title"><span class="badge info">info</span> F-SEC-08 · Finance mask vs Settings inconsistency</div>
+        <div class="ev">
+          Банки уже на масках; настройки МП/huckster — нет. Выровнять паттерн maskSecret на все секретные ключи settings GET.
+        </div>
+      </div>
+
+      <h3>Приоритет фиксов (шаг 3)</h3>
+      <ol>
+        <li>P0: убрать/редact <code>[Settings] Loaded</code>; маскировать GET /api/settings</li>
+        <li>P0: ротация секретов из config.js + перевод на env</li>
+        <li>P1: write-only секреты в UI; encrypt app_settings sensitive keys</li>
+        <li>P2: .env.example, gitignore .env, CI secret scan</li>
+      </ol>
+    </section>
+
+    <section class="block" id="step-04">
+      <h2>Шаг 4 · SQL / инъекции / query builders <span class="badge done">готово</span></h2>
+      <div class="sub">
+        Дата: 2026-10-25 · Скан: <code>db.query</code> с интерполяцией, динамический ORDER BY/LIMIT/IN,
+        <code>routes/mysites.js</code>, <code>dbAdmin.js</code>, <code>work.js</code>, list-роуты (pages/medmarket/…).
+      </div>
+
+      <h3>Общая картина</h3>
+      <ul class="compact">
+        <li>Большинство list API: значения через <code>?</code>, ORDER BY через whitelist map (<code>pages</code>, <code>medmarketStore</code>, <code>suppliers</code>, <code>myproducts</code>) — ок.</li>
+        <li><code>IN (...)</code> почти везде через <code>ids.map(() =&gt; '?')</code> + params — ок.</li>
+        <li>Динамический <code>SET col = ?</code> в finance/productUpdates — имена колонок из кода, не из сырого body key — ок по SQLi (mass-assignment отдельно).</li>
+        <li>Главный риск: <strong>идентификаторы</strong> (имена таблиц/полей CMS) из конфига сайта без валидации.</li>
+      </ul>
+
+      <h3>Findings</h3>
+
+      <div class="finding fixed-out" id="F-SQL-01">
+        <div class="title"><span class="badge crit">critical</span> <span class="badge fixed">исправлено</span> F-SQL-01 · Second-order SQLi: поля CMS в my-sites → синк</div>
+        <div class="ev">
+          POST/PUT <code>/api/my-sites</code> сохраняет <code>table_products</code>, <code>field_*</code>, <code>wa_field_*</code>, <code>wa_table_skus</code>
+          из body без проверки идентификатора. Синк подставляет их в SQL:
+          <code>`… sk.${site.wa_field_sku_val} … FROM ${site.table_products}`</code> (<code>routes/mysites.js</code>).
+          Злоумышленник с правом my-sites (или admin) может выполнить произвольный SQL на <strong>БД донора CMS</strong>
+          (и повлиять на sync в Datagon). Также <code>SELECT id FROM ${table_products}</code> при сохранении.
+          <strong>Fix:</strong> whitelist <code>/^[A-Za-z_][A-Za-z0-9_]*$/</code> (или schema.table с двумя частями);
+          запрет пробелов/кавычек/точек с запятой; quoteIdent; тест на отказ инъекций.
+          <div class="fix-note"><strong>2026-10-25 · <code>270624f</code>:</strong> <code>assertMySiteSqlIdents</code> / <code>quoteSqlIdent</code> на write+sync (mysites, sync-worker, server, cms price write).</div>
+        </div>
+      </div>
+
+      <div class="finding fixed-out" id="F-SQL-02">
+        <div class="title"><span class="badge high">high</span> <span class="badge partial">частично</span> F-SQL-02 · Пароли CMS БД в my_sites + коннект с произвольного host</div>
+        <div class="ev">
+          Связано с F-SQL-01: <code>db_host/user/pass</code> хранятся и сервер коннектится наружу (SSRF-подобный к MySQL).
+          Комбинация: подставить host + инъекция в field → exfil. Детали SSRF — шаг 14; здесь — SQL surface.
+          <strong>Fix:</strong> allowlist хостов/VPN; encrypt db_pass; валидация идентификаторов (F-SQL-01).
+          <div class="fix-note partial"><strong>2026-10-25 · <code>270624f</code>:</strong> idents закрыты; GET маскирует <code>db_pass</code>; PUT пустой = keep. Allowlist host / encrypt — ещё нет.</div>
+        </div>
+      </div>
+
+      <div class="finding" id="F-SQL-03">
+        <div class="title"><span class="badge med">medium</span> F-SQL-03 · db-admin preview: динамическое имя таблицы</div>
+        <div class="ev">
+          Есть <code>IDENT_RE</code> + проверка в information_schema + <code>quoteIdent</code> — приемлемо.
+          Но доступ у <code>admin</code> <strong>или</code> <code>can_manage_users</code> (шире, чем «только admin»).
+          LIMIT численный — ок. <strong>Fix:</strong> только admin; audit log превью.
+        </div>
+      </div>
+
+      <div class="finding" id="F-SQL-04">
+        <div class="title"><span class="badge med">medium</span> F-SQL-04 · Миграции ALTER TABLE с конкатенацией имени колонки</div>
+        <div class="ev">
+          <code>exportsNewProducts</code> / <code>dimensions</code> / <code>msSales</code>:
+          <code>ALTER TABLE \` + table + \` ADD COLUMN \` + column</code>.
+          Обычно константы из кода — низкий риск, пока table/column не приходят из query.
+          <strong>Fix:</strong> assert allowlist констант перед ALTER; не принимать имена с клиента.
+        </div>
+      </div>
+
+      <div class="finding" id="F-SQL-05">
+        <div class="title"><span class="badge low">low</span> F-SQL-05 · LIKE с user search (wildcard abuse)</div>
+        <div class="ev">
+          Параметризованный <code>LIKE %</code>+raw+<code>%</code> (pages и др.) — не классический SQLi, но <code>%</code>/<code>_</code>
+          в поиске расширяют выборку / нагрузку. <strong>Fix:</strong> escape LIKE meta.
+        </div>
+      </div>
+
+      <div class="finding" id="F-SQL-06">
+        <div class="title"><span class="badge info">info</span> F-SQL-06 · ORDER BY / IN / finance SET — в целом безопасны</div>
+        <div class="ev">
+          Whitelist sort maps; IN placeholders; finance PATCH собирает фиксированные <code>col = ?</code>.
+          WORK: <code>ent.table</code> из реестра сущностей — не из сырого path без lookup.
+          Поставщик-label: имена таблиц — литералы в массиве кода.
+        </div>
+      </div>
+
+      <h3>Приоритет фиксов (шаг 4)</h3>
+      <ol>
+        <li>P0: валидация идентификаторов my-sites (F-SQL-01) + регрессионные тесты</li>
+        <li>P1: сузить db-admin; allowlist CMS hosts</li>
+        <li>P2: escape LIKE; assert на ALTER helpers</li>
+      </ol>
+    </section>
+
+    <section class="block" id="step-05">
+      <h2>Шаг 5 · XSS / CSP / HTML-вывод <span class="badge done">готово</span></h2>
+      <div class="sub">
+        Дата: 2026-10-25 · Скан: <code>innerHTML</code> / <code>asHtml</code> action-log,
+        <code>escapeHtml</code>/<code>esc</code>, CSP/security headers в Node и
+        <code>deploy/nginx-*.conf</code>, href из данных API.
+      </div>
+
+      <h3>Общая картина</h3>
+      <ul class="compact">
+        <li>Панель — SPA-like vanilla: сотни <code>innerHTML = …</code> в <code>static-html/vanilla</code>.</li>
+        <li>Паттерн «хороший»: локальный <code>esc()</code> / <code>escapeHtml()</code> + <code>textContent</code>;
+          <code>DatagonNotify</code> экранирует title/message.</li>
+        <li>Паттерн «опасный»: расширенный action-log (<code>asHtml: true</code>) собирает HTML из
+          фильтров / ошибок API / <code>j.note</code> <strong>без</strong> escape — эталон правила
+          action-log extended буквально просит <code>innerHTML</code> с цифрами.</li>
+        <li><strong>CSP нет</strong> ни в Node (<code>server.js</code> без security headers), ни в nginx
+          (только HSTS на frontend conf). Любой XSS = выполнение скрипта без ограничений.</li>
+        <li>Усилитель из шага 1: токен сессии в <code>localStorage</code> + cookie — XSS крадёт сессию до 14 дней
+          (обход httpOnly на cookie через дубль в LS / <code>x-auth-token</code>).</li>
+      </ul>
+
+      <h3>Сильные стороны</h3>
+      <ul class="compact">
+        <li>Finance cash/plan: <code>purpose</code>, контрагенты, ошибки банков — через <code>esc()</code> в таблицах и списках.</li>
+        <li>Processes auto-sync sections: <code>escapeText</code> на title/extras перед <code>innerHTML</code>.</li>
+        <li>New-products confirm collision: <code>escapeHtml</code> на article/code/title.</li>
+        <li>Product linkify: <code>textContent</code> для текста ссылки; URL_RE не матчит <code>javascript:</code>
+          (только http(s), <code>//</code>, <code>*.html</code>, email).</li>
+      </ul>
+
+      <h3>Findings</h3>
+
+      <div class="finding" id="F-XSS-01">
+        <div class="title"><span class="badge high">high</span> F-XSS-01 · Action-log HTML: фильтры и ошибки без escape</div>
+        <div class="ev">
+          <code>medmarket.scripts.html</code>: <code>describeAppliedFilters()</code> вставляет
+          <code>f.search</code> / code / name / medmarket_code <strong>сырьём</strong> в строку →
+          <code>showActionLog(…, true)</code> → <code>innerHTML</code>.
+          Фильтры пишутся в <code>URLSearchParams</code> (<code>p.set("search", …)</code>) —
+          отражённый XSS по ссылке + клик «Заполнить коды…» (preflight тоже asHtml).
+          В том же summary: <code>er.code</code> / <code>er.error</code> из ответа МС без esc.
+          Аналог: <code>my-products</code> — <code>describeMpAppliedFilters()</code> (search, siteLabel),
+          <code>j.note</code>, <code>st.message</code>, <code>er.error</code> в
+          <code>formatBulkSyncPriceSummary</code> / hold → <code>showMpActionLog(…, true)</code>.
+          Issues/ops-sheet/finance имеют тот же API <code>asHtml</code> (finance в итогах обычно esc’ает).
+          <strong>Impact:</strong> кража <code>localStorage</code> токена / CSRF-подобные действия от имени жертвы.
+          <strong>Fix:</strong> единый <code>DatagonFmt.escapeHtml</code> (или DOMPurify allowlist) на
+          <em>все</em> пользовательские/внешние поля перед склейкой HTML; фильтры — только через esc;
+          для ошибок API — esc; предпочтительно собирать DOM через <code>createElement</code>/<code>textContent</code>.
+        </div>
+      </div>
+
+      <div class="finding" id="F-XSS-02">
+        <div class="title"><span class="badge high">high</span> F-XSS-02 · Нет Content-Security-Policy (и почти нет browser hardening)</div>
+        <div class="ev">
+          В <code>server.js</code> / routes — нет <code>Content-Security-Policy</code>,
+          <code>X-Content-Type-Options</code>, <code>X-Frame-Options</code> / <code>frame-ancestors</code>.
+          <code>deploy/nginx-p.datagon.ru-frontend.conf</code>: есть HSTS; CSP отсутствует.
+          Без CSP inline XSS (F-XSS-01) выполняется полностью; нет report-uri.
+          <strong>Fix:</strong> CSP report-only → enforce: <code>default-src 'self'</code>;
+          script — nonce или hash (сейчас много inline scripts в HTML — нужна миграция);
+          <code>object-src 'none'</code>; <code>base-uri 'self'</code>; <code>frame-ancestors 'none'</code>.
+          Параллельно: <code>nosniff</code>, Referrer-Policy (детали — шаг 6).
+        </div>
+      </div>
+
+      <div class="finding" id="F-XSS-03">
+        <div class="title"><span class="badge med">medium</span> F-XSS-03 · <code>e.message</code> → <code>innerHTML</code> (work-schedule)</div>
+        <div class="ev">
+          <code>work-schedule.scripts.html</code> / <code>work-schedule-settings.scripts.html</code>:
+          <code>throw new Error(j.error)</code> → catch →
+          <code>tb.innerHTML = '…' + (e.message || "Ошибка")</code> без esc.
+          Если API когда-либо отразит пользовательский ввод в <code>error</code> — XSS в UI бухгалтерии/руководителя.
+          Сейчас чаще фиксированные строки — риск отложенный / при утечке деталей SQL.
+          <strong>Fix:</strong> <code>escapeHtml(e.message)</code> или <code>textContent</code>.
+        </div>
+      </div>
+
+      <div class="finding" id="F-XSS-04">
+        <div class="title"><span class="badge med">medium</span> F-XSS-04 · <code>href</code> из данных без allowlist схемы</div>
+        <div class="ev">
+          <code>results.scripts.html</code>: <code>aProd.href = pageUrl</code> из БД парсинга
+          (<code>page_url</code>). Значение <code>javascript:…</code> / <code>data:text/html…</code>
+          → XSS по клику (если парсер/сайт-донор отдал такой URL).
+          <code>my-products</code> / competitors: product URL с CMS — тот же класс риска.
+          Product linkify безопаснее (URL_RE), но raw <code>a.href = raw</code> для http(s) — ок.
+          <strong>Fix:</strong> allowlist <code>^https?:</code> (и относительные <code>/</code>); иначе <code>textContent</code> без ссылки.
+        </div>
+      </div>
+
+      <div class="finding" id="F-XSS-05">
+        <div class="title"><span class="badge med">medium</span> F-XSS-05 · Имя сайта / note API в HTML summary без esc</div>
+        <div class="ev">
+          В my-products action-log: <code>siteNameById[id]</code> (имя из my_sites) и
+          <code>String(j.note)</code> / <code>st.message</code> попадают в asHtml-строку.
+          Пользователь с правом my-sites может задать имя
+          <code>&lt;img src=x onerror=…&gt;</code> → stored XSS у коллеги при bulk sync цен
+          (цепочка с F-SQL-01 по поверхности доверия к my-sites).
+          <strong>Fix:</strong> esc на имена сущностей и любые строки статуса из API.
+        </div>
+      </div>
+
+      <div class="finding" id="F-XSS-06">
+        <div class="title"><span class="badge low">low</span> F-XSS-06 · Разрозненные <code>esc()</code>, нет единого экспорта</div>
+        <div class="ev">
+          ~20 scripts с локальным <code>esc</code>/<code>escapeHtml</code>; остальные без хелпера.
+          <code>DatagonNotify.escapeHtml</code> не экспортирован в <code>window.DatagonFmt</code>.
+          Легко забыть esc в новом action-log (правило extended как раз провоцирует HTML).
+          <strong>Fix:</strong> <code>DatagonFmt.escapeHtml</code> + линтер/чек «asHtml ⇒ esc»;
+          обновить rule action-log: «цифры ок, строки — только escaped».
+        </div>
+      </div>
+
+      <div class="finding" id="F-XSS-07">
+        <div class="title"><span class="badge info">info</span> F-XSS-07 · DOMPurify / Trusted Types не используются</div>
+        <div class="ev">
+          Нет DOMPurify, нет Trusted Types. Для панели с богатым HTML в логах — осознанный выбор
+          «свой esc», но без CSP (F-XSS-02) запас прочности нулевой.
+          <code>document.write</code> / <code>eval</code> в vanilla не найдены (хорошо).
+        </div>
+      </div>
+
+      <h3>Приоритет фиксов (шаг 5)</h3>
+      <ol>
+        <li>P0: esc во всех <code>format*Summary</code> / describe*Filters / errors[] перед asHtml (F-XSS-01, F-XSS-05)</li>
+        <li>P1: CSP report-only + nosniff / frame-ancestors (F-XSS-02; пересечение с шагом 6)</li>
+        <li>P1: allowlist схемы для <code>href</code> из БД (F-XSS-04)</li>
+        <li>P2: единый <code>DatagonFmt.escapeHtml</code>; починить work-schedule catch (F-XSS-03, F-XSS-06)</li>
+      </ol>
+    </section>
+
+    <section class="block" id="step-06">
+      <h2>Шаг 6 · Deploy / nginx / headers / TLS / CORS <span class="badge done">готово</span></h2>
+      <div class="sub">
+        Дата: 2026-10-25 · Код: <code>deploy/nginx-p.datagon.ru*.conf</code>,
+        <code>docs-docusaurus/docs/deploy.md</code>, <code>server.js</code> (listen, bodyParser, HTML gate),
+        <code>routes/auth.js</code> cookie, <code>routes/workSchedule.js#clientIp</code>.
+      </div>
+
+      <h3>Архитектура на краю</h3>
+      <ul class="compact">
+        <li>TLS на nginx → <code>proxy_pass http://127.0.0.1:3000</code> (Express / pm2 <code>parser-app</code>).</li>
+        <li>Два примера: упрощённый <code>nginx-p.datagon.ru.conf</code> и «боевой» frontend
+          (<code>…-frontend.conf</code>: QUIC, gzip, HSTS, HTTP→HTTPS 301, FastPanel includes).</li>
+        <li>Статика расширений (<code>js/css/…</code>) с <code>root …/public</code> + <code>expires 30d</code>;
+          остальное (HTML/API) — в Node.</li>
+        <li>Проброс: <code>Host</code>, <code>X-Real-IP</code>, <code>X-Forwarded-For</code>, <code>X-Forwarded-Proto</code>.</li>
+        <li>CORS middleware в Node <strong>нет</strong> — браузерный API с чужого origin по умолчанию закрыт;
+          фронт ходит <code>credentials: "same-origin"</code>.</li>
+      </ul>
+
+      <h3>Сильные стороны</h3>
+      <ul class="compact">
+        <li>Frontend-конфиг: редирект :80→HTTPS; <code>ssl_protocols TLSv1.2 TLSv1.3</code>; HSTS 1 год.</li>
+        <li>Proxy на loopback Node; комментарии в conf против PHP-FPM на <code>/</code>.</li>
+        <li><code>disable_symlinks if_not_owner</code> в frontend conf.</li>
+        <li>Отчёт аудита лежит вне <code>public/</code> — nginx static root его не отдаёт.</li>
+      </ul>
+
+      <h3>Findings</h3>
+
+      <div class="finding" id="F-DEP-01">
+        <div class="title"><span class="badge high">high</span> F-DEP-01 · Упрощённый nginx: HTTP без редиректа и без HSTS</div>
+        <div class="ev">
+          <code>deploy/nginx-p.datagon.ru.conf</code>: server :80 полностью проксирует приложение
+          (не <code>return 301 https://…</code>). HSTS / security headers отсутствуют на обоих server{} этого файла.
+          При выкладке «упрощённого» примера сессия идёт cleartext; усиливает F-AUTH-03 (cookie без <code>Secure</code>).
+          <strong>Fix:</strong> единый канон = frontend-паттерн (301 + HSTS); упрощённый conf либо удалить, либо
+          сделать таким же; в deploy.md явно «не использовать conf без HTTPS-redirect».
+        </div>
+      </div>
+
+      <div class="finding" id="F-DEP-02">
+        <div class="title"><span class="badge high">high</span> F-DEP-02 · Node слушает <code>0.0.0.0:3000</code> (обход nginx)</div>
+        <div class="ev">
+          <code>app.listen(PORT)</code> без host → все интерфейсы. Если firewall/security-group не режет 3000 снаружи,
+          API доступен в обход HSTS, TLS и любых будущих nginx <code>limit_req</code> / headers.
+          Документация проверяет <code>localhost:3000</code>, но не требует bind только на 127.0.0.1.
+          <strong>Fix:</strong> <code>app.listen(PORT, '127.0.0.1')</code> (или env <code>BIND_HOST</code>);
+          ufw/sg: 3000 только localhost; проверка <code>ss -lntp | grep 3000</code> в чеклисте деплоя.
+        </div>
+      </div>
+
+      <div class="finding" id="F-DEP-03">
+        <div class="title"><span class="badge high">high</span> F-DEP-03 · На краю почти нет security headers (кроме HSTS)</div>
+        <div class="ev">
+          Frontend conf: только <code>Strict-Transport-Security</code> (+ Alt-Svc). Нет
+          <code>Content-Security-Policy</code>, <code>X-Content-Type-Options: nosniff</code>,
+          <code>X-Frame-Options</code> / <code>frame-ancestors</code>, <code>Referrer-Policy</code>,
+          <code>Permissions-Policy</code>. Node тоже не выставляет (см. F-XSS-02).
+          Clickjacking панели + нет CSP-сетки на XSS.
+          <strong>Fix:</strong> <code>add_header</code> в nginx (и/или middleware в Express) с учётом
+          нюанса nginx: <code>add_header</code> в location наследует не всегда — дублировать в нужных блоках;
+          CSP сначала Report-Only.
+        </div>
+      </div>
+
+      <div class="finding" id="F-DEP-04">
+        <div class="title"><span class="badge med">medium</span> F-DEP-04 · Нет <code>limit_req</code> / rate-limit на login у nginx</div>
+        <div class="ev">
+          В обоих conf нет <code>limit_req_zone</code> на <code>/api/auth/login</code> (и смежные).
+          В приложении тоже нет (F-AUTH-02). Край — естественное место для первого слоя.
+          <strong>Fix:</strong> zone по <code>$binary_remote_addr</code>, например 5 r/m на login + burst;
+          429 с понятным телом; не забыть real IP за proxy (уже есть X-Real-IP).
+        </div>
+      </div>
+
+      <div class="finding" id="F-DEP-05">
+        <div class="title"><span class="badge med">medium</span> F-DEP-05 · PHP FastCGI location на корне сайта</div>
+        <div class="ev">
+          Frontend conf: <code>location ~ \.php$</code> → unix socket FastPanel, <code>root $root_path</code>
+          (корень репозитория, не только <code>public/</code>). Любой загруженный/оставленный <code>.php</code>
+          в дереве сайта исполняется вне Node ACL.
+          <strong>Fix:</strong> убрать PHP location, если PHP не нужен; иначе <code>root</code> только в песочницу
+          без секретов; запрет <code>.php</code> под <code>public/</code> в gitignore/deploy.
+        </div>
+      </div>
+
+      <div class="finding" id="F-DEP-06">
+        <div class="title"><span class="badge med">medium</span> F-DEP-06 · <code>bodyParser.json({ limit: '32mb' })</code> без общего rate-limit</div>
+        <div class="ev">
+          Глобальный JSON body до 32 МБ на любой <code>/api</code> — удобно для импортов, но без квот
+          аутентифицированный (и до auth на login) клиент может долбить память/CPU.
+          <strong>Fix:</strong> меньший default (1–2mb) + точечно больший limit на upload-роутах;
+          nginx <code>client_max_body_size</code>; connection limits.
+        </div>
+      </div>
+
+      <div class="finding" id="F-DEP-07">
+        <div class="title"><span class="badge med">medium</span> F-DEP-07 · Доверие к <code>X-Forwarded-For</code> без <code>trust proxy</code></div>
+        <div class="ev">
+          <code>workSchedule.clientIp</code> берёт первый IP из XFF. Express <code>trust proxy</code> не включён.
+          Клиент, бьющий Node напрямую (F-DEP-02) или при неверной схеме proxy, подставляет любой IP в audit/clock.
+          <strong>Fix:</strong> <code>app.set('trust proxy', 1)</code> только за nginx; IP = <code>req.ip</code>;
+          не принимать XFF от не-прокси.
+        </div>
+      </div>
+
+      <div class="finding" id="F-DEP-08">
+        <div class="title"><span class="badge low">low</span> F-DEP-08 · HSTS без includeSubDomains; IP сервера в git</div>
+        <div class="ev">
+          HSTS: <code>max-age=31536000</code> без <code>includeSubDomains</code> / preload.
+          В conf зашит <code>listen 155.212.171.103:…</code> — инфраструктурный IP в репозитории.
+          <strong>Fix:</strong> при политике поддоменов — includeSubDomains; listen на <code>*</code>/<code>0.0.0.0</code>
+          или плейсхолдер в примерах; IP не коммитить.
+        </div>
+      </div>
+
+      <div class="finding" id="F-DEP-09">
+        <div class="title"><span class="badge info">info</span> F-DEP-09 · CORS не настроен (same-origin OK); публичные <code>/docs</code> и ArchitectUI</div>
+        <div class="ev">
+          Отсутствие CORS — нормально для same-site панели. HTML gate в <code>server.js</code>
+          пропускает без сессии <code>/docs*</code> и <code>/architectui-react-pro*</code> —
+          осознанно для справки/демо; детали утечек — шаг 19. Убедиться, что в docs нет секретов/внутренних URL с токенами.
+        </div>
+      </div>
+
+      <div class="finding" id="F-DEP-10">
+        <div class="title"><span class="badge info">info</span> F-DEP-10 · TLS 1.2/1.3 и proxy headers — ок</div>
+        <div class="ev">
+          Протоколы современные; <code>ssl_prefer_server_ciphers off</code> (упрощённый) — приемлемо для TLS1.3.
+          Проверить на проде актуальный сертификат (в frontend conf имя файла с датой 2026-04-30) и автообновление.
+        </div>
+      </div>
+
+      <h3>Приоритет фиксов (шаг 6)</h3>
+      <ol>
+        <li>P0: bind Node на 127.0.0.1 + firewall; HTTPS-only nginx (301 + HSTS на всех conf)</li>
+        <li>P0: <code>Secure</code> на <code>dg_session</code> (F-AUTH-03) согласованно с HTTPS</li>
+        <li>P1: security headers + CSP Report-Only; <code>limit_req</code> на login</li>
+        <li>P2: убрать/изолировать PHP location; уменьшить JSON body limit; trust proxy = 1</li>
+      </ol>
+    </section>
+
+    <section class="block" id="step-07">
+      <h2>Шаг 7 · Settings + users + specialties <span class="badge done">готово</span></h2>
+      <div class="sub">
+        Дата: 2026-10-25 · Код: <code>routes/settings.js</code>, <code>routes/auth.js</code> (users/password),
+        <code>routes/specialties.js</code>, <code>lib/datagonSpecialties.js</code>,
+        middleware ACL в <code>server.js</code>, UI <code>settings.scripts.html</code>.
+      </div>
+
+      <h3>Модель доступа</h3>
+      <ul class="compact">
+        <li><strong>admin</strong> (username): обход матрицы; CRUD пользователей; матрица специальностей; всё settings.</li>
+        <li><strong>can_manage_users</strong>: открывает <code>/settings.html</code> даже при <code>settings=hidden</code>
+          (shell только «Пользователи»); API bypass только
+          <code>/api/auth/users*</code> (все методы) + <strong>GET</strong> <code>/api/specialties*</code>.
+          Создаёт пользователей; не может выдать «Полный доступ», менять чужие записи, archive/delete, permissions.</li>
+        <li><strong>Матрица settings</strong>: <code>view</code> → GET settings (секреты plaintext — F-SEC-02);
+          <code>full</code> → POST ключей, auto-sync, retention и т.д.</li>
+        <li>Запись специальностей / матрицы режимов — только admin (роутер specialties).</li>
+      </ul>
+
+      <h3>Сильные стороны</h3>
+      <ul class="compact">
+        <li>Нельзя назначить «Полный доступ» при создании не-admin’ом; новый user всегда <code>can_manage_users=0</code>.</li>
+        <li>Нельзя удалить/архивировать встроенного admin; нельзя удалить системную специальность с пользователями.</li>
+        <li>UI shell менеджера скрывает глобальные настройки; смена пароля чужого — только admin.</li>
+        <li>Whitelist полей POST <code>/api/settings</code> (не mass-assignment произвольных ключей).</li>
+        <li>Архив пользователя → revoke сессий.</li>
+      </ul>
+
+      <h3>Findings</h3>
+
+      <div class="finding" id="F-SET-01">
+        <div class="title"><span class="badge high">high</span> F-SET-01 · Один page-key <code>settings</code> = секреты + расписание + опасные действия</div>
+        <div class="ev">
+          Любой с <code>settings=view|full</code> читает ozon/wb/ym/huckster/proxy keys (F-SEC-02).
+          С <code>full</code> — перезаписывает ключи, retention, формулы продаж, прокси.
+          Менеджер пользователей без settings в матрице секреты не получает (хорошо), но любая
+          «широкая» специальность с settings=full = полный контроль интеграций.
+          <strong>Fix:</strong> разделить page keys (<code>settings-users</code> / <code>settings-integrations</code> /
+          <code>settings-autosync</code>); GET secrets только admin или write-only masks.
+        </div>
+      </div>
+
+      <div class="finding" id="F-SET-02">
+        <div class="title"><span class="badge high">high</span> F-SET-02 · <code>POST /api/settings/auto-sync-run</code> — любой settings=full</div>
+        <div class="ev">
+          Эндпоинт в <code>server.js</code> ставит в очередь любую задачу из реестра (цены CMS, МС, финансы Точка,
+          marketplaces, …) без доп. роли. Abuse: нагрузка на МС/МП, перезапись цен, гонки с продом.
+          Нет server-side confirm / idempotency token / audit aparte от auto_sync_runs.
+          <strong>Fix:</strong> только admin или отдельный mode; rate-limit; для destructive задач —
+          обязательный <code>confirm: true</code> + запись в activity с user_id.
+        </div>
+      </div>
+
+      <div class="finding" id="F-SET-03">
+        <div class="title"><span class="badge med">medium</span> F-SET-03 · Middleware bypass <code>/auth/users*</code> на все методы</div>
+        <div class="ev">
+          <code>can_manage_users</code> → <code>next()</code> для любого метода на <code>/auth/users…</code>.
+          Сейчас handlers режут archive/delete/put/permissions до admin — ок, но новый маршрут
+          без проверки = мгновенная эскалация. Create user позволяет плодить учётки (phishing / шум).
+          <strong>Fix:</strong> bypass только GET list + POST create; остальное — через матрицу/admin;
+          audit уже есть на create — расширить алерты.
+        </div>
+      </div>
+
+      <div class="finding" id="F-SET-04">
+        <div class="title"><span class="badge med">medium</span> F-SET-04 · Смена пароля без текущего (self) + admin reset</div>
+        <div class="ev">
+          <code>POST /api/auth/change-password</code>: достаточно сессии; поле текущего пароля нет
+          (см. F-AUTH-04). Украденный token (XSS/LS) → смена пароля + revoke чужих сессий жертвы =
+          полный захват. Admin reset чужих — ожидаемо, но без step-up.
+          <strong>Fix:</strong> для self требовать <code>currentPassword</code>; для admin — re-auth / TOTP.
+        </div>
+      </div>
+
+      <div class="finding" id="F-SET-05">
+        <div class="title"><span class="badge med">medium</span> F-SET-05 · Специальностей: имя без UNIQUE; rename системной</div>
+        <div class="ev">
+          Защита «Полный доступ» завязана на <code>name === 'Полный доступ'</code>.
+          <code>renameSpecialty</code> может переименовать системную; можно создать дубликат имени
+          (нет UNIQUE). Тогда запрет менеджеру на «Полный доступ» обходится второй одноимённой
+          специальностью с нужными mode, либо ломается seed/default lookup.
+          <strong>Fix:</strong> <code>is_system</code> флаг; UNIQUE(name); запрет rename/delete system id;
+          запрет assign по флагу, не по строке.
+        </div>
+      </div>
+
+      <div class="finding" id="F-SET-06">
+        <div class="title"><span class="badge med">medium</span> F-SET-06 · DELETE user без revoke сессий / без FK CASCADE</div>
+        <div class="ev">
+          <code>DELETE FROM users</code> без предварительного revoke (в отличие от archive).
+          Таблица <code>auth_sessions</code> без явного ON DELETE CASCADE в ensureAuthSchema —
+          риск сиротских сессий или ошибки FK / висящих hash.
+          <strong>Fix:</strong> revoke + delete sessions в той же транзакции; FK ON DELETE CASCADE.
+        </div>
+      </div>
+
+      <div class="finding" id="F-SET-07">
+        <div class="title"><span class="badge low">low</span> F-SET-07 · Пустая строка в POST settings затирает API key</div>
+        <div class="ev">
+          <code>if (ozon_api_key !== undefined) … String(ozon_api_key || '')</code> —
+          явная отправка <code>""</code> очищает ключ. UI verify ловит часть случаев, но гонка/баг формы =
+          outage интеграций. <strong>Fix:</strong> write-only: пустое = «не менять»; отдельный clear с confirm.
+        </div>
+      </div>
+
+      <div class="finding" id="F-SET-08">
+        <div class="title"><span class="badge low">low</span> F-SET-08 · <code>isAdmin</code>/<code>canManageUsers</code> в localStorage</div>
+        <div class="ev">
+          UI читает флаги из LS (можно подделать и увидеть чужие формы). API всё равно режет —
+          не RCE, но путаница + лишний attack surface для XSS (показ секретных полей до 403).
+          <strong>Fix:</strong> только из <code>/api/auth/me</code> в памяти; не персистить роли в LS.
+        </div>
+      </div>
+
+      <div class="finding" id="F-SET-09">
+        <div class="title"><span class="badge info">info</span> F-SET-09 · Хорошие инварианты (зафиксировать регрессионными тестами)</div>
+        <div class="ev">
+          Менеджер ≠ Full Access; permissions только admin; specialties write только admin;
+          users-manager shell; whitelist POST settings; activity log на create/archive.
+          Имеет смысл jest/supertest на эти 403/400.
+        </div>
+      </div>
+
+      <h3>Приоритет фиксов (шаг 7)</h3>
+      <ol>
+        <li>P0: маски секретов в GET + разделение page keys / auto-sync только admin (F-SET-01/02, F-SEC-02)</li>
+        <li>P1: currentPassword на self change-password; revoke при DELETE user</li>
+        <li>P1: is_system + UNIQUE на specialties</li>
+        <li>P2: сузить middleware bypass; write-only keys; роли не в localStorage</li>
+      </ol>
+    </section>
+
+    <section class="block" id="step-08">
+      <h2>Шаг 8 · Finance <span class="badge done">готово</span></h2>
+      <div class="sub">
+        Дата: 2026-10-25 · Код: <code>routes/finance.js</code>,
+        <code>lib/datagonFinance{Credentials,Cash,Plans,MsInventory}.js</code>,
+        клиенты Точка/Райф/Т‑Банк; UI <code>finance.scripts.html</code>.
+      </div>
+
+      <h3>Модель</h3>
+      <ul class="compact">
+        <li>Page key <code>finance</code>; в роутере свой <code>pageMode</code>:
+          только явные <code>full|view</code>, иначе <strong>hidden</strong> (строже глобального fail-open ACL).</li>
+        <li><code>requireFinanceAccess(req, res, write)</code> на эндпоинтах: view = чтение;
+          write (config/sync/cash/plan mutate) = только full.</li>
+        <li>Банковские секреты в <code>app_settings</code> JSON
+          (<code>finance_tochka_credentials</code>, raiff, tbank) + legacy <code>finance_tochka_jwt</code>.</li>
+        <li>GET <code>/api/finance/config</code> отдаёт только masks (<code>jwt_mask</code>, …);
+          GET <code>/api/settings</code> вычищает finance_* credentials.</li>
+        <li>Наличные/планы — общие таблицы компании (<code>created_by</code> для аудита, не ACL).</li>
+      </ul>
+
+      <h3>Сильные стороны</h3>
+      <ul class="compact">
+        <li>Маски в публичном config; write отделён от view на уровне роутера.</li>
+        <li>Fail-closed <code>pageMode</code> при отсутствии ключа в матрице.</li>
+        <li>ORDER BY транзакций через whitelist <code>TX_SORT_SQL</code>; direction только asc/desc.</li>
+        <li>Банковские HTTP-клиенты на фиксированные API base (не URL из body) — классический SSRF слабый.</li>
+        <li>UI finance в summary/errors в основном через <code>esc()</code> (шаг 5).</li>
+      </ul>
+
+      <h3>Findings</h3>
+
+      <div class="finding" id="F-FIN-01">
+        <div class="title"><span class="badge high">high</span> F-FIN-01 · JWT/токены банков plaintext в <code>app_settings</code></div>
+        <div class="ev">
+          Полные JWT Точки, refresh/client_secret Райфа, token Т‑Банка лежат JSON’ом в MySQL
+          (и дубль legacy JWT). Дамп БД / F-SQL / db-admin / F-SEC-01 лог = полный доступ к счетам организаций.
+          At-rest encryption нет (связка F-SEC-04).
+          <strong>Fix:</strong> encrypt-at-rest (KMS); не писать legacy plaintext JWT;
+          ротация при любом подозрении на утечку логов/бэкапа.
+        </div>
+      </div>
+
+      <div class="finding" id="F-FIN-02">
+        <div class="title"><span class="badge high">high</span> F-FIN-02 · <code>finance=view</code> = полная финансовая разведка</div>
+        <div class="ev">
+          View читает выписки (суммы, ИНН, назначения, контрагенты), балансы счетов, наличные шаблоны,
+          планы, аналитику, МС-остатки. Нет периметра по организации/счёту на пользователя —
+          любой «финансист view» видит всё юрлицо.
+          <strong>Fix:</strong> осознанно сузить, кому давать view; опционально scope по
+          <code>customer_code</code> / specialty; отдельный mode «только агрегаты» без строк выписки.
+        </div>
+      </div>
+
+      <div class="finding" id="F-FIN-03">
+        <div class="title"><span class="badge med">medium</span> F-FIN-03 · <code>finance=full</code>: wipe ключей, sync до 3 лет, удаление всех шаблонов</div>
+        <div class="ev">
+          Один full-пользователь: <code>clear:true</code> / delete credential; <code>POST /sync</code> с
+          <code>MAX_TX_DAYS=1095</code> (нагрузка на банки + долгий job); DELETE любого cash template / plan
+          без dual-control. Shared company data — не классический IDOR, но высокий blast radius insider.
+          <strong>Fix:</strong> confirm+activity на credential wipe; лимит sync days для UI ниже;
+          soft-delete шаблонов; опционально «два admin» на clear credentials.
+        </div>
+      </div>
+
+      <div class="finding" id="F-FIN-04">
+        <div class="title"><span class="badge med">medium</span> F-FIN-04 · Нет activity-лога на смену банковских ключей</div>
+        <div class="ev">
+          Upsert/delete/toggle JWT в <code>POST /config</code> не пишет <code>recordDatagonActivity</code>
+          (в отличие от create user). Сложнее расследовать «кто подменил токен».
+          <strong>Fix:</strong> audit: actor, bank, credential id, action (без секрета в detail).
+        </div>
+      </div>
+
+      <div class="finding" id="F-FIN-05">
+        <div class="title"><span class="badge med">medium</span> F-FIN-05 · Тяжёлые выборки / merge LIMIT 50000</div>
+        <div class="ev">
+          Ветка merge bank+cash тянет до 50k банковских строк в память на запрос — DoS по RAM
+          от авторизованного finance user. Sync до 3 лет усиливает.
+          <strong>Fix:</strong> жёстче page/cursor; не merge full dump; cap sync days в UI (90–180).
+        </div>
+      </div>
+
+      <div class="finding" id="F-FIN-06">
+        <div class="title"><span class="badge low">low</span> F-FIN-06 · <code>client_id</code> Райфа в plaintext в GET config</div>
+        <div class="ev">
+          <code>publicRaiffCredential</code> отдаёт <code>client_id</code> целиком (секреты — masks).
+          Не JWT, но идентифицирует OAuth-приложение. <strong>Fix:</strong> mask/prefix как у secret.
+        </div>
+      </div>
+
+      <div class="finding" id="F-FIN-07">
+        <div class="title"><span class="badge low">low</span> F-FIN-07 · <code>TOCHKA_API_BASE</code> из env без allowlist</div>
+        <div class="ev">
+          Переопределение base URL отправит JWT на чужой host при компрометации env/деплоя.
+          <strong>Fix:</strong> allowlist host <code>enter.tochka.com</code> (и sandbox); то же для других банков.
+        </div>
+      </div>
+
+      <div class="finding" id="F-FIN-08">
+        <div class="title"><span class="badge info">info</span> F-FIN-08 · Локальный fail-closed vs глобальный fail-open</div>
+        <div class="ev">
+          Finance роутер: нет ключа в матрице → hidden. Глобальный middleware: нет ключа → full.
+          Итог для finance всё равно deny (хорошо). Имеет смысл выровнять глобальный default на hidden
+          (шаг 2), чтобы другие модули вели себя так же.
+        </div>
+      </div>
+
+      <h3>Приоритет фиксов (шаг 8)</h3>
+      <ol>
+        <li>P0: encrypt банковских credentials at-rest + ротация при утечке логов (F-FIN-01)</li>
+        <li>P1: audit на смену ключей; ограничить, кому finance=view на полные выписки</li>
+        <li>P1: confirm на clear credentials; снизить MAX sync / merge limits</li>
+        <li>P2: mask client_id; allowlist bank API hosts</li>
+      </ol>
+    </section>
+
+    <section class="block" id="step-09">
+      <h2>Шаг 9 · WORK — пароли и сервисы <span class="badge done">готово</span></h2>
+      <div class="sub">
+        Дата: 2026-10-25 · Код: <code>routes/work.js</code>,
+        <code>lib/datagonWorkPrime{Entities,Schema}.js</code>, страницы
+        <code>work-{seo,dev,context}-passwords</code> / <code>work-services</code> / projects / staff.
+      </div>
+
+      <h3>Модель</h3>
+      <ul class="compact">
+        <li>Универсальный CRUD <code>/api/work/:slug</code> по реестру сущностей (table/pageKey из кода).</li>
+        <li>Пароли SEO/DEV/context + «Сервисы»: поля <code>password</code>, <code>admin_pass</code>, SSH/FTP,
+          <code>passYandex</code>/<code>passGoogle</code> — колонки VARCHAR/TEXT в MySQL.</li>
+        <li>List/get: <code>SELECT t.*</code> → в JSON уходят секреты целиком (UI type <code>copy</code>).</li>
+        <li>Scope: admin Datagon <strong>или <code>can_manage_users</code></strong> → unscoped (все строки);
+          иначе фильтр по assignees / id_glavn_user (для staff — только своя карточка).</li>
+        <li>Создание / hard-delete — только unscoped; soft-archive (status=0) — при доступе к строке.</li>
+        <li>Матрица page keys раздельная (seo-passwords ≠ dev-passwords ≠ services).</li>
+      </ul>
+
+      <h3>Сильные стороны</h3>
+      <ul class="compact">
+        <li>Имена таблиц из whitelist реестра, не из body (нет SQLi на identifier).</li>
+        <li>Sort keys только из <code>listCols</code>; create режется для не-admin.</li>
+        <li>Payout settings / recalc — <code>requireWorkAdmin</code> + full на seo-projects.</li>
+        <li>Разделение page keys между SEO/DEV/context паролями.</li>
+      </ul>
+
+      <h3>Findings</h3>
+
+      <div class="finding fixed-out" id="F-WORK-01">
+        <div class="title"><span class="badge crit">critical</span> <span class="badge fixed">исправлено</span> F-WORK-01 · Vault паролей клиентов в plaintext (БД + API list)</div>
+        <div class="ev">
+          <code>work_seo_passwords</code> / <code>work_dev_passwords</code> / <code>work_context_passwords</code> /
+          <code>work_services</code>: admin_pass, password, FTP, SSH, Яндекс/Google — без шифрования.
+          <code>GET /api/work/:slug</code> отдаёт <code>SELECT t.*</code> → полный секрет в JSON и в UI «copy».
+          Дамп БД / XSS / утечка лога ответа / view-доступ = компрометация админок и рекламных кабинетов клиентов.
+          <strong>Fix:</strong> encrypt-at-rest (KMS/app key); API — mask + отдельный
+          <code>GET …/reveal</code> с audit; не класть секреты в list payload; clipboard только после reveal.
+          <div class="fix-note"><strong>2026-10-25 · <code>270624f</code>:</strong> list/detail маскируют секреты; <code>GET /:slug/:id/reveal?field=</code> + activity; UI «показать».</div>
+          <div class="fix-note"><strong>2026-10-27 · local:</strong> AES-256-GCM at-rest (<code>lib/datagonVaultCrypto.js</code>, префикс <code>enc:v1:</code>, ключ <code>DATAGON_VAULT_KEY</code>); encrypt на create/PUT; decrypt на reveal; колонки vault → TEXT; массовая миграция — <code>scripts/migrate-work-vault-encrypt.mjs</code> / <code>DATAGON_VAULT_MIGRATE=1</code> (только вместе с ключом на проде).</div>
+        </div>
+      </div>
+
+      <div class="finding fixed-out" id="F-WORK-02">
+        <div class="title"><span class="badge high">high</span> <span class="badge fixed">исправлено</span> F-WORK-02 · <code>can_manage_users</code> = полный WORK-admin (unscoped)</div>
+        <div class="ev">
+          <code>isWorkUnscopedAdmin</code>: username admin <strong>или</strong> can_manage_users → видит
+          <em>все</em> пароли/проекты, может создавать и hard-delete. Роль «менеджер пользователей»
+          (шаг 7) не должна равняться владельцу vault SSH/FTP.
+          Усилитель: глобальный fail-open page mode (шаг 2) — если work-*-passwords нет в матрице → full API.
+          <strong>Fix:</strong> unscoped только <code>username===admin</code> или явный флаг
+          <code>work_admin</code>; can_manage_users не расширяет WORK.
+          <div class="fix-note"><strong>2026-10-25 · <code>270624f</code>:</strong> <code>isWorkUnscopedAdmin</code> = только <code>username === 'admin'</code>.</div>
+        </div>
+      </div>
+
+      <div class="finding fixed-out" id="F-WORK-03">
+        <div class="title"><span class="badge high">high</span> <span class="badge fixed">исправлено</span> F-WORK-03 · Assignee с page=view получает plaintext секреты</div>
+        <div class="ev">
+          Матрица view запрещает POST/PUT, но GET list/detail отдаёт пароли строк, куда пользователь назначен.
+          Ожидаемо для «сейфа команды», но любой XSS (F-XSS-01) или шаринг экрана = утечка.
+          Нет пометки «sensitive» / step-up / TTL сессии для vault.
+          <strong>Fix:</strong> reveal-on-demand + короткий audit; опционально запретить copy в view;
+          session step-up для password pages.
+          <div class="fix-note"><strong>2026-10-25 · <code>270624f</code>:</strong> view/list без plaintext; reveal по кнопке с audit. Step-up сессии — не делали.</div>
+        </div>
+      </div>
+
+      <div class="finding fixed-out" id="F-WORK-04">
+        <div class="title"><span class="badge med">medium</span> <span class="badge fixed">исправлено</span> F-WORK-04 · <code>/api/work/meta/*</code> под page key seo-projects</div>
+        <div class="ev">
+          Prefикс <code>/work/meta</code> → <code>work-seo-projects</code>.
+          <code>GET /meta/users</code> — полный список логинов/ФИО всем с доступом к SEO-проектам
+          (даже без seo-staff). <code>meta/entities</code> светит схему парольных полей.
+          <strong>Fix:</strong> meta/users только unscoped или staff page; entities — по pageKey актора.
+          <div class="fix-note"><strong>2026-10-27 · local:</strong> <code>meta/users</code> — admin или page <code>work-seo-staff</code>; <code>meta/entities</code> фильтр по page_modes; sensitive formFields только admin/full.</div>
+        </div>
+      </div>
+
+      <div class="finding fixed-out" id="F-WORK-05">
+        <div class="title"><span class="badge med">medium</span> <span class="badge fixed">исправлено</span> F-WORK-05 · PUT паролей без audit trail</div>
+        <div class="ev">
+          Изменение admin_pass/password/SSH не пишет activity (кто/когда/какой проект).
+          После инцидента невозможно доказать ротацию.
+          <strong>Fix:</strong> recordDatagonActivity на create/update/reveal/delete sensitive fields
+          (без значения секрета в detail).
+          <div class="fix-note"><strong>2026-10-27 · local:</strong> activity <code>work_create</code> / <code>work_update_secret</code> / <code>work_reveal</code> / <code>work_archive</code> / <code>work_hard_delete</code> (поля без значений).</div>
+        </div>
+      </div>
+
+      <div class="finding fixed-out" id="F-WORK-06">
+        <div class="title"><span class="badge low">low</span> <span class="badge fixed">исправлено</span> F-WORK-06 · Soft-archive доступен scoped full-пользователю</div>
+        <div class="ev">
+          DELETE без <code>hard=1</code> ставит status=0 на доступной строке — специалист может
+          «архивировать» общий пароль проекта. Hard — только unscoped (ок).
+          <strong>Fix:</strong> archive тоже только head/admin; или подтверждение.
+          <div class="fix-note"><strong>2026-10-27 · local:</strong> soft-archive только <code>username=admin</code> (unscoped), как hard-delete.</div>
+        </div>
+      </div>
+
+      <div class="finding" id="F-WORK-07">
+        <div class="title"><span class="badge info">info</span> F-WORK-07 · SQL/идентификаторы в целом безопасны</div>
+        <div class="ev">
+          <code>ent.table</code> из реестра; значения через <code>?</code>; sort whitelist по listCols.
+          Риск — данные и ACL, не инъекции.
+        </div>
+      </div>
+
+      <h3>Приоритет фиксов (шаг 9)</h3>
+      <ol>
+        <li><span class="badge fixed">исправлено</span> P0: mask list + reveal+audit + encrypt-at-rest (F-WORK-01) — выкат ключа на прод ещё нужен</li>
+        <li><span class="badge fixed">исправлено</span> P0: can_manage_users ≠ WORK unscoped (F-WORK-02)</li>
+        <li><span class="badge fixed">исправлено</span> P1: audit mutate; сузить meta/users (F-WORK-04/05); step-up сессии — не делали</li>
+        <li><span class="badge fixed">исправлено</span> P2: soft-archive только admin (F-WORK-06)</li>
+      </ol>
+    </section>
+
+    <section class="block" id="step-10">
+      <h2>Шаг 10 · Work-schedule + CRM sync <span class="badge done">готово</span></h2>
+      <div class="sub">
+        Дата: 2026-10-25 · Код: <code>routes/workSchedule.js</code>,
+        <code>lib/datagonCrmAttendanceSync.js</code>, <code>lib/datagonBitcopClient.js</code>,
+        <code>lib/crmPrimeTimesheets.js</code>; API prefix + public
+        <code>POST /api/work-schedule/clock/sync-from-crm</code>.
+      </div>
+
+      <h3>Модель</h3>
+      <ul class="compact">
+        <li>Сотрудник: clock start/stop, me/month, vacations — по своей карточке <code>ws_employee</code>.</li>
+        <li>«Бухгалтерия» / admin / спец. с именем <code>Полный доступ</code>: оргструктура, ФОТ, sheet, Bitcop, CRM link
+          через <code>isAccounting()</code> (сравнение <strong>имени</strong> специальности).</li>
+        <li>Руководитель отдела: табель своих / scoped отделов (<code>canEditEmployeeTimesheet</code>).</li>
+        <li>CRM → Datagon: публичный (без сессии) sync с shared secret
+          <code>DATAGON_CLOCK_SYNC_SECRET</code> / <code>config.datagonClockSyncSecret</code>.</li>
+        <li>Bitcop: ключ в <code>app_settings</code>, в API — mask; account → только
+          <code>https://{sub}.bitcop.ru:4443</code> (allowlist regex).</li>
+        <li><code>/clock</code> и <code>/access</code> в матрице с pageKey <code>null</code> — любой авторизованный.</li>
+      </ul>
+
+      <h3>Сильные стороны</h3>
+      <ul class="compact">
+        <li>Пустой sync-secret → всегда 401 (не «open if unset»).</li>
+        <li>Clock start/stop привязан к employee карточке актора; sheet edit через canEdit*.</li>
+        <li>Bitcop subdomain нормализация анти-SSRF; audit на смену bitcop config.</li>
+        <li>Маски api_key в GET bitcop/config.</li>
+      </ul>
+
+      <h3>Findings</h3>
+
+      <div class="finding" id="F-WS-01">
+        <div class="title"><span class="badge high">high</span> F-WS-01 · Shared secret CRM clock sync = полный контроль смен</div>
+        <div class="ev">
+          <code>POST /api/work-schedule/clock/sync-from-crm</code> вне session gate: зная секрет, можно
+          start/stop смену любому сотруднику с <code>crm_user_id</code> (подделка табеля/ФОТ).
+          Секрет в env/<code>config.js</code> (файл на диске — F-SEC-03); принимается из header
+          <strong>или</strong> <code>body.secret</code> (риск попадания в access/body логи).
+          Сравнение через <code>===</code>, не <code>timingSafeEqual</code>.
+          <strong>Fix:</strong> длинный random secret только в env; только header; timingSafeEqual;
+          IP allowlist CRM; не логировать body; ротация при утечке config.
+        </div>
+      </div>
+
+      <div class="finding" id="F-WS-02">
+        <div class="title"><span class="badge high">high</span> F-WS-02 · Payroll ACL по строке имени специальности</div>
+        <div class="ev">
+          <code>isAccounting</code>: admin ИЛИ specialty_name ∈ {«Бухгалтерия», «Полный доступ»}.
+          Не флаг/role id. Дубликат имени «Бухгалтерия» (нет UNIQUE — F-SET-05) + page
+          work-schedule=full → полный доступ к окладам, sheet, Bitcop key write, CRM users.
+          Переименование «Полный доступ» ломает/сохраняет привилегию независимо от матрицы страниц.
+          <strong>Fix:</strong> <code>is_system</code> / <code>can_payroll</code> на specialty;
+          не сравнивать display name; «Полный доступ» ≠ автоматически бухгалтерия (или явный capability).
+        </div>
+      </div>
+
+      <div class="finding" id="F-WS-03">
+        <div class="title"><span class="badge med">medium</span> F-WS-03 · Bitcop API key plaintext в app_settings</div>
+        <div class="ev">
+          <code>ws_bitcop_api_key</code> в MySQL без encrypt (как прочие секреты). Маска только на чтении API.
+          <strong>Fix:</strong> encrypt-at-rest; write-only пустое поле.
+        </div>
+      </div>
+
+      <div class="finding" id="F-WS-04">
+        <div class="title"><span class="badge med">medium</span> F-WS-04 · Зарплатные данные у широкого круга «accounting»</div>
+        <div class="ev">
+          Sheet/payroll/compensation/salary-history доступны всем isAccounting и частично руководителям.
+          Ожидаемо для HR, но связка с F-WS-02 расширяет blast radius. Нет отдельного «только табель без сумм».
+          <strong>Fix:</strong> capability «видеть ФОТ» vs «править явки»; маскировать salary для dept head при необходимости.
+        </div>
+      </div>
+
+      <div class="finding" id="F-WS-05">
+        <div class="title"><span class="badge med">medium</span> F-WS-05 · Подделка IP в audit смены (X-Forwarded-For)</div>
+        <div class="ev">
+          <code>clientIp</code> берёт первый XFF без trust proxy (F-DEP-07). В clock log пишется
+          произвольный IP при прямом доступе к Node.
+          <strong>Fix:</strong> trust proxy=1 за nginx; иначе только socket.remoteAddress.
+        </div>
+      </div>
+
+      <div class="finding" id="F-WS-06">
+        <div class="title"><span class="badge low">low</span> F-WS-06 · CRM DB credentials в config (Prime)</div>
+        <div class="ev">
+          Push/pull attendance использует CRM Prime pool из config — те же plaintext DB secrets (F-SEC-03).
+          Компрометация = чтение/запись rise_attendance. <strong>Fix:</strong> env + least privilege DB user.
+        </div>
+      </div>
+
+      <div class="finding" id="F-WS-07">
+        <div class="title"><span class="badge info">info</span> F-WS-07 · Пустой sync secret и Bitcop host — ок</div>
+        <div class="ev">
+          Unset secret → deny. Bitcop URL только на <code>*.bitcop.ru</code> после normalizeAccount.
+          Employee clock привязан к своей карточке — базовый IDOR на start/stop закрыт.
+        </div>
+      </div>
+
+      <h3>Приоритет фиксов (шаг 10)</h3>
+      <ol>
+        <li>P0: усилить clock sync secret (env-only, header-only, timingSafe, allowlist IP)</li>
+        <li>P0: capability-based accounting ACL вместо имени специальности</li>
+        <li>P1: encrypt Bitcop key; trust proxy для IP audit</li>
+        <li>P2: разделить «табель» и «видеть оклады»</li>
+      </ol>
+    </section>
+
+    <section class="block" id="step-11">
+      <h2>Шаг 11 · db-admin + processes / auto-sync <span class="badge done">готово</span></h2>
+      <div class="sub">
+        Дата: 2026-10-25 · Код: <code>routes/dbAdmin.js</code>, <code>routes/activity.js</code>,
+        <code>GET /api/processes/{overview,db-size,disk-usage}</code> в <code>server.js</code>,
+        auto-sync queue/registry.
+      </div>
+
+      <h3>Модель</h3>
+      <ul class="compact">
+        <li><strong>db-admin:</strong> overview размеров, preview <code>SELECT * … LIMIT ≤50</code>,
+          ANALYZE/OPTIMIZE выбранных таблиц. Guard роутера:
+          <code>admin || can_manage_users</code> (+ матрица page <code>db-admin</code>).</li>
+        <li>Имена таблиц: <code>IDENT_RE</code> + проверка в <code>information_schema</code> +
+          <code>quoteIdent</code> — произвольный SQL нет.</li>
+        <li><strong>processes:</strong> overview автосинка/очереди/логов МС, db-size, disk-usage
+          (дерево каталогов проекта). Доступ по матрице <code>processes</code> /
+          <code>dashboard</code> для size/disk.</li>
+        <li><strong>activity:</strong> журнал UI-событий — чтение только admin/can_manage_users;
+          <code>POST /track</code> — любой auth (свои события).</li>
+        <li>Ручной auto-sync — <code>POST /api/settings/auto-sync-run</code> (F-SET-02).</li>
+      </ul>
+
+      <h3>Сильные стороны</h3>
+      <ul class="compact">
+        <li>Нет raw SQL console; только maintain verbs на known tables.</li>
+        <li>Preview limit hard-capped (50); maintain max 40 tables.</li>
+        <li>Единый реестр auto-sync секций на processes/settings.</li>
+      </ul>
+
+      <h3>Findings</h3>
+
+      <div class="finding fixed-out" id="F-DBA-01">
+        <div class="title"><span class="badge crit">critical</span> <span class="badge fixed">исправлено</span> F-DBA-01 · Preview = полный dump строк (секреты, хеши, vault)</div>
+        <div class="ev">
+          <code>GET /api/db-admin/tables/:name/preview</code> → <code>SELECT * FROM `table` LIMIT N</code>
+          без редактирования колонок. Через UI можно открыть <code>app_settings</code> (JWT банков, МП keys,
+          Bitcop, proxy), <code>users.password_hash</code>, <code>work_*_passwords</code>,
+          <code>auth_sessions.token_hash</code>, finance JSON — всё plaintext/хеши.
+          Право: не только admin, но и <strong>can_manage_users</strong> (HR-менеджер).
+          Усилитель fail-open матрицы (шаг 2), если db-admin не задан явно.
+          <strong>Fix:</strong> только username=admin; denylist/ redact колонок
+          (*password*, *secret*, *token*, *jwt*, *api_key*, setting_value для секретных keys);
+          отдельный «reveal» с audit; лучше запретить preview app_settings/users полностью.
+          <div class="fix-note"><strong>2026-10-25 · <code>270624f</code>:</strong> API только <code>admin</code>; preview <code>app_settings</code>/<code>users</code>/<code>auth_sessions</code>/<code>work_*_passwords</code>/<code>work_services</code> → 403; прочие таблицы — redact колонок. Audit «кто смотрел» — ещё нет (F-DBA-06).</div>
+        </div>
+      </div>
+
+      <div class="finding fixed-out" id="F-DBA-02">
+        <div class="title"><span class="badge high">high</span> <span class="badge fixed">исправлено</span> F-DBA-02 · <code>can_manage_users</code> = оператор БД + читатель activity</div>
+        <div class="ev">
+          Тот же флаг открывает db-admin maintain (ANALYZE/OPTIMIZE) и полный журнал activity
+          (клики/переходы всех пользователей). Роль «создавать учётки» ≠ DBA.
+          OPTIMIZE на больших таблицах → блокировки/нагрузка (DoS инсайдера).
+          <strong>Fix:</strong> db-admin и activity GET — строго admin; can_manage только users API.
+          <div class="fix-note"><strong>2026-10-25 · <code>270624f</code>:</strong> db-admin + <code>GET /api/activity</code> + пункт меню — только admin.</div>
+        </div>
+      </div>
+
+      <div class="finding" id="F-DBA-03">
+        <div class="title"><span class="badge med">medium</span> F-DBA-03 · disk-usage отдаёт абсолютный путь и карту каталогов</div>
+        <div class="ev">
+          <code>GET /api/processes/disk-usage</code> (page dashboard): <code>projectPath</code>,
+          размеры <code>.git</code>, <code>node_modules</code>, <code>vendor</code>, …
+          Разведка ФС для любого с доступом к дашборду.
+          <strong>Fix:</strong> только admin; не отдавать absolute path; агрегировать без имён скрытых dirs.
+        </div>
+      </div>
+
+      <div class="finding" id="F-DBA-04">
+        <div class="title"><span class="badge med">medium</span> F-DBA-04 · processes/overview — внутренняя операционка широкой аудитории</div>
+        <div class="ev">
+          Расписание auto-sync, очередь, running_tasks, логи синка МС, messages ошибок —
+          всем с <code>processes</code> view/full. Полезно операторам; для узкой специальности —
+          лишняя поверхность (паттерны ошибок API, тайминги).
+          <strong>Fix:</strong> чувствительные куски (полные error stacks / queue internals) — full only
+          или admin; view — KPI без деталей.
+        </div>
+      </div>
+
+      <div class="finding" id="F-DBA-05">
+        <div class="title"><span class="badge med">medium</span> F-DBA-05 · Activity <code>detail</code> до 8KB без санитайза на чтении</div>
+        <div class="ev">
+          Клиент пишет detail в track; админ/менеджер читает в UI (XSS шаг 5, если innerHTML).
+          Возможен spam журнала (25 events/req) любым auth.
+          <strong>Fix:</strong> esc на фронте; rate-limit track; не класть секреты в label/detail с клиента.
+        </div>
+      </div>
+
+      <div class="finding" id="F-DBA-06">
+        <div class="title"><span class="badge low">low</span> F-DBA-06 · Нет audit «кто смотрел preview таблицы X»</div>
+        <div class="ev">
+          Критичное чтение app_settings через preview не логируется в activity.
+          <strong>Fix:</strong> recordDatagonActivity на каждый preview/optimize с table name.
+        </div>
+      </div>
+
+      <div class="finding" id="F-DBA-07">
+        <div class="title"><span class="badge info">info</span> F-DBA-07 · Идентификаторы таблиц защищены</div>
+        <div class="ev">
+          IDENT_RE + existence check + quoteIdent — приемлемо против SQLi на имена (см. F-SQL-03).
+          Риск — авторизация и содержимое, не синтаксис.
+        </div>
+      </div>
+
+      <h3>Приоритет фиксов (шаг 11)</h3>
+      <ol>
+        <li><span class="badge fixed">исправлено</span> P0: убрать can_manage_users с db-admin; redact/forbid preview секретных таблиц (F-DBA-01/02)</li>
+        <li>P1: audit preview; disk-usage сузить (activity уже admin)</li>
+        <li>P2: rate-limit activity track; view-safe processes overview</li>
+      </ol>
+    </section>
+
+    <section class="block" id="step-12">
+      <h2>Шаг 12 · МойСклад-кластер <span class="badge done">готово</span></h2>
+      <div class="sub">
+        Дата: 2026-10-25 · Код: <code>routes/moysklad.js</code>, <code>msOrders</code>,
+        <code>msPurchaseOrders</code>, <code>msSales</code>, <code>medmarket.js</code> +
+        <code>lib/medmarketMsAttr.js</code> / <code>medmarketStore.js</code>; токен
+        <code>MS_TOKEN</code> / <code>config.msToken</code>.
+      </div>
+
+      <h3>Модель</h3>
+      <ul class="compact">
+        <li>Один org-wide Bearer к <code>https://api.moysklad.ru/api/remap/1.2</code> (фиксированный host).</li>
+        <li>Чтение каталога/остатков/себестоимости в <code>ms_export</code>; заказы / отгрузки / ЗП — отдельные page keys.</li>
+        <li>Запись в МС из панели: medmarket <code>PATCH /mapping</code>, <code>POST /import</code>,
+          <code>POST /fill-linkage-codes</code> (атрибут «Код товара для медмаркета»);
+          тяжёлые <code>POST …/sync</code> тянут данные из МС в Datagon.</li>
+        <li>ACL: матрица page (moysklad / ms-orders / ms-sales / medmarket / …); view=GET, full=mutate.</li>
+        <li>Токен в ответах API не отдаётся (только ошибки «не задан»).</li>
+      </ul>
+
+      <h3>Сильные стороны</h3>
+      <ul class="compact">
+        <li>Нет SSRF: base URL константа, не из body.</li>
+        <li><code>dry_run</code> на fill-linkage; фильтры списка параметризованы.</li>
+        <li>Раздельные page keys между товарами / заказами / продажами / медмаркетом.</li>
+      </ul>
+
+      <h3>Findings</h3>
+
+      <div class="finding" id="F-MS-01">
+        <div class="title"><span class="badge high">high</span> F-MS-01 · Один MS_TOKEN на всех пользователей с full</div>
+        <div class="ev">
+          Любой с <code>medmarket=full</code> / <code>moysklad=full</code> / sync заказов действует
+          от имени общего токена кабинета МС (права токена = права всей панели на запись/чтение API).
+          Нет per-user MS OAuth / audit «кто нажал fill» на стороне МС.
+          Компрометация сессии специалиста = запись атрибутов в боевой МС.
+          <strong>Fix:</strong> минимальные права токена; отдельный write-token только для medmarket;
+          серверный confirm + activity на каждую массовую запись; rate-limit sync.
+        </div>
+      </div>
+
+      <div class="finding" id="F-MS-02">
+        <div class="title"><span class="badge high">high</span> F-MS-02 · Mass-write в МС без серверного лимита строк</div>
+        <div class="ev">
+          <code>POST /api/medmarket/import</code> — цикл по <code>rows[]</code> без max;
+          каждый upsert → <code>axios.put</code> в МС. <code>fill-linkage-codes</code> по фильтрам
+          может затронуть весь каталог. UI-confirm не заменяет серверный cap / dual-control.
+          <strong>Fix:</strong> max rows (напр. 500); обязательный <code>confirm: true</code>;
+          dry_run по умолчанию для fill без confirm; очередь + прогресс вместо sync HTTP.
+        </div>
+      </div>
+
+      <div class="finding" id="F-MS-03">
+        <div class="title"><span class="badge med">medium</span> F-MS-03 · Тяжёлые sync = DoS к МС и Node</div>
+        <div class="ev">
+          <code>POST /api/ms/sync</code>, <code>/api/ms-sales/sync</code> (окна до лет),
+          purchase-orders sync, medmarket sync — любой full по своему page key.
+          Параллельно с auto-sync (F-SET-02) → 429 МС, долгие job, память.
+          <strong>Fix:</strong> глобальный mutex/квоты; укоротить max days в UI API;
+          только admin/auto-sync для full catalog sync.
+        </div>
+      </div>
+
+      <div class="finding" id="F-MS-04">
+        <div class="title"><span class="badge med">medium</span> F-MS-04 · view видит себестоимость и коммерческие поля</div>
+        <div class="ev">
+          В <code>ms_export</code> / list API — buyPrice, stock_cost, salePrices, поставщики.
+          Любой с moysklad=view читает маржу/закуп. Ожидаемо для закупщиков; опасно для широких
+          специальностей с «просто посмотреть каталог».
+          <strong>Fix:</strong> отдельный mode или скрытие cost-колонок для view; capability «видеть себестоимость».
+        </div>
+      </div>
+
+      <div class="finding" id="F-MS-05">
+        <div class="title"><span class="badge med">medium</span> F-MS-05 · MS_TOKEN plaintext в config/env (связка F-SEC)</div>
+        <div class="ev">
+          Токен на диске в <code>config.js</code> / env; при F-SEC-01 логах / db-admin preview
+          соседних ключей риск косвенный. Сам MS token в app_settings обычно нет, но config читаем.
+          <strong>Fix:</strong> только env + secret store; ротация токена МС после аудита.
+        </div>
+      </div>
+
+      <div class="finding" id="F-MS-06">
+        <div class="title"><span class="badge low">low</span> F-MS-06 · Нет activity на mapping/fill/import</div>
+        <div class="ev">
+          Запись в МС и ms_export не проходит через единый <code>recordDatagonActivity</code>
+          (в отличие от users). Сложно ответить «кто поменял код Медмаркета».
+          <strong>Fix:</strong> audit actor + code + dry_run + counts.
+        </div>
+      </div>
+
+      <div class="finding" id="F-MS-07">
+        <div class="title"><span class="badge info">info</span> F-MS-07 · Host МС зафиксирован; токен не в JSON ответов</div>
+        <div class="ev">
+          Remap API только api.moysklad.ru. Ошибки «MS_TOKEN не задан» без утечки значения — ок.
+        </div>
+      </div>
+
+      <h3>Приоритет фиксов (шаг 12)</h3>
+      <ol>
+        <li>P0: лимит/confirm на import и fill-linkage; audit записи в МС</li>
+        <li>P1: разделить read/write токены; квоты sync</li>
+        <li>P1: ротация MS_TOKEN; убрать из config.js</li>
+        <li>P2: скрыть себестоимость для широкого view</li>
+      </ol>
+    </section>
+
+    <section class="block" id="step-13">
+      <h2>Шаг 13 · Закупки / поставщики / анализ / product <span class="badge done">готово</span></h2>
+      <div class="sub">
+        Дата: 2026-10-25 · Код: <code>routes/purchase.js</code>, <code>suppliers.js</code>,
+        <code>supplierAnalysis.js</code>, <code>productAnalysis.js</code>, <code>product.js</code>;
+        <code>lib/datagonMoyskladPurchaseOrder.js</code>; ACL в
+        <code>lib/datagonPageRegistry.js</code> (<code>/product</code> → page key <code>purchase</code>).
+      </div>
+
+      <h3>Модель</h3>
+      <ul class="compact">
+        <li>Закупки: overrides в <code>dg_purchase_overrides</code>, список поверх <code>ms_export</code>;
+          mass: CSV import (cap 25k), min-stock-apply → <code>ms_export.min_stock</code> (только БД Datagon).</li>
+        <li>Поставщики: settings + <code>POST …/send-ms-order</code> → purchaseorder в МС (общий <code>MS_TOKEN</code>).</li>
+        <li>Анализ: ranking/export продаж и маржи; decisions/comments; bulk decision до 5k по фильтрам.</li>
+        <li>Карточка <code>/api/product/*</code> в матрице API привязана к <code>purchase</code>, не к ключу <code>product</code>.</li>
+        <li>SORT/ORDER BY — whitelist (<code>SORT_KEYS</code> / <code>RANKING_SORT</code>); SQL параметризован.</li>
+      </ul>
+
+      <h3>Сильные стороны</h3>
+      <ul class="compact">
+        <li>UI-confirm на заказ в МС (<code>#dg-sp-confirm-overlay</code>); журнал <code>dg_supplier_ms_order_log</code> с actor.</li>
+        <li>purchase overrides: whitelist полей + лог изменений; import с лимитом строк.</li>
+        <li>min-stock-apply: mutex «один running», revert по batch, actor в журнале.</li>
+        <li>product-analysis: <code>canWrite</code> на single decision/comments; dry_run на bulk; comments в UI через <code>esc()</code>.</li>
+        <li>replenishment_days у поставщика — только username <code>admin</code>.</li>
+      </ul>
+
+      <h3>Findings</h3>
+
+      <div class="finding" id="F-PUR-01">
+        <div class="title"><span class="badge high">high</span> F-PUR-01 · send-ms-order пишет в боевой МС без серверного confirm</div>
+        <div class="ev">
+          <code>POST /api/suppliers/:supplierKey/send-ms-order</code> создаёт заказ поставщику со всеми
+          позициями <code>to_purchase</code> (без cap по числу строк) через общий токен (см. F-MS-01).
+          UI-модалка есть; API принимает любой CSRF-способный запрос при валидной сессии +
+          <code>suppliers=full</code>. Нет <code>confirm: true</code> / dry_run.
+          <strong>Fix:</strong> body <code>confirm</code> + опциональный <code>max_lines</code>;
+          rate-limit per user/supplier; dual-control для крупных сумм.
+        </div>
+      </div>
+
+      <div class="finding" id="F-PUR-02">
+        <div class="title"><span class="badge high">high</span> F-PUR-02 · decision/bulk без canWrite + unbounded codes[]</div>
+        <div class="ev">
+          <code>POST /api/product-analysis/decision/bulk</code> не вызывает <code>canWrite(req)</code>
+          (в отличие от <code>/decision</code> и comments). Защита только middleware view→блок POST;
+          при fail-open режима страницы (F-ACL) bulk пишется. Массив <code>body.codes</code> —
+          без max (ветка фильтров clamp 5000).
+          <strong>Fix:</strong> <code>if (!canWrite) 403</code>; <code>codes.slice(0, 5000)</code>;
+          обязательный dry_run или confirm для non-dry.
+        </div>
+      </div>
+
+      <div class="finding" id="F-PUR-03">
+        <div class="title"><span class="badge med">medium</span> F-PUR-03 · min-stock-apply / overrides-import — mass write без confirm</div>
+        <div class="ev">
+          Перенос формулы → <code>ms_export.min_stock</code> и CSV overrides (до 25k) доступны любому
+          <code>purchase=full</code>. Mutex и revert есть; серверного <code>confirm</code> нет.
+          Не бьёт API МС, но искажает планирование закупок / последующие заказы.
+          <strong>Fix:</strong> confirm + preflight counts (как action-log); ограничить роль.
+        </div>
+      </div>
+
+      <div class="finding" id="F-PUR-04">
+        <div class="title"><span class="badge med">medium</span> F-PUR-04 · ACL рассинхрон product HTML vs /api/product</div>
+        <div class="ev">
+          HTML: <code>product</code> открыт, если <code>purchase</code> ИЛИ <code>product</code> ≠ hidden.
+          API: префикс <code>/product</code> → page key <code>purchase</code> только.
+          Специальность с <code>product=full</code>, <code>purchase=hidden</code> видит страницу,
+          API 403/hidden. Обратно: <code>purchase=view</code> даёт чтение карточки даже при
+          <code>product=hidden</code>.
+          <strong>Fix:</strong> единый ключ или OR в <code>getApiPageModeForActor</code> как у HTML.
+        </div>
+      </div>
+
+      <div class="finding" id="F-PUR-05">
+        <div class="title"><span class="badge med">medium</span> F-PUR-05 · view видит закуп/маржу/выручку (кластер)</div>
+        <div class="ev">
+          purchase / suppliers / *-analysis / export CSV — buyPrice, need_qty, sales_revenue,
+          gross_margin. Любой view по page key = полный коммерческий срез (связка F-MS-04).
+          <strong>Fix:</strong> capability «себестоимость/маржа» или урезанный view-колонки.
+        </div>
+      </div>
+
+      <div class="finding" id="F-PUR-06">
+        <div class="title"><span class="badge med">medium</span> F-PUR-06 · POST /purchase/log/cleanup удаляет аудит</div>
+        <div class="ev">
+          Любой <code>purchase=full</code> может <code>DELETE</code> из
+          <code>dg_purchase_overrides_log</code> по retention. Скрытие следов правок overrides.
+          <strong>Fix:</strong> только admin / can_manage; immutable audit или soft-archive.
+        </div>
+      </div>
+
+      <div class="finding" id="F-PUR-07">
+        <div class="title"><span class="badge low">low</span> F-PUR-07 · zero-stock-windows-import до 100k / 25MB</div>
+        <div class="ev">
+          Под ACL <code>purchase</code>. Cap есть, но тяжёлый импорт = DoS Node/MySQL для full-юзера.
+          <strong>Fix:</strong> очередь/фон; ниже лимит для интерактивного POST.
+        </div>
+      </div>
+
+      <div class="finding" id="F-PUR-08">
+        <div class="title"><span class="badge info">info</span> F-PUR-08 · SQL sort whitelist; MS host fixed на send-order</div>
+        <div class="ev">
+          ORDER BY только из Set ключей. Remap URL константа. Хорошая база против SQLi/SSRF здесь.
+        </div>
+      </div>
+
+      <h3>Приоритет фиксов (шаг 13)</h3>
+      <ol>
+        <li>P0: server confirm + cap на send-ms-order; canWrite + max codes на decision/bulk</li>
+        <li>P1: выровнять ACL product↔purchase; confirm на min-stock-apply / import</li>
+        <li>P1: cleanup журнала только admin</li>
+        <li>P2: урезать коммерческие поля для view</li>
+      </ol>
+    </section>
+
+    <section class="block" id="step-14">
+      <h2>Шаг 14 · Парсинг-контур <span class="badge done">готово</span></h2>
+      <div class="sub">
+        Дата: 2026-10-25 · Код: <code>routes/mysites.js</code>, <code>projects.js</code>,
+        <code>pages.js</code> (<code>/api/parse</code> + <code>/api/pages</code> → page key
+        <code>queue</code>), <code>results.js</code>, <code>matches.js</code>;
+        fetch: <code>lib/datagonSiteFetch.js</code> + <code>worker.js</code>.
+      </div>
+
+      <h3>Модель</h3>
+      <ul class="compact">
+        <li>Проекты конкурентов + очередь URL → воркер HTML-парсинга (прокси из settings/project).</li>
+        <li>Discovery: robots → sitemap → crawl с <code>projects.domain</code>.</li>
+        <li>my-sites: коннект к внешней MySQL CMS + синк в <code>my_products</code> (см. F-SQL-01/02).</li>
+        <li>matches: фоновый matching job; unlink/confirm/archive; archive-all требует <code>confirm</code>.</li>
+        <li>results: таблица <code>prices</code>; clear по project или всему.</li>
+      </ul>
+
+      <h3>Сильные стороны</h3>
+      <ul class="compact">
+        <li><code>normalizeQueueUrl</code>: только <code>http(s)</code>, без query — отсекает часть схем.</li>
+        <li>Очередь clear/reset в filtered-mode требует «узкий» фильтр (не снести всё поиском без проекта).</li>
+        <li>matches <code>archive-all</code>: серверный <code>confirm: true</code> + LIMIT 20k; activity на start-matching.</li>
+        <li>Discovery cancel + mutex per project; matching mutex per mySite.</li>
+      </ul>
+
+      <h3>Findings</h3>
+
+      <div class="finding" id="F-PAR-01">
+        <div class="title"><span class="badge high">high</span> F-PAR-01 · SSRF: нет блокировки private/metadata IP</div>
+        <div class="ev">
+          <code>lib/datagonSiteFetch.js</code> / discovery / <code>POST /api/parse/page/:id</code> /
+          worker ходят по любому <code>http(s)</code> URL из очереди или
+          <code>https://{projects.domain}/…</code>. Нет deny для
+          <code>127.0.0.0/8</code>, RFC1918, link-local, cloud metadata.
+          Специалист с <code>projects</code>/<code>queue</code>=full может сканировать внутреннюю сеть
+          сервера Datagon и жечь <code>fetch_proxy_list</code>.
+          <strong>Fix:</strong> resolve DNS → block private; allowlist доменов конкурентов;
+          запрет IP-literal в domain; отдельный egress.
+        </div>
+      </div>
+
+      <div class="finding" id="F-PAR-02">
+        <div class="title"><span class="badge high">high</span> F-PAR-02 · POST /api/results/clear без project = wipe всех prices</div>
+        <div class="ev">
+          Если <code>project_id</code> пуст или <code>all</code> —
+          <code>DELETE FROM prices WHERE 1=1</code>. Любой <code>results=full</code> уничтожает
+          историю парсинга всех проектов. UI-confirm не виден в API.
+          <strong>Fix:</strong> запретить wipe без явного <code>confirm_all: true</code> + admin;
+          по умолчанию требовать конкретный <code>project_id</code>.
+        </div>
+      </div>
+
+      <div class="finding" id="F-PAR-03">
+        <div class="title"><span class="badge med">medium</span> F-PAR-03 · Unbounded bulk URL + discovery = DoS / proxy burn</div>
+        <div class="ev">
+          <code>POST /api/pages/bulk</code> вставляет весь список без max строк.
+          Discovery тянет до <code>discover_max_sitemaps</code>/maxUrls и краулит HTML.
+          Вместе с F-PAR-01 — нагрузка на Node, MySQL <code>pages</code>, внешние прокси.
+          <strong>Fix:</strong> cap bulk (напр. 5k); квоты discovery; rate-limit parse triggers.
+        </div>
+      </div>
+
+      <div class="finding" id="F-PAR-04">
+        <div class="title"><span class="badge med">medium</span> F-PAR-04 · start-matching — тяжёлый CPU job без квоты размера</div>
+        <div class="ev">
+          <code>POST /api/matches/start-matching</code>: batchSize из body, полный каталог
+          my×competitors. Mutex на сайт есть; глобального лимита параллельных job / размера
+          productIds нет. DoS на процесс Node.
+          <strong>Fix:</strong> clamp batchSize; max products; только один global matching slot.
+        </div>
+      </div>
+
+      <div class="finding" id="F-PAR-05">
+        <div class="title"><span class="badge med">medium</span> F-PAR-05 · GET /api/my-sites → db_pass (cross F-SQL-02)</div>
+        <div class="ev">
+          <code>SELECT *</code> отдаёт пароли CMS БД любому с my-sites view/full.
+          Плюс second-order SQLi на sync (F-SQL-01) и коннект к произвольному host.
+          <strong>Fix:</strong> маска в list; reveal+audit; allowlist host (уже в шаге 4).
+        </div>
+      </div>
+
+      <div class="finding" id="F-PAR-06">
+        <div class="title"><span class="badge med">medium</span> F-PAR-06 · sync-all-real / sync без подтверждения объёма</div>
+        <div class="ev">
+          Полный синк всех my-sites в одном запросе; init сбрасывает <code>is_active=0</code>.
+          Ошибка/обрыв → «пропавшие» товары до догрузки. Связка с F-SQL на доноре.
+          <strong>Fix:</strong> очередь + confirm; не sync-all из интерактивного POST.
+        </div>
+      </div>
+
+      <div class="finding" id="F-PAR-07">
+        <div class="title"><span class="badge low">low</span> F-PAR-07 · Очередь clear без mode=filtered может быть широкой</div>
+        <div class="ev">
+          Filtered-path защищён; non-filtered clear по project всё ещё массовый DELETE —
+          ожидаемо для операторов, но без server confirm.
+          <strong>Fix:</strong> <code>confirm: true</code> на clear/reset.
+        </div>
+      </div>
+
+      <div class="finding" id="F-PAR-08">
+        <div class="title"><span class="badge info">info</span> F-PAR-08 · matches archive-all / http(s)-only URL</div>
+        <div class="ev">
+          Эталон серверного confirm на mass-archive. Схемы URL ограничены http(s) —
+          недостаточно против SSRF, но отсекает file/gopher.
+        </div>
+      </div>
+
+      <h3>Приоритет фиксов (шаг 14)</h3>
+      <ol>
+        <li>P0: SSRF guard (private IP) + запрет results wipe-all без dual confirm</li>
+        <li>P0: F-SQL-01/02 на my-sites (уже в шаге 4)</li>
+        <li>P1: cap bulk/discovery; clamp matching; маска db_pass в GET</li>
+        <li>P2: confirm на queue clear/reset</li>
+      </ol>
+    </section>
+
+    <section class="block" id="step-15">
+      <h2>Шаг 15 · my-products + network-prices <span class="badge done">готово</span></h2>
+      <div class="sub">
+        Дата: 2026-10-25 · Код: <code>routes/myproducts.js</code>, <code>routes/networkPrices.js</code>;
+        запись цен/статуса в CMS донора через credentials <code>my_sites</code>.
+      </div>
+
+      <h3>Модель</h3>
+      <ul class="compact">
+        <li>my-products: каталог наших сайтов в Datagon; refresh/set-manual-price/sync-from-competitor
+          → MySQL CMS (Webasyst/Bitrix) по полям из my_sites.</li>
+        <li>network-prices: эталонный сайт + % на сателлиты; link/unlink; apply пишет цены в CMS;
+          deactivate/activate товара на витрине.</li>
+        <li>ACL: отдельные page keys; view=GET, full=mutate.</li>
+      </ul>
+
+      <h3>Сильные стороны</h3>
+      <ul class="compact">
+        <li>ORDER BY через whitelist <code>sortFieldMap</code>.</li>
+        <li>Bulk hold / sync-price: обязательный <code>confirm</code> или <code>dry_run</code>; status/stop.</li>
+        <li>network apply / deactivate / activate: <code>confirm:true</code> + dry_run; action-log; cap
+          <code>APPLY_HARD_MAX</code> (50k).</li>
+        <li>GET settings network не отдаёт db_pass (только id/name/domain/cms_type).</li>
+      </ul>
+
+      <h3>Findings</h3>
+
+      <div class="finding" id="F-MP-01">
+        <div class="title"><span class="badge high">high</span> F-MP-01 · my-products=full → запись цен в боевую CMS</div>
+        <div class="ev">
+          <code>set-manual-price</code>, <code>sync-price-from-competitor</code> (+ bulk) открывают
+          коннект с <code>db_pass</code> и делают <code>UPDATE ${table/fields}</code> на доноре.
+          Не нужен my-sites=full — достаточно сохранённых credentials (связка F-SQL-01).
+          Single set-manual без server confirm. Компрометация сессии закупщика/контента =
+          правка витрины.
+          <strong>Fix:</strong> confirm на CMS-write; отдельная capability «писать в CMS»;
+          валидация идентификаторов таблиц (F-SQL-01); audit каждой цены.
+        </div>
+      </div>
+
+      <div class="finding" id="F-MP-02">
+        <div class="title"><span class="badge high">high</span> F-MP-02 · network-prices=full → mass CMS apply / on-off витрины</div>
+        <div class="ev">
+          <code>POST /apply</code> (до 50k пар), <code>deactivate</code>/<code>activate</code> меняют
+          живой магазин. Confirm есть (хорошо), но один shared CMS user на сайт; нет dual-control /
+          порога суммы. Смена <code>source_site_id</code> / % в <code>POST /settings</code> —
+          любой full без отдельного admin.
+          <strong>Fix:</strong> сузить роль; порог + второй confirm для apply &gt; N; settings только admin.
+        </div>
+      </div>
+
+      <div class="finding" id="F-MP-03">
+        <div class="title"><span class="badge med">medium</span> F-MP-03 · unlink без confirm; ignore sticky</div>
+        <div class="ev">
+          <code>POST /unlink</code> сразу DELETE link + INSERT ignore. UI-модалка не заменяет
+          серверный confirm (см. destructive-confirm rule).
+          <strong>Fix:</strong> <code>confirm: true</code> как у deactivate.
+        </div>
+      </div>
+
+      <div class="finding" id="F-MP-04">
+        <div class="title"><span class="badge med">medium</span> F-MP-04 · Second-order SQLi на пути записи цен</div>
+        <div class="ev">
+          Те же интерполированные <code>table_products</code> / <code>wa_field_*</code>, что F-SQL-01,
+          теперь в UPDATE-контексте (цены, status). Impact выше read-only sync.
+          <strong>Fix:</strong> allowlist идентификаторов перед любым CMS SQL.
+        </div>
+      </div>
+
+      <div class="finding" id="F-MP-05">
+        <div class="title"><span class="badge med">medium</span> F-MP-05 · view видит цены сети / gap / конкурентов</div>
+        <div class="ev">
+          my-products list + network matrix отдают цены эталона/сателлитов и %-gap.
+          Ожидаемо для ценообразования; опасно при широкой специальности view.
+          <strong>Fix:</strong> capability или урезанный view.
+        </div>
+      </div>
+
+      <div class="finding" id="F-MP-06">
+        <div class="title"><span class="badge low">low</span> F-MP-06 · APPLY_HARD_MAX = 50 000</div>
+        <div class="ev">
+          Один apply может час гонять CMS. Cap лучше снизить для интерактива (очередь/ночь).
+        </div>
+      </div>
+
+      <div class="finding" id="F-MP-07">
+        <div class="title"><span class="badge info">info</span> F-MP-07 · Эталон confirm/dry_run на bulk</div>
+        <div class="ev">
+          Паттерн my-products bulk hold/sync и network apply — образец для F-PUR/F-MS
+          (серверный confirm + dry_run + action-log).
+        </div>
+      </div>
+
+      <h3>Приоритет фиксов (шаг 15)</h3>
+      <ol>
+        <li>P0: F-SQL-01 на CMS write-path; capability «писать в CMS»</li>
+        <li>P1: confirm на set-manual-price; settings network только admin; confirm unlink</li>
+        <li>P2: снизить APPLY_HARD_MAX / очередь</li>
+      </ol>
+    </section>
+
+    <section class="block" id="step-16">
+      <h2>Шаг 16 · Маркетплейсы (ядро) <span class="badge done">готово</span></h2>
+      <div class="sub">
+        Дата: 2026-10-25 · Код: <code>routes/exportsMarketplaces.js</code>,
+        <code>exportsCompetitors.js</code>; ключи в <code>app_settings</code>
+        (ozon/wb/ym); ACL prefix <code>/exports/marketplaces</code> →
+        <code>exports-marketplaces</code> (кроме <code>/ozon-merge</code> →
+        <code>exports-ozon-merge</code>). Регламент — статическая HTML.
+      </div>
+
+      <h3>Модель</h3>
+      <ul class="compact">
+        <li>Снапшоты каталогов Ozon/WB/Я.М → list/export; sync тянет API МП в Datagon.</li>
+        <li>Issues: матрица проблем + <code>fill-*-dims/vat</code> пишет в API маркетплейсов.</li>
+        <li>Ozon-merge: scan/preview/apply/unmerge карточек в кабинете Ozon.</li>
+        <li>Competitors: метки 0–3 по коду; reglament — документ без API.</li>
+        <li>Config/sync: <code>requireAdminOrSettingsFull</code> (admin | settings=full | exports-marketplaces=full).</li>
+      </ul>
+
+      <h3>Сильные стороны</h3>
+      <ul class="compact">
+        <li><code>GET /status</code> — только <code>maskSet</code> (есть/нет ключ), не plaintext.</li>
+        <li>fill-*/apply/unmerge: <code>confirm</code> + <code>dry_run</code>; caps codes (100–200).</li>
+        <li>Rate-limit delays + Retry-After; mutex sync.</li>
+        <li>Competitors mark: whitelist field; parameterized SQL (col из Set).</li>
+      </ul>
+
+      <h3>Findings</h3>
+
+      <div class="finding" id="F-MPK-01">
+        <div class="title"><span class="badge high">high</span> F-MPK-01 · marketplaces=full может перезаписать API-ключи МП</div>
+        <div class="ev">
+          <code>POST /config</code> через <code>requireAdminOrSettingsFull</code>: достаточно
+          <code>exports-marketplaces=full</code> (не только admin/settings). Любой оператор
+          «проблем с товарами» с parent full может подменить
+          <code>ozon_api_key</code> / <code>wb_api_key</code> / <code>ym_api_key</code>
+          (саботаж кабинета или exfil через свой endpoint).
+          Связка F-SEC-02: ключи ещё и в GET settings.
+          <strong>Fix:</strong> config только admin или settings=full; marketplaces full —
+          sync/fill без смены секретов.
+        </div>
+      </div>
+
+      <div class="finding" id="F-MPK-02">
+        <div class="title"><span class="badge high">high</span> F-MPK-02 · Mass write в кабинеты МП под общим org-токеном</div>
+        <div class="ev">
+          fill-dims/vat, ozon-merge apply/unmerge — запись в боевые API Ozon/WB/YM.
+          Confirm есть; ACL = parent <code>exports-marketplaces</code> (F-ACL-03): скрытый
+          issues child не мешает вызову <code>/issues/fill-*</code> при parent=full.
+          Один скомпрометированный full = порча габаритов/НДС/объединений на всех площадках.
+          <strong>Fix:</strong> shop-scoped pageKey на mutating routes; audit actor+codes;
+          dual-control для merge apply.
+        </div>
+      </div>
+
+      <div class="finding" id="F-MPK-03">
+        <div class="title"><span class="badge med">medium</span> F-MPK-03 · ACL parent vs child (углубление F-ACL-03)</div>
+        <div class="ev">
+          HTML keys: ozon|wb|yandex|issues|competitors|reglament отдельно.
+          API shop/issues/unpublished/snapshot — один parent. Нельзя выдать «только Ozon view»
+          без доступа к WB API list. Child full + parent hidden → HTML да, API нет.
+          <strong>Fix:</strong> prefix rules per shop или assert page mode внутри handler.
+        </div>
+      </div>
+
+      <div class="finding" id="F-MPK-04">
+        <div class="title"><span class="badge med">medium</span> F-MPK-04 · Sync / snapshot-run = burn квот МП и Node</div>
+        <div class="ev">
+          <code>POST /sync</code> (settings|mp full) + auto-sync; issues snapshot-run доступен
+          любому mp full. Параллельно с ручными fill → 429 кабинетов, долгие job.
+          <strong>Fix:</strong> глобальный mutex fill+sync; квоты; snapshot-run без лишних прав.
+        </div>
+      </div>
+
+      <div class="finding" id="F-MPK-05">
+        <div class="title"><span class="badge med">medium</span> F-MPK-05 · view читает цены/остатки/артикулы всех МП</div>
+        <div class="ev">
+          GET ozon|wb|ym|issues|competitors при parent=view — полный коммерческий срез.
+          Ожидаемо для контента; опасно при широкой специальности.
+          <strong>Fix:</strong> per-shop view; урезать колонки.
+        </div>
+      </div>
+
+      <div class="finding" id="F-MPK-06">
+        <div class="title"><span class="badge low">low</span> F-MPK-06 · Ключи МП plaintext в app_settings (F-SEC-04)</div>
+        <div class="ev">
+          At-rest без encryption; status маскирует хорошо, settings GET — нет.
+        </div>
+      </div>
+
+      <div class="finding" id="F-MPK-07">
+        <div class="title"><span class="badge info">info</span> F-MPK-07 · Эталон confirm на fill/merge; reglament без API</div>
+        <div class="ev">
+          Паттерн dry_run+confirm+cap — хороший. Регламент — статика, не расширяет attack surface.
+        </div>
+      </div>
+
+      <h3>Приоритет фиксов (шаг 16)</h3>
+      <ol>
+        <li>P0: убрать смену API-ключей у marketplaces=full; shop-scoped ACL на mutate</li>
+        <li>P1: audit + dual-control на ozon-merge apply; mutex sync/fill</li>
+        <li>P2: маски ключей в settings (F-SEC-02); per-shop view</li>
+      </ol>
+    </section>
+
+    <section class="block" id="step-17">
+      <h2>Шаг 17 · New products / photoshoot / huckster / dimensions <span class="badge done">готово</span></h2>
+      <div class="sub">
+        Дата: 2026-10-25 · Код: <code>routes/exportsNewProducts.js</code>,
+        <code>productUpdates.js</code>, <code>exportsPhotoshoot.js</code>,
+        <code>exportsHuckster.js</code>, <code>dimensions.js</code>.
+      </div>
+
+      <h3>Модель</h3>
+      <ul class="compact">
+        <li>New products: матрица размещений + tabs (stats/standing/crm-notify/updates) с отдельными page keys.</li>
+        <li>Photoshoot / product-updates: задачи контента, assign/distribute, comments.</li>
+        <li>Huckster: sync цен конкурентов → snapshot матриц; credentials в app_settings.</li>
+        <li>Dimensions: замеры в Datagon + <code>POST /sync-ms</code> → PUT атрибутов в МойСклад (<code>MS_TOKEN</code>).</li>
+      </ul>
+
+      <h3>Сильные стороны</h3>
+      <ul class="compact">
+        <li>Раздельные API prefix для content-stats / standing / crm-notify / product-updates.</li>
+        <li><code>assertActorPageAccess</code> на CRM links/notify; canWrite на distribute updates.</li>
+        <li>Huckster GET /config не отдаёт password; mutex sync; stop.</li>
+        <li>Dimensions: whitelist полей замера; журнал; soft patterns на NP delete (лог).</li>
+      </ul>
+
+      <h3>Findings</h3>
+
+      <div class="finding fixed-out" id="F-NP-01">
+        <div class="title"><span class="badge high">high</span> <span class="badge partial">частично</span> F-NP-01 · Huckster: любой full сохраняет plaintext password</div>
+        <div class="ev">
+          <code>POST /api/exports/huckster/credentials</code> пишет
+          <code>huckster_password</code> в app_settings без admin-only.
+          <code>POST /sync</code> принимает <code>password</code> в body (обход сохранённого /
+          попадание в access/proxy logs). Связка F-SEC-02 (GET settings отдаёт пароль).
+          <strong>Fix:</strong> credentials только admin/settings; sync только из БД;
+          не принимать password в body; encrypt-at-rest.
+          <div class="fix-note partial"><strong>2026-10-25 · <code>270624f</code>:</strong> GET settings маскирует пароль; POST credentials пустой password = keep. Admin-only credentials / запрет password в sync body — ещё нет.</div>
+        </div>
+      </div>
+
+      <div class="finding" id="F-NP-02">
+        <div class="title"><span class="badge high">high</span> F-NP-02 · dimensions sync-ms → боевой МС без confirm</div>
+        <div class="ev">
+          <code>POST /sync-ms</code> + список <code>GET /pending-sync</code> позволяют bulk
+          выгрузку габаритов в МС общим токеном (F-MS-01). Server confirm на sync-ms нет;
+          UI может слать сотни PUT подряд. log/cleanup удаляет аудит (как F-PUR-06).
+          <strong>Fix:</strong> confirm + max codes/batch; cleanup только admin; rate-limit.
+        </div>
+      </div>
+
+      <div class="finding" id="F-NP-03">
+        <div class="title"><span class="badge med">medium</span> F-NP-03 · DELETE huckster snapshot без confirm</div>
+        <div class="ev">
+          <code>DELETE /api/exports/huckster/snapshot</code> сносит <code>latest</code> матрицы
+          для любого huckster=full. Операционный sabotage / потеря снапшота.
+          <strong>Fix:</strong> <code>confirm: true</code>; только admin.
+        </div>
+      </div>
+
+      <div class="finding" id="F-NP-04">
+        <div class="title"><span class="badge med">medium</span> F-NP-04 · NP soft-delete / cascade без server confirm</div>
+        <div class="ev">
+          <code>DELETE /api/exports/new-products/:id</code> → softRemove + cascade markets.
+          UI-модалка есть (эталон); API без <code>confirm</code> (как unlink network-prices).
+          <strong>Fix:</strong> body confirm; то же для kit_delete при cascade.
+        </div>
+      </div>
+
+      <div class="finding" id="F-NP-05">
+        <div class="title"><span class="badge med">medium</span> F-NP-05 · Huckster view = полная ценовая матрица</div>
+        <div class="ev">
+          Snapshot sheet_export / RRC / lost — цены магазинов конкурентов. Любой
+          huckster=view скачивает коммерческую разведку.
+          <strong>Fix:</strong> capability или урезанный export для view.
+        </div>
+      </div>
+
+      <div class="finding" id="F-NP-06">
+        <div class="title"><span class="badge med">medium</span> F-NP-06 · CRM hours / notify surface</div>
+        <div class="ev">
+          content-stats/standing тянут CRM Prime (часы задач); crm-notify/run шлёт уведомления.
+          Отдельные page keys — хорошо; компрометация full = spam + чтение трудозатрат.
+          Credentials CRM — F-SEC-03.
+          <strong>Fix:</strong> rate-limit notify; audit; минимальные CRM права.
+        </div>
+      </div>
+
+      <div class="finding" id="F-NP-07">
+        <div class="title"><span class="badge low">low</span> F-NP-07 · distribute по имени специальности «Контент-Менеджер»</div>
+        <div class="ev">
+          Как payroll ACL по имени (F-WS): переименование specialty ломает раздачу /
+          неожиданный пул. Лучше capability flag.
+        </div>
+      </div>
+
+      <div class="finding" id="F-NP-08">
+        <div class="title"><span class="badge info">info</span> F-NP-08 · Матрица page keys new-products tabs</div>
+        <div class="ev">
+          Stats/standing/crm-notify/updates разведены в API_PREFIX — эталон vs монолит marketplaces (F-ACL-03).
+        </div>
+      </div>
+
+      <h3>Приоритет фиксов (шаг 17)</h3>
+      <ol>
+        <li>P0: Huckster credentials admin-only; убрать password из sync body</li>
+        <li>P0: confirm + cap на dimensions sync-ms / pending bulk</li>
+        <li>P1: confirm на snapshot delete и NP delete API; cleanup log → admin</li>
+        <li>P2: specialty flag вместо имени; урезать huckster view</li>
+      </ol>
+    </section>
+
+    <section class="block" id="step-18">
+      <h2>Шаг 18 · Dashboard / manager-sales / ops-sheet <span class="badge done">готово</span></h2>
+      <div class="sub">
+        Дата: 2026-10-25 · Код: dashboard UI →
+        <code>/api/processes/{overview,db-size,disk-usage}</code>,
+        <code>/api/sync-all-start</code>; <code>routes/managerSales.js</code>,
+        <code>routes/opsSheet.js</code> + <code>lib/planfixClient.js</code>.
+      </div>
+
+      <h3>Модель</h3>
+      <ul class="compact">
+        <li>Dashboard: виджеты процессов/БД/диска + «Синк всё» (ACL разный у эндпоинтов).</li>
+        <li>Manager-sales: сделки менеджеров; row-level scope (self vs see-all по имени specialty).</li>
+        <li>Ops-sheet: ЗП/бонусы/маржа по всем менеджерам + Planfix sync заявок.</li>
+      </ul>
+
+      <h3>Сильные стороны</h3>
+      <ul class="compact">
+        <li>manager-sales: <code>canTouchRow</code> / self-filter в <code>buildListWhere</code>; планы только
+          «Полный доступ»/«Бухгалтерия»; canWrite на mutate.</li>
+        <li>ops-sheet: canWrite + dry_run на planfix-sync; mutex job.</li>
+        <li>SORT whitelist на list продаж.</li>
+      </ul>
+
+      <h3>Findings</h3>
+
+      <div class="finding" id="F-OPS-01">
+        <div class="title"><span class="badge high">high</span> F-OPS-01 · ops-sheet=view = зарплаты всех менеджеров</div>
+        <div class="ev">
+          <code>GET /</code> / <code>/yearly</code> отдают salary, bonus_*, profit, salary_paid
+          по всем менеджерам без self-scope (в отличие от manager-sales).
+          Любая широкая специальность с ops-sheet=view читает ФОТ и маржу компании.
+          <strong>Fix:</strong> отдельный capability «видеть ФОТ»; или view только агрегаты
+          без персональных salary; self-only для менеджеров.
+        </div>
+      </div>
+
+      <div class="finding" id="F-OPS-02">
+        <div class="title"><span class="badge high">high</span> F-OPS-02 · ACL дашборда рассинхрон с API</div>
+        <div class="ev">
+          UI dashboard: overview → page key <code>processes</code>; db-size/disk →
+          <code>dashboard</code>; sync-all → <code>settings</code>.
+          Пользователь с только dashboard=full не видит overview (403 processes);
+          с dashboard=view видит размер БД и разбивку диска проекта (recon).
+          Sync-all с дашборда требует settings=full — иначе «молчаливый» отказ.
+          <strong>Fix:</strong> единый page key для виджетов дашборда или OR-access;
+          disk/db-size только admin/processes.
+        </div>
+      </div>
+
+      <div class="finding" id="F-OPS-03">
+        <div class="title"><span class="badge med">medium</span> F-OPS-03 · Права продаж/планов по имени specialty</div>
+        <div class="ev">
+          <code>SEE_ALL_SPECIALTIES</code> / <code>EDIT_PLAN_SPECIALTIES</code> —
+          «Бухгалтерия», «Делопроизводители», «Полный доступ» (как F-WS payroll).
+          Переименование specialty → эскалация или отказ в доступе.
+          Meta всегда отдаёт полный список менеджеров продаж (имена/id) даже без see-all.
+          <strong>Fix:</strong> capability flags; урезать managers[] для self-only.
+        </div>
+      </div>
+
+      <div class="finding" id="F-OPS-04">
+        <div class="title"><span class="badge med">medium</span> F-OPS-04 · Planfix sync = shared token + нагрузка</div>
+        <div class="ev">
+          ops-sheet=full запускает sync с <code>planfix_rest_api_key</code> (plaintext F-SEC).
+          Нет shop-style dual-control; dry_run есть. Abuse → API Planfix / перезапись статусов.
+          <strong>Fix:</strong> rate-limit; audit; ключ не в settings GET.
+        </div>
+      </div>
+
+      <div class="finding" id="F-OPS-05">
+        <div class="title"><span class="badge med">medium</span> F-OPS-05 · pageMode fail-open на ops-sheet</div>
+        <div class="ev">
+          <code>pageMode</code>: нет ключа → <code>full</code> (F-ACL-02). То же в managerSales
+          canWrite path через матрицу API.
+          <strong>Fix:</strong> default hidden.
+        </div>
+      </div>
+
+      <div class="finding" id="F-OPS-06">
+        <div class="title"><span class="badge low">low</span> F-OPS-06 · manual salary patch без confirm</div>
+        <div class="ev">
+          <code>PUT /manual</code> меняет salary/bonus при canWrite — ожидаемо для бухгалтерии;
+          server confirm не обязателен, но audit желателен.
+        </div>
+      </div>
+
+      <div class="finding" id="F-OPS-07">
+        <div class="title"><span class="badge info">info</span> F-OPS-07 · manager-sales row-level — эталон scope</div>
+        <div class="ev">
+          Self vs see-all на строках — образец для ops-sheet и commercial view (F-MS-04 / F-PUR-05).
+        </div>
+      </div>
+
+      <h3>Приоритет фиксов (шаг 18)</h3>
+      <ol>
+        <li>P0: скрыть/разделить ФОТ на ops-sheet; disk/db-size не под dashboard=view</li>
+        <li>P1: выровнять ACL виджетов дашборда; capability вместо имён specialty</li>
+        <li>P2: audit Planfix sync; урезать managers в meta</li>
+      </ol>
+    </section>
+
+    <section class="block" id="step-19">
+      <h2>Шаг 19 · Публичные поверхности <span class="badge done">готово</span></h2>
+      <div class="sub">
+        Дата: 2026-10-25 · Код: HTML-gate и static в <code>server.js</code>;
+        <code>protectDocumentationRoutes</code> / login <code>then</code> в
+        <code>routes/auth.js</code> + <code>lib/datagonPageRegistry.js</code>;
+        <code>public/{login,docs,ref,legal,architectui-react-pro,doc-screenshots}</code>.
+      </div>
+
+      <h3>Модель</h3>
+      <ul class="compact">
+        <li>Без сессии: <code>login.html</code>, <code>/legal/*</code>, <code>/static</code>,
+          <code>/architectui-react-pro</code>, <code>/doc-screenshots</code>, favicon/JS оболочки.</li>
+        <li><code>/docs/*</code>: session-bridge + cookie (не анонимно), но богатая API-справка.</li>
+        <li>Остальные <code>*.html</code>: редирект на login; матрица для известных leaf.</li>
+        <li>Аудит-отчёт в <code>docs/security-audit/</code> — вне <code>public/</code> (ок).</li>
+      </ul>
+
+      <h3>Сильные стороны</h3>
+      <ul class="compact">
+        <li>Панель HTML не отдаётся анониму (кроме allowlist).</li>
+        <li>Docs защищены middleware (не голый public HTML).</li>
+        <li>Server <code>resolveRedirectAfterLogin</code> требует <code>*.html</code>; audit HTML не в раздаче.</li>
+        <li>Legal pages осознанно публичны.</li>
+      </ul>
+
+      <h3>Findings</h3>
+
+      <div class="finding" id="F-PUB-01">
+        <div class="title"><span class="badge high">high</span> F-PUB-01 · Open redirect: <code>then=//host/….html</code></div>
+        <div class="ev">
+          Клиент <code>thenPath()</code> и сервер <code>normalizeInternalHtmlPath</code>:
+          путь должен начинаться с <code>/</code> и leaf оканчиваться на <code>.html</code>.
+          Protocol-relative <code>//evil.example/phish.html</code> проходит обе проверки →
+          <code>location.replace</code> / <code>redirect_after_login</code> уводят на чужой origin
+          после логина (фишинг сессии / token в localStorage).
+          <strong>Fix:</strong> запретить <code>//</code>, требовать один ведущий <code>/</code>
+          без authority; allowlist leaf из PAGE_DEFS.
+        </div>
+      </div>
+
+      <div class="finding" id="F-PUB-02">
+        <div class="title"><span class="badge med">medium</span> F-PUB-02 · ArchitectUI demo + doc-screenshots без auth</div>
+        <div class="ev">
+          Полный CRA demo и скриншоты справки доступны анониму. Не секреты, но fingerprint
+          стека / UX панели и нагрузка на CDN-подобные ассеты.
+          <strong>Fix:</strong> demo только за VPN/auth или отдельный хост; screenshots за сессией.
+        </div>
+      </div>
+
+      <div class="finding" id="F-PUB-03">
+        <div class="title"><span class="badge med">medium</span> F-PUB-03 · <code>/ref/*.html</code> любому с сессией (F-ACL-04)</div>
+        <div class="ev">
+          Leaf не в реестре → <code>isHtmlLeafAccessHidden</code> = false. Любой залогиненный
+          открывает эталоны ArchitectUI vanilla. Низкий data risk, обход «закрыть всё лишнее».
+          <strong>Fix:</strong> unknown leaf → no-access; или page key ref=admin.
+        </div>
+      </div>
+
+      <div class="finding" id="F-PUB-04">
+        <div class="title"><span class="badge med">medium</span> F-PUB-04 · Публичные JS оболочки без auth</div>
+        <div class="ev">
+          <code>/datagon-vanilla.js</code>, <code>/datagon-legal.js</code> с early listen —
+          до полной инициализации роутов тоже. Утечка клиентской логики/эндпоинтов (не секреты).
+          Связка с отсутствием CSP (F-XSS-02).
+          <strong>Fix:</strong> ок для login; minify/obfuscate не замена auth на API.
+        </div>
+      </div>
+
+      <div class="finding" id="F-PUB-05">
+        <div class="title"><span class="badge med">medium</span> F-PUB-05 · Docs раскрывают полную карту API</div>
+        <div class="ev">
+          После входа любой пользователь читает <code>/docs/api</code> (ключи настроек, контракты
+          mutate). Нет отдельной матрицы «документация». Усиливает разведку перед abuse.
+          <strong>Fix:</strong> docs только admin / роль; или урезать api.md для non-admin.
+        </div>
+      </div>
+
+      <div class="finding" id="F-PUB-06">
+        <div class="title"><span class="badge low">low</span> F-PUB-06 · F-DEP-09 уточнение: docs не анонимны</div>
+        <div class="ev">
+          Ранее отмечено как «публичные /docs». Фактически <code>protectDocumentationRoutes</code>
+          требует сессию (bridge). Анонимны architectui + screenshots + legal.
+        </div>
+      </div>
+
+      <div class="finding" id="F-PUB-07">
+        <div class="title"><span class="badge info">info</span> F-PUB-07 · Security-audit HTML вне public</div>
+        <div class="ev">
+          <code>docs/security-audit/</code> не раздаётся nginx/Node static — корректно.
+          Не коммитить в <code>public/</code>.
+        </div>
+      </div>
+
+      <h3>Приоритет фиксов (шаг 19)</h3>
+      <ol>
+        <li>P0: закрыть open redirect <code>then=//…</code> (клиент + server)</li>
+        <li>P1: auth на architectui/screenshots или вынести; deny unknown HTML leaf</li>
+        <li>P2: ограничить /docs/api по роли</li>
+      </ol>
+    </section>
+
+    <section class="block" id="step-20">
+      <h2>Шаг 20 · Итоговая сводка и план фиксов <span class="badge done">готово</span></h2>
+      <div class="sub">
+        Дата: 2026-10-25 · Аудит завершён (шаги 1–19).
+        Findings: <strong>145</strong> (5 critical · 38 high · 60 medium · 22 low · 20 info).
+        P0 код: коммит <code>270624f</code> (прод выкатан) — статусы ниже и на карточках findings.
+      </div>
+
+      <h3>Вердикт</h3>
+      <p>
+        Панель Datagon — <strong>внутренняя система с широким blast radius</strong>:
+        один скомпрометированный аккаунт с <code>settings</code>/<code>can_manage_users</code>/
+        широким <code>full</code> получает секреты маркетплейсов, банков, МойСклад, vault
+        паролей клиентов и возможность массовой записи во внешние CMS/МП/МС.
+        Матрица специальностей есть, но ослаблена <strong>fail-open</strong> (неизвестный API /
+        отсутствующий page_mode → доступ) и монолитными page-key.
+        Критичны plaintext-секреты в API/логах и second-order SQLi на пути синка CMS.
+      </p>
+
+      <h3>Топ cross-cutting темы</h3>
+      <ol>
+        <li><strong>Секреты в plaintext</strong> — GET settings, startup log, WORK vault, finance JWT, Huckster, MP keys, CMS db_pass.</li>
+        <li><strong>Fail-open ACL</strong> — неизвестный path / missing mode → full; specialty-by-name; parent≠child marketplace.</li>
+        <li><strong>Shared org tokens</strong> — один MS_TOKEN / ключи МП / CRM sync secret на всех с mutate.</li>
+        <li><strong>Mass write без server confirm</strong> — МС, CMS цены, МП fill/merge, заказы, wipe results.</li>
+        <li><strong>Injection / XSS / SSRF</strong> — second-order SQLi my-sites; action-log HTML; parse URL → private IP.</li>
+        <li><strong>Perimeter</strong> — Node :3000 наружу, слабые headers/CSP, cookie без Secure, open redirect <code>then=</code>.</li>
+      </ol>
+
+      <h3>P0 — немедленно (до ротации / внешнего аудита)</h3>
+      <ol>
+        <li><span class="badge fixed">исправлено</span> Убрать dump <code>appSettings</code> из startup log (<a href="#F-SEC-01">F-SEC-01</a>).</li>
+        <li><span class="badge fixed">исправлено</span> Маскировать секреты в <code>GET /api/settings</code> и запретить preview секретных таблиц в db-admin (<a href="#F-SEC-02">F-SEC-02</a>, <a href="#F-DBA-01">F-DBA-01</a>).</li>
+        <li><span class="badge fixed">исправлено</span> Параметризовать / экранировать SQL из полей my-sites (CMS) (<a href="#F-SQL-01">F-SQL-01</a>).</li>
+        <li><span class="badge fixed">исправлено</span> Убрать plaintext из WORK list API; reveal + audit; encrypt vault (<a href="#F-WORK-01">F-WORK-01</a>) — AES-GCM + <code>DATAGON_VAULT_KEY</code> (local 2026-10-27).</li>
+        <li><span class="badge fixed">исправлено</span> Отделить <code>can_manage_users</code> от db-admin / WORK-unscoped (<a href="#F-DBA-02">F-DBA-02</a>, <a href="#F-WORK-02">F-WORK-02</a>).</li>
+        <li><span class="badge todo">вручную</span> <strong>Ротация</strong> всех ключей, попавших в логи/бэкапы (МС, МП, банки, CRM, Huckster, proxies).</li>
+      </ol>
+
+      <h3>P1 — короткий спринт (1–2 недели)</h3>
+      <ul class="compact">
+        <li>ACL fail-closed: неизвестный API → 404/403; missing page_mode → <code>hidden</code> (<a href="#F-ACL-01">F-ACL-01</a>/<a href="#F-ACL-02">F-ACL-02</a>).</li>
+        <li>Разделить settings page-keys (секреты / auto-sync / users); маскировать GET.</li>
+        <li>Rate-limit + lockout login; cookie <code>Secure</code>+<code>SameSite</code>; закрыть open redirect <code>then=</code>.</li>
+        <li>Server confirm / dry_run / лимиты на mass-write (МС, CMS, МП, send-order, results/clear).</li>
+        <li>SSRF blocklist private/metadata; escape action-log HTML; CSP baseline.</li>
+        <li>Node bind 127.0.0.1; nginx: HTTPS-only, security headers, limit_req на login.</li>
+        <li>ops-sheet / payroll: не отдавать ФОТ на view; ACL по capability, не по имени specialty.</li>
+      </ul>
+
+      <h3>P2 — следующий месяц</h3>
+      <ul class="compact">
+        <li>At-rest encryption для app_settings / vault; убрать секреты из config.js в env/KMS.</li>
+        <li>Per-user / scoped tokens к МС и МП где возможно; audit trail на mutate секретов и mass jobs.</li>
+        <li>CSRF token или SameSite-strict + запрет cookie-only mutate без Origin check.</li>
+        <li>Session: HttpOnly cookie primary, убрать token из localStorage; revoke on user delete.</li>
+        <li>Deny unknown HTML leaf; auth на architectui/doc-screenshots; docs/api по роли.</li>
+        <li>Квоты sync/DoS (auto-sync, parse bulk, matching, snapshot).</li>
+      </ul>
+
+      <h3>P3 — backlog</h3>
+      <ul class="compact">
+        <li>Единый <code>escHtml</code> / DOMPurify; Trusted Types; bcrypt cost / session caps.</li>
+        <li>Activity на preview/db-admin и sensitive GET; row-level finance/ops где нужно.</li>
+        <li>Регрессионные security-тесты на whitelist, fail-closed, mask secrets, open-redirect.</li>
+      </ul>
+
+      <h3>Что уже хорошо (зафиксировать тестами)</h3>
+      <ul class="compact">
+        <li>Сессия для панели HTML; docs через session-bridge (не анонимно).</li>
+        <li>Специальности + page_modes как каркас; admin bypass явный.</li>
+        <li>Параметризованный SQL в большинстве list/finance; MS host fixed на send-order.</li>
+        <li>Эталоны UI confirm/dry_run на части bulk (network-prices, medmarket) — расширить на сервер.</li>
+        <li>Audit HTML вне <code>public/</code>.</li>
+      </ul>
+
+      <h3>Чек-лист регрессии после фиксов</h3>
+      <ul class="compact">
+        <li>Логи старта без секретов; GET settings → только маски; db-admin preview на <code>app_settings</code>/<code>work_*</code> → forbid/redact.</li>
+        <li>my-sites: payload с <code>' OR 1=1</code> в table/column → ошибка, не инъекция.</li>
+        <li>Неизвестный <code>/api/…</code> → 403; specialty без ключа → hidden.</li>
+        <li><code>login.html?then=//evil/x.html</code> → внутренний path или default, не внешний origin.</li>
+        <li>Mass endpoints без confirm-token / dry_run flag → 400; с лимитом строк.</li>
+        <li>Parse URL <code>http://169.254.169.254/</code> → reject.</li>
+        <li>Cookie: Secure на HTTPS; CSP report-only → enforce.</li>
+      </ul>
+
+      <h3>Backlog critical + high</h3>
+      <table>
+        <thead>
+          <tr><th>ID</th><th>Sev</th><th>Шаг</th><th>Кратко</th><th>P</th><th>Статус</th></tr>
+        </thead>
+        <tbody>
+<tr><td><a href="#F-SEC-01">F-SEC-01</a></td><td><span class="badge crit">critical</span></td><td>3</td><td>Startup log = весь appSettings</td><td>P0</td><td><span class="badge fixed">исправлено</span></td></tr>
+<tr><td><a href="#F-SEC-02">F-SEC-02</a></td><td><span class="badge crit">critical</span></td><td>3</td><td>GET settings plaintext секреты</td><td>P0</td><td><span class="badge fixed">исправлено</span></td></tr>
+<tr><td><a href="#F-SQL-01">F-SQL-01</a></td><td><span class="badge crit">critical</span></td><td>4</td><td>Second-order SQLi my-sites→CMS sync</td><td>P0</td><td><span class="badge fixed">исправлено</span></td></tr>
+<tr><td><a href="#F-WORK-01">F-WORK-01</a></td><td><span class="badge crit">critical</span></td><td>9</td><td>WORK vault plaintext в БД+API</td><td>P0</td><td><span class="badge fixed">исправлено</span></td></tr>
+<tr><td><a href="#F-DBA-01">F-DBA-01</a></td><td><span class="badge crit">critical</span></td><td>11</td><td>db-admin preview = dump секретов</td><td>P0</td><td><span class="badge fixed">исправлено</span></td></tr>
+<tr><td><a href="#F-AUTH-01">F-AUTH-01</a></td><td><span class="badge high">high</span></td><td>1</td><td>Token в localStorage</td><td>P2</td><td>—</td></tr>
+<tr><td><a href="#F-AUTH-02">F-AUTH-02</a></td><td><span class="badge high">high</span></td><td>1</td><td>Нет rate-limit login</td><td>P1</td><td>—</td></tr>
+<tr><td><a href="#F-AUTH-03">F-AUTH-03</a></td><td><span class="badge high">high</span></td><td>1</td><td>Cookie без Secure</td><td>P1</td><td>—</td></tr>
+<tr><td><a href="#F-ACL-01">F-ACL-01</a></td><td><span class="badge high">high</span></td><td>2</td><td>Fail-open неизвестный API</td><td>P1</td><td>—</td></tr>
+<tr><td><a href="#F-ACL-02">F-ACL-02</a></td><td><span class="badge high">high</span></td><td>2</td><td>Missing page_mode → full</td><td>P1</td><td>—</td></tr>
+<tr><td><a href="#F-ACL-03">F-ACL-03</a></td><td><span class="badge high">high</span></td><td>2</td><td>Грубый ACL маркетплейсов</td><td>P1</td><td>—</td></tr>
+<tr><td><a href="#F-SEC-03">F-SEC-03</a></td><td><span class="badge high">high</span></td><td>3</td><td>Секреты в config.js</td><td>P2</td><td>—</td></tr>
+<tr><td><a href="#F-SEC-04">F-SEC-04</a></td><td><span class="badge high">high</span></td><td>3</td><td>app_settings без encryption</td><td>P2</td><td>—</td></tr>
+<tr><td><a href="#F-SQL-02">F-SQL-02</a></td><td><span class="badge high">high</span></td><td>4</td><td>CMS db_pass + arbitrary host</td><td>P0</td><td><span class="badge partial">частично</span></td></tr>
+<tr><td><a href="#F-XSS-01">F-XSS-01</a></td><td><span class="badge high">high</span></td><td>5</td><td>Action-log HTML без escape</td><td>P1</td><td>—</td></tr>
+<tr><td><a href="#F-XSS-02">F-XSS-02</a></td><td><span class="badge high">high</span></td><td>5</td><td>Нет CSP</td><td>P1</td><td>—</td></tr>
+<tr><td><a href="#F-DEP-01">F-DEP-01</a></td><td><span class="badge high">high</span></td><td>6</td><td>HTTP без redirect/HSTS (упрощ. nginx)</td><td>P1</td><td>—</td></tr>
+<tr><td><a href="#F-DEP-02">F-DEP-02</a></td><td><span class="badge high">high</span></td><td>6</td><td>Node 0.0.0.0:3000</td><td>P1</td><td>—</td></tr>
+<tr><td><a href="#F-DEP-03">F-DEP-03</a></td><td><span class="badge high">high</span></td><td>6</td><td>Мало security headers</td><td>P1</td><td>—</td></tr>
+<tr><td><a href="#F-SET-01">F-SET-01</a></td><td><span class="badge high">high</span></td><td>7</td><td>Один settings key = всё</td><td>P1</td><td>—</td></tr>
+<tr><td><a href="#F-SET-02">F-SET-02</a></td><td><span class="badge high">high</span></td><td>7</td><td>auto-sync-run любому settings=full</td><td>P1</td><td>—</td></tr>
+<tr><td><a href="#F-FIN-01">F-FIN-01</a></td><td><span class="badge high">high</span></td><td>8</td><td>Банковские JWT plaintext</td><td>P0</td><td>—</td></tr>
+<tr><td><a href="#F-FIN-02">F-FIN-02</a></td><td><span class="badge high">high</span></td><td>8</td><td>finance=view = полная разведка</td><td>P1</td><td>—</td></tr>
+<tr><td><a href="#F-WORK-02">F-WORK-02</a></td><td><span class="badge high">high</span></td><td>9</td><td>can_manage_users = WORK-admin</td><td>P0</td><td><span class="badge fixed">исправлено</span></td></tr>
+<tr><td><a href="#F-WORK-03">F-WORK-03</a></td><td><span class="badge high">high</span></td><td>9</td><td>view отдаёт plaintext секреты</td><td>P0</td><td><span class="badge fixed">исправлено</span></td></tr>
+<tr><td><a href="#F-WS-01">F-WS-01</a></td><td><span class="badge high">high</span></td><td>10</td><td>CRM clock shared secret</td><td>P1</td><td>—</td></tr>
+<tr><td><a href="#F-WS-02">F-WS-02</a></td><td><span class="badge high">high</span></td><td>10</td><td>Payroll ACL по имени specialty</td><td>P1</td><td>—</td></tr>
+<tr><td><a href="#F-DBA-02">F-DBA-02</a></td><td><span class="badge high">high</span></td><td>11</td><td>can_manage_users = DBA</td><td>P0</td><td><span class="badge fixed">исправлено</span></td></tr>
+<tr><td><a href="#F-MS-01">F-MS-01</a></td><td><span class="badge high">high</span></td><td>12</td><td>Общий MS_TOKEN</td><td>P2</td><td>—</td></tr>
+<tr><td><a href="#F-MS-02">F-MS-02</a></td><td><span class="badge high">high</span></td><td>12</td><td>Unbounded mass-write МС</td><td>P1</td><td>—</td></tr>
+<tr><td><a href="#F-PUR-01">F-PUR-01</a></td><td><span class="badge high">high</span></td><td>13</td><td>send-ms-order без confirm</td><td>P1</td><td>—</td></tr>
+<tr><td><a href="#F-PUR-02">F-PUR-02</a></td><td><span class="badge high">high</span></td><td>13</td><td>decision/bulk без canWrite</td><td>P1</td><td>—</td></tr>
+<tr><td><a href="#F-PAR-01">F-PAR-01</a></td><td><span class="badge high">high</span></td><td>14</td><td>SSRF private IP</td><td>P1</td><td>—</td></tr>
+<tr><td><a href="#F-PAR-02">F-PAR-02</a></td><td><span class="badge high">high</span></td><td>14</td><td>results/clear wipe всех prices</td><td>P1</td><td>—</td></tr>
+<tr><td><a href="#F-MP-01">F-MP-01</a></td><td><span class="badge high">high</span></td><td>15</td><td>CMS price write с my-products</td><td>P1</td><td>—</td></tr>
+<tr><td><a href="#F-MP-02">F-MP-02</a></td><td><span class="badge high">high</span></td><td>15</td><td>network mass apply/on-off</td><td>P1</td><td>—</td></tr>
+<tr><td><a href="#F-MPK-01">F-MPK-01</a></td><td><span class="badge high">high</span></td><td>16</td><td>Перезапись API-ключей МП</td><td>P1</td><td>—</td></tr>
+<tr><td><a href="#F-MPK-02">F-MPK-02</a></td><td><span class="badge high">high</span></td><td>16</td><td>Mass write в кабинеты МП</td><td>P1</td><td>—</td></tr>
+<tr><td><a href="#F-NP-01">F-NP-01</a></td><td><span class="badge high">high</span></td><td>17</td><td>Huckster password любому full</td><td>P0</td><td><span class="badge partial">частично</span></td></tr>
+<tr><td><a href="#F-NP-02">F-NP-02</a></td><td><span class="badge high">high</span></td><td>17</td><td>dimensions sync-ms без confirm</td><td>P1</td><td>—</td></tr>
+<tr><td><a href="#F-OPS-01">F-OPS-01</a></td><td><span class="badge high">high</span></td><td>18</td><td>ops-sheet view = ФОТ всех</td><td>P1</td><td>—</td></tr>
+<tr><td><a href="#F-OPS-02">F-OPS-02</a></td><td><span class="badge high">high</span></td><td>18</td><td>ACL dashboard ≠ API</td><td>P1</td><td>—</td></tr>
+<tr><td><a href="#F-PUB-01">F-PUB-01</a></td><td><span class="badge high">high</span></td><td>19</td><td>Open redirect then=//…</td><td>P1</td><td>—</td></tr>
+        </tbody>
+      </table>
+      <p class="sub" style="margin-top:0.75rem">
+        Medium/low/info — в секциях шагов 1–19; править после P0–P1.
+        Код фиксов — только по явной задаче («чинить P0» / конкретный ID).
+      </p>
+    </section>
+
+    <section class="block" id="page-index">
+      <h2>Карта страниц панели <span class="badge info">реестр</span></h2>
+      <div class="sub">Источник: <code>PAGE_DEFS</code>. Закрытие — шаги 7–19.</div>
+      <table>
+        <thead>
+          <tr><th>key / блок</th><th>html</th><th>шаг</th><th>статус</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>dashboard</td><td>dashboard.html</td><td>18</td><td><span class="badge done">готово</span></td></tr>
+          <tr><td>db-admin, processes</td><td>*.html</td><td>11</td><td><span class="badge done">готово</span></td></tr>
+          <tr><td>settings</td><td>settings.html</td><td>7</td><td><span class="badge done">готово</span></td></tr>
+          <tr><td>finance</td><td>finance.html</td><td>8</td><td><span class="badge done">готово</span></td></tr>
+          <tr><td>manager-sales, ops-sheet</td><td>*.html</td><td>18</td><td><span class="badge done">готово</span></td></tr>
+          <tr><td>work-schedule*</td><td>*.html</td><td>10</td><td><span class="badge done">готово</span></td></tr>
+          <tr><td>WORK passwords / services / staff</td><td>несколько</td><td>9</td><td><span class="badge done">готово</span></td></tr>
+          <tr><td>my-sites, projects, queue, results, matches, sections</td><td>несколько</td><td>14</td><td><span class="badge done">готово</span></td></tr>
+          <tr><td>network-prices, my-products</td><td>*.html</td><td>15</td><td><span class="badge done">готово</span></td></tr>
+          <tr><td>МС-кластер (moysklad, ms-*, medmarket)</td><td>несколько</td><td>12</td><td><span class="badge done">готово</span></td></tr>
+          <tr><td>purchase / suppliers / analysis / product</td><td>несколько</td><td>13</td><td><span class="badge done">готово</span></td></tr>
+          <tr><td>exports-marketplaces*</td><td>несколько</td><td>16</td><td><span class="badge done">готово</span></td></tr>
+          <tr><td>new-products* / photoshoot / huckster / dimensions</td><td>несколько</td><td>17</td><td><span class="badge done">готово</span></td></tr>
+          <tr><td>login + docs/static/ref</td><td>—</td><td>19</td><td><span class="badge done">готово</span></td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="block" id="routes-index">
+      <h2>Карта routes/* <span class="badge info">реестр</span></h2>
+      <table>
+        <thead><tr><th>файл</th><th>шаги</th><th>статус</th></tr></thead>
+        <tbody>
+          <tr><td><code>auth.js</code></td><td>1, 7</td><td><span class="badge done">шаг 1</span></td></tr>
+          <tr><td><code>specialties.js</code> / <code>pages.js</code></td><td>2, 7</td><td><span class="badge done">шаг 2</span></td></tr>
+          <tr><td><code>settings.js</code></td><td>3, 7</td><td><span class="badge done">шаг 3</span></td></tr>
+          <tr><td><code>finance.js</code></td><td>8</td><td><span class="badge done">готово</span></td></tr>
+          <tr><td><code>work.js</code></td><td>9</td><td><span class="badge done">готово</span></td></tr>
+          <tr><td><code>workSchedule.js</code></td><td>10</td><td><span class="badge done">готово</span></td></tr>
+          <tr><td><code>dbAdmin.js</code> / <code>activity.js</code></td><td>11</td><td><span class="badge done">готово</span></td></tr>
+          <tr><td>ms* / moysklad / medmarket</td><td>12</td><td><span class="badge done">готово</span></td></tr>
+          <tr><td>purchase / suppliers / product*</td><td>13</td><td><span class="badge done">готово</span></td></tr>
+          <tr><td>mysites / projects / results / matches</td><td>14</td><td><span class="badge done">готово</span></td></tr>
+          <tr><td>myproducts / networkPrices</td><td>15</td><td><span class="badge done">готово</span></td></tr>
+          <tr><td>exportsMarketplaces / competitors</td><td>16</td><td><span class="badge done">готово</span></td></tr>
+          <tr><td>newProducts / photoshoot / huckster / dimensions</td><td>17</td><td><span class="badge done">готово</span></td></tr>
+          <tr><td>managerSales / opsSheet</td><td>18</td><td><span class="badge done">готово</span></td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="block" id="changelog">
+      <h2>Changelog отчёта</h2>
+      <table>
+        <thead><tr><th>дата</th><th>что</th></tr></thead>
+        <tbody>
+          <tr>
+            <td class="mono">2026-10-25</td>
+            <td><strong>P0 фиксы отмечены</strong>: коммит <code>270624f</code> (прод). Исправлено: F-SEC-01/02, F-SQL-01, F-DBA-01/02, F-WORK-02/03. Частично: F-WORK-01, F-SQL-02, F-SEC-05, F-NP-01. Ротация ключей — вручную.</td>
+          </tr>
+          <tr>
+            <td class="mono">2026-10-25</td>
+            <td><strong>Шаг 20</strong>: сводка — 145 findings (5 crit / 38 high / 60 med / 22 low / 20 info); P0–P3 план; backlog critical+high; чек-лист регрессии. Аудит закрыт.</td>
+          </tr>
+          <tr>
+            <td class="mono">2026-10-25</td>
+            <td><strong>Шаг 19</strong>: публичные поверхности — 7 findings (1 high: open redirect then=//host/….html; medium: architectui/screenshots без auth, ref любому с сессией, docs API карта).</td>
+          </tr>
+          <tr>
+            <td class="mono">2026-10-25</td>
+            <td><strong>Шаг 18</strong>: dashboard/ops/sales — 7 findings (2 high: ops-sheet view = ФОТ всех; ACL дашборда рассинхрон + disk/db recon; medium: specialty-by-name, Planfix sync, fail-open).</td>
+          </tr>
+          <tr>
+            <td class="mono">2026-10-25</td>
+            <td><strong>Шаг 17</strong>: new-products/huckster/dimensions — 8 findings (2 high: Huckster password любому full + password в sync body; dimensions sync-ms в МС без confirm; medium: snapshot wipe, NP delete API, CRM notify).</td>
+          </tr>
+          <tr>
+            <td class="mono">2026-10-25</td>
+            <td><strong>Шаг 16</strong>: маркетплейсы — 7 findings (2 high: marketplaces=full может перезаписать API-ключи; mass write fill/merge в кабинеты МП; medium: ACL parent≠child, sync DoS, коммерция в view).</td>
+          </tr>
+          <tr>
+            <td class="mono">2026-10-25</td>
+            <td><strong>Шаг 15</strong>: my-products/network-prices — 7 findings (2 high: CMS price writes с my-products=full; network apply/on-off витрины; medium: unlink без confirm, second-order SQLi на UPDATE).</td>
+          </tr>
+          <tr>
+            <td class="mono">2026-10-25</td>
+            <td><strong>Шаг 14</strong>: парсинг — 8 findings (2 high: SSRF без private-IP block; results/clear wipe всех prices; medium: bulk/discovery DoS, matching CPU, db_pass в GET my-sites).</td>
+          </tr>
+          <tr>
+            <td class="mono">2026-10-25</td>
+            <td><strong>Шаг 13</strong>: закупки/поставщики/анализ — 8 findings (2 high: send-ms-order без server confirm; decision/bulk без canWrite + unbounded codes[]; medium: ACL product≠purchase, mass min-stock, cleanup аудита).</td>
+          </tr>
+          <tr>
+            <td class="mono">2026-10-25</td>
+            <td><strong>Шаг 12</strong>: МойСклад — 7 findings (2 high: общий MS_TOKEN + unbounded mass-write medmarket import/fill; medium: sync DoS, себестоимость в view).</td>
+          </tr>
+          <tr>
+            <td class="mono">2026-10-25</td>
+            <td><strong>Шаг 11</strong>: db-admin/processes — 7 findings (1 critical: preview SELECT * секретных таблиц для can_manage_users; 1 high: DBA-права у менеджера пользователей).</td>
+          </tr>
+          <tr>
+            <td class="mono">2026-10-25</td>
+            <td><strong>Шаг 10</strong>: work-schedule/CRM — 7 findings (2 high: CRM clock shared secret; payroll ACL по имени специальности «Бухгалтерия»/«Полный доступ»).</td>
+          </tr>
+          <tr>
+            <td class="mono">2026-10-25</td>
+            <td><strong>Шаг 9</strong>: WORK пароли — 7 findings (1 critical: plaintext vault в БД+API; 2 high: can_manage_users=WORK-admin, view отдаёт секреты).</td>
+          </tr>
+          <tr>
+            <td class="mono">2026-10-25</td>
+            <td><strong>Шаг 8</strong>: finance — 8 findings (2 high: plaintext bank JWT в БД; finance=view = полные выписки/ИНН без периметра).</td>
+          </tr>
+          <tr>
+            <td class="mono">2026-10-25</td>
+            <td><strong>Шаг 7</strong>: settings/users/specialties — 9 findings (2 high: settings=full = секреты+auto-sync; остальное medium вокруг паролей/специальностей/DELETE).</td>
+          </tr>
+          <tr>
+            <td class="mono">2026-10-25</td>
+            <td><strong>Шаг 6</strong>: deploy/nginx — 10 findings (3 high: HTTP без redirect в simple conf, Node :3000 на всех iface, нет security headers).</td>
+          </tr>
+          <tr>
+            <td class="mono">2026-10-25</td>
+            <td><strong>Шаг 5</strong>: XSS/CSP — 7 findings (2 high: action-log HTML без esc + нет CSP; усилитель — token в localStorage).</td>
+          </tr>
+          <tr>
+            <td class="mono">2026-10-25</td>
+            <td><strong>Шаг 4</strong>: SQL — 6 findings (1 critical: my-sites second-order SQLi на имена таблиц/полей CMS).</td>
+          </tr>
+          <tr>
+            <td class="mono">2026-10-25</td>
+            <td><strong>Шаг 3</strong>: секреты — 8 findings (2 critical: Settings Loaded dump, GET /api/settings plaintext keys).</td>
+          </tr>
+          <tr>
+            <td class="mono">2026-10-25</td>
+            <td><strong>Шаг 2</strong>: ACL/матрица — 8 findings (3 high: fail-open unmatched API, default full, грубый МП API).</td>
+          </tr>
+          <tr>
+            <td class="mono">2026-10-25</td>
+            <td><strong>Шаг 1</strong>: Auth/сессии/login — 9 findings (3 high: localStorage token, нет rate-limit, cookie без Secure).</td>
+          </tr>
+          <tr>
+            <td class="mono">2026-10-25</td>
+            <td>Каркас HTML-отчёта, план на <strong>20 шагов</strong>, карта страниц и routes.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <footer>
+      Datagon security audit · 20/20 · P0 отмечены (<code>270624f</code>) · дальше: P1 или ротация ключей
+    </footer>
+  </div>
+</body>
+</html>

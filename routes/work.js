@@ -14,6 +14,11 @@ const {
     isWorkSensitiveKey,
     isBlankSecretInput,
 } = require('../lib/datagonSecretRedact');
+const {
+    encryptWorkSecretsInPlace,
+    decryptVaultValue,
+    isVaultKeyConfigured,
+} = require('../lib/datagonVaultCrypto');
 const { recordDatagonActivity } = require('../lib/datagonActivity');
 
 function actorOf(req) {
@@ -820,23 +825,46 @@ module.exports = (db) => {
         }
     });
 
+    /** F-WORK-04: entities только по доступным page keys актора (admin — все). */
     router.get('/meta/entities', (req, res) => {
-        res.json({
-            success: true,
-            entities: listWorkEntities().map((e) => ({
+        const actor = actorOf(req);
+        const isAdmin = String(actor.username || '') === 'admin';
+        const modes = (actor && actor.page_modes) || {};
+        const entities = listWorkEntities()
+            .filter((e) => {
+                if (isAdmin) return true;
+                const mode = modes[e.pageKey];
+                return mode === 'view' || mode === 'full';
+            })
+            .map((e) => ({
                 slug: e.slug,
                 pageKey: e.pageKey,
                 title: e.title,
                 subtitle: e.subtitle,
                 listCols: e.listCols,
-                formFields: e.formFields,
+                // Не светим sensitive form fields тем, кто не admin и не full на странице.
+                formFields:
+                    isAdmin || modes[e.pageKey] === 'full'
+                        ? e.formFields
+                        : (e.formFields || []).filter((f) => !isWorkSensitiveKey(f.key)),
                 isStaff: !!e.isStaff,
-            })),
-        });
+            }));
+        res.json({ success: true, entities });
     });
 
+    /** F-WORK-04: список пользователей — unscoped admin или доступ к seo-staff. */
     router.get('/meta/users', async (req, res, next) => {
         try {
+            const actor = actorOf(req);
+            const scope = await resolveWorkActorScope(db, actor);
+            const staffMode = actor.page_modes && actor.page_modes['work-seo-staff'];
+            if (!scope.unscoped && staffMode !== 'view' && staffMode !== 'full') {
+                return res.status(403).json({
+                    success: false,
+                    error: 'Список пользователей WORK — только admin или «Сотрудники SEO»',
+                    code: 'FORBIDDEN',
+                });
+            }
             const [rows] = await db.query(
                 `SELECT id, username, full_name FROM users WHERE COALESCE(is_archived, 0) = 0 ORDER BY full_name`
             );
@@ -1115,8 +1143,27 @@ module.exports = (db) => {
                 label: `WORK reveal ${ent.slug}#${id}.${field}`,
                 detail: JSON.stringify({ slug: ent.slug, id, field }),
             });
-            const value = row[field] == null ? '' : String(row[field]);
-            return res.json({ success: true, field, value, id });
+            let value = '';
+            try {
+                value = decryptVaultValue(row[field]);
+            } catch (decErr) {
+                const code = decErr && decErr.code;
+                if (code === 'VAULT_KEY_MISSING') {
+                    return res.status(503).json({
+                        success: false,
+                        error: decErr.message,
+                        code: 'VAULT_KEY_MISSING',
+                    });
+                }
+                throw decErr;
+            }
+            return res.json({
+                success: true,
+                field,
+                value,
+                id,
+                vault_encrypted: isVaultKeyConfigured(),
+            });
         } catch (e) {
             next(e);
         }
@@ -1200,6 +1247,7 @@ module.exports = (db) => {
             if (ent.assigneeType && Object.prototype.hasOwnProperty.call(data, 'id_glavn_user')) {
                 delete data.id_glavn_user;
             }
+            encryptWorkSecretsInPlace(data, isWorkSensitiveKey);
             const keys = Object.keys(data);
             const cols = keys.concat(['created_at', 'updated_at']);
             const placeholders = keys.map(() => '?').concat(['NOW()', 'NOW()']);
@@ -1211,6 +1259,19 @@ module.exports = (db) => {
             if (ent.assigneeType && assigneeIds) {
                 await syncEntityAssignees(db, ent, r.insertId, assigneeIds, headId);
             }
+            const actor = actorOf(req);
+            const createdSecrets = keys.filter(isWorkSensitiveKey);
+            await recordDatagonActivity(db, {
+                userId: actor.id,
+                kind: 'work_create',
+                section: ent.pageKey || ent.slug,
+                label: `WORK create ${ent.slug}#${r.insertId}`,
+                detail: JSON.stringify({
+                    slug: ent.slug,
+                    id: r.insertId,
+                    secret_fields: createdSecrets,
+                }),
+            });
             res.json({ success: true, id: r.insertId });
         } catch (e) {
             next(e);
@@ -1237,6 +1298,7 @@ module.exports = (db) => {
                     delete data[k];
                 }
             }
+            encryptWorkSecretsInPlace(data, isWorkSensitiveKey);
             const assigneeIds = parseAssigneeLegacyIds(body);
             const headId = Object.prototype.hasOwnProperty.call(body, 'id_glavn_user')
                 ? body.id_glavn_user
@@ -1289,6 +1351,7 @@ module.exports = (db) => {
             if (!(await actorCanAccessWorkRow(db, ent, existRows[0], scope))) {
                 return res.status(403).json({ success: false, error: 'Нет доступа к этой записи', code: 'FORBIDDEN' });
             }
+            const actor = actorOf(req);
             if (String(req.query.hard || '') === '1') {
                 if (!scope.unscoped) {
                     return res.status(403).json({
@@ -1298,8 +1361,30 @@ module.exports = (db) => {
                     });
                 }
                 await db.query(`DELETE FROM ${ent.table} WHERE id=?`, [id]);
+                await recordDatagonActivity(db, {
+                    userId: actor.id,
+                    kind: 'work_hard_delete',
+                    section: ent.pageKey || ent.slug,
+                    label: `WORK hard-delete ${ent.slug}#${id}`,
+                    detail: JSON.stringify({ slug: ent.slug, id }),
+                });
             } else {
+                // F-WORK-06: soft-archive только unscoped admin.
+                if (!scope.unscoped) {
+                    return res.status(403).json({
+                        success: false,
+                        error: 'Архивация записей WORK — только администратор',
+                        code: 'FORBIDDEN',
+                    });
+                }
                 await db.query(`UPDATE ${ent.table} SET status=0, updated_at=NOW() WHERE id=?`, [id]);
+                await recordDatagonActivity(db, {
+                    userId: actor.id,
+                    kind: 'work_archive',
+                    section: ent.pageKey || ent.slug,
+                    label: `WORK archive ${ent.slug}#${id}`,
+                    detail: JSON.stringify({ slug: ent.slug, id }),
+                });
             }
             res.json({ success: true });
         } catch (e) {
