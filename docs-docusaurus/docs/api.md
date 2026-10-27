@@ -140,9 +140,9 @@ Body:
 
 Запись (`POST`, `PUT`, `DELETE`, сохранение матрицы) — только **admin**. Чтение `GET /api/specialties` и `GET /api/specialties/pages` также разрешено пользователю с **`can_manage_users`** (форма нового пользователя на `/settings.html` при скрытой странице «Настройки» в матрице).
 
-- `GET /api/specialties` — список специальностей (с числом привязанных пользователей, флагами **`can_payroll`**, **`is_system`**).
+- `GET /api/specialties` — список специальностей (с числом привязанных пользователей, флагами **`can_payroll`**, **`is_system`**, **`can_sales_see_all`**, **`can_sales_edit_plans`**).
 - `POST /api/specialties` — создать; body: `{ "name": "..." }` (имя уникально; «Полный доступ» зарезервировано).
-- `PUT /api/specialties/:id` — обновить; body: `{ "name"?: "...", "can_payroll"?: true|false }` (F-WS-02: payroll по `can_payroll`; F-SET-05: системную `is_system` нельзя переименовать).
+- `PUT /api/specialties/:id` — обновить; body: `{ "name"?, "can_payroll"?, "can_sales_see_all"?, "can_sales_edit_plans"? }` (F-WS-02 / F-OPS-03: ACL по флагам; F-SET-05: системную `is_system` нельзя переименовать).
 - `DELETE /api/specialties/:id` — удалить (нельзя удалить `is_system` и специальность с привязанными пользователями).
 - `GET /api/specialties/pages` — каталог разделов панели (ключ, заголовок, html-файл) для матрицы.
 - `GET /api/specialties/:id/access` — текущие режимы по разделам.

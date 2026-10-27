@@ -6,6 +6,8 @@ const { recordDatagonActivity } = require('../lib/datagonActivity');
 const datagonSpecialties = require('../lib/datagonSpecialties');
 
 const AUTH_SESSION_COOKIE = 'dg_session';
+/** F-AUTH-08: cost factor for new password hashes (legacy hashes stay until change). */
+const BCRYPT_ROUNDS = 12;
 
 function parseCookie(header) {
     const out = Object.create(null);
@@ -179,7 +181,7 @@ module.exports = (db, appSettings = {}) => {
     let dummyBcryptHashPromise = null;
     async function burnLoginCompare(password) {
         if (!dummyBcryptHashPromise) {
-            dummyBcryptHashPromise = bcrypt.hash('datagon-login-timing-dummy', 10);
+            dummyBcryptHashPromise = bcrypt.hash('datagon-login-timing-dummy', BCRYPT_ROUNDS);
         }
         const h = await dummyBcryptHashPromise;
         await bcrypt.compare(String(password || ''), h);
@@ -196,6 +198,8 @@ module.exports = (db, appSettings = {}) => {
                    COALESCE(u.is_archived, 0) AS is_archived,
                    sp.name AS specialty_name,
                    COALESCE(sp.can_payroll, 0) AS can_payroll,
+                   COALESCE(sp.can_sales_see_all, 0) AS can_sales_see_all,
+                   COALESCE(sp.can_sales_edit_plans, 0) AS can_sales_edit_plans,
                    s.id AS session_id
             FROM auth_sessions s
             JOIN users u ON u.id = s.user_id
@@ -230,6 +234,8 @@ module.exports = (db, appSettings = {}) => {
             specialty_id: actor.specialty_id != null ? Number(actor.specialty_id) : null,
             specialty_name: actor.specialty_name || null,
             can_payroll: Number(actor.can_payroll || 0) === 1,
+            can_sales_see_all: Number(actor.can_sales_see_all || 0) === 1,
+            can_sales_edit_plans: Number(actor.can_sales_edit_plans || 0) === 1,
             page_modes
         };
     }
@@ -326,6 +332,8 @@ module.exports = (db, appSettings = {}) => {
                 specialty_id: actor.specialty_id != null ? Number(actor.specialty_id) : null,
                 specialty_name: actor.specialty_name || null,
                 can_payroll: actor.can_payroll === true,
+                can_sales_see_all: actor.can_sales_see_all === true,
+                can_sales_edit_plans: actor.can_sales_edit_plans === true,
                 page_modes: actor.page_modes || {},
                 redirect_after_login
             });
@@ -546,7 +554,7 @@ module.exports = (db, appSettings = {}) => {
             if (exists.length > 0) {
                 return res.status(409).json({ error: 'Пользователь с таким логином уже существует' });
             }
-            const passwordHash = await bcrypt.hash(rawPassword, 10);
+            const passwordHash = await bcrypt.hash(rawPassword, BCRYPT_ROUNDS);
             const isAdmin = await isAdminActor(req);
             let specId = parseInt(req.body?.specialty_id, 10);
             if (!Number.isFinite(specId) || specId <= 0) {
@@ -877,15 +885,22 @@ module.exports = (db, appSettings = {}) => {
             let page_modes = {};
             let specialty_name = null;
             let can_payroll = false;
+            let can_sales_see_all = false;
+            let can_sales_edit_plans = false;
             try {
                 page_modes = await datagonSpecialties.getPageModesForSpecialty(db, user.specialty_id);
                 if (user.specialty_id != null) {
                     const [sn] = await db.query(
-                        'SELECT name, COALESCE(can_payroll, 0) AS can_payroll FROM specialties WHERE id = ? LIMIT 1',
+                        `SELECT name, COALESCE(can_payroll, 0) AS can_payroll,
+                                COALESCE(can_sales_see_all, 0) AS can_sales_see_all,
+                                COALESCE(can_sales_edit_plans, 0) AS can_sales_edit_plans
+                         FROM specialties WHERE id = ? LIMIT 1`,
                         [user.specialty_id]
                     );
                     specialty_name = sn[0]?.name || null;
                     can_payroll = Number(sn[0]?.can_payroll || 0) === 1;
+                    can_sales_see_all = Number(sn[0]?.can_sales_see_all || 0) === 1;
+                    can_sales_edit_plans = Number(sn[0]?.can_sales_edit_plans || 0) === 1;
                 }
             } catch (_) {
                 page_modes = await datagonSpecialties.getPageModesForSpecialty(db, null);
@@ -906,6 +921,8 @@ module.exports = (db, appSettings = {}) => {
                 specialty_id: user.specialty_id != null ? Number(user.specialty_id) : null,
                 specialty_name,
                 can_payroll,
+                can_sales_see_all,
+                can_sales_edit_plans,
                 page_modes,
                 auth_token: token,
                 redirect_after_login
@@ -993,7 +1010,7 @@ module.exports = (db, appSettings = {}) => {
                 }
             }
 
-            const newHash = await bcrypt.hash(newPassword, 10);
+            const newHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
             await db.query('UPDATE users SET password_hash = ? WHERE id = ?', [newHash, user.id]);
             await ensureAuthSchema();
             await db.query('UPDATE auth_sessions SET revoked = 1 WHERE user_id = ? AND revoked = 0', [user.id]);

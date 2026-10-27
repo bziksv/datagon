@@ -3731,7 +3731,7 @@ function factory(db, appSettings) {
                          LEFT JOIN dg_finance_accounts a ON a.bank = t.bank AND a.account_id = t.account_id
                          WHERE ${whereSql}
                          ORDER BY ${orderSql}
-                         LIMIT 50000`,
+                         LIMIT 10000`,
                         params
                     );
                     const merged = finCash.sortCashLikeRows(
@@ -3821,7 +3821,7 @@ function factory(db, appSettings) {
                  LEFT JOIN dg_finance_accounts a ON a.bank = t.bank AND a.account_id = t.account_id
                  WHERE ${whereSql}
                  ORDER BY ${orderSqlMerge}
-                 LIMIT 50000`,
+                 LIMIT 10000`,
                 params
             );
             const merged = finCash.sortCashLikeRows(

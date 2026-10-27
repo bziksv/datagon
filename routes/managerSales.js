@@ -140,13 +140,6 @@ function canWrite(req) {
     return pageMode(req) === 'full';
 }
 
-const SEE_ALL_SPECIALTIES = new Set([
-    'полный доступ',
-    'бухгалтерия',
-    'делопроизводители',
-    'делопроизводитель',
-]);
-const EDIT_PLAN_SPECIALTIES = new Set(['полный доступ', 'бухгалтерия']);
 const SALES_SPECIALTY_NAME = 'Менеджер по продажам';
 
 const FIELD_LOG_LABELS = {
@@ -219,19 +212,20 @@ function actorSpecialtyName(req) {
         .toLowerCase();
 }
 
-/** Чужие таблицы — admin, «Полный доступ», «Бухгалтерия», «Делопроизводители». Остальные видят свою. */
+/** Чужие таблицы — admin или specialty.can_sales_see_all (F-OPS-03). */
 function canSeeAll(req) {
     const actor = req && req.datagonActor;
     if (!actor) return false;
     if (actor.username === 'admin') return true;
-    return SEE_ALL_SPECIALTIES.has(actorSpecialtyName(req));
+    return actor.can_sales_see_all === true;
 }
 
+/** Планы — admin или specialty.can_sales_edit_plans (F-OPS-03). */
 function canEditPlans(req) {
     const actor = req && req.datagonActor;
     if (!actor) return false;
     if (actor.username === 'admin') return true;
-    return EDIT_PLAN_SPECIALTIES.has(actorSpecialtyName(req));
+    return actor.can_sales_edit_plans === true;
 }
 
 /**
@@ -1745,7 +1739,20 @@ module.exports = function managerSalesRouterFactory(db) {
             const years = (yearRows || []).map((r) => Number(r.year)).filter((y) => Number.isFinite(y));
             const cy = currentYear();
             if (!years.includes(cy)) years.unshift(cy);
-            const managers = await listSalesManagers(db);
+            // F-OPS-03: без see-all не отдаём полный список менеджеров (только себя).
+            let managers = [];
+            if (seeAll) {
+                managers = await listSalesManagers(db);
+            } else if (selfId) {
+                const actorRow = req.datagonActor || {};
+                managers = [
+                    {
+                        id: selfId,
+                        username: actorRow.username || '',
+                        full_name: actorRow.full_name || actorRow.username || '',
+                    },
+                ];
+            }
             const actor = req.datagonActor || {};
             res.json({
                 success: true,

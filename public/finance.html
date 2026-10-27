@@ -6565,7 +6565,7 @@
             esc(names) +
             "</div></td>" +
             "<td class=\"small text-muted\">" +
-            esc(c.client_id || "—") +
+            esc(c.client_id_mask || c.client_id || "—") +
             "</td>" +
             "<td class=\"small text-muted\">" +
             esc(c.refresh_token_mask || "—") +
@@ -9951,10 +9951,21 @@
           state.raiffeisenCredentials = Array.isArray(cfg.raiffeisen_credentials) ? cfg.raiffeisen_credentials : [];
           renderRaiffList();
           var added = state.raiffeisenCredentials.filter(function (c) {
-            return String(c.client_id || "") === clientId;
+            return c.configured && String(c.label || "") === (label || "Райффайзен");
           });
+          if (!added.length && state.raiffeisenCredentials.length) {
+            added = [state.raiffeisenCredentials[state.raiffeisenCredentials.length - 1]];
+          }
           var html = "<strong>Ключ Райфа сохранён.</strong>";
-          if (added[0]) html += "<br>" + esc(added[0].label) + ": " + esc(added[0].refresh_token_mask || "—");
+          if (added[0]) {
+            html +=
+              "<br>" +
+              esc(added[0].label) +
+              ": " +
+              esc(added[0].client_id_mask || "—") +
+              " / " +
+              esc(added[0].refresh_token_mask || "—");
+          }
           setBankMsg("success", html);
           if (cid) cid.value = "";
           if (sec) sec.value = "";

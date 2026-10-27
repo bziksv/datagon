@@ -55,8 +55,10 @@ module.exports = (db) => {
             const body = req.body && typeof req.body === 'object' ? req.body : {};
             const patch = {};
             if (body.name != null) patch.name = body.name;
-            if (Object.prototype.hasOwnProperty.call(body, 'can_payroll')) {
-                patch.can_payroll = body.can_payroll;
+            for (const flag of ['can_payroll', 'can_sales_see_all', 'can_sales_edit_plans']) {
+                if (Object.prototype.hasOwnProperty.call(body, flag)) {
+                    patch[flag] = body[flag];
+                }
             }
             if (!Object.keys(patch).length) {
                 return res.status(400).json({ error: 'Нет полей для обновления' });

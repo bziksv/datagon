@@ -1358,6 +1358,8 @@
                       <th>Название</th>
                       <th>Пользователей</th>
                       <th title="Оклады, табель payroll, Bitcop — не по имени специальности">ФОТ</th>
+                      <th title="manager-sales: все менеджеры (can_sales_see_all)">Продажи все</th>
+                      <th title="manager-sales: планы и пороги (can_sales_edit_plans)">Планы</th>
                       <th>Действия</th>
                     </tr>
                   </thead>
@@ -5077,7 +5079,7 @@
         if (!specList.length) {
           var tr0 = document.createElement("tr");
           var td0 = document.createElement("td");
-          td0.colSpan = 5;
+          td0.colSpan = 7;
           td0.className = "text-muted";
           td0.textContent = "Нет данных (загрузите снова после входа admin)";
           tr0.appendChild(td0);
@@ -5092,47 +5094,70 @@
           tdN.textContent = sp.name || "";
           var tdC = document.createElement("td");
           tdC.textContent = String(sp.users_count != null ? sp.users_count : "0");
-          var tdPay = document.createElement("td");
-          tdPay.className = "text-center";
-          var payCb = document.createElement("input");
-          payCb.type = "checkbox";
-          payCb.className = "form-check-input";
-          payCb.title = "Доступ к окладам / payroll / Bitcop (can_payroll)";
-          payCb.checked = !!sp.can_payroll;
-          payCb.setAttribute("data-dg-no-activity", "1");
-          payCb.addEventListener("change", function () {
-            var next = !!payCb.checked;
-            payCb.disabled = true;
-            fetch("/api/specialties/" + sp.id, {
-              method: "PUT",
-              credentials: "same-origin",
-              headers: authHeaders(true),
-              body: JSON.stringify({ can_payroll: next }),
-            })
-              .then(function (r) {
-                return r.json().then(function (j) {
-                  return { r: r, j: j };
-                });
+          function makeSpecFlagCb(flagKey, title, onLabel, offLabel) {
+            var td = document.createElement("td");
+            td.className = "text-center";
+            var cb = document.createElement("input");
+            cb.type = "checkbox";
+            cb.className = "form-check-input";
+            cb.title = title;
+            cb.checked = !!sp[flagKey];
+            cb.setAttribute("data-dg-no-activity", "1");
+            cb.addEventListener("change", function () {
+              var next = !!cb.checked;
+              cb.disabled = true;
+              var body = {};
+              body[flagKey] = next;
+              fetch("/api/specialties/" + sp.id, {
+                method: "PUT",
+                credentials: "same-origin",
+                headers: authHeaders(true),
+                body: JSON.stringify(body),
               })
-              .then(function (x) {
-                if (!x.r.ok) throw new Error((x.j && x.j.error) || "Ошибка");
-                sp.can_payroll = next;
-                if (window.DatagonNotify && window.DatagonNotify.toast) {
-                  window.DatagonNotify.toast({
-                    type: "success",
-                    message: next ? "ФОТ включён" : "ФОТ выключен",
+                .then(function (r) {
+                  return r.json().then(function (j) {
+                    return { r: r, j: j };
                   });
-                }
-              })
-              .catch(function (e) {
-                payCb.checked = !next;
-                alert(e.message || "Ошибка");
-              })
-              .finally(function () {
-                payCb.disabled = false;
-              });
-          });
-          tdPay.appendChild(payCb);
+                })
+                .then(function (x) {
+                  if (!x.r.ok) throw new Error((x.j && x.j.error) || "Ошибка");
+                  sp[flagKey] = next;
+                  if (window.DatagonNotify && window.DatagonNotify.toast) {
+                    window.DatagonNotify.toast({
+                      type: "success",
+                      message: next ? onLabel : offLabel,
+                    });
+                  }
+                })
+                .catch(function (e) {
+                  cb.checked = !next;
+                  alert(e.message || "Ошибка");
+                })
+                .finally(function () {
+                  cb.disabled = false;
+                });
+            });
+            td.appendChild(cb);
+            return td;
+          }
+          var tdPay = makeSpecFlagCb(
+            "can_payroll",
+            "Доступ к окладам / payroll / Bitcop (can_payroll)",
+            "ФОТ включён",
+            "ФОТ выключен"
+          );
+          var tdSalesAll = makeSpecFlagCb(
+            "can_sales_see_all",
+            "Все менеджеры на Продажах (can_sales_see_all)",
+            "Продажи: все менеджеры",
+            "Продажи: только свои"
+          );
+          var tdSalesPlans = makeSpecFlagCb(
+            "can_sales_edit_plans",
+            "Планы и пороги % МП (can_sales_edit_plans)",
+            "Планы: редактирование",
+            "Планы: только просмотр"
+          );
           var tdA = document.createElement("td");
           tdA.className = "text-nowrap";
           var bRen = document.createElement("button");
@@ -5196,6 +5221,8 @@
           tr.appendChild(tdN);
           tr.appendChild(tdC);
           tr.appendChild(tdPay);
+          tr.appendChild(tdSalesAll);
+          tr.appendChild(tdSalesPlans);
           tr.appendChild(tdA);
           tbody.appendChild(tr);
         });
