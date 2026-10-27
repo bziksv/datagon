@@ -285,7 +285,7 @@
         <div class="ev">
           Публичный <code>POST /api/auth/login</code> без throttle/CAPTCHA (rateLimit/helmet отсутствуют).
           <strong>Fix:</strong> limit_req / 5 попыток на IP+user / backoff + алерт в activity.
-          <div class="fix-note"><strong>2026-10-27 (local):</strong> in-memory 5 fails / 15 мин на IP+username → 429 <code>LOGIN_RATE_LIMIT</code> (<code>routes/auth.js</code>). Nginx <code>limit_req</code> / CAPTCHA — отдельно (F-DEP).</div>
+          <div class="fix-note"><strong>2026-10-27 (прод <code>c60e06a</code>):</strong> in-memory 5 fails / 15 мин на IP+username → 429 <code>LOGIN_RATE_LIMIT</code> (<code>routes/auth.js</code>). Nginx <code>limit_req</code> / CAPTCHA — отдельно (F-DEP).</div>
         </div>
       </div>
 
@@ -294,7 +294,7 @@
         <div class="ev">
           <code>attachSessionCookie</code>: httpOnly + SameSite=Lax, <code>secure</code> не задан.
           <strong>Fix:</strong> <code>secure: true</code> за TLS; те же атрибуты в <code>clearCookie</code>.
-          <div class="fix-note"><strong>2026-10-27 (local):</strong> <code>shouldSecureCookie</code> — TLS via <code>X-Forwarded-Proto</code>/<code>req.secure</code> или <code>DATAGON_COOKIE_SECURE</code>; apply + clear.</div>
+          <div class="fix-note"><strong>2026-10-27 (прод <code>c60e06a</code>):</strong> <code>shouldSecureCookie</code> — TLS via <code>X-Forwarded-Proto</code>/<code>req.secure</code> или <code>DATAGON_COOKIE_SECURE</code>; apply + clear.</div>
         </div>
       </div>
 
@@ -380,7 +380,7 @@
           Любой новый/забытый <code>/api/…</code> без записи в <code>API_PREFIX_RULES</code> доступен всем с сессией.
           Пример: <code>/something-unknown → NULL</code>.
           <strong>Fix:</strong> fail-closed (403 если не matched), whitelist null только для явного списка (<code>/auth/me</code>, track, …).
-          <div class="fix-note"><strong>2026-10-27 (local):</strong> <code>resolveApiPathAccess</code> → unmatched 403 <code>API_UNMATCHED</code>; явный <code>pageKey: null</code> только для whitelist-префиксов в <code>API_PREFIX_RULES</code>.</div>
+          <div class="fix-note"><strong>2026-10-27 (прод <code>c60e06a</code>):</strong> <code>resolveApiPathAccess</code> → unmatched 403 <code>API_UNMATCHED</code>; явный <code>pageKey: null</code> только для whitelist-префиксов в <code>API_PREFIX_RULES</code>.</div>
         </div>
       </div>
 
@@ -390,7 +390,7 @@
           <code>getApiPageModeForActor</code> / <code>getActorPageMode</code>: <code>pm[pageKey] || 'full'</code>.
           При рассинхроне матрицы (нет строки) пользователь получает полный доступ к разделу вместо hidden.
           <strong>Fix:</strong> default <code>hidden</code> (fail-closed); admin по-прежнему full.
-          <div class="fix-note"><strong>2026-10-27 (local):</strong> default <code>hidden</code> в <code>getActorPageMode</code> / <code>getApiPageModeForActor</code>.</div>
+          <div class="fix-note"><strong>2026-10-27 (прод <code>c60e06a</code>):</strong> default <code>hidden</code> в <code>getActorPageMode</code> / <code>getApiPageModeForActor</code>.</div>
         </div>
       </div>
 
@@ -603,7 +603,7 @@
           Комбинация: подставить host + инъекция в field → exfil. Детали SSRF — шаг 14; здесь — SQL surface.
           <strong>Fix:</strong> allowlist хостов/VPN; encrypt db_pass; валидация идентификаторов (F-SQL-01).
           <div class="fix-note"><strong>2026-10-25 · <code>270624f</code>:</strong> idents закрыты; GET маскирует <code>db_pass</code>; PUT пустой = keep.</div>
-          <div class="fix-note"><strong>2026-10-27 (local):</strong> <code>lib/datagonCmsDb.js</code> — allowlist host (+ <code>DATAGON_CMS_DB_HOSTS</code>), AES-GCM <code>db_pass</code> (тот же <code>DATAGON_VAULT_KEY</code>), <code>openCmsDbConnection</code> во всех CMS-коннектах (mysites / myproducts / server sync / sync-worker / CmsPriceWrite). Миграция legacy: <code>scripts/migrate-cms-db-pass-encrypt.mjs</code> (на прод — после выкладки ключа).</div>
+          <div class="fix-note"><strong>2026-10-27 (прод <code>c60e06a</code>):</strong> <code>lib/datagonCmsDb.js</code> — allowlist host (+ <code>DATAGON_CMS_DB_HOSTS</code>), AES-GCM <code>db_pass</code> (тот же <code>DATAGON_VAULT_KEY</code>), <code>openCmsDbConnection</code> во всех CMS-коннектах (mysites / myproducts / server sync / sync-worker / CmsPriceWrite). Миграция legacy: <code>scripts/migrate-cms-db-pass-encrypt.mjs</code> (на прод — после выкладки ключа).</div>
         </div>
       </div>
 
@@ -698,7 +698,7 @@
           <code>formatBulkSyncPriceSummary</code> / hold → <code>showMpActionLog(…, true)</code>.
           Issues/ops-sheet/finance имеют тот же API <code>asHtml</code> (finance в итогах обычно esc’ает).
           <strong>Impact:</strong> кража <code>localStorage</code> токена / CSRF-подобные действия от имени жертвы.
-          <div class="fix-note"><strong>2026-10-27 (local):</strong> <code>DatagonFmt.escapeHtml</code>; medmarket + my-products describe/summary/errors экранируют user/API строки перед <code>innerHTML</code>. CSP (F-XSS-02) — отдельно.</div>
+          <div class="fix-note"><strong>2026-10-27 (прод <code>c60e06a</code>):</strong> <code>DatagonFmt.escapeHtml</code>; medmarket + my-products describe/summary/errors экранируют user/API строки перед <code>innerHTML</code>. CSP (F-XSS-02) — отдельно.</div>
           <strong>Fix:</strong> единый <code>DatagonFmt.escapeHtml</code> (или DOMPurify allowlist) на
           <em>все</em> пользовательские/внешние поля перед склейкой HTML; фильтры — только через esc;
           для ошибок API — esc; предпочтительно собирать DOM через <code>createElement</code>/<code>textContent</code>.
@@ -2580,7 +2580,7 @@
         <tbody>
           <tr>
             <td class="mono">2026-10-27</td>
-            <td><strong>Local batch</strong>: F-SQL-02, F-AUTH-02/03, F-ACL-01/02, F-PAR-05; затем F-FIN-01 (vault bank credentials) + F-XSS-01 (action-log escape). Прод: <code>migrate-cms-db-pass-encrypt.mjs</code> + <code>migrate-finance-credentials-encrypt.mjs</code>. Частично: F-SEC-05, F-NP-01.</td>
+            <td><strong>Прод <code>c60e06a</code></strong>: F-SQL-02, F-AUTH-02/03, F-ACL-01/02, F-PAR-05, F-FIN-01, F-XSS-01. Миграции: CMS <code>db_pass</code> 10/10 encrypted; finance credentials encrypted + legacy JWT cleared. Частично: F-SEC-05, F-NP-01.</td>
           </tr>
           <tr>
             <td class="mono">2026-10-25</td>
