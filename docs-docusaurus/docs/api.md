@@ -115,7 +115,7 @@ Body:
 { "username": "admin", "password": "...", "then": "/dashboard.html" }
 ```
 
-`then` опционален. В ответе — `auth_token`, `page_modes`, **`redirect_after_login`** (безопасный путь; при полностью закрытой матрице — `/no-access.html`). Cookie сессии `dg_session`: `httpOnly` + `SameSite=Lax` + **`Secure`** за TLS (`X-Forwarded-Proto` / `req.secure`, либо `DATAGON_COOKIE_SECURE=1|0`). Rate-limit: **5** неудачных попыток на IP+username за **15** мин → **429** `LOGIN_RATE_LIMIT`. Неизвестный `/api/*` без записи в `API_PREFIX_RULES` → **403** `API_UNMATCHED`; отсутствие ключа в `page_modes` → **`hidden`** (не `full`).
+`then` опционален. В ответе — `auth_token`, `page_modes`, **`redirect_after_login`** (безопасный путь; при полностью закрытой матрице — `/no-access.html`). Cookie сессии `dg_session`: `httpOnly` + `SameSite=Lax` + **`Secure`** за TLS (`X-Forwarded-Proto` / `req.secure`, либо `DATAGON_COOKIE_SECURE=1|0`). Rate-limit: **5** неудачных попыток на IP+username за **15** мин → **429** `LOGIN_RATE_LIMIT`. Неизвестный `/api/*` без записи в `API_PREFIX_RULES` → **403** `API_UNMATCHED`; отсутствие ключа в `page_modes` → **`hidden`** (не `full`). HTML-лист вне `PAGE_DEFS` (напр. `/ref/*.html`) для не-admin → redirect **`/no-access.html`** (F-ACL-04); `login` / `legal` / admin — без изменений.
 
 ### POST `/api/login`
 Legacy-алиас входа (тот же обработчик, что и выше).

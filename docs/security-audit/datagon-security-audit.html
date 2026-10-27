@@ -407,12 +407,13 @@
         </div>
       </div>
 
-      <div class="finding" id="F-ACL-04">
-        <div class="title"><span class="badge med">medium</span> F-ACL-04 · HTML вне реестра открыт любому с сессией</div>
+      <div class="finding fixed-out" id="F-ACL-04">
+        <div class="title"><span class="badge med">medium</span> <span class="badge fixed">исправлено</span> F-ACL-04 · HTML вне реестра открыт любому с сессией</div>
         <div class="ev">
           <code>isHtmlLeafAccessHidden</code>: <code>if (!pk) return false</code> — незарегистрированный leaf (напр. <code>ref/*.html</code>, забытый экран)
           не скрывается матрицей. Нужна только валидная сессия.
           <strong>Fix:</strong> неизвестный leaf → redirect no-access (кроме явного allowlist: login, legal).
+          <div class="fix-note"><strong>2026-10-27 (local):</strong> <code>!pk → true</code> (deny); нет <code>page_modes</code> → deny; mode без значения → hidden. Admin / login / legal без изменений.</div>
         </div>
       </div>
 
@@ -762,14 +763,15 @@
         </div>
       </div>
 
-      <div class="finding" id="F-XSS-06">
-        <div class="title"><span class="badge low">low</span> F-XSS-06 · Разрозненные <code>esc()</code>, нет единого экспорта</div>
+      <div class="finding fixed-out" id="F-XSS-06">
+        <div class="title"><span class="badge low">low</span> <span class="badge fixed">исправлено</span> F-XSS-06 · Разрозненные <code>esc()</code>, нет единого экспорта</div>
         <div class="ev">
           ~20 scripts с локальным <code>esc</code>/<code>escapeHtml</code>; остальные без хелпера.
           <code>DatagonNotify.escapeHtml</code> не экспортирован в <code>window.DatagonFmt</code>.
           Легко забыть esc в новом action-log (правило extended как раз провоцирует HTML).
           <strong>Fix:</strong> <code>DatagonFmt.escapeHtml</code> + линтер/чек «asHtml ⇒ esc»;
           обновить rule action-log: «цифры ок, строки — только escaped».
+          <div class="fix-note"><strong>2026-10-27:</strong> <code>window.DatagonFmt.escapeHtml</code> в <code>datagon-vanilla.js</code>; локальные esc постепенно делегируют.</div>
         </div>
       </div>
 
@@ -2284,12 +2286,13 @@
         </div>
       </div>
 
-      <div class="finding" id="F-OPS-05">
-        <div class="title"><span class="badge med">medium</span> F-OPS-05 · pageMode fail-open на ops-sheet</div>
+      <div class="finding fixed-out" id="F-OPS-05">
+        <div class="title"><span class="badge med">medium</span> <span class="badge fixed">исправлено</span> F-OPS-05 · pageMode fail-open на ops-sheet</div>
         <div class="ev">
           <code>pageMode</code>: нет ключа → <code>full</code> (F-ACL-02). То же в managerSales
           canWrite path через матрицу API.
           <strong>Fix:</strong> default hidden.
+          <div class="fix-note"><strong>2026-10-27 (local):</strong> ops-sheet уже hidden; <code>managerSales</code> / <code>productAnalysis</code> / <code>purchaseOverridesEditable</code> → default hidden.</div>
         </div>
       </div>
 
@@ -2367,12 +2370,13 @@
         </div>
       </div>
 
-      <div class="finding" id="F-PUB-03">
-        <div class="title"><span class="badge med">medium</span> F-PUB-03 · <code>/ref/*.html</code> любому с сессией (F-ACL-04)</div>
+      <div class="finding fixed-out" id="F-PUB-03">
+        <div class="title"><span class="badge med">medium</span> <span class="badge fixed">исправлено</span> F-PUB-03 · <code>/ref/*.html</code> любому с сессией (F-ACL-04)</div>
         <div class="ev">
           Leaf не в реестре → <code>isHtmlLeafAccessHidden</code> = false. Любой залогиненный
           открывает эталоны ArchitectUI vanilla. Низкий data risk, обход «закрыть всё лишнее».
           <strong>Fix:</strong> unknown leaf → no-access; или page key ref=admin.
+          <div class="fix-note"><strong>2026-10-27 (local):</strong> закрыто через F-ACL-04 (unknown leaf deny); admin по-прежнему видит ref.</div>
         </div>
       </div>
 

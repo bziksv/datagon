@@ -132,7 +132,8 @@ function pageMode(req) {
     const actor = req.datagonActor || {};
     if (actor.username === 'admin') return 'full';
     const raw = actor.page_modes && actor.page_modes['manager-sales'];
-    return raw === 'view' || raw === 'hidden' || raw === 'full' ? raw : 'full';
+    // F-OPS-05: нет ключа в матрице → hidden (не full).
+    return raw === 'view' || raw === 'hidden' || raw === 'full' ? raw : 'hidden';
 }
 
 function canWrite(req) {

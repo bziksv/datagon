@@ -105,9 +105,11 @@ const ZERO_LOG_DEFAULT_STORE = '__total__';
 /** Тот же критерий, что middleware `/api` + `page_modes.purchase` для POST (см. `lib/datagonPageRegistry.js`). */
 function purchaseOverridesEditable(req) {
     const a = req && req.datagonActor;
-    if (!a || a.username === 'admin') return true;
-    const raw = a.page_modes && a.page_modes.purchase != null ? a.page_modes.purchase : 'full';
-    return String(raw).toLowerCase() === 'full';
+    if (!a) return false;
+    if (a.username === 'admin') return true;
+    // F-ACL-02 / F-OPS-05: нет ключа → не full.
+    const raw = a.page_modes && a.page_modes.purchase;
+    return String(raw || '').toLowerCase() === 'full';
 }
 
 async function ensureZeroStockSchema(db) {
