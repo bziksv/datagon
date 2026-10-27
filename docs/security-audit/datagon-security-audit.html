@@ -1573,7 +1573,7 @@
           может затронуть весь каталог. UI-confirm не заменяет серверный cap / dual-control.
           <strong>Fix:</strong> max rows (напр. 500); обязательный <code>confirm: true</code>;
           dry_run по умолчанию для fill без confirm; очередь + прогресс вместо sync HTTP.
-          <div class="fix-note"><strong>2026-10-27 (локально):</strong> import: confirm + max 500 rows; fill-linkage: confirm при записи.</div>
+          <div class="fix-note"><strong>2026-10-27 (прод <code>076257a</code>):</strong> import: confirm + max 500 rows; fill-linkage: confirm при записи.</div>
         </div>
       </div>
 
@@ -1909,7 +1909,7 @@
           правка витрины.
           <strong>Fix:</strong> confirm на CMS-write; отдельная capability «писать в CMS»;
           валидация идентификаторов таблиц (F-SQL-01); audit каждой цены.
-          <div class="fix-note"><strong>2026-10-27 (локально):</strong> set-manual-price / sync-price-from-competitor требуют confirm: true; UI обновлён.</div>
+          <div class="fix-note"><strong>2026-10-27 (прод <code>076257a</code>):</strong> set-manual-price / sync-price-from-competitor требуют confirm: true; UI обновлён.</div>
         </div>
       </div>
 
@@ -1921,7 +1921,7 @@
           порога суммы. Смена <code>source_site_id</code> / % в <code>POST /settings</code> —
           любой full без отдельного admin.
           <strong>Fix:</strong> сузить роль; порог + второй confirm для apply &gt; N; settings только admin.
-          <div class="fix-note"><strong>2026-10-27 (локально):</strong> POST /network-prices/settings — admin или settings=full (apply уже с confirm).</div>
+          <div class="fix-note"><strong>2026-10-27 (прод <code>076257a</code>):</strong> POST /network-prices/settings — admin или settings=full (apply уже с confirm).</div>
         </div>
       </div>
 
@@ -1931,7 +1931,7 @@
           <code>POST /unlink</code> сразу DELETE link + INSERT ignore. UI-модалка не заменяет
           серверный confirm (см. destructive-confirm rule).
           <strong>Fix:</strong> <code>confirm: true</code> как у deactivate.
-          <div class="fix-note"><strong>2026-10-27 (локально):</strong> unlink требует confirm: true.</div>
+          <div class="fix-note"><strong>2026-10-27 (прод <code>076257a</code>):</strong> unlink требует confirm: true.</div>
         </div>
       </div>
 
@@ -2138,7 +2138,7 @@
           <code>DELETE /api/exports/huckster/snapshot</code> сносит <code>latest</code> матрицы
           для любого huckster=full. Операционный sabotage / потеря снапшота.
           <strong>Fix:</strong> <code>confirm: true</code>; только admin.
-          <div class="fix-note"><strong>2026-10-27 (локально):</strong> DELETE snapshot — только admin + confirm.</div>
+          <div class="fix-note"><strong>2026-10-27 (прод <code>076257a</code>):</strong> DELETE snapshot — только admin + confirm.</div>
         </div>
       </div>
 
@@ -2241,7 +2241,7 @@
           Sync-all с дашборда требует settings=full — иначе «молчаливый» отказ.
           <strong>Fix:</strong> единый page key для виджетов дашборда или OR-access;
           disk/db-size только admin/processes.
-          <div class="fix-note"><strong>2026-10-27 (локально):</strong> db-size / disk-usage API page key → processes (не dashboard view).</div>
+          <div class="fix-note"><strong>2026-10-27 (прод <code>076257a</code>):</strong> db-size / disk-usage API page key → processes (не dashboard view).</div>
         </div>
       </div>
 
@@ -2600,7 +2600,7 @@
         <tbody>
           <tr>
             <td class="mono">2026-10-27</td>
-            <td><strong>Локально (ещё не в прод)</strong>: F-MS-02, F-MP-01/02/03, F-NP-03, F-OPS-02 (confirm CMS/MS writes, network settings ACL, huckster snapshot admin, db/disk → processes).</td>
+            <td><strong>Прод <code>076257a</code></strong>: F-MS-02, F-MP-01/02/03, F-NP-03, F-OPS-02 (confirm CMS/MS writes, network settings ACL, huckster snapshot admin, db/disk → processes). pm2 restart.</td>
           </tr>
           <tr>
             <td class="mono">2026-10-27</td>
