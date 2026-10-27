@@ -550,23 +550,19 @@ module.exports = (db, appSettings = {}) => {
             const isAdmin = await isAdminActor(req);
             let specId = parseInt(req.body?.specialty_id, 10);
             if (!Number.isFinite(specId) || specId <= 0) {
-                // Без specialty_id admin по умолчанию получает «Полный доступ»;
+                // Без specialty_id admin по умолчанию получает системную «Полный доступ» (is_system);
                 // менеджер пользователей обязан выбрать специальность явно.
                 if (!isAdmin) {
                     return res.status(400).json({ error: 'Выберите специальность' });
                 }
-                const [[d]] = await db.query(
-                    'SELECT id FROM specialties WHERE name = ? ORDER BY id ASC LIMIT 1',
-                    [datagonSpecialties.DEFAULT_SPECIALTY_NAME]
-                );
-                specId = d && d.id ? Number(d.id) : null;
+                specId = await datagonSpecialties.getSystemSpecialtyId(db);
             } else {
-                const [ex] = await db.query('SELECT id, name FROM specialties WHERE id = ?', [specId]);
+                const [ex] = await db.query(
+                    'SELECT id, name, COALESCE(is_system, 0) AS is_system FROM specialties WHERE id = ?',
+                    [specId]
+                );
                 if (!ex.length) return res.status(400).json({ error: 'Некорректная специальность' });
-                if (
-                    !isAdmin &&
-                    String(ex[0].name || '') === datagonSpecialties.DEFAULT_SPECIALTY_NAME
-                ) {
+                if (!isAdmin && Number(ex[0].is_system) === 1) {
                     return res.status(403).json({
                         error: 'Назначить специальность «Полный доступ» может только admin',
                     });

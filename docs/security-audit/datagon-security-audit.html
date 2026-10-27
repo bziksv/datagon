@@ -993,14 +993,15 @@
         </div>
       </div>
 
-      <div class="finding" id="F-SET-03">
-        <div class="title"><span class="badge med">medium</span> F-SET-03 · Middleware bypass <code>/auth/users*</code> на все методы</div>
+      <div class="finding fixed-out" id="F-SET-03">
+        <div class="title"><span class="badge med">medium</span> <span class="badge fixed">исправлено</span> F-SET-03 · Middleware bypass <code>/auth/users*</code> на все методы</div>
         <div class="ev">
           <code>can_manage_users</code> → <code>next()</code> для любого метода на <code>/auth/users…</code>.
           Сейчас handlers режут archive/delete/put/permissions до admin — ок, но новый маршрут
           без проверки = мгновенная эскалация. Create user позволяет плодить учётки (phishing / шум).
           <strong>Fix:</strong> bypass только GET list + POST create; остальное — через матрицу/admin;
           audit уже есть на create — расширить алерты.
+          <div class="fix-note"><strong>2026-10-27 (local):</strong> <code>server.js</code> — bypass только <code>GET|POST /auth/users</code>; <code>/auth/users/:id*</code> идёт в матрицу + admin-handlers.</div>
         </div>
       </div>
 
@@ -1015,8 +1016,8 @@
         </div>
       </div>
 
-      <div class="finding" id="F-SET-05">
-        <div class="title"><span class="badge med">medium</span> F-SET-05 · Специальностей: имя без UNIQUE; rename системной</div>
+      <div class="finding fixed-out" id="F-SET-05">
+        <div class="title"><span class="badge med">medium</span> <span class="badge fixed">исправлено</span> F-SET-05 · Специальностей: имя без UNIQUE; rename системной</div>
         <div class="ev">
           Защита «Полный доступ» завязана на <code>name === 'Полный доступ'</code>.
           <code>renameSpecialty</code> может переименовать системную; можно создать дубликат имени
@@ -1024,6 +1025,7 @@
           специальностью с нужными mode, либо ломается seed/default lookup.
           <strong>Fix:</strong> <code>is_system</code> флаг; UNIQUE(name); запрет rename/delete system id;
           запрет assign по флагу, не по строке.
+          <div class="fix-note"><strong>2026-10-27 (local):</strong> <code>specialties.is_system</code> + <code>uq_specialties_name</code>; seed/dedupe; create/rename/delete/assign по флагу; UI disable rename/delete system.</div>
         </div>
       </div>
 
@@ -1038,12 +1040,13 @@
         </div>
       </div>
 
-      <div class="finding" id="F-SET-07">
-        <div class="title"><span class="badge low">low</span> F-SET-07 · Пустая строка в POST settings затирает API key</div>
+      <div class="finding fixed-out" id="F-SET-07">
+        <div class="title"><span class="badge low">low</span> <span class="badge fixed">исправлено</span> F-SET-07 · Пустая строка в POST settings затирает API key</div>
         <div class="ev">
           <code>if (ozon_api_key !== undefined) … String(ozon_api_key || '')</code> —
           явная отправка <code>""</code> очищает ключ. UI verify ловит часть случаев, но гонка/баг формы =
           outage интеграций. <strong>Fix:</strong> write-only: пустое = «не менять»; отдельный clear с confirm.
+          <div class="fix-note"><strong>2026-10-27:</strong> уже <code>isBlankSecretInput</code> для ozon/wb/ym/planfix/proxy/huckster в <code>routes/settings.js</code> — пустое не пишет.</div>
         </div>
       </div>
 

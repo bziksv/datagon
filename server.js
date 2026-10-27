@@ -3839,7 +3839,14 @@ initDB().then(async () => {
         const pathOnly = String(req.path || '').split('?')[0];
         const canManageUsers = req.datagonActor.can_manage_users === true;
         if (canManageUsers) {
-            if (pathOnly === '/auth/users' || pathOnly.startsWith('/auth/users/')) return next();
+            // F-SET-03: bypass только список + создание; /auth/users/:id* — через матрицу/handlers (admin).
+            const m = String(req.method || '').toUpperCase();
+            if (
+                pathOnly === '/auth/users' &&
+                (m === 'GET' || m === 'POST' || m === 'HEAD' || m === 'OPTIONS')
+            ) {
+                return next();
+            }
             if (isHttpReadMethod(req.method) && (pathOnly === '/specialties' || pathOnly.startsWith('/specialties/'))) {
                 return next();
             }

@@ -4913,11 +4913,11 @@
           if (!el || el.tagName !== "SELECT") return;
           var prev = el.value;
           var forCreate = id === "dg-set-new-specialty";
-          // Менеджер пользователей не может выдать «Полный доступ» при создании.
+          // Менеджер пользователей не может выдать системную «Полный доступ» (is_system).
           var list =
             forCreate && !isAdmin()
               ? specList.filter(function (sp) {
-                  return String(sp.name || "") !== DEFAULT_SPEC_NAME;
+                  return !sp.is_system && String(sp.name || "") !== DEFAULT_SPEC_NAME;
                 })
               : specList;
           el.replaceChildren();
@@ -5140,7 +5140,10 @@
           bRen.className = "btn btn-sm btn-outline-secondary me-1 mb-1";
           bRen.setAttribute("data-dg-no-activity", "1");
           bRen.textContent = "Переименовать";
+          bRen.disabled = !!sp.is_system || sp.name === DEFAULT_SPEC_NAME;
+          bRen.title = bRen.disabled ? "Системную специальность нельзя переименовать" : "";
           bRen.addEventListener("click", function () {
+            if (sp.is_system) return alert("Системную специальность нельзя переименовать");
             var nn = window.prompt("Новое название специальности", sp.name || "");
             if (nn == null) return;
             nn = String(nn).trim();
@@ -5170,7 +5173,7 @@
           bDel.setAttribute("data-dg-no-activity", "1");
           bDel.textContent = "Удалить";
           bDel.disabled =
-            sp.name === DEFAULT_SPEC_NAME || Number(sp.users_count || 0) > 0;
+            !!sp.is_system || sp.name === DEFAULT_SPEC_NAME || Number(sp.users_count || 0) > 0;
           bDel.addEventListener("click", function () {
             if (!window.confirm('Удалить специальность «' + (sp.name || "") + "»?")) return;
             fetch("/api/specialties/" + sp.id, { method: "DELETE", credentials: "same-origin", headers: authHeaders(false) })
@@ -7106,7 +7109,7 @@
           var spMeta = specList.find(function (s) {
             return Number(s.id) === Number(specId);
           });
-          if (spMeta && String(spMeta.name || "") === DEFAULT_SPEC_NAME) {
+          if (spMeta && (spMeta.is_system || String(spMeta.name || "") === DEFAULT_SPEC_NAME)) {
             return alert("Назначить «Полный доступ» может только admin");
           }
         }
