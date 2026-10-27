@@ -13,8 +13,38 @@ const { openCmsDbConnection } = require('./lib/datagonCmsDb');
 
 const app = express();
 const PORT = config.port || 3000;
+/** F-DEP-02: по умолчанию только localhost (nginx → 127.0.0.1:3000). DATAGON_BIND_HOST=0.0.0.0 для отладки. */
+const BIND_HOST = String(process.env.DATAGON_BIND_HOST || '127.0.0.1').trim() || '127.0.0.1';
 let db;
 const postInitTasks = [];
+
+/** F-DEP-03 / F-XSS-02: базовые security headers + CSP Report-Only (inline scripts ещё нужны). */
+app.use((req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.setHeader(
+        'Permissions-Policy',
+        'camera=(), microphone=(), geolocation=(), payment=(), usb=()'
+    );
+    // Report-Only: не ломаем панель с inline <script>; готовность к enforce позже.
+    res.setHeader(
+        'Content-Security-Policy-Report-Only',
+        [
+            "default-src 'self'",
+            "base-uri 'self'",
+            "object-src 'none'",
+            "frame-ancestors 'none'",
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+            "style-src 'self' 'unsafe-inline'",
+            "img-src 'self' data: blob: https:",
+            "font-src 'self' data:",
+            "connect-src 'self'",
+            "form-action 'self'",
+        ].join('; ')
+    );
+    next();
+});
 
 /** Тяжёлые фоновые задачи после listen — не сразу, чтобы HTML/API успели ответить (пул MySQL 10 conn). */
 const STARTUP_DEFER_MS = Math.max(0, Number(process.env.DATAGON_STARTUP_DEFER_MS || 60000));
@@ -3757,8 +3787,8 @@ initDB().then(async () => {
                     .catch((e) => console.warn('[startup] post-init:', e && e.message ? e.message : e));
             }
         } else {
-            app.listen(PORT, () => {
-                console.log(`[Server] Running on port ${PORT}`);
+            app.listen(PORT, BIND_HOST, () => {
+                console.log(`[Server] Running on ${BIND_HOST}:${PORT}`);
                 console.log(`[AUTO SYNC] worker #${AUTO_SYNC_WORKER_ID}`);
                 console.log(
                     `[AUTO SYNC] manual tasks (${AUTO_SYNC_ALLOWED_TASK_KEYS.size}): ${[...AUTO_SYNC_ALLOWED_TASK_KEYS].join(', ')}`
@@ -3849,6 +3879,28 @@ initDB().then(async () => {
     app.use('/api/specialties', require('./routes/specialties')(db));
     app.post('/api/settings/auto-sync-run', async (req, res) => {
         try {
+            // F-SET-02: admin всегда; иначе settings=full + явный confirm (кнопка «Запустить сейчас»).
+            const actor = req.datagonActor;
+            if (!actor) {
+                return res.status(401).json({ success: false, error: 'Не авторизован', code: 'AUTH_REQUIRED' });
+            }
+            if (actor.username !== 'admin') {
+                const settingsMode = getApiPageModeForActor(actor, 'settings');
+                const confirmed =
+                    req.body &&
+                    (req.body.confirm === true ||
+                        req.body.confirm === 1 ||
+                        req.body.confirm === '1' ||
+                        req.body.confirm === 'true');
+                if (settingsMode !== 'full' || !confirmed) {
+                    return res.status(403).json({
+                        success: false,
+                        error:
+                            'Ручной запуск автосинхронизации: только admin или полный доступ к «Настройки» с confirm=true.',
+                        code: 'AUTO_SYNC_RUN_FORBIDDEN',
+                    });
+                }
+            }
             let task = String(req.body?.task || '').trim();
             if (task === 'medmarket-fill') task = 'medmarket_fill';
             if (!AUTO_SYNC_ALLOWED_TASK_KEYS.has(task)) {

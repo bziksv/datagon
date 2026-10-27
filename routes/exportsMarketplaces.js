@@ -356,6 +356,60 @@ function normalizeShopKind(raw) {
     return '';
 }
 
+const {
+    getActorPageMode,
+    getApiPageModeForActor,
+    getMarketplaceShopPageMode,
+} = require('../lib/datagonPageRegistry');
+
+/** F-ACL-03: shop-scoped доступ (max parent + child). false → ответ уже отправлен. */
+function assertMarketplaceShopAccess(req, res, shopKind, opts) {
+    const write = !!(opts && opts.write);
+    const a = req.datagonActor;
+    if (!a) {
+        res.status(401).json({ error: 'Не авторизован', code: 'AUTH_REQUIRED' });
+        return false;
+    }
+    if (a.username === 'admin') return true;
+    const mode = getMarketplaceShopPageMode(a, shopKind);
+    if (mode === 'hidden') {
+        res.status(403).json({ error: 'Нет доступа к площадке', code: 'PAGE_HIDDEN', shop: shopKind });
+        return false;
+    }
+    if (write && mode !== 'full') {
+        res.status(403).json({ error: 'Режим только просмотра', code: 'PAGE_VIEW_ONLY', shop: shopKind });
+        return false;
+    }
+    return true;
+}
+
+function assertMarketplaceIssuesAccess(req, res, opts) {
+    const write = !!(opts && opts.write);
+    const a = req.datagonActor;
+    if (!a) {
+        res.status(401).json({ error: 'Не авторизован', code: 'AUTH_REQUIRED' });
+        return false;
+    }
+    if (a.username === 'admin') return true;
+    const parent = getActorPageMode(a, 'exports-marketplaces');
+    const child = getActorPageMode(a, 'exports-marketplaces-issues');
+    const mode =
+        parent === 'full' || child === 'full'
+            ? 'full'
+            : parent === 'view' || child === 'view'
+              ? 'view'
+              : 'hidden';
+    if (mode === 'hidden') {
+        res.status(403).json({ error: 'Нет доступа к «Проблемы с товарами»', code: 'PAGE_HIDDEN' });
+        return false;
+    }
+    if (write && mode !== 'full') {
+        res.status(403).json({ error: 'Режим только просмотра', code: 'PAGE_VIEW_ONLY' });
+        return false;
+    }
+    return true;
+}
+
 function requireAdminOrSettingsFull(req, res, next) {
     const a = req.datagonActor;
     if (!a) {
@@ -363,8 +417,8 @@ function requireAdminOrSettingsFull(req, res, next) {
         return;
     }
     if (a.username === 'admin') return next();
-    const settingsMode = a.page_modes && a.page_modes.settings;
-    const marketplacesMode = a.page_modes && a.page_modes['exports-marketplaces'];
+    const settingsMode = getActorPageMode(a, 'settings');
+    const marketplacesMode = getApiPageModeForActor(a, 'exports-marketplaces');
     if (settingsMode === 'full' || marketplacesMode === 'full') return next();
     res.status(403).json({
         error: 'Сохранение ключей: только администратор или полный доступ к разделу «Настройки» / «Маркетплейсы».',
@@ -617,6 +671,7 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
             if (!kind) {
                 return res.status(400).json({ error: 'Неверный параметр shop', code: 'BAD_SHOP' });
             }
+            if (!assertMarketplaceShopAccess(req, res, kind, { write: false })) return;
             const titles = titlesByKind[kind];
             const headerKeys = Object.keys(titles);
             const headerLabels = headerKeys.map((k) => titles[k] || k);
@@ -701,6 +756,7 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
     });
 
     async function handleExport(req, res, kind, runner, csvTitleRuByKey) {
+        if (!assertMarketplaceShopAccess(req, res, kind, { write: false })) return;
         const formatRaw = String(req.query.format || 'json').toLowerCase();
         const stream = formatRaw === 'ndjson' || String(req.query.stream || '') === '1';
         const format = formatRaw === 'csv' ? 'csv' : 'json';
@@ -1014,6 +1070,20 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
 
     router.post('/sync', requireAdminOrSettingsFull, async (req, res) => {
         const shop = String((req.body && req.body.shop) || 'all').trim().toLowerCase();
+        const kind = shop === 'all' || shop === '' ? 'all' : normalizeShopKind(shop);
+        if (kind !== 'all') {
+            if (!assertMarketplaceShopAccess(req, res, kind, { write: true })) return;
+        } else if (req.datagonActor && req.datagonActor.username !== 'admin') {
+            // sync all — нужен full на parent (недостаточно одного child).
+            const pm = getActorPageMode(req.datagonActor, 'exports-marketplaces');
+            const sm = getActorPageMode(req.datagonActor, 'settings');
+            if (pm !== 'full' && sm !== 'full') {
+                return res.status(403).json({
+                    error: 'Синк всех площадок: нужен полный доступ к «Маркетплейсы» или «Настройки».',
+                    code: 'PAGE_VIEW_ONLY',
+                });
+            }
+        }
         const r = await triggerRefreshMarkets(shop || 'all');
         if (!r.started) {
             const code = r.reason === 'already_running' ? 409 : 400;
@@ -1058,6 +1128,13 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
             const scope = scopeMap[scopeRaw];
             if (!scope) {
                 return res.status(400).json({ error: 'Неверный scope shop', code: 'BAD_SCOPE' });
+            }
+            const shopKind = normalizeShopKind(scopeRaw === 'any' ? '' : scopeRaw);
+            if (shopKind) {
+                if (!assertMarketplaceShopAccess(req, res, shopKind, { write: false })) return;
+            } else if (!assertMarketplaceIssuesAccess(req, res, { write: false })) {
+                // «any» — экран проблем / неопубликованные: нужен issues или parent.
+                return;
             }
 
             const maxItemsRaw = parseInt(req.query.max_items, 10);
@@ -1711,6 +1788,7 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
      *                    (после TRIM оба пустые); UI колонка `supplier_label` пустая.
      */
     router.get('/issues', async (req, res) => {
+        if (!assertMarketplaceIssuesAccess(req, res, { write: false })) return;
         try {
             if (!db || typeof db.query !== 'function') {
                 return res.status(500).json({ error: 'БД недоступна', code: 'NO_DB' });
@@ -1822,6 +1900,8 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
      * Габариты берутся из денорма МС (длина/ширина/вес + высота коробка|пакет).
      */
     router.post('/issues/fix-ozon-dims', async (req, res) => {
+        if (!assertMarketplaceShopAccess(req, res, 'ozon', { write: true })) return;
+        if (!assertMarketplaceIssuesAccess(req, res, { write: true })) return;
         const t0 = Date.now();
         try {
             if (!db || typeof db.query !== 'function') {
@@ -2000,6 +2080,8 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
      * UI режет выборку на пакеты по 100.
      */
     router.post('/issues/fix-wb-dims', async (req, res) => {
+        if (!assertMarketplaceShopAccess(req, res, 'wb', { write: true })) return;
+        if (!assertMarketplaceIssuesAccess(req, res, { write: true })) return;
         const t0 = Date.now();
         try {
             if (!db || typeof db.query !== 'function') {
@@ -2233,6 +2315,8 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
      * Макс. 100 за запрос (рекомендация YM); UI — пакеты по 100.
      */
     router.post('/issues/fix-ym-dims', async (req, res) => {
+        if (!assertMarketplaceShopAccess(req, res, 'ym', { write: true })) return;
+        if (!assertMarketplaceIssuesAccess(req, res, { write: true })) return;
         const t0 = Date.now();
         try {
             if (!db || typeof db.query !== 'function') {
@@ -2437,6 +2521,8 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
      * Габариты карточки Ozon сохраняются; меняется только vat из МС.
      */
     router.post('/issues/fix-ozon-vat', async (req, res) => {
+        if (!assertMarketplaceShopAccess(req, res, 'ozon', { write: true })) return;
+        if (!assertMarketplaceIssuesAccess(req, res, { write: true })) return;
         const t0 = Date.now();
         try {
             if (!db || typeof db.query !== 'function') {
@@ -2618,6 +2704,8 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
      * Макс. 100 за запрос.
      */
     router.post('/issues/fix-wb-vat', async (req, res) => {
+        if (!assertMarketplaceShopAccess(req, res, 'wb', { write: true })) return;
+        if (!assertMarketplaceIssuesAccess(req, res, { write: true })) return;
         const t0 = Date.now();
         try {
             if (!db || typeof db.query !== 'function') {
@@ -2829,6 +2917,8 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
      * Нужны ym_api_key + ym_campaign_id. Макс. 100 за запрос.
      */
     router.post('/issues/fix-ym-vat', async (req, res) => {
+        if (!assertMarketplaceShopAccess(req, res, 'ym', { write: true })) return;
+        if (!assertMarketplaceIssuesAccess(req, res, { write: true })) return;
         const t0 = Date.now();
         try {
             if (!db || typeof db.query !== 'function') {
@@ -3593,6 +3683,7 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
      * Удобно, если журнал пустой, а полный синк давно не запускали.
      */
     router.post('/issues/snapshot-run', async (req, res) => {
+        if (!assertMarketplaceIssuesAccess(req, res, { write: true })) return;
         try {
             if (!db || typeof db.query !== 'function') {
                 return res.status(500).json({ error: 'БД недоступна', code: 'NO_DB' });

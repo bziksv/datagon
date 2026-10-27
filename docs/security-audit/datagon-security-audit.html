@@ -394,13 +394,14 @@
         </div>
       </div>
 
-      <div class="finding" id="F-ACL-03">
-        <div class="title"><span class="badge high">high</span> F-ACL-03 · Грубый ACL API маркетплейсов vs матрица по магазинам</div>
+      <div class="finding fixed-out" id="F-ACL-03">
+        <div class="title"><span class="badge high">high</span> <span class="badge fixed">исправлено</span> F-ACL-03 · Грубый ACL API маркетплейсов vs матрица по магазинам</div>
         <div class="ev">
           HTML: ozon/wb/yandex/issues/… — отдельные ключи; API почти всё под <code>/exports/marketplaces</code> → pageKey
           <code>exports-marketplaces</code>. Пользователь с parent=<code>full</code> и child=<code>hidden</code> всё равно дергает общий API всех магазинов.
           Обратно: только child full + parent hidden → HTML открыт, API parent hidden → 403 (ломает UX).
           <strong>Fix:</strong> scope в API (shop/channel) + проверка соответствующего pageKey; или отдельные prefix rules.
+          <div class="fix-note"><strong>2026-10-27 (local):</strong> parent API mode = max(parent, children); shop/issues asserts на snapshot/export/sync/fix-*; sync-all требует parent|settings full. Parent=full по-прежнему наследует доступ к child (явный deny child при parent full — не ломали матрицу).</div>
         </div>
       </div>
 
@@ -705,8 +706,8 @@
         </div>
       </div>
 
-      <div class="finding" id="F-XSS-02">
-        <div class="title"><span class="badge high">high</span> F-XSS-02 · Нет Content-Security-Policy (и почти нет browser hardening)</div>
+      <div class="finding fixed-out" id="F-XSS-02">
+        <div class="title"><span class="badge high">high</span> <span class="badge partial">частично</span> F-XSS-02 · Нет Content-Security-Policy (и почти нет browser hardening)</div>
         <div class="ev">
           В <code>server.js</code> / routes — нет <code>Content-Security-Policy</code>,
           <code>X-Content-Type-Options</code>, <code>X-Frame-Options</code> / <code>frame-ancestors</code>.
@@ -716,6 +717,7 @@
           script — nonce или hash (сейчас много inline scripts в HTML — нужна миграция);
           <code>object-src 'none'</code>; <code>base-uri 'self'</code>; <code>frame-ancestors 'none'</code>.
           Параллельно: <code>nosniff</code>, Referrer-Policy (детали — шаг 6).
+          <div class="fix-note partial"><strong>2026-10-27 (local):</strong> Express + пример nginx: nosniff / DENY / Referrer / Permissions + <strong>CSP Report-Only</strong> (unsafe-inline пока нужен). Enforce CSP — отдельный этап.</div>
         </div>
       </div>
 
@@ -825,19 +827,20 @@
         </div>
       </div>
 
-      <div class="finding" id="F-DEP-02">
-        <div class="title"><span class="badge high">high</span> F-DEP-02 · Node слушает <code>0.0.0.0:3000</code> (обход nginx)</div>
+      <div class="finding fixed-out" id="F-DEP-02">
+        <div class="title"><span class="badge high">high</span> <span class="badge fixed">исправлено</span> F-DEP-02 · Node слушает <code>0.0.0.0:3000</code> (обход nginx)</div>
         <div class="ev">
           <code>app.listen(PORT)</code> без host → все интерфейсы. Если firewall/security-group не режет 3000 снаружи,
           API доступен в обход HSTS, TLS и любых будущих nginx <code>limit_req</code> / headers.
           Документация проверяет <code>localhost:3000</code>, но не требует bind только на 127.0.0.1.
           <strong>Fix:</strong> <code>app.listen(PORT, '127.0.0.1')</code> (или env <code>BIND_HOST</code>);
           ufw/sg: 3000 только localhost; проверка <code>ss -lntp | grep 3000</code> в чеклисте деплоя.
+          <div class="fix-note"><strong>2026-10-27 (local):</strong> default <code>DATAGON_BIND_HOST=127.0.0.1</code>; override <code>0.0.0.0</code> для отладки.</div>
         </div>
       </div>
 
-      <div class="finding" id="F-DEP-03">
-        <div class="title"><span class="badge high">high</span> F-DEP-03 · На краю почти нет security headers (кроме HSTS)</div>
+      <div class="finding fixed-out" id="F-DEP-03">
+        <div class="title"><span class="badge high">high</span> <span class="badge fixed">исправлено</span> F-DEP-03 · На краю почти нет security headers (кроме HSTS)</div>
         <div class="ev">
           Frontend conf: только <code>Strict-Transport-Security</code> (+ Alt-Svc). Нет
           <code>Content-Security-Policy</code>, <code>X-Content-Type-Options: nosniff</code>,
@@ -847,6 +850,7 @@
           <strong>Fix:</strong> <code>add_header</code> в nginx (и/или middleware в Express) с учётом
           нюанса nginx: <code>add_header</code> в location наследует не всегда — дублировать в нужных блоках;
           CSP сначала Report-Only.
+          <div class="fix-note"><strong>2026-10-27 (local):</strong> Express middleware + пример <code>deploy/nginx-p.datagon.ru-frontend.conf</code>. На проде nginx — reload после копирования conf.</div>
         </div>
       </div>
 
@@ -970,14 +974,15 @@
         </div>
       </div>
 
-      <div class="finding" id="F-SET-02">
-        <div class="title"><span class="badge high">high</span> F-SET-02 · <code>POST /api/settings/auto-sync-run</code> — любой settings=full</div>
+      <div class="finding fixed-out" id="F-SET-02">
+        <div class="title"><span class="badge high">high</span> <span class="badge fixed">исправлено</span> F-SET-02 · <code>POST /api/settings/auto-sync-run</code> — любой settings=full</div>
         <div class="ev">
           Эндпоинт в <code>server.js</code> ставит в очередь любую задачу из реестра (цены CMS, МС, финансы Точка,
           marketplaces, …) без доп. роли. Abuse: нагрузка на МС/МП, перезапись цен, гонки с продом.
           Нет server-side confirm / idempotency token / audit aparte от auto_sync_runs.
           <strong>Fix:</strong> только admin или отдельный mode; rate-limit; для destructive задач —
           обязательный <code>confirm: true</code> + запись в activity с user_id.
+          <div class="fix-note"><strong>2026-10-27 (local):</strong> admin всегда; иначе settings=full + <code>confirm: true</code> (UI «Запустить сейчас»). 403 <code>AUTO_SYNC_RUN_FORBIDDEN</code>.</div>
         </div>
       </div>
 
@@ -2483,17 +2488,17 @@
 <tr><td><a href="#F-AUTH-03">F-AUTH-03</a></td><td><span class="badge high">high</span></td><td>1</td><td>Cookie без Secure</td><td>P1</td><td><span class="badge fixed">исправлено</span></td></tr>
 <tr><td><a href="#F-ACL-01">F-ACL-01</a></td><td><span class="badge high">high</span></td><td>2</td><td>Fail-open неизвестный API</td><td>P1</td><td><span class="badge fixed">исправлено</span></td></tr>
 <tr><td><a href="#F-ACL-02">F-ACL-02</a></td><td><span class="badge high">high</span></td><td>2</td><td>Missing page_mode → full</td><td>P1</td><td><span class="badge fixed">исправлено</span></td></tr>
-<tr><td><a href="#F-ACL-03">F-ACL-03</a></td><td><span class="badge high">high</span></td><td>2</td><td>Грубый ACL маркетплейсов</td><td>P1</td><td>—</td></tr>
+<tr><td><a href="#F-ACL-03">F-ACL-03</a></td><td><span class="badge high">high</span></td><td>2</td><td>Грубый ACL маркетплейсов</td><td>P1</td><td><span class="badge fixed">исправлено</span></td></tr>
 <tr><td><a href="#F-SEC-03">F-SEC-03</a></td><td><span class="badge high">high</span></td><td>3</td><td>Секреты в config.js</td><td>P2</td><td>—</td></tr>
 <tr><td><a href="#F-SEC-04">F-SEC-04</a></td><td><span class="badge high">high</span></td><td>3</td><td>app_settings без encryption</td><td>P2</td><td>—</td></tr>
 <tr><td><a href="#F-SQL-02">F-SQL-02</a></td><td><span class="badge high">high</span></td><td>4</td><td>CMS db_pass + arbitrary host</td><td>P0</td><td><span class="badge fixed">исправлено</span></td></tr>
 <tr><td><a href="#F-XSS-01">F-XSS-01</a></td><td><span class="badge high">high</span></td><td>5</td><td>Action-log HTML без escape</td><td>P1</td><td><span class="badge fixed">исправлено</span></td></tr>
-<tr><td><a href="#F-XSS-02">F-XSS-02</a></td><td><span class="badge high">high</span></td><td>5</td><td>Нет CSP</td><td>P1</td><td>—</td></tr>
+<tr><td><a href="#F-XSS-02">F-XSS-02</a></td><td><span class="badge high">high</span></td><td>5</td><td>Нет CSP</td><td>P1</td><td><span class="badge partial">частично</span></td></tr>
 <tr><td><a href="#F-DEP-01">F-DEP-01</a></td><td><span class="badge high">high</span></td><td>6</td><td>HTTP без redirect/HSTS (упрощ. nginx)</td><td>P1</td><td>—</td></tr>
-<tr><td><a href="#F-DEP-02">F-DEP-02</a></td><td><span class="badge high">high</span></td><td>6</td><td>Node 0.0.0.0:3000</td><td>P1</td><td>—</td></tr>
-<tr><td><a href="#F-DEP-03">F-DEP-03</a></td><td><span class="badge high">high</span></td><td>6</td><td>Мало security headers</td><td>P1</td><td>—</td></tr>
+<tr><td><a href="#F-DEP-02">F-DEP-02</a></td><td><span class="badge high">high</span></td><td>6</td><td>Node 0.0.0.0:3000</td><td>P1</td><td><span class="badge fixed">исправлено</span></td></tr>
+<tr><td><a href="#F-DEP-03">F-DEP-03</a></td><td><span class="badge high">high</span></td><td>6</td><td>Мало security headers</td><td>P1</td><td><span class="badge fixed">исправлено</span></td></tr>
 <tr><td><a href="#F-SET-01">F-SET-01</a></td><td><span class="badge high">high</span></td><td>7</td><td>Один settings key = всё</td><td>P1</td><td>—</td></tr>
-<tr><td><a href="#F-SET-02">F-SET-02</a></td><td><span class="badge high">high</span></td><td>7</td><td>auto-sync-run любому settings=full</td><td>P1</td><td>—</td></tr>
+<tr><td><a href="#F-SET-02">F-SET-02</a></td><td><span class="badge high">high</span></td><td>7</td><td>auto-sync-run любому settings=full</td><td>P1</td><td><span class="badge fixed">исправлено</span></td></tr>
 <tr><td><a href="#F-FIN-01">F-FIN-01</a></td><td><span class="badge high">high</span></td><td>8</td><td>Банковские JWT plaintext</td><td>P0</td><td><span class="badge fixed">исправлено</span></td></tr>
 <tr><td><a href="#F-FIN-02">F-FIN-02</a></td><td><span class="badge high">high</span></td><td>8</td><td>finance=view = полная разведка</td><td>P1</td><td>—</td></tr>
 <tr><td><a href="#F-WORK-02">F-WORK-02</a></td><td><span class="badge high">high</span></td><td>9</td><td>can_manage_users = WORK-admin</td><td>P0</td><td><span class="badge fixed">исправлено</span></td></tr>
@@ -2578,6 +2583,10 @@
       <table>
         <thead><tr><th>дата</th><th>что</th></tr></thead>
         <tbody>
+          <tr>
+            <td class="mono">2026-10-27</td>
+            <td><strong>Local batch</strong>: F-ACL-03 (shop-scoped), F-SET-02 (confirm), F-DEP-02 (bind 127.0.0.1), F-DEP-03 + F-XSS-02 partial (headers + CSP-RO). Ещё не на прод.</td>
+          </tr>
           <tr>
             <td class="mono">2026-10-27</td>
             <td><strong>Прод <code>c60e06a</code></strong>: F-SQL-02, F-AUTH-02/03, F-ACL-01/02, F-PAR-05, F-FIN-01, F-XSS-01. Миграции: CMS <code>db_pass</code> 10/10 encrypted; finance credentials encrypted + legacy JWT cleared. Частично: F-SEC-05, F-NP-01.</td>
