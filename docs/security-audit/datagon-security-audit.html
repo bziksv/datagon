@@ -331,7 +331,7 @@
       <div class="finding fixed-out" id="F-AUTH-08">
         <div class="title"><span class="badge low">low</span> <span class="badge fixed">исправлено</span> F-AUTH-08 · bcrypt 10; DELETE user без revoke sessions</div>
         <div class="ev">Поднятие rounds до 12; перед delete — revoke sessions.
-          <div class="fix-note"><strong>2026-10-28 (local):</strong> <code>BCRYPT_ROUNDS=12</code> для новых хешей; revoke+delete sessions при DELETE user — уже в <code>6877bde</code> (F-SET-06).</div>
+          <div class="fix-note"><strong>2026-10-28 (прод <code>79dde4d</code>):</strong> <code>BCRYPT_ROUNDS=12</code> для новых хешей; revoke+delete sessions при DELETE user — уже в <code>6877bde</code> (F-SET-06).</div>
         </div>
       </div>
 
@@ -1165,7 +1165,7 @@
           Ветка merge bank+cash тянет до 50k банковских строк в память на запрос — DoS по RAM
           от авторизованного finance user. Sync до 3 лет усиливает.
           <strong>Fix:</strong> жёстче page/cursor; не merge full dump; cap sync days в UI (90–180).
-          <div class="fix-note"><strong>2026-10-28 (local):</strong> merge/bank LIMIT <strong>10000</strong> (было 50000). Sync ≤180 для не-admin — ранее (FIN-03).</div>
+          <div class="fix-note"><strong>2026-10-28 (прод <code>79dde4d</code>):</strong> merge/bank LIMIT <strong>10000</strong> (было 50000). Sync ≤180 для не-admin — ранее (FIN-03).</div>
         </div>
       </div>
 
@@ -1174,7 +1174,7 @@
         <div class="ev">
           <code>publicRaiffCredential</code> отдаёт <code>client_id</code> целиком (секреты — masks).
           Не JWT, но идентифицирует OAuth-приложение. <strong>Fix:</strong> mask/prefix как у secret.
-          <div class="fix-note"><strong>2026-10-28 (local):</strong> GET → <code>client_id_mask</code> вместо plaintext <code>client_id</code>.</div>
+          <div class="fix-note"><strong>2026-10-28 (прод <code>79dde4d</code>):</strong> GET → <code>client_id_mask</code> вместо plaintext <code>client_id</code>.</div>
         </div>
       </div>
 
@@ -2278,7 +2278,7 @@
           Переименование specialty → эскалация или отказ в доступе.
           Meta всегда отдаёт полный список менеджеров продаж (имена/id) даже без see-all.
           <strong>Fix:</strong> capability flags; урезать managers[] для self-only.
-          <div class="fix-note"><strong>2026-10-28 (local):</strong> <code>can_sales_see_all</code> / <code>can_sales_edit_plans</code>; seed по старым именам; meta managers[] только self без see-all; чекбоксы в settings.</div>
+          <div class="fix-note"><strong>2026-10-28 (прод <code>79dde4d</code>):</strong> <code>can_sales_see_all</code> / <code>can_sales_edit_plans</code>; seed по старым именам; meta managers[] только self без see-all; чекбоксы в settings.</div>
         </div>
       </div>
 
