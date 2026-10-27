@@ -413,7 +413,7 @@
           <code>isHtmlLeafAccessHidden</code>: <code>if (!pk) return false</code> — незарегистрированный leaf (напр. <code>ref/*.html</code>, забытый экран)
           не скрывается матрицей. Нужна только валидная сессия.
           <strong>Fix:</strong> неизвестный leaf → redirect no-access (кроме явного allowlist: login, legal).
-          <div class="fix-note"><strong>2026-10-27 (local):</strong> <code>!pk → true</code> (deny); нет <code>page_modes</code> → deny; mode без значения → hidden. Admin / login / legal без изменений.</div>
+          <div class="fix-note"><strong>2026-10-27 (прод <code>452287d</code>):</strong> <code>!pk → true</code> (deny); нет <code>page_modes</code> → deny; mode без значения → hidden. Admin / login / legal без изменений.</div>
         </div>
       </div>
 
@@ -2292,7 +2292,7 @@
           <code>pageMode</code>: нет ключа → <code>full</code> (F-ACL-02). То же в managerSales
           canWrite path через матрицу API.
           <strong>Fix:</strong> default hidden.
-          <div class="fix-note"><strong>2026-10-27 (local):</strong> ops-sheet уже hidden; <code>managerSales</code> / <code>productAnalysis</code> / <code>purchaseOverridesEditable</code> → default hidden.</div>
+          <div class="fix-note"><strong>2026-10-27 (прод <code>452287d</code>):</strong> ops-sheet уже hidden; <code>managerSales</code> / <code>productAnalysis</code> / <code>purchaseOverridesEditable</code> → default hidden.</div>
         </div>
       </div>
 
@@ -2376,7 +2376,7 @@
           Leaf не в реестре → <code>isHtmlLeafAccessHidden</code> = false. Любой залогиненный
           открывает эталоны ArchitectUI vanilla. Низкий data risk, обход «закрыть всё лишнее».
           <strong>Fix:</strong> unknown leaf → no-access; или page key ref=admin.
-          <div class="fix-note"><strong>2026-10-27 (local):</strong> закрыто через F-ACL-04 (unknown leaf deny); admin по-прежнему видит ref.</div>
+          <div class="fix-note"><strong>2026-10-27 (прод <code>452287d</code>):</strong> закрыто через F-ACL-04 (unknown leaf deny); admin по-прежнему видит ref.</div>
         </div>
       </div>
 
