@@ -945,9 +945,29 @@ module.exports = function productAnalysisRouterFactory(db, _appSettings) {
     router.post('/decision/bulk', express.json({ limit: '256kb' }), async (req, res) => {
         const t0 = Date.now();
         try {
+            // F-PUR-02: явный canWrite + cap codes[] + confirm на запись.
+            if (!canWrite(req)) {
+                return res.status(403).json({
+                    success: false,
+                    error: 'Режим только просмотра',
+                    code: 'PAGE_VIEW_ONLY',
+                });
+            }
             await ensureProductAnalysisDecisionsSchema(db);
             const body = req.body && typeof req.body === 'object' ? req.body : {};
             const dryRun = body.dry_run === true || body.dry_run === 1 || body.dry_run === '1';
+            if (
+                !dryRun &&
+                body.confirm !== true &&
+                body.confirm !== 1 &&
+                body.confirm !== '1'
+            ) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Нужно confirm: true (или dry_run: true для preflight)',
+                    code: 'CONFIRM_REQUIRED',
+                });
+            }
             const patch = patchFromBody(body);
             if (!Object.keys(patch).length) {
                 return res.status(400).json({ success: false, error: 'Нет полей для обновления' });
@@ -956,7 +976,10 @@ module.exports = function productAnalysisRouterFactory(db, _appSettings) {
 
             let codes = [];
             if (Array.isArray(body.codes) && body.codes.length) {
-                codes = body.codes.map((c) => String(c || '').trim()).filter(Boolean);
+                codes = body.codes
+                    .map((c) => String(c || '').trim())
+                    .filter(Boolean)
+                    .slice(0, 5000);
             } else {
                 const days = clampInt(body.days, 7, 365, 90);
                 const flt = buildListFilterParts(body);

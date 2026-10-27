@@ -2409,6 +2409,14 @@ function createDimensionsRouter(db, appSettings = {}) {
         try {
             await ensureSchema(db);
             const body = req.body || {};
+            // F-NP-02: запись в боевой МС только с confirm: true (планировщик зовёт syncCodeToMs напрямую).
+            if (body.confirm !== true && body.confirm !== 1 && body.confirm !== '1') {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Нужно confirm: true (подтверждение выгрузки габаритов в МойСклад)',
+                    code: 'CONFIRM_REQUIRED',
+                });
+            }
             const code = String(body.code || '').trim();
             if (!code) return res.status(400).json({ success: false, error: 'Не указан code' });
 

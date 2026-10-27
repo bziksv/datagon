@@ -943,6 +943,15 @@ module.exports = function suppliersRouterFactory(db, appSettings = {}) {
     router.post('/:supplierKey/send-ms-order', async (req, res) => {
         const logId = () => (e && e.log_id != null ? e.log_id : null);
         try {
+            // F-PUR-01: запись в боевой МС только с явным confirm: true (UI-модалка + body).
+            const body = req.body && typeof req.body === 'object' ? req.body : {};
+            if (body.confirm !== true && body.confirm !== 1 && body.confirm !== '1') {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Нужно confirm: true (подтверждение создания заказа в МойСклад)',
+                    code_error: 'CONFIRM_REQUIRED',
+                });
+            }
             const supplierKey = normalizeSupplierKey(decodeURIComponent(req.params.supplierKey || ''));
             if (!supplierKey) {
                 return res.status(400).json({ success: false, error: 'Пустой ключ поставщика', code_error: 'BAD_REQUEST' });
@@ -950,6 +959,10 @@ module.exports = function suppliersRouterFactory(db, appSettings = {}) {
             const result = await createPurchaseOrderForSupplier(db, appSettings, {
                 supplierKey,
                 actor: req.datagonActor || null,
+                max_lines:
+                    body.max_lines != null && Number.isFinite(Number(body.max_lines))
+                        ? Math.max(1, Math.min(5000, Number(body.max_lines)))
+                        : undefined,
             });
             if (result && result.success) invalidateSuppliersListCache();
             res.json(result);

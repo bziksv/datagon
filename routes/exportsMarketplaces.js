@@ -410,7 +410,24 @@ function assertMarketplaceIssuesAccess(req, res, opts) {
     return true;
 }
 
+/** F-MPK-01: смена API-ключей МП — только admin или settings=full (не marketplaces=full). */
 function requireAdminOrSettingsFull(req, res, next) {
+    const a = req.datagonActor;
+    if (!a) {
+        res.status(401).json({ error: 'Не авторизован', code: 'AUTH_REQUIRED' });
+        return;
+    }
+    if (a.username === 'admin') return next();
+    const settingsMode = getActorPageMode(a, 'settings');
+    if (settingsMode === 'full') return next();
+    res.status(403).json({
+        error: 'Сохранение ключей маркетплейсов: только администратор или полный доступ к «Настройки».',
+        code: 'FORBIDDEN',
+    });
+}
+
+/** Sync / операции без смены секретов: admin, settings=full или marketplaces=full. */
+function requireAdminSettingsOrMarketplacesFull(req, res, next) {
     const a = req.datagonActor;
     if (!a) {
         res.status(401).json({ error: 'Не авторизован', code: 'AUTH_REQUIRED' });
@@ -421,7 +438,7 @@ function requireAdminOrSettingsFull(req, res, next) {
     const marketplacesMode = getApiPageModeForActor(a, 'exports-marketplaces');
     if (settingsMode === 'full' || marketplacesMode === 'full') return next();
     res.status(403).json({
-        error: 'Сохранение ключей: только администратор или полный доступ к разделу «Настройки» / «Маркетплейсы».',
+        error: 'Нужен полный доступ к «Настройки» или «Маркетплейсы».',
         code: 'FORBIDDEN',
     });
 }
@@ -1068,7 +1085,7 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
         return res.json(exportsMarketplacesRouter.getSyncState());
     });
 
-    router.post('/sync', requireAdminOrSettingsFull, async (req, res) => {
+    router.post('/sync', requireAdminSettingsOrMarketplacesFull, async (req, res) => {
         const shop = String((req.body && req.body.shop) || 'all').trim().toLowerCase();
         const kind = shop === 'all' || shop === '' ? 'all' : normalizeShopKind(shop);
         if (kind !== 'all') {

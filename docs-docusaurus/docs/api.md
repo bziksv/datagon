@@ -859,6 +859,8 @@ Query:
 
 Legacy-совместимость для старого экрана настроек маркетплейсов. Новая UI-практика — сохранять эти поля через `POST /api/settings`.
 
+Доступ (F-MPK-01): только **admin** или `settings=full`. Права `exports-marketplaces=full` **недостаточно** для смены API-ключей (sync площадок — отдельно).
+
 ### GET `/api/exports/marketplaces/ozon`
 
 Query:
@@ -1531,6 +1533,7 @@ Body (JSON, опционально):
 
 Body (JSON):
 
+- `confirm` (обяз. `true`) — подтверждение записи в МС (F-NP-02); без него `400 CONFIRM_REQUIRED`. Планировщик вызывает `syncCodeToMs` напрямую.
 - `code` (обяз.) — код МС.
 - `fields` (опц., массив строк) — whitelist: синкать только эти поля; по умолчанию — все непустые поля override.
 - `measurement` (опц., объект) — **inline-значения** прямо из формы (UI: текущие значения всех `<input>`/`<select>` ряда). Если передан — сервер **сначала persist'ит** эти значения в `ms_dimensions_measurements` (с записью в `ms_dimensions_log`, действием `set` и автором `req.datagonActor`), а только потом PUT'ит обновлённое состояние в МС. Это решает кейс «пользователь набрал значение в ячейке, но не нажал Enter/blur» — отправится и оно тоже. Используется кнопками «↗ В МС» (per-row) и «↗ В МС: всё на странице» (балк) в `/exports-dimensions.html`.
@@ -2783,7 +2786,7 @@ Body: `{ body }`. Только автор комментария.
 
 ### POST `/api/product-analysis/decision/bulk`
 
-Body: `{ codes[]? }` **или** фильтры ranking (`days`, `preset`, …) + `action`/`patch`, `dry_run=1` для preflight. Ответ: `total` / `updated` / `changed_fields` / `patch_fields[]` / `errors[]`. Источник в журнале: `bulk`.
+Требует `product-analysis=full` (`canWrite`). Body: `{ codes[]? }` (cap **5000**) **или** фильтры ranking (`days`, `preset`, …) + `action`/`patch`; `dry_run=1` для preflight; запись — только с `confirm: true` (F-PUR-02). Ответ: `total` / `updated` / `changed_fields` / `patch_fields[]` / `errors[]`. Источник в журнале: `bulk`.
 
 ### POST `/api/product-analysis/min-stock/apply`
 
@@ -2821,7 +2824,7 @@ Body (любое подмножество): `assigned_user_id`, `comment`, `min_
 
 ### POST `/api/suppliers/:supplierKey/send-ms-order`
 
-Создаёт **заказ поставщику** (`entity/purchaseorder`) в МойСклад для позиций «к закупке» (та же логика, что в Excel-выгрузке: `need_qty > 0`). Требуется `MS_TOKEN` / `config.msToken` с правами на создание заказов.
+Создаёт **заказ поставщику** (`entity/purchaseorder`) в МойСклад для позиций «к закупке» (та же логика, что в Excel-выгрузке: `need_qty > 0`). Требуется `MS_TOKEN` / `config.msToken` с правами на создание заказов. Body: **`confirm: true`** (обяз., F-PUR-01); опционально `max_lines` (1…5000).
 
 Параметры заказа:
 

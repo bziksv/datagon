@@ -1661,8 +1661,8 @@
 
       <h3>Findings</h3>
 
-      <div class="finding" id="F-PUR-01">
-        <div class="title"><span class="badge high">high</span> F-PUR-01 · send-ms-order пишет в боевой МС без серверного confirm</div>
+      <div class="finding fixed-out" id="F-PUR-01">
+        <div class="title"><span class="badge high">high</span> <span class="badge fixed">исправлено</span> F-PUR-01 · send-ms-order пишет в боевой МС без серверного confirm</div>
         <div class="ev">
           <code>POST /api/suppliers/:supplierKey/send-ms-order</code> создаёт заказ поставщику со всеми
           позициями <code>to_purchase</code> (без cap по числу строк) через общий токен (см. F-MS-01).
@@ -1670,11 +1670,12 @@
           <code>suppliers=full</code>. Нет <code>confirm: true</code> / dry_run.
           <strong>Fix:</strong> body <code>confirm</code> + опциональный <code>max_lines</code>;
           rate-limit per user/supplier; dual-control для крупных сумм.
+          <div class="fix-note"><strong>2026-10-27 (локально):</strong> <code>confirm: true</code> обязателен; опц. <code>max_lines</code>; UI шлёт confirm после модалки.</div>
         </div>
       </div>
 
-      <div class="finding" id="F-PUR-02">
-        <div class="title"><span class="badge high">high</span> F-PUR-02 · decision/bulk без canWrite + unbounded codes[]</div>
+      <div class="finding fixed-out" id="F-PUR-02">
+        <div class="title"><span class="badge high">high</span> <span class="badge fixed">исправлено</span> F-PUR-02 · decision/bulk без canWrite + unbounded codes[]</div>
         <div class="ev">
           <code>POST /api/product-analysis/decision/bulk</code> не вызывает <code>canWrite(req)</code>
           (в отличие от <code>/decision</code> и comments). Защита только middleware view→блок POST;
@@ -1682,6 +1683,7 @@
           без max (ветка фильтров clamp 5000).
           <strong>Fix:</strong> <code>if (!canWrite) 403</code>; <code>codes.slice(0, 5000)</code>;
           обязательный dry_run или confirm для non-dry.
+          <div class="fix-note"><strong>2026-10-27 (локально):</strong> canWrite; codes cap 5000; запись только с <code>confirm: true</code>.</div>
         </div>
       </div>
 
@@ -1777,8 +1779,8 @@
 
       <h3>Findings</h3>
 
-      <div class="finding" id="F-PAR-01">
-        <div class="title"><span class="badge high">high</span> F-PAR-01 · SSRF: нет блокировки private/metadata IP</div>
+      <div class="finding fixed-out" id="F-PAR-01">
+        <div class="title"><span class="badge high">high</span> <span class="badge fixed">исправлено</span> F-PAR-01 · SSRF: нет блокировки private/metadata IP</div>
         <div class="ev">
           <code>lib/datagonSiteFetch.js</code> / discovery / <code>POST /api/parse/page/:id</code> /
           worker ходят по любому <code>http(s)</code> URL из очереди или
@@ -1788,6 +1790,7 @@
           сервера Datagon и жечь <code>fetch_proxy_list</code>.
           <strong>Fix:</strong> resolve DNS → block private; allowlist доменов конкурентов;
           запрет IP-literal в domain; отдельный egress.
+          <div class="fix-note"><strong>2026-10-27 (локально):</strong> <code>assertUrlSafeForEgress</code> в <code>datagonSiteFetch</code> (DNS + RFC1918/metadata/localhost); <code>beforeRedirect</code> на private IP. Allowlist доменов — отдельно.</div>
         </div>
       </div>
 
@@ -1998,8 +2001,8 @@
 
       <h3>Findings</h3>
 
-      <div class="finding" id="F-MPK-01">
-        <div class="title"><span class="badge high">high</span> F-MPK-01 · marketplaces=full может перезаписать API-ключи МП</div>
+      <div class="finding fixed-out" id="F-MPK-01">
+        <div class="title"><span class="badge high">high</span> <span class="badge fixed">исправлено</span> F-MPK-01 · marketplaces=full может перезаписать API-ключи МП</div>
         <div class="ev">
           <code>POST /config</code> через <code>requireAdminOrSettingsFull</code>: достаточно
           <code>exports-marketplaces=full</code> (не только admin/settings). Любой оператор
@@ -2009,6 +2012,7 @@
           Связка F-SEC-02: ключи ещё и в GET settings.
           <strong>Fix:</strong> config только admin или settings=full; marketplaces full —
           sync/fill без смены секретов.
+          <div class="fix-note"><strong>2026-10-27 (локально):</strong> <code>POST /config</code> — admin/settings=full; sync — отдельный middleware с marketplaces=full.</div>
         </div>
       </div>
 
@@ -2113,13 +2117,14 @@
         </div>
       </div>
 
-      <div class="finding" id="F-NP-02">
-        <div class="title"><span class="badge high">high</span> F-NP-02 · dimensions sync-ms → боевой МС без confirm</div>
+      <div class="finding fixed-out" id="F-NP-02">
+        <div class="title"><span class="badge high">high</span> <span class="badge fixed">исправлено</span> F-NP-02 · dimensions sync-ms → боевой МС без confirm</div>
         <div class="ev">
           <code>POST /sync-ms</code> + список <code>GET /pending-sync</code> позволяют bulk
           выгрузку габаритов в МС общим токеном (F-MS-01). Server confirm на sync-ms нет;
           UI может слать сотни PUT подряд. log/cleanup удаляет аудит (как F-PUR-06).
           <strong>Fix:</strong> confirm + max codes/batch; cleanup только admin; rate-limit.
+          <div class="fix-note"><strong>2026-10-27 (локально):</strong> HTTP <code>POST /sync-ms</code> требует <code>confirm: true</code>; UI обновлён; планировщик без HTTP.</div>
         </div>
       </div>
 
@@ -2512,16 +2517,16 @@
 <tr><td><a href="#F-DBA-02">F-DBA-02</a></td><td><span class="badge high">high</span></td><td>11</td><td>can_manage_users = DBA</td><td>P0</td><td><span class="badge fixed">исправлено</span></td></tr>
 <tr><td><a href="#F-MS-01">F-MS-01</a></td><td><span class="badge high">high</span></td><td>12</td><td>Общий MS_TOKEN</td><td>P2</td><td>—</td></tr>
 <tr><td><a href="#F-MS-02">F-MS-02</a></td><td><span class="badge high">high</span></td><td>12</td><td>Unbounded mass-write МС</td><td>P1</td><td>—</td></tr>
-<tr><td><a href="#F-PUR-01">F-PUR-01</a></td><td><span class="badge high">high</span></td><td>13</td><td>send-ms-order без confirm</td><td>P1</td><td>—</td></tr>
-<tr><td><a href="#F-PUR-02">F-PUR-02</a></td><td><span class="badge high">high</span></td><td>13</td><td>decision/bulk без canWrite</td><td>P1</td><td>—</td></tr>
-<tr><td><a href="#F-PAR-01">F-PAR-01</a></td><td><span class="badge high">high</span></td><td>14</td><td>SSRF private IP</td><td>P1</td><td>—</td></tr>
+<tr><td><a href="#F-PUR-01">F-PUR-01</a></td><td><span class="badge high">high</span></td><td>13</td><td>send-ms-order без confirm</td><td>P1</td><td><span class="badge fixed">исправлено</span></td></tr>
+<tr><td><a href="#F-PUR-02">F-PUR-02</a></td><td><span class="badge high">high</span></td><td>13</td><td>decision/bulk без canWrite</td><td>P1</td><td><span class="badge fixed">исправлено</span></td></tr>
+<tr><td><a href="#F-PAR-01">F-PAR-01</a></td><td><span class="badge high">high</span></td><td>14</td><td>SSRF private IP</td><td>P1</td><td><span class="badge fixed">исправлено</span></td></tr>
 <tr><td><a href="#F-PAR-02">F-PAR-02</a></td><td><span class="badge high">high</span></td><td>14</td><td>results/clear wipe всех prices</td><td>P1</td><td><span class="badge fixed">исправлено</span></td></tr>
 <tr><td><a href="#F-MP-01">F-MP-01</a></td><td><span class="badge high">high</span></td><td>15</td><td>CMS price write с my-products</td><td>P1</td><td>—</td></tr>
 <tr><td><a href="#F-MP-02">F-MP-02</a></td><td><span class="badge high">high</span></td><td>15</td><td>network mass apply/on-off</td><td>P1</td><td>—</td></tr>
-<tr><td><a href="#F-MPK-01">F-MPK-01</a></td><td><span class="badge high">high</span></td><td>16</td><td>Перезапись API-ключей МП</td><td>P1</td><td>—</td></tr>
+<tr><td><a href="#F-MPK-01">F-MPK-01</a></td><td><span class="badge high">high</span></td><td>16</td><td>Перезапись API-ключей МП</td><td>P1</td><td><span class="badge fixed">исправлено</span></td></tr>
 <tr><td><a href="#F-MPK-02">F-MPK-02</a></td><td><span class="badge high">high</span></td><td>16</td><td>Mass write в кабинеты МП</td><td>P1</td><td>—</td></tr>
 <tr><td><a href="#F-NP-01">F-NP-01</a></td><td><span class="badge high">high</span></td><td>17</td><td>Huckster password любому full</td><td>P0</td><td><span class="badge fixed">исправлено</span></td></tr>
-<tr><td><a href="#F-NP-02">F-NP-02</a></td><td><span class="badge high">high</span></td><td>17</td><td>dimensions sync-ms без confirm</td><td>P1</td><td>—</td></tr>
+<tr><td><a href="#F-NP-02">F-NP-02</a></td><td><span class="badge high">high</span></td><td>17</td><td>dimensions sync-ms без confirm</td><td>P1</td><td><span class="badge fixed">исправлено</span></td></tr>
 <tr><td><a href="#F-OPS-01">F-OPS-01</a></td><td><span class="badge high">high</span></td><td>18</td><td>ops-sheet view = ФОТ всех</td><td>P1</td><td>—</td></tr>
 <tr><td><a href="#F-OPS-02">F-OPS-02</a></td><td><span class="badge high">high</span></td><td>18</td><td>ACL dashboard ≠ API</td><td>P1</td><td>—</td></tr>
 <tr><td><a href="#F-PUB-01">F-PUB-01</a></td><td><span class="badge high">high</span></td><td>19</td><td>Open redirect then=//…</td><td>P1</td><td><span class="badge fixed">исправлено</span></td></tr>
@@ -2587,6 +2592,10 @@
       <table>
         <thead><tr><th>дата</th><th>что</th></tr></thead>
         <tbody>
+          <tr>
+            <td class="mono">2026-10-27</td>
+            <td><strong>Локально (ещё не в прод)</strong>: F-PUR-01/02 (confirm + canWrite/codes cap), F-NP-02 (dimensions sync-ms confirm), F-MPK-01 (config keys admin/settings only), F-PAR-01 (SSRF private/metadata block in site fetch).</td>
+          </tr>
           <tr>
             <td class="mono">2026-10-27</td>
             <td><strong>Прод <code>e9f137a</code></strong>: F-NP-01 (admin/settings credentials + vault + sync без password в body), F-PUB-01 (open redirect <code>//</code>), F-DEP-01 (упрощ. nginx 301+HSTS), F-WS-01 (header-only + timingSafeEqual), F-PAR-02 (results/clear confirm_all+admin). pm2 restart; nginx conf пример в репо (live frontend уже с 301).</td>

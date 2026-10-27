@@ -4182,7 +4182,7 @@
           method: 'POST',
           credentials: 'same-origin',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ code: code, measurement: measurement }),
+          body: JSON.stringify({ code: code, measurement: measurement, confirm: true }),
         })
           .then(function (r) {
             return r.json().then(function (j) { return { ok: r.ok, status: r.status, j: j }; });
@@ -4298,7 +4298,7 @@
             if (progressBtn) progressBtn.textContent = '⏳ ' + (i + 1) + '/' + tasks.length;
             setStatusHint(modeLabel + ' ' + (i + 1) + '/' + tasks.length + ': ' +
               (t.name || t.code) + '…', 'success');
-            var body = { code: t.code };
+            var body = { code: t.code, confirm: true };
             if (t.measurement && typeof t.measurement === 'object') body.measurement = t.measurement;
             fetch('/api/exports/dimensions/sync-ms', {
               method: 'POST',
