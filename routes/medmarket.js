@@ -144,9 +144,26 @@ function medmarketRouterFactory(db) {
 
     router.post('/import', async (req, res) => {
         try {
-            const rows = Array.isArray(req.body && req.body.rows) ? req.body.rows : [];
+            // F-MS-02: confirm + cap rows (max 500).
+            const body = req.body && typeof req.body === 'object' ? req.body : {};
+            if (body.confirm !== true && body.confirm !== 1 && body.confirm !== '1') {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Нужно confirm: true',
+                    code: 'CONFIRM_REQUIRED',
+                });
+            }
+            const rawRows = Array.isArray(body.rows) ? body.rows : [];
+            const truncated = rawRows.length > 500;
+            const rows = truncated ? rawRows.slice(0, 500) : rawRows;
             const result = await importMedmarketMappings(db, config, rows);
-            res.json({ success: true, ...result });
+            res.json({
+                success: true,
+                ...result,
+                rows_received: rawRows.length,
+                rows_processed: rows.length,
+                truncated,
+            });
         } catch (e) {
             res.status(500).json({ success: false, error: e.message });
         }
@@ -155,10 +172,26 @@ function medmarketRouterFactory(db) {
     router.post('/fill-linkage-codes', async (req, res) => {
         try {
             await ensureMedmarketSchema(db);
+            const body = req.body && typeof req.body === 'object' ? req.body : {};
             const dryRun =
                 req.query.dry_run === '1'
                 || req.query.dry_run === 'true'
-                || (req.body && (req.body.dry_run === true || req.body.dry_run === 1));
+                || body.dry_run === true
+                || body.dry_run === 1
+                || body.dry_run === '1';
+            // F-MS-02: запись в МС только с confirm (dry_run без confirm ок).
+            if (
+                !dryRun &&
+                body.confirm !== true &&
+                body.confirm !== 1 &&
+                body.confirm !== '1'
+            ) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Нужно confirm: true или dry_run',
+                    code: 'CONFIRM_REQUIRED',
+                });
+            }
             const result = await fillMedmarketLinkageCodes(db, config, req.query, { dry_run: dryRun });
             res.json({ success: true, ...result });
         } catch (e) {

@@ -1565,14 +1565,15 @@
         </div>
       </div>
 
-      <div class="finding" id="F-MS-02">
-        <div class="title"><span class="badge high">high</span> F-MS-02 · Mass-write в МС без серверного лимита строк</div>
+      <div class="finding fixed-out" id="F-MS-02">
+        <div class="title"><span class="badge high">high</span> <span class="badge fixed">исправлено</span> F-MS-02 · Mass-write в МС без серверного лимита строк</div>
         <div class="ev">
           <code>POST /api/medmarket/import</code> — цикл по <code>rows[]</code> без max;
           каждый upsert → <code>axios.put</code> в МС. <code>fill-linkage-codes</code> по фильтрам
           может затронуть весь каталог. UI-confirm не заменяет серверный cap / dual-control.
           <strong>Fix:</strong> max rows (напр. 500); обязательный <code>confirm: true</code>;
           dry_run по умолчанию для fill без confirm; очередь + прогресс вместо sync HTTP.
+          <div class="fix-note"><strong>2026-10-27 (локально):</strong> import: confirm + max 500 rows; fill-linkage: confirm при записи.</div>
         </div>
       </div>
 
@@ -1898,8 +1899,8 @@
 
       <h3>Findings</h3>
 
-      <div class="finding" id="F-MP-01">
-        <div class="title"><span class="badge high">high</span> F-MP-01 · my-products=full → запись цен в боевую CMS</div>
+      <div class="finding fixed-out" id="F-MP-01">
+        <div class="title"><span class="badge high">high</span> <span class="badge fixed">исправлено</span> F-MP-01 · my-products=full → запись цен в боевую CMS</div>
         <div class="ev">
           <code>set-manual-price</code>, <code>sync-price-from-competitor</code> (+ bulk) открывают
           коннект с <code>db_pass</code> и делают <code>UPDATE ${table/fields}</code> на доноре.
@@ -1908,26 +1909,29 @@
           правка витрины.
           <strong>Fix:</strong> confirm на CMS-write; отдельная capability «писать в CMS»;
           валидация идентификаторов таблиц (F-SQL-01); audit каждой цены.
+          <div class="fix-note"><strong>2026-10-27 (локально):</strong> set-manual-price / sync-price-from-competitor требуют confirm: true; UI обновлён.</div>
         </div>
       </div>
 
-      <div class="finding" id="F-MP-02">
-        <div class="title"><span class="badge high">high</span> F-MP-02 · network-prices=full → mass CMS apply / on-off витрины</div>
+      <div class="finding fixed-out" id="F-MP-02">
+        <div class="title"><span class="badge high">high</span> <span class="badge fixed">исправлено</span> F-MP-02 · network-prices=full → mass CMS apply / on-off витрины</div>
         <div class="ev">
           <code>POST /apply</code> (до 50k пар), <code>deactivate</code>/<code>activate</code> меняют
           живой магазин. Confirm есть (хорошо), но один shared CMS user на сайт; нет dual-control /
           порога суммы. Смена <code>source_site_id</code> / % в <code>POST /settings</code> —
           любой full без отдельного admin.
           <strong>Fix:</strong> сузить роль; порог + второй confirm для apply &gt; N; settings только admin.
+          <div class="fix-note"><strong>2026-10-27 (локально):</strong> POST /network-prices/settings — admin или settings=full (apply уже с confirm).</div>
         </div>
       </div>
 
-      <div class="finding" id="F-MP-03">
-        <div class="title"><span class="badge med">medium</span> F-MP-03 · unlink без confirm; ignore sticky</div>
+      <div class="finding fixed-out" id="F-MP-03">
+        <div class="title"><span class="badge med">medium</span> <span class="badge fixed">исправлено</span> F-MP-03 · unlink без confirm; ignore sticky</div>
         <div class="ev">
           <code>POST /unlink</code> сразу DELETE link + INSERT ignore. UI-модалка не заменяет
           серверный confirm (см. destructive-confirm rule).
           <strong>Fix:</strong> <code>confirm: true</code> как у deactivate.
+          <div class="fix-note"><strong>2026-10-27 (локально):</strong> unlink требует confirm: true.</div>
         </div>
       </div>
 
@@ -2128,12 +2132,13 @@
         </div>
       </div>
 
-      <div class="finding" id="F-NP-03">
-        <div class="title"><span class="badge med">medium</span> F-NP-03 · DELETE huckster snapshot без confirm</div>
+      <div class="finding fixed-out" id="F-NP-03">
+        <div class="title"><span class="badge med">medium</span> <span class="badge fixed">исправлено</span> F-NP-03 · DELETE huckster snapshot без confirm</div>
         <div class="ev">
           <code>DELETE /api/exports/huckster/snapshot</code> сносит <code>latest</code> матрицы
           для любого huckster=full. Операционный sabotage / потеря снапшота.
           <strong>Fix:</strong> <code>confirm: true</code>; только admin.
+          <div class="fix-note"><strong>2026-10-27 (локально):</strong> DELETE snapshot — только admin + confirm.</div>
         </div>
       </div>
 
@@ -2226,8 +2231,8 @@
         </div>
       </div>
 
-      <div class="finding" id="F-OPS-02">
-        <div class="title"><span class="badge high">high</span> F-OPS-02 · ACL дашборда рассинхрон с API</div>
+      <div class="finding fixed-out" id="F-OPS-02">
+        <div class="title"><span class="badge high">high</span> <span class="badge fixed">исправлено</span> F-OPS-02 · ACL дашборда рассинхрон с API</div>
         <div class="ev">
           UI dashboard: overview → page key <code>processes</code>; db-size/disk →
           <code>dashboard</code>; sync-all → <code>settings</code>.
@@ -2236,6 +2241,7 @@
           Sync-all с дашборда требует settings=full — иначе «молчаливый» отказ.
           <strong>Fix:</strong> единый page key для виджетов дашборда или OR-access;
           disk/db-size только admin/processes.
+          <div class="fix-note"><strong>2026-10-27 (локально):</strong> db-size / disk-usage API page key → processes (не dashboard view).</div>
         </div>
       </div>
 
@@ -2516,19 +2522,19 @@
 <tr><td><a href="#F-WS-02">F-WS-02</a></td><td><span class="badge high">high</span></td><td>10</td><td>Payroll ACL по имени specialty</td><td>P1</td><td>—</td></tr>
 <tr><td><a href="#F-DBA-02">F-DBA-02</a></td><td><span class="badge high">high</span></td><td>11</td><td>can_manage_users = DBA</td><td>P0</td><td><span class="badge fixed">исправлено</span></td></tr>
 <tr><td><a href="#F-MS-01">F-MS-01</a></td><td><span class="badge high">high</span></td><td>12</td><td>Общий MS_TOKEN</td><td>P2</td><td>—</td></tr>
-<tr><td><a href="#F-MS-02">F-MS-02</a></td><td><span class="badge high">high</span></td><td>12</td><td>Unbounded mass-write МС</td><td>P1</td><td>—</td></tr>
+<tr><td><a href="#F-MS-02">F-MS-02</a></td><td><span class="badge high">high</span></td><td>12</td><td>Unbounded mass-write МС</td><td>P1</td><td><span class="badge fixed">исправлено</span></td></tr>
 <tr><td><a href="#F-PUR-01">F-PUR-01</a></td><td><span class="badge high">high</span></td><td>13</td><td>send-ms-order без confirm</td><td>P1</td><td><span class="badge fixed">исправлено</span></td></tr>
 <tr><td><a href="#F-PUR-02">F-PUR-02</a></td><td><span class="badge high">high</span></td><td>13</td><td>decision/bulk без canWrite</td><td>P1</td><td><span class="badge fixed">исправлено</span></td></tr>
 <tr><td><a href="#F-PAR-01">F-PAR-01</a></td><td><span class="badge high">high</span></td><td>14</td><td>SSRF private IP</td><td>P1</td><td><span class="badge fixed">исправлено</span></td></tr>
 <tr><td><a href="#F-PAR-02">F-PAR-02</a></td><td><span class="badge high">high</span></td><td>14</td><td>results/clear wipe всех prices</td><td>P1</td><td><span class="badge fixed">исправлено</span></td></tr>
-<tr><td><a href="#F-MP-01">F-MP-01</a></td><td><span class="badge high">high</span></td><td>15</td><td>CMS price write с my-products</td><td>P1</td><td>—</td></tr>
-<tr><td><a href="#F-MP-02">F-MP-02</a></td><td><span class="badge high">high</span></td><td>15</td><td>network mass apply/on-off</td><td>P1</td><td>—</td></tr>
+<tr><td><a href="#F-MP-01">F-MP-01</a></td><td><span class="badge high">high</span></td><td>15</td><td>CMS price write с my-products</td><td>P1</td><td><span class="badge fixed">исправлено</span></td></tr>
+<tr><td><a href="#F-MP-02">F-MP-02</a></td><td><span class="badge high">high</span></td><td>15</td><td>network mass apply/on-off</td><td>P1</td><td><span class="badge fixed">исправлено</span></td></tr>
 <tr><td><a href="#F-MPK-01">F-MPK-01</a></td><td><span class="badge high">high</span></td><td>16</td><td>Перезапись API-ключей МП</td><td>P1</td><td><span class="badge fixed">исправлено</span></td></tr>
 <tr><td><a href="#F-MPK-02">F-MPK-02</a></td><td><span class="badge high">high</span></td><td>16</td><td>Mass write в кабинеты МП</td><td>P1</td><td>—</td></tr>
 <tr><td><a href="#F-NP-01">F-NP-01</a></td><td><span class="badge high">high</span></td><td>17</td><td>Huckster password любому full</td><td>P0</td><td><span class="badge fixed">исправлено</span></td></tr>
 <tr><td><a href="#F-NP-02">F-NP-02</a></td><td><span class="badge high">high</span></td><td>17</td><td>dimensions sync-ms без confirm</td><td>P1</td><td><span class="badge fixed">исправлено</span></td></tr>
 <tr><td><a href="#F-OPS-01">F-OPS-01</a></td><td><span class="badge high">high</span></td><td>18</td><td>ops-sheet view = ФОТ всех</td><td>P1</td><td>—</td></tr>
-<tr><td><a href="#F-OPS-02">F-OPS-02</a></td><td><span class="badge high">high</span></td><td>18</td><td>ACL dashboard ≠ API</td><td>P1</td><td>—</td></tr>
+<tr><td><a href="#F-OPS-02">F-OPS-02</a></td><td><span class="badge high">high</span></td><td>18</td><td>ACL dashboard ≠ API</td><td>P1</td><td><span class="badge fixed">исправлено</span></td></tr>
 <tr><td><a href="#F-PUB-01">F-PUB-01</a></td><td><span class="badge high">high</span></td><td>19</td><td>Open redirect then=//…</td><td>P1</td><td><span class="badge fixed">исправлено</span></td></tr>
         </tbody>
       </table>
@@ -2592,6 +2598,10 @@
       <table>
         <thead><tr><th>дата</th><th>что</th></tr></thead>
         <tbody>
+          <tr>
+            <td class="mono">2026-10-27</td>
+            <td><strong>Локально (ещё не в прод)</strong>: F-MS-02, F-MP-01/02/03, F-NP-03, F-OPS-02 (confirm CMS/MS writes, network settings ACL, huckster snapshot admin, db/disk → processes).</td>
+          </tr>
           <tr>
             <td class="mono">2026-10-27</td>
             <td><strong>Прод <code>9f18c72</code></strong>: F-PUR-01/02 (confirm + canWrite/codes cap), F-NP-02 (dimensions sync-ms confirm), F-MPK-01 (config keys admin/settings only), F-PAR-01 (SSRF private/metadata block in site fetch). pm2 restart.</td>

@@ -14,6 +14,7 @@ const {
     openSiteConnection,
 } = require('../lib/datagonCmsPriceWrite');
 const { getFxRates, toRub, normalizeCurrency } = require('../lib/datagonFxRates');
+const { getActorPageMode } = require('../lib/datagonPageRegistry');
 
 const PRICE_EPS = 0.005;
 const APPLY_HARD_MAX = 50000;
@@ -800,6 +801,16 @@ function networkPricesRouterFactory(db, appSettings) {
 
     router.post('/settings', async (req, res) => {
         try {
+            // F-MP-02: смена эталона/% — только admin или settings=full.
+            const actor = req.datagonActor || {};
+            const isAdmin = String(actor.username || '') === 'admin';
+            if (!isAdmin && getActorPageMode(actor, 'settings') !== 'full') {
+                return res.status(403).json({
+                    success: false,
+                    error: 'Сохранение настроек цен сети: только admin или settings=full',
+                    code: 'FORBIDDEN',
+                });
+            }
             await ensureSchema();
             const body = req.body || {};
             if (body.source_site_id != null) {
@@ -1243,10 +1254,19 @@ function networkPricesRouterFactory(db, appSettings) {
     router.post('/unlink', async (req, res) => {
         try {
             await ensureSchema();
+            const body = req.body || {};
+            // F-MP-03: серверный confirm (UI-модалка не замена).
+            if (body.confirm !== true && body.confirm !== 1 && body.confirm !== '1') {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Нужно confirm: true',
+                    code: 'CONFIRM_REQUIRED',
+                });
+            }
             const sourceSiteId = await getSourceSiteId();
-            const targetSiteId = parseInt(String(req.body.target_site_id || ''), 10);
-            const sourceProductId = parseInt(String(req.body.source_product_id || ''), 10);
-            const targetProductId = parseInt(String(req.body.target_product_id || ''), 10);
+            const targetSiteId = parseInt(String(body.target_site_id || ''), 10);
+            const sourceProductId = parseInt(String(body.source_product_id || ''), 10);
+            const targetProductId = parseInt(String(body.target_product_id || ''), 10);
             if (!Number.isFinite(targetSiteId) || !Number.isFinite(sourceProductId)) {
                 return res.status(400).json({ success: false, error: 'Нужны target_site_id и source_product_id' });
             }

@@ -488,7 +488,7 @@ Query:
 
 ### POST `/api/network-prices/settings`
 
-Body: `{ source_site_id?, targets: [{ site_id, enabled, price_pct|null }] }`. Пустой `price_pct` → NULL (сайт не трогаем). Ответ: `{ success, verified }`.
+Body: `{ source_site_id?, targets: [{ site_id, enabled, price_pct|null }] }`. Пустой `price_pct` → NULL (сайт не трогаем). Ответ: `{ success, verified }`. Доступ (F-MP-02): только **admin** или `settings=full`.
 
 ### GET `/api/network-prices/matrix`
 
@@ -515,7 +515,7 @@ Body: `{ target_site_id, source_product_id?, target_product_id?, source_query?, 
 
 ### POST `/api/network-prices/unlink`
 
-Body: `{ target_site_id, source_product_id, target_product_id? }` — удаляет manual-link и ставит ignore (чтобы автопо SKU не вернулась). Лог: `action=unlink`.
+Body: `{ confirm: true, target_site_id, source_product_id, target_product_id? }` — удаляет manual-link и ставит ignore (чтобы автопо SKU не вернулась). Без `confirm` → `400 CONFIRM_REQUIRED` (F-MP-03). Лог: `action=unlink`.
 
 ### POST `/api/network-prices/deactivate`
 
@@ -600,7 +600,7 @@ Body:
 ```
 
 ### POST `/api/my-products/set-manual-price`
-Записать свою цену в CMS сайта и поставить **заморозку** синка с конкурентов. Body: `site_id`, `source_id` или `sku`, `price`, `hold_days` (`30|60|90|180`, default **90**) или `hold_until` (`YYYY-MM-DD` / ISO, не далее 366 дней). Поля в `my_products`: `price`, `price_hold_until`, `price_hold_by`, `price_hold_note`.
+Записать свою цену в CMS сайта и поставить **заморозку** синка с конкурентов. Body: **`confirm: true`** (обяз., F-MP-01), `site_id`, `source_id` или `sku`, `price`, `hold_days` (`30|60|90|180`, default **90**) или `hold_until` (`YYYY-MM-DD` / ISO, не далее 366 дней). Поля в `my_products`: `price`, `price_hold_until`, `price_hold_by`, `price_hold_note`.
 
 ### POST `/api/my-products/set-price-hold`
 Только заморозка текущей цены (без записи в CMS). Те же идентификаторы + `hold_days` / `hold_until`.
@@ -612,7 +612,7 @@ Body:
 Массовая заморозка / снятие по **тем же фильтрам**, что у list / sync-price-bulk (включая `price_hold`, Δ). `dry_run=1` или `confirm=1`. Для set — ещё `hold_days` / `hold_until`. Ответ: `total`, `already_held`, `free`, `would_hold` / `held` или `would_clear` / `cleared`, `duration_sec`, `applied_filters`. Потолок выборки — **50 000**. CMS не трогает.
 
 ### POST `/api/my-products/sync-price-from-competitor`
-Подтянуть цену с конкурента в источник (логика в `routes/myproducts.js`). В теле: `site_id`, `sku`, опционально `source_id`, `random_min_pct` / `random_max_pct`. Берётся **минимальная** цена среди Dealmed/Медкомплекс (в RUB), минус случайный % из диапазона; запись в CMS + аудит `comp_sync_*` в `my_products`. Заголовок `x-auth-username` / сессия попадает в аудит. Если у товара активна заморозка (`price_hold_until > NOW()`) → **`409 PRICE_HOLD_ACTIVE`**.
+Подтянуть цену с конкурента в источник (логика в `routes/myproducts.js`). В теле: **`confirm: true`** (обяз., F-MP-01), `site_id`, `sku`, опционально `source_id`, `random_min_pct` / `random_max_pct`. Берётся **минимальная** цена среди Dealmed/Медкомплекс (в RUB), минус случайный % из диапазона; запись в CMS + аудит `comp_sync_*` в `my_products`. Заголовок `x-auth-username` / сессия попадает в аудит. Если у товара активна заморозка (`price_hold_until > NOW()`) → **`409 PRICE_HOLD_ACTIVE`**.
 
 ### POST `/api/my-products/sync-price-from-competitor-bulk`
 Массовая синхронизация цены с конкурента по **тем же API-фильтрам**, что у `GET /api/my-products` (сайт, статус, поиск, остаток, связь с МС, `match_audit`, фильтр Δ и курсы). Клиентские поля таблицы (`tf_*`) **не** участвуют.
@@ -1904,7 +1904,7 @@ Body (JSON):
 
 ### DELETE `/api/exports/huckster/snapshot`
 
-Удаляет из БД последний сохранённый снапшот матриц (`DELETE FROM huckster_matrix_snapshots WHERE id='latest'`). Идемпотентно: если записи не было — успех. Сбрасывает в памяти процесса поле `result` у фонового статуса Huckster, чтобы `GET /sync-status` не отдавал устаревшие `sheet_export` после очистки. Требует авторизацию (как остальные методы под `/api/exports/huckster` после входа). На экране `/exports-huckster.html` вызывается из кнопки **«Очистить таблицы»** (после подтверждения).
+Удаляет из БД последний сохранённый снапшот матриц (`DELETE FROM huckster_matrix_snapshots WHERE id='latest'`). Идемпотентно: если записи не было — успех. Сбрасывает в памяти процесса поле `result` у фонового статуса Huckster, чтобы `GET /sync-status` не отдавал устаревшие `sheet_export` после очистки. Доступ (F-NP-03): только **admin** + `confirm: true` (query `?confirm=1` или JSON body). На экране `/exports-huckster.html` — кнопка **«Очистить таблицы»**.
 
 Ответ JSON: `{ "success": true, "cleared": true }`.
 
@@ -2150,8 +2150,8 @@ Body: `{ days }` (max = **`ms_orders_sync_days`**; если не передан�
 | GET | `/api/medmarket/sync-status` | Статус импорта атрибута |
 | POST | `/api/medmarket/sync` | Подтянуть атрибут из `ms_entity_details` → `ms_export` |
 | PATCH | `/api/medmarket/mapping` | Правка одной связки |
-| POST | `/api/medmarket/import` | Массовый import `rows[]` |
-| POST | `/api/medmarket/fill-linkage-codes` | Запись код+тип в МС; `dry_run=1` — preflight со счётчиками |
+| POST | `/api/medmarket/import` | Массовый import `rows[]` (F-MS-02: `confirm: true`, max **500** строк) |
+| POST | `/api/medmarket/fill-linkage-codes` | Запись код+тип в МС; `dry_run` — preflight; запись — `confirm: true` (F-MS-02) |
 
 Автосинк: `medmarket` (импорт, вс) / `medmarket_fill` (запись в МС, пн–сб) — см. Settings / `auto_sync_medmarket_*`.
 
@@ -2201,7 +2201,7 @@ Body: `{ days }` (max = **`ms_orders_sync_days`**; если не передан�
 
 ### GET `/api/processes/disk-usage`
 
-Используется виджетом «Дисковое пространство» на дашборде (`/dashboard.html`). Матрица API: ключ **`dashboard`** (как `GET /db-size`). Принудительный пересчёт также выполняется в составе ежедневной фоновой задачи `db_size` (галка «Размер БД и диска» в `/settings.html` → раздел «Авто-синхронизация»; одна задача `auto_sync_runs.task_type = 'db_size'` обновляет и размер БД, и разбивку диска). Возвращает:
+Используется виджетом «Дисковое пространство» на дашборде (`/dashboard.html`). Матрица API (F-OPS-02): ключ **`processes`** (как `GET /db-size`) — не `dashboard=view`. Принудительный пересчёт также выполняется в составе ежедневной фоновой задачи `db_size` (галка «Размер БД и диска» в `/settings.html` → раздел «Авто-синхронизация»; одна задача `auto_sync_runs.task_type = 'db_size'` обновляет и размер БД, и разбивку диска). Возвращает:
 
 - `projectPath` — абсолютный путь к корню проекта (`__dirname` сервера);
 - `projectSizeBytes`, `projectFileCount`, `rootFilesBytes`, `rootFilesCount` — суммарный размер всех каталогов проекта, общее число файлов и размер/количество файлов в самом корне;

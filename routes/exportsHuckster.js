@@ -1672,8 +1672,31 @@ function createExportsHucksterRouter(_db, appSettings) {
     });
 
     /** Удалить последний успешный снапшот матриц из БД (строка `latest`). Память `sync-status.result` сбрасывается, чтобы не подтягивать старые строки. */
-    router.delete('/snapshot', async (_req, res) => {
+    router.delete('/snapshot', async (req, res) => {
         try {
+            // F-NP-03: только admin + confirm: true (body или query).
+            const actor = req.datagonActor || {};
+            if (String(actor.username || '') !== 'admin') {
+                return res.status(403).json({
+                    success: false,
+                    error: 'Удаление снапшота Huckster доступно только admin',
+                    code: 'FORBIDDEN',
+                });
+            }
+            const body = req.body && typeof req.body === 'object' ? req.body : {};
+            const confirm =
+                body.confirm === true ||
+                body.confirm === 1 ||
+                body.confirm === '1' ||
+                String(req.query.confirm || '') === '1' ||
+                String(req.query.confirm || '') === 'true';
+            if (!confirm) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Нужно confirm: true',
+                    code: 'CONFIRM_REQUIRED',
+                });
+            }
             if (typeof _db?.query !== 'function') {
                 return res.status(500).json({ success: false, error: 'БД недоступна', code: 'NO_DB' });
             }

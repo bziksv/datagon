@@ -2480,10 +2480,11 @@
 
               function runClearHucksterDisplayedMatrices() {
                 closeHucksterClearConfirm();
-                fetchJsonSafe(API_SNAPSHOT, {
+                fetchJsonSafe(API_SNAPSHOT + "?confirm=1", {
                   method: "DELETE",
                   credentials: "same-origin",
-                  headers: authHeaders(false),
+                  headers: authHeaders(true),
+                  body: JSON.stringify({ confirm: true }),
                 })
                   .then(function (x) {
                     if (!x.ok || !x.json || !x.json.success) {

@@ -2295,6 +2295,13 @@ function myProductsRouterFactory(db, settings) {
     // 4a. Ручная цена + заморозка / только заморозка / снятие
     router.post('/set-manual-price', async (req, res) => {
         const body = req.body || {};
+        // F-MP-01: запись в боевую CMS только с confirm.
+        if (body.confirm !== true && body.confirm !== 1 && body.confirm !== '1') {
+            return res.status(400).json({
+                error: 'Нужно confirm: true (подтверждение записи цены в CMS)',
+                code: 'CONFIRM_REQUIRED',
+            });
+        }
         const { site_id, sku, source_id, price } = body;
         if (!site_id || (!sku && !source_id)) {
             return res.status(400).json({ error: 'Не указан site_id и идентификатор товара (source_id/sku)' });
@@ -2621,7 +2628,15 @@ function myProductsRouterFactory(db, settings) {
 
     // 4. Обновление цены на сайте от цены конкурента с рандомным шагом
     router.post('/sync-price-from-competitor', async (req, res) => {
-        const { site_id, sku, source_id, random_min_pct, random_max_pct } = req.body || {};
+        const body = req.body || {};
+        // F-MP-01: запись в CMS с confirm (bulk уже требует confirm).
+        if (body.confirm !== true && body.confirm !== 1 && body.confirm !== '1') {
+            return res.status(400).json({
+                error: 'Нужно confirm: true',
+                code: 'CONFIRM_REQUIRED',
+            });
+        }
+        const { site_id, sku, source_id, random_min_pct, random_max_pct } = body;
         if (!site_id || (!sku && !source_id)) {
             return res.status(400).json({ error: 'Не указан site_id и идентификатор товара (source_id/sku)' });
         }

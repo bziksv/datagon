@@ -128,7 +128,7 @@
           method: "POST",
           credentials: "same-origin",
           headers: { "Content-Type": "application/json" },
-          body: "{}",
+          body: JSON.stringify(dryRun ? { dry_run: true } : { confirm: true }),
         }).then(function (r) {
           return r.json().then(function (j) {
             return { ok: r.ok, j: j };
