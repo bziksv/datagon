@@ -1366,7 +1366,7 @@
         <div class="ev">
           <code>ws_bitcop_api_key</code> в MySQL без encrypt (как прочие секреты). Маска только на чтении API.
           <strong>Fix:</strong> encrypt-at-rest; write-only пустое поле.
-          <div class="fix-note"><strong>2026-10-27 (локально):</strong> save → <code>enc:v1:</code> через <code>DATAGON_VAULT_KEY</code>; load/mask decrypt; <code>scripts/migrate-bitcop-api-key-encrypt.mjs</code>.</div>
+          <div class="fix-note"><strong>2026-10-27 (прод <code>e144864</code>):</strong> save → <code>enc:v1:</code> через <code>DATAGON_VAULT_KEY</code>; load/mask decrypt; migrate <code>scripts/migrate-bitcop-api-key-encrypt.mjs</code> → encrypted.</div>
         </div>
       </div>
 
@@ -2150,7 +2150,7 @@
           <code>DELETE /api/exports/new-products/:id</code> → softRemove + cascade markets.
           UI-модалка есть (эталон); API без <code>confirm</code> (как unlink network-prices).
           <strong>Fix:</strong> body confirm; то же для kit_delete при cascade.
-          <div class="fix-note"><strong>2026-10-27 (локально):</strong> DELETE product/kit требуют <code>{confirm:true}</code>; UI шлёт confirm.</div>
+          <div class="fix-note"><strong>2026-10-27 (прод <code>e144864</code>):</strong> DELETE product/kit требуют <code>{confirm:true}</code>; UI шлёт confirm.</div>
         </div>
       </div>
 
@@ -2231,7 +2231,7 @@
           Любая широкая специальность с ops-sheet=view читает ФОТ и маржу компании.
           <strong>Fix:</strong> отдельный capability «видеть ФОТ»; или view только агрегаты
           без персональных salary; self-only для менеджеров.
-          <div class="fix-note"><strong>2026-10-27 (локально):</strong> view → deep-redact salary/bonus_*/fact_profit/salary_paid/company_*; <code>payroll_hidden</code>; <code>/bonus-past-orders</code> только full.</div>
+          <div class="fix-note"><strong>2026-10-27 (прод <code>e144864</code>):</strong> view → deep-redact salary/bonus_*/fact_profit/salary_paid/company_*; <code>payroll_hidden</code>; <code>/bonus-past-orders</code> только full.</div>
         </div>
       </div>
 
