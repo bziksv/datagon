@@ -1818,13 +1818,27 @@
       }
 
       function clearResults() {
-        if (!window.confirm("Удалить историю результатов по текущему проекту?")) return;
         var f = readApiFilters();
+        var wipeAll = !f.project_id || f.project_id === "all";
+        if (wipeAll) {
+          if (
+            !window.confirm(
+              "Удалить историю результатов ПО ВСЕМ проектам?\n\nЭто необратимо. Нужны права admin."
+            )
+          ) {
+            return;
+          }
+        } else if (!window.confirm("Удалить историю результатов по текущему проекту?")) {
+          return;
+        }
+        var payload = wipeAll
+          ? { project_id: null, confirm_all: true }
+          : { project_id: f.project_id };
         fetch("/api/results/clear", {
           method: "POST",
           credentials: "same-origin",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ project_id: f.project_id === "all" ? null : f.project_id }),
+          body: JSON.stringify(payload),
         })
           .then(function (r) {
             return r.json().then(function (j) {
@@ -1832,12 +1846,20 @@
             });
           })
           .then(function (x) {
-            if (!x.r.ok) throw new Error(x.j.error || "Не удалось очистить");
-            alert("История очищена");
+            if (!x.r.ok) throw new Error((x.j && x.j.error) || "Не удалось очистить");
+            if (window.DatagonNotify && window.DatagonNotify.toast) {
+              window.DatagonNotify.toast({ type: "success", message: "История очищена" });
+            } else {
+              alert("История очищена");
+            }
             loadResults();
           })
           .catch(function (e) {
-            alert(e.message || String(e));
+            if (window.DatagonNotify && window.DatagonNotify.toast) {
+              window.DatagonNotify.toast({ type: "danger", message: e.message || String(e) });
+            } else {
+              alert(e.message || String(e));
+            }
           });
       }
 

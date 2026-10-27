@@ -1,5 +1,6 @@
 'use strict';
 
+const crypto = require('crypto');
 const express = require('express');
 const {
     ensureWorkScheduleSchema,
@@ -44,12 +45,20 @@ function clockSyncSecretExpected() {
 }
 
 function clockSyncSecretOk(req) {
+    // F-WS-01: только заголовок (не body.secret — не пишется в access/error logs так же часто);
+    // сравнение через timingSafeEqual.
     const expected = clockSyncSecretExpected();
     if (!expected) return false;
-    const got =
-        String(req.get('x-datagon-clock-sync') || req.get('x-datagon-sync-secret') || '').trim() ||
-        String((req.body && req.body.secret) || '').trim();
-    return got && got === expected;
+    const got = String(req.get('x-datagon-clock-sync') || req.get('x-datagon-sync-secret') || '').trim();
+    if (!got) return false;
+    try {
+        const a = Buffer.from(got, 'utf8');
+        const b = Buffer.from(expected, 'utf8');
+        if (a.length !== b.length) return false;
+        return crypto.timingSafeEqual(a, b);
+    } catch (_) {
+        return false;
+    }
 }
 
 async function pushCrmSafe(fn) {

@@ -13,6 +13,8 @@ const {
     buildMsHucksterBridgeExport,
 } = require('../lib/hucksterMsBridgeMatrix');
 const { HUCKSTER_MATRIX_LOST_KIND, getHucksterSyncMeta } = require('../lib/hucksterSyncRevision');
+const { encryptVaultValue, decryptVaultValue } = require('../lib/datagonVaultCrypto');
+const { getActorPageMode } = require('../lib/datagonPageRegistry');
 
 const SHOPS_SET_1 = [
     { id: 'ozon', name: 'Ozon', marketplace: 'ozon', shop_id: '139080' },
@@ -1062,8 +1064,15 @@ function createExportsHucksterRouter(_db, appSettings) {
         if (syncState.active) {
             return { ok: false, code: 'ALREADY_RUNNING' };
         }
-        const email = String(bodyObj.email || appSettings.huckster_email || '').trim();
-        const password = String(bodyObj.password || appSettings.huckster_password || '').trim();
+        // F-NP-01: email/password только из app_settings (не из body — не писать пароль в access/proxy logs).
+        const email = String(appSettings.huckster_email || '').trim();
+        let password = '';
+        try {
+            password = String(decryptVaultValue(appSettings.huckster_password || '') || '').trim();
+        } catch (e) {
+            console.warn('[huckster] decrypt password:', e && e.message ? e.message : e);
+            return { ok: false, code: 'MISSING_CREDS' };
+        }
         if (!email || !password) {
             return { ok: false, code: 'MISSING_CREDS' };
         }
@@ -1696,6 +1705,16 @@ function createExportsHucksterRouter(_db, appSettings) {
 
     router.post('/credentials', async (req, res) => {
         try {
+            // F-NP-01: сохранение кредов — только admin или settings=full.
+            const actor = req.datagonActor || {};
+            const isAdmin = String(actor.username || '') === 'admin';
+            const settingsMode = getActorPageMode(actor, 'settings');
+            if (!isAdmin && settingsMode !== 'full') {
+                return res.status(403).json({
+                    error: 'Сохранение учётных данных Huckster доступно только admin / settings=full',
+                    code: 'FORBIDDEN',
+                });
+            }
             const body = req.body || {};
             const email = String(body.email || '').trim();
             const passwordRaw = body.password != null ? String(body.password) : '';
@@ -1722,7 +1741,7 @@ function createExportsHucksterRouter(_db, appSettings) {
                 ['huckster_max_offset_per_shop', String(maxOffset)],
             ];
             if (password) {
-                kv.push(['huckster_password', password]);
+                kv.push(['huckster_password', encryptVaultValue(password)]);
             }
             for (const [k, v] of kv) {
                 await _db.query(

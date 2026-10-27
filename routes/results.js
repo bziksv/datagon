@@ -641,18 +641,31 @@ module.exports = (db, settings) => {
     // 2. Очистить результаты
     router.post('/clear', async (req, res) => {
         try {
-            const { project_id } = req.body;
-            let q = 'DELETE FROM prices WHERE 1=1'; 
-            let p = [];
-            
-            if (project_id && project_id !== 'all') { 
-                q += ' AND project_id = ?'; 
-                p.push(project_id); 
+            const body = req.body || {};
+            const project_id = body.project_id;
+            const wipeAll = project_id == null || project_id === '' || project_id === 'all';
+            // F-PAR-02: wipe всей таблицы prices — только admin + confirm_all: true.
+            if (wipeAll) {
+                const actor = req.datagonActor || {};
+                const isAdmin = String(actor.username || '') === 'admin';
+                if (!isAdmin || body.confirm_all !== true) {
+                    return res.status(403).json({
+                        success: false,
+                        error:
+                            'Очистка всех результатов требует project_id или (admin + confirm_all: true)',
+                        code: 'CONFIRM_ALL_REQUIRED',
+                    });
+                }
             }
-            
+            let q = 'DELETE FROM prices WHERE 1=1';
+            let p = [];
+            if (!wipeAll) {
+                q += ' AND project_id = ?';
+                p.push(project_id);
+            }
             const [r] = await db.query(q, p);
             invalidateResultsListCache();
-            res.json({ success: true, deleted: r.affectedRows });
+            res.json({ success: true, deleted: r.affectedRows, wipe_all: wipeAll });
         } catch (e) {
             res.status(500).json({ error: e.message });
         }

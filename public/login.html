@@ -153,9 +153,12 @@
       function thenPath() {
         try {
           var p = new URLSearchParams(window.location.search).get("then");
-          if (!p || p.indexOf("..") !== -1) return "/dashboard.html";
-          if (!p.startsWith("/")) return "/dashboard.html";
-          return p.split("#")[0];
+          if (!p || p.indexOf("..") !== -1 || p.indexOf("\\") !== -1) return "/dashboard.html";
+          if (!p.startsWith("/") || p.charAt(1) === "/") return "/dashboard.html";
+          if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(p)) return "/dashboard.html";
+          p = p.split("#")[0];
+          if (!/^\/[A-Za-z0-9._-]+\.html(?:\?[^#]*)?$/.test(p)) return "/dashboard.html";
+          return p;
         } catch (e) {
           return "/dashboard.html";
         }
@@ -182,7 +185,7 @@
             x.j.redirect_after_login && String(x.j.redirect_after_login).indexOf("..") === -1
               ? String(x.j.redirect_after_login).split("#")[0]
               : null;
-          if (dest && dest.charAt(0) === "/") window.location.replace(dest);
+          if (dest && dest.charAt(0) === "/" && dest.charAt(1) !== "/") window.location.replace(dest);
           else window.location.replace(thenPath());
         })
         .catch(function () {});
@@ -253,7 +256,7 @@
               json && json.redirect_after_login && String(json.redirect_after_login).indexOf("..") === -1
                 ? String(json.redirect_after_login).split("#")[0]
                 : null;
-            if (dest && dest.charAt(0) === "/") window.location.replace(dest);
+            if (dest && dest.charAt(0) === "/" && dest.charAt(1) !== "/") window.location.replace(dest);
             else window.location.replace(thenPath());
           })
           .catch(function (e3) {

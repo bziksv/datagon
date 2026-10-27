@@ -430,7 +430,7 @@ Query:
 Журнал ручных смен типа. Query: `limit` (по умолчанию 8, макс. 50). Ответ: `{ success, page_id, rows: [{ old_value, new_value, old_label, new_label, source, source_label, changed_by_name, note, changed_at, … }] }`. UI «Результаты» — микрокнопка **«лог»** в правом верхнем углу ячейки «Тип» (как на `/exports-new-products.html` → маркеты), открывает модалку.
 
 ### POST `/api/results/clear`
-Очистить результаты (все или по `project_id`).
+Очистить результаты по `project_id`. Wipe всей таблицы `prices` (`project_id` пуст/`all`) — только **admin** и тело `{ "confirm_all": true }` (F-PAR-02); иначе `403 CONFIRM_ALL_REQUIRED`.
 
 ### DELETE `/api/results/:id`
 Удалить одну запись результата.
@@ -1856,15 +1856,13 @@ Body: `photoshoot_status`, `photoshoot_comment`. При смене статус�
 
 Принудительно **запускает фоновое** обновление двух матриц Huckster (аналог листов Google Sheets `Huckster Export` и `Huckster Export RRC`) через API `wbs.e-teleport.ru`.
 
-Основная кнопка экрана `/exports-huckster.html` отправляет в теле три булевых поля фильтра МС (`ms_exclude_archived_bundles`, `ms_exclude_archived_products_zero_stock`, `ms_exclude_products_with_bundles`); сервер **сохраняет** их в `app_settings` (для экрана и планировщика), **не** сужая при этом выборку из `ms_export` при `POST /sync` — в снапшот попадают все строки моста, а галочки управляют только отображением (см. `POST /ms-bridge-row-flags`). Креды — из `app_settings` / env, если в теле не переданы `email` / `password`. Кнопка **«Тест UID»** добавляет `test_uids` к тем же полям и не перезаписывает сохранённый snapshot.
+Основная кнопка экрана `/exports-huckster.html` отправляет в теле три булевых поля фильтра МС (`ms_exclude_archived_bundles`, `ms_exclude_archived_products_zero_stock`, `ms_exclude_products_with_bundles`); сервер **сохраняет** их в `app_settings` (для экрана и планировщика), **не** сужая при этом выборку из `ms_export` при `POST /sync` — в снапшот попадают все строки моста, а галочки управляют только отображением (см. `POST /ms-bridge-row-flags`). **Креды только из `app_settings`** (F-NP-01: `email`/`password` в body **игнорируются**, пароль в БД — vault `enc:v1:…`). Кнопка **«Тест UID»** добавляет `test_uids` к тем же полям и не перезаписывает сохранённый snapshot.
 
 Body (JSON):
 
 - `ms_exclude_archived_bundles` — сохраняется в `app_settings.huckster_ms_exclude_archived_bundles` (экран: скрыть архивные комплекты в матрице).
 - `ms_exclude_archived_products_zero_stock` — сохраняется в `app_settings.huckster_ms_exclude_archived_products_zero_stock` (экран: скрыть архивные товары без остатка).
 - `ms_exclude_products_with_bundles` — сохраняется в `app_settings.huckster_ms_exclude_products_with_bundles` (экран: скрыть базовый код `N`, если есть строки `N-...`).
-- `email` — логин Huckster (опционально, если задан `HUCKSTER_EMAIL` или `app_settings.huckster_email`).
-- `password` — пароль Huckster (опционально, если задан `HUCKSTER_PASSWORD` или `app_settings.huckster_password`).
 - `delay_ms` — пауза между страницами пагинации (мс, по умолчанию 270, не ниже 135). Размер страницы к e-teleport: repricer и unit — по 900 записей (на 10% ниже верхнего лимита API 1000).
 - `max_offset_per_shop` — ограничение offset на магазин (`0` = без ограничения).
 - `test_uids` / `uids` / `uid_list` — опциональный тестовый список UID/кодов (`["12461"]` или строка через запятую/пробел). В матрицу попадут только эти UID; пагинация по кабинету останавливается раньше, если все UID найдены. Тестовый запуск отдаёт результат в `sync-status`, но **не сохраняет** его как `latest` snapshot.
@@ -1951,9 +1949,9 @@ Body (JSON):
 
 ### POST `/api/exports/huckster/credentials`
 
-Сохраняет в `app_settings` логин, пароль и параметры для Huckster (используются `POST /sync` без тела и планировщиком в `server.js`, если в теле sync не переданы `email` / `password`).
+Сохраняет в `app_settings` логин, пароль и параметры для Huckster (используются `POST /sync` и планировщиком). Доступ: **admin** или `settings=full` (F-NP-01). Пароль пишется encrypted (`enc:v1:…` при заданном `DATAGON_VAULT_KEY`); пустой `password` = оставить сохранённый (write-only).
 
-Body (JSON): `email`, `password` (обязательны), опционально `delay_ms` (не ниже 135), `max_offset_per_shop` (число, `0` = без ограничения).
+Body (JSON): `email` (обязателен), `password` (обязателен, если пароль ещё не сохранён), опционально `delay_ms` (не ниже 135), `max_offset_per_shop` (число, `0` = без ограничения).
 
 ## Продажи МС
 
@@ -2429,7 +2427,7 @@ Preflight матча «Менеджер по продажам» ↔ Planfix `/us
 | DELETE | `/organizations/:id` | accounting (409, если есть сотрудники) |
 | POST | `/departments/import-specialties` | accounting; отделы из `specialties` в **общий** справочник (без привязки к орг.; без «Полный доступ»), без дублей имён |
 | GET/POST | `/clock/status`, `/clock/start`, `/clock/stop` | сотрудник; `segments_json` append-only (+ `ip_in`/`ip_out`); `stop` сначала пишет часы/сегменты (payroll ошибка → `payroll_error`, часы уже в БД); повторный `start` → `resumed` + накопление; при `crm_user_id` зеркалит CRM (`crm_sync` / `crm_sync_error`, смену Datagon не откатывает) |
-| POST | `/clock/sync-from-crm` | **без сессии**; header `X-Datagon-Clock-Sync: <DATAGON_CLOCK_SYNC_SECRET>`; body `{ crm_user_id, action: "start"\|"stop", in_time?, out_time? }` (UTC SQL из CRM). Выравнивает `ws_work_log`; конфликт стартов — более ранний UTC |
+| POST | `/clock/sync-from-crm` | **без сессии**; **только** header `X-Datagon-Clock-Sync` (или `X-Datagon-Sync-Secret`) = `DATAGON_CLOCK_SYNC_SECRET` (сравнение `timingSafeEqual`; `body.secret` **не** принимается — F-WS-01); body `{ crm_user_id, action: "start"\|"stop", in_time?, out_time? }` (UTC SQL из CRM). Выравнивает `ws_work_log`; конфликт стартов — более ранний UTC |
 | GET | `/crm/users` | accounting; staff CRM (`id`, `full_name`, …) для select привязки |
 | POST | `/crm/link-backfill` | accounting; однозначные ФИО → `ws_employee.crm_user_id` |
 | GET | `/me/day?date=YYYY-MM-DD` | сотрудник; детали дня: сегменты старт/стоп, часы, IP, открытый сегмент |
