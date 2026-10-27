@@ -303,7 +303,7 @@
         <div class="ev">
           <code>POST /change-password</code> для своего аккаунта не требует old password → украденная сессия = полный захват.
           <strong>Fix:</strong> требовать <code>currentPassword</code> для non-admin.
-          <div class="fix-note"><strong>2026-10-27 (local):</strong> self-change → <code>currentPassword</code> обязателен (<code>CURRENT_PASSWORD_REQUIRED</code>/<code>INVALID</code>); admin reset чужого — без; UI settings + редирект на login после успеха.</div>
+          <div class="fix-note"><strong>2026-10-27 (прод <code>6877bde</code>):</strong> self-change → <code>currentPassword</code> обязателен (<code>CURRENT_PASSWORD_REQUIRED</code>/<code>INVALID</code>); admin reset чужого — без; UI settings + редирект на login после успеха.</div>
         </div>
       </div>
 
@@ -732,7 +732,7 @@
           Если API когда-либо отразит пользовательский ввод в <code>error</code> — XSS в UI бухгалтерии/руководителя.
           Сейчас чаще фиксированные строки — риск отложенный / при утечке деталей SQL.
           <strong>Fix:</strong> <code>escapeHtml(e.message)</code> или <code>textContent</code>.
-          <div class="fix-note"><strong>2026-10-27 (local):</strong> catch → <code>escapeHtml(e.message)</code> в history/audit journal (оба WS-скрипта).</div>
+          <div class="fix-note"><strong>2026-10-27 (прод <code>6877bde</code>):</strong> catch → <code>escapeHtml(e.message)</code> в history/audit journal (оба WS-скрипта).</div>
         </div>
       </div>
 
@@ -745,7 +745,7 @@
           <code>my-products</code> / competitors: product URL с CMS — тот же класс риска.
           Product linkify безопаснее (URL_RE), но raw <code>a.href = raw</code> для http(s) — ок.
           <strong>Fix:</strong> allowlist <code>^https?:</code> (и относительные <code>/</code>); иначе <code>textContent</code> без ссылки.
-          <div class="fix-note"><strong>2026-10-27 (local):</strong> results — только <code>https?:</code> или <code>/</code> (не <code>//</code>); иначе text без ссылки. my-products/competitors — при необходимости отдельно.</div>
+          <div class="fix-note"><strong>2026-10-27 (прод <code>6877bde</code>):</strong> results — только <code>https?:</code> или <code>/</code> (не <code>//</code>); иначе text без ссылки. my-products/competitors — при необходимости отдельно.</div>
         </div>
       </div>
 
@@ -977,7 +977,7 @@
           «широкая» специальность с settings=full = полный контроль интеграций.
           <strong>Fix:</strong> разделить page keys (<code>settings-users</code> / <code>settings-integrations</code> /
           <code>settings-autosync</code>); GET secrets только admin или write-only masks.
-          <div class="fix-note"><strong>2026-10-27 (локально):</strong> запись MP/Planfix/proxy/huckster секретов — только <code>admin</code> (<code>SETTINGS_SECRETS_ADMIN_ONLY</code>); GET по-прежнему masks (F-SEC-02). Разделение page keys — отдельно.</div>
+          <div class="fix-note"><strong>2026-10-27 (прод <code>6877bde</code>):</strong> запись MP/Planfix/proxy/huckster секретов — только <code>admin</code> (<code>SETTINGS_SECRETS_ADMIN_ONLY</code>); GET по-прежнему masks (F-SEC-02). Разделение page keys — отдельно.</div>
         </div>
       </div>
 
@@ -1011,7 +1011,7 @@
           (см. F-AUTH-04). Украденный token (XSS/LS) → смена пароля + revoke чужих сессий жертвы =
           полный захват. Admin reset чужих — ожидаемо, но без step-up.
           <strong>Fix:</strong> для self требовать <code>currentPassword</code>; для admin — re-auth / TOTP.
-          <div class="fix-note"><strong>2026-10-27 (local):</strong> self = F-AUTH-04. Admin step-up/TOTP — отдельно (не в этом батче).</div>
+          <div class="fix-note"><strong>2026-10-27 (прод <code>6877bde</code>):</strong> self = F-AUTH-04. Admin step-up/TOTP — отдельно (не в этом батче).</div>
         </div>
       </div>
 
@@ -1034,7 +1034,7 @@
           Таблица <code>auth_sessions</code> без явного ON DELETE CASCADE в ensureAuthSchema —
           риск сиротских сессий или ошибки FK / висящих hash.
           <strong>Fix:</strong> revoke + delete sessions в той же транзакции; FK ON DELETE CASCADE.
-          <div class="fix-note"><strong>2026-10-27 (local):</strong> перед <code>DELETE users</code> — revoke + <code>DELETE auth_sessions WHERE user_id</code>. FK CASCADE в схеме — опционально позже.</div>
+          <div class="fix-note"><strong>2026-10-27 (прод <code>6877bde</code>):</strong> перед <code>DELETE users</code> — revoke + <code>DELETE auth_sessions WHERE user_id</code>. FK CASCADE в схеме — опционально позже.</div>
         </div>
       </div>
 
@@ -1126,7 +1126,7 @@
           любой «финансист view» видит всё юрлицо.
           <strong>Fix:</strong> осознанно сузить, кому давать view; опционально scope по
           <code>customer_code</code> / specialty; отдельный mode «только агрегаты» без строк выписки.
-          <div class="fix-note"><strong>2026-10-27 (локально):</strong> <code>GET /transactions</code> при view — <code>detail_hidden</code>: purpose/counterparty/INN/doc пустые, счёт маска; суммы/даты остаются. Scope по org — отдельно.</div>
+          <div class="fix-note"><strong>2026-10-27 (прод <code>6877bde</code>):</strong> <code>GET /transactions</code> при view — <code>detail_hidden</code>: purpose/counterparty/INN/doc пустые, счёт маска; суммы/даты остаются. Scope по org — отдельно.</div>
         </div>
       </div>
 
@@ -1138,7 +1138,7 @@
           без dual-control. Shared company data — не классический IDOR, но высокий blast radius insider.
           <strong>Fix:</strong> confirm+activity на credential wipe; лимит sync days для UI ниже;
           soft-delete шаблонов; опционально «два admin» на clear credentials.
-          <div class="fix-note"><strong>2026-10-27 (локально):</strong> delete/clear → <code>confirm:true</code>; sync не-admin ≤180 дн.; dual-control шаблонов — отдельно.</div>
+          <div class="fix-note"><strong>2026-10-27 (прод <code>6877bde</code>):</strong> delete/clear → <code>confirm:true</code>; sync не-admin ≤180 дн.; dual-control шаблонов — отдельно.</div>
         </div>
       </div>
 
@@ -1148,7 +1148,7 @@
           Upsert/delete/toggle JWT в <code>POST /config</code> не пишет <code>recordDatagonActivity</code>
           (в отличие от create user). Сложнее расследовать «кто подменил токен».
           <strong>Fix:</strong> audit: actor, bank, credential id, action (без секрета в detail).
-          <div class="fix-note"><strong>2026-10-27 (локально):</strong> activity <code>finance_credential</code> на upsert/delete/toggle/clear (без секретов в detail).</div>
+          <div class="fix-note"><strong>2026-10-27 (прод <code>6877bde</code>):</strong> activity <code>finance_credential</code> на upsert/delete/toggle/clear (без секретов в detail).</div>
         </div>
       </div>
 
@@ -2042,7 +2042,7 @@
           Один скомпрометированный full = порча габаритов/НДС/объединений на всех площадках.
           <strong>Fix:</strong> shop-scoped pageKey на mutating routes; audit actor+codes;
           dual-control для merge apply.
-          <div class="fix-note"><strong>2026-10-27 (локально):</strong> shop+issues ACL (ранее) + activity <code>mp_mass_write</code> на fill-*/ozon-merge apply|unmerge; dual-control — отдельно.</div>
+          <div class="fix-note"><strong>2026-10-27 (прод <code>6877bde</code>):</strong> shop+issues ACL (ранее) + activity <code>mp_mass_write</code> на fill-*/ozon-merge apply|unmerge; dual-control — отдельно.</div>
         </div>
       </div>
 
