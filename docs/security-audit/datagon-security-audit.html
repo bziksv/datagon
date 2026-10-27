@@ -1670,7 +1670,7 @@
           <code>suppliers=full</code>. Нет <code>confirm: true</code> / dry_run.
           <strong>Fix:</strong> body <code>confirm</code> + опциональный <code>max_lines</code>;
           rate-limit per user/supplier; dual-control для крупных сумм.
-          <div class="fix-note"><strong>2026-10-27 (локально):</strong> <code>confirm: true</code> обязателен; опц. <code>max_lines</code>; UI шлёт confirm после модалки.</div>
+          <div class="fix-note"><strong>2026-10-27 (прод <code>9f18c72</code>):</strong> <code>confirm: true</code> обязателен; опц. <code>max_lines</code>; UI шлёт confirm после модалки.</div>
         </div>
       </div>
 
@@ -1683,7 +1683,7 @@
           без max (ветка фильтров clamp 5000).
           <strong>Fix:</strong> <code>if (!canWrite) 403</code>; <code>codes.slice(0, 5000)</code>;
           обязательный dry_run или confirm для non-dry.
-          <div class="fix-note"><strong>2026-10-27 (локально):</strong> canWrite; codes cap 5000; запись только с <code>confirm: true</code>.</div>
+          <div class="fix-note"><strong>2026-10-27 (прод <code>9f18c72</code>):</strong> canWrite; codes cap 5000; запись только с <code>confirm: true</code>.</div>
         </div>
       </div>
 
@@ -1790,7 +1790,7 @@
           сервера Datagon и жечь <code>fetch_proxy_list</code>.
           <strong>Fix:</strong> resolve DNS → block private; allowlist доменов конкурентов;
           запрет IP-literal в domain; отдельный egress.
-          <div class="fix-note"><strong>2026-10-27 (локально):</strong> <code>assertUrlSafeForEgress</code> в <code>datagonSiteFetch</code> (DNS + RFC1918/metadata/localhost); <code>beforeRedirect</code> на private IP. Allowlist доменов — отдельно.</div>
+          <div class="fix-note"><strong>2026-10-27 (прод <code>9f18c72</code>):</strong> <code>assertUrlSafeForEgress</code> в <code>datagonSiteFetch</code> (DNS + RFC1918/metadata/localhost); <code>beforeRedirect</code> на private IP. Allowlist доменов — отдельно.</div>
         </div>
       </div>
 
@@ -2012,7 +2012,7 @@
           Связка F-SEC-02: ключи ещё и в GET settings.
           <strong>Fix:</strong> config только admin или settings=full; marketplaces full —
           sync/fill без смены секретов.
-          <div class="fix-note"><strong>2026-10-27 (локально):</strong> <code>POST /config</code> — admin/settings=full; sync — отдельный middleware с marketplaces=full.</div>
+          <div class="fix-note"><strong>2026-10-27 (прод <code>9f18c72</code>):</strong> <code>POST /config</code> — admin/settings=full; sync — отдельный middleware с marketplaces=full.</div>
         </div>
       </div>
 
@@ -2124,7 +2124,7 @@
           выгрузку габаритов в МС общим токеном (F-MS-01). Server confirm на sync-ms нет;
           UI может слать сотни PUT подряд. log/cleanup удаляет аудит (как F-PUR-06).
           <strong>Fix:</strong> confirm + max codes/batch; cleanup только admin; rate-limit.
-          <div class="fix-note"><strong>2026-10-27 (локально):</strong> HTTP <code>POST /sync-ms</code> требует <code>confirm: true</code>; UI обновлён; планировщик без HTTP.</div>
+          <div class="fix-note"><strong>2026-10-27 (прод <code>9f18c72</code>):</strong> HTTP <code>POST /sync-ms</code> требует <code>confirm: true</code>; UI обновлён; планировщик без HTTP.</div>
         </div>
       </div>
 
@@ -2594,7 +2594,7 @@
         <tbody>
           <tr>
             <td class="mono">2026-10-27</td>
-            <td><strong>Локально (ещё не в прод)</strong>: F-PUR-01/02 (confirm + canWrite/codes cap), F-NP-02 (dimensions sync-ms confirm), F-MPK-01 (config keys admin/settings only), F-PAR-01 (SSRF private/metadata block in site fetch).</td>
+            <td><strong>Прод <code>9f18c72</code></strong>: F-PUR-01/02 (confirm + canWrite/codes cap), F-NP-02 (dimensions sync-ms confirm), F-MPK-01 (config keys admin/settings only), F-PAR-01 (SSRF private/metadata block in site fetch). pm2 restart.</td>
           </tr>
           <tr>
             <td class="mono">2026-10-27</td>
