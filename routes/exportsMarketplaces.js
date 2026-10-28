@@ -372,6 +372,7 @@ const {
     getActorPageMode,
     getApiPageModeForActor,
     getMarketplaceShopPageMode,
+    getMarketplaceIssuesPageMode,
 } = require('../lib/datagonPageRegistry');
 const { recordDatagonActivity } = require('../lib/datagonActivity');
 
@@ -400,7 +401,7 @@ async function auditMarketplaceMassWrite(db, req, action, detail) {
     }
 }
 
-/** F-ACL-03: shop-scoped доступ (max parent + child). false → ответ уже отправлен. */
+/** F-ACL-03 / F-MPK-03: shop = child pageKey (явный hidden не поднимается parent). false → ответ уже отправлен. */
 function assertMarketplaceShopAccess(req, res, shopKind, opts) {
     const write = !!(opts && opts.write);
     const a = req.datagonActor;
@@ -421,6 +422,7 @@ function assertMarketplaceShopAccess(req, res, shopKind, opts) {
     return true;
 }
 
+/** F-MPK-03: issues/unpublished — ключ exports-marketplaces-issues, без lift от parent. */
 function assertMarketplaceIssuesAccess(req, res, opts) {
     const write = !!(opts && opts.write);
     const a = req.datagonActor;
@@ -429,14 +431,7 @@ function assertMarketplaceIssuesAccess(req, res, opts) {
         return false;
     }
     if (a.username === 'admin') return true;
-    const parent = getActorPageMode(a, 'exports-marketplaces');
-    const child = getActorPageMode(a, 'exports-marketplaces-issues');
-    const mode =
-        parent === 'full' || child === 'full'
-            ? 'full'
-            : parent === 'view' || child === 'view'
-              ? 'view'
-              : 'hidden';
+    const mode = getMarketplaceIssuesPageMode(a);
     if (mode === 'hidden') {
         res.status(403).json({ error: 'Нет доступа к «Проблемы с товарами»', code: 'PAGE_HIDDEN' });
         return false;
@@ -3848,6 +3843,7 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
      * Query: days (1–730, default 90), limit (1–500, default 200).
      */
     router.get('/issues/snapshot-log', async (req, res) => {
+        if (!assertMarketplaceIssuesAccess(req, res, { write: false })) return;
         try {
             if (!db || typeof db.query !== 'function') {
                 return res.status(500).json({ error: 'БД недоступна', code: 'NO_DB' });

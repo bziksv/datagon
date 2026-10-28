@@ -2066,13 +2066,16 @@
         </div>
       </div>
 
-      <div class="finding" id="F-MPK-03">
-        <div class="title"><span class="badge med">medium</span> F-MPK-03 · ACL parent vs child (углубление F-ACL-03)</div>
+      <div class="finding fixed-out" id="F-MPK-03">
+        <div class="title"><span class="badge med">medium</span> <span class="badge fixed">исправлено</span> F-MPK-03 · ACL parent vs child (углубление F-ACL-03)</div>
         <div class="ev">
           HTML keys: ozon|wb|yandex|issues|competitors|reglament отдельно.
           API shop/issues/unpublished/snapshot — один parent. Нельзя выдать «только Ozon view»
           без доступа к WB API list. Child full + parent hidden → HTML да, API нет.
           <strong>Fix:</strong> prefix rules per shop или assert page mode внутри handler.
+          <div class="fix-note"><strong>2026-10-28:</strong> API_PREFIX: <code>/ozon|/wildberries|/yandex-market|/issues|/unpublished</code> → свои pageKey;
+          shop/issues mode = child (явный <code>hidden</code> не поднимается parent=full);
+          child view/full по-прежнему открывает parent gateway (F-ACL-03); snapshot-log под issues ACL.</div>
         </div>
       </div>
 
