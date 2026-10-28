@@ -8,6 +8,7 @@
  */
 
 const express = require('express');
+const { getActorPageMode } = require('../lib/datagonPageRegistry');
 
 const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 500;
@@ -476,20 +477,35 @@ module.exports = function exportsCompetitorsRouter(db) {
                 .map((r) => String(r.manager || '').trim())
                 .filter(Boolean);
 
-            const items = (rows || []).map((r) => ({
-                code: String(r.code || '').trim(),
-                article: String(r.article || '').trim(),
-                manager: String(r.manager || '').trim(),
-                name: String(r.name || '').trim(),
-                buy_price: r.buy_price != null ? String(r.buy_price) : '',
-                stock: r.stock != null && r.stock !== '' ? Number(r.stock) : null,
-                type: String(r.type || '').trim(),
-                stock_position: String(r.stock_position || '').trim(),
-                competitors_ozon: normalizeMarkValue(r.mark_ozon),
-                competitors_wb: normalizeMarkValue(r.mark_wb),
-                competitors_yandex: normalizeMarkValue(r.mark_yandex),
-                updated_at: formatUpdatedAt(r.marks_updated_at),
-            }));
+            const actor = req.datagonActor;
+            const pageMode =
+                !actor || actor.username === 'admin'
+                    ? 'full'
+                    : getActorPageMode(actor, 'exports-marketplaces-competitors');
+            const commercialRedacted = pageMode === 'view';
+
+            const items = (rows || []).map((r) => {
+                const item = {
+                    code: String(r.code || '').trim(),
+                    article: String(r.article || '').trim(),
+                    manager: String(r.manager || '').trim(),
+                    name: String(r.name || '').trim(),
+                    buy_price: r.buy_price != null ? String(r.buy_price) : '',
+                    stock: r.stock != null && r.stock !== '' ? Number(r.stock) : null,
+                    type: String(r.type || '').trim(),
+                    stock_position: String(r.stock_position || '').trim(),
+                    competitors_ozon: normalizeMarkValue(r.mark_ozon),
+                    competitors_wb: normalizeMarkValue(r.mark_wb),
+                    competitors_yandex: normalizeMarkValue(r.mark_yandex),
+                    updated_at: formatUpdatedAt(r.marks_updated_at),
+                };
+                // F-MPK-05: view — без закупочной цены и остатка.
+                if (commercialRedacted) {
+                    item.buy_price = null;
+                    item.stock = null;
+                }
+                return item;
+            });
 
             res.json({
                 success: true,
@@ -499,6 +515,7 @@ module.exports = function exportsCompetitorsRouter(db) {
                 sort_by: sortBy,
                 sort_dir: sortDir.toLowerCase(),
                 managers,
+                commercial_redacted: commercialRedacted,
                 filters: {
                     type: typeRaw === 'product' || typeRaw === 'товар'
                         ? 'product'

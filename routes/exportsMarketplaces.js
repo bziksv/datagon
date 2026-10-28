@@ -443,6 +443,89 @@ function assertMarketplaceIssuesAccess(req, res, opts) {
     return true;
 }
 
+/** F-MPK-05: коммерческие поля (цены/остатки) — не отдаём в режиме view. */
+const MP_COMMERCIAL_KEY_RE =
+    /^(price|sale_price|buy_price|stock|stock_fit|ms_stock|ozon_stock|wb_stock|ym_stock)$/i;
+
+const MP_SHOP_FIELD_PREFIX = Object.freeze({
+    ozon: 'ozon_',
+    wb: 'wb_',
+    ym: 'ym_',
+});
+
+function actorShopMode(actor, shopKind) {
+    if (!actor || actor.username === 'admin') return 'full';
+    return getMarketplaceShopPageMode(actor, shopKind);
+}
+
+function actorIssuesMode(actor) {
+    if (!actor || actor.username === 'admin') return 'full';
+    return getMarketplaceIssuesPageMode(actor);
+}
+
+function redactMarketplaceCommercialRow(row) {
+    if (!row || typeof row !== 'object') return row;
+    const out = Object.assign({}, row);
+    for (const k of Object.keys(out)) {
+        if (MP_COMMERCIAL_KEY_RE.test(k) || /_(?:price|stock)$/i.test(k) || /^(?:price|stock)_/i.test(k)) {
+            out[k] = null;
+        }
+    }
+    return out;
+}
+
+function redactMarketplaceCommercialRows(rows) {
+    if (!Array.isArray(rows)) return rows;
+    return rows.map(redactMarketplaceCommercialRow);
+}
+
+/** Issues: скрыть колонки площадок без доступа; view — без цен/остатков. */
+function shapeIssuesPayloadForActor(actor, payload) {
+    if (!payload || typeof payload !== 'object') return payload;
+    const mode = actorIssuesMode(actor);
+    let headers = Array.isArray(payload.headers) ? payload.headers.slice() : [];
+    let headerLabels = Array.isArray(payload.headerLabels) ? payload.headerLabels.slice() : [];
+    let rows = Array.isArray(payload.rows) ? payload.rows.map((r) => Object.assign({}, r)) : [];
+
+    for (const shop of ['ozon', 'wb', 'ym']) {
+        if (actorShopMode(actor, shop) !== 'hidden') continue;
+        const pref = MP_SHOP_FIELD_PREFIX[shop];
+        const keepIdx = [];
+        headers.forEach((h, i) => {
+            if (String(h).startsWith(pref)) return;
+            keepIdx.push(i);
+        });
+        headers = keepIdx.map((i) => headers[i]);
+        headerLabels = keepIdx.map((i) => headerLabels[i]);
+        rows = rows.map((row) => {
+            const out = Object.assign({}, row);
+            Object.keys(out).forEach((k) => {
+                if (String(k).startsWith(pref)) delete out[k];
+            });
+            return out;
+        });
+    }
+
+    const commercialRedacted = mode === 'view';
+    if (commercialRedacted) {
+        rows = redactMarketplaceCommercialRows(rows);
+        const keepIdx = [];
+        headers.forEach((h, i) => {
+            if (MP_COMMERCIAL_KEY_RE.test(h) || /_(?:price|stock)$/i.test(h)) return;
+            keepIdx.push(i);
+        });
+        headers = keepIdx.map((i) => headers[i]);
+        headerLabels = keepIdx.map((i) => headerLabels[i]);
+    }
+
+    return Object.assign({}, payload, {
+        headers,
+        headerLabels,
+        rows,
+        commercial_redacted: commercialRedacted,
+    });
+}
+
 /** F-MPK-01: смена API-ключей МП — только admin или settings=full (не marketplaces=full). */
 function requireAdminOrSettingsFull(req, res, next) {
     const a = req.datagonActor;
@@ -856,15 +939,23 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
                               : 'Сохранённого снапшота нет, и ключи маркетплейса не заданы (см. «Настройки»).';
                       })()
                     : '';
+            const shopMode = actorShopMode(req.datagonActor, kind);
+            const commercialRedacted = shopMode === 'view';
+            const outRows = commercialRedacted ? redactMarketplaceCommercialRows(rows) : rows;
+            const outHeaders = commercialRedacted
+                ? headerKeys.filter((k) => !MP_COMMERCIAL_KEY_RE.test(k) && !/_(?:price|stock)$/i.test(k))
+                : headerKeys;
+            const outLabels = outHeaders.map((k) => titles[k] || k);
             return res.json({
                 marketplace: kind,
                 source: 'snapshot',
                 updatedAt,
-                count: rows.length,
-                headers: headerKeys,
-                headerLabels,
-                rows,
+                count: outRows.length,
+                headers: outHeaders,
+                headerLabels: outLabels,
+                rows: outRows,
                 note,
+                commercial_redacted: commercialRedacted,
             });
         } catch (e) {
             console.error('[exports/marketplaces] snapshot failed:', e && e.stack ? e.stack : e);
@@ -874,6 +965,15 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
 
     async function handleExport(req, res, kind, runner, csvTitleRuByKey) {
         if (!assertMarketplaceShopAccess(req, res, kind, { write: false })) return;
+        // F-MPK-05: view — только снапшот (без live API / persist / полного коммерческого среза).
+        if (actorShopMode(req.datagonActor, kind) === 'view') {
+            return res.status(403).json({
+                error:
+                    'Live-выгрузка недоступна в режиме просмотра. Откройте сохранённый снапшот (GET /snapshot?shop=…).',
+                code: 'VIEW_SNAPSHOT_ONLY',
+                commercial_redacted: true,
+            });
+        }
         const formatRaw = String(req.query.format || 'json').toLowerCase();
         const stream = formatRaw === 'ndjson' || String(req.query.stream || '') === '1';
         const format = formatRaw === 'csv' ? 'csv' : 'json';
@@ -1380,7 +1480,7 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
                 'Обновлено в МС',
                 'Синхронизация',
             ];
-            return res.json({
+            const unpublishedPayload = {
                 scope: scopeRaw === 'wildberries' ? 'wb' : scopeRaw === 'yandex_market' || scopeRaw === 'yandex' || scopeRaw === 'yandex-market' ? 'ym' : scopeRaw,
                 scope_label: scope.label,
                 marketplace: scope.sqlMarketplace || null,
@@ -1388,7 +1488,24 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
                 headers,
                 headerLabels,
                 rows,
-            });
+            };
+            const issuesMode = actorIssuesMode(req.datagonActor);
+            const shopMode = shopKind ? actorShopMode(req.datagonActor, shopKind) : issuesMode;
+            const commercialRedacted = shopMode === 'view' || issuesMode === 'view';
+            if (commercialRedacted) {
+                unpublishedPayload.rows = redactMarketplaceCommercialRows(unpublishedPayload.rows);
+                unpublishedPayload.headers = unpublishedPayload.headers.filter(
+                    (k) => !MP_COMMERCIAL_KEY_RE.test(k) && !/_(?:price|stock)$/i.test(k)
+                );
+                unpublishedPayload.headerLabels = unpublishedPayload.headers.map((k) => {
+                    const idx = headers.indexOf(k);
+                    return idx >= 0 ? headerLabels[idx] : k;
+                });
+                unpublishedPayload.commercial_redacted = true;
+            } else {
+                unpublishedPayload.commercial_redacted = false;
+            }
+            return res.json(unpublishedPayload);
         } catch (e) {
             console.error('[exports/marketplaces] unpublished failed:', e && e.stack ? e.stack : e);
             return res.status(500).json({ error: e.message || String(e), code: 'UNPUBLISHED_FAILED' });
@@ -2070,7 +2187,7 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
                 'Длина (см) Я.Маркет', 'Ширина (см) Я.Маркет', 'Высота (см) Я.Маркет', 'Вес (кг) Я.Маркет', 'Исправить на Я.М',
                 'Кабинет Я.Маркет', 'Покупателю Я.Маркет', 'Обновлено Я.Маркет',
             ];
-            return res.json({
+            const shaped = shapeIssuesPayloadForActor(req.datagonActor, {
                 scope,
                 scope_label: SCOPE_LABEL[scope],
                 count: rows.length,
@@ -2081,6 +2198,8 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
                 bundle_component_codes_known: bundleComponentCodesKnown,
                 removed_by_bundle_filter: removedByBundleFilter,
             });
+            shaped.count = Array.isArray(shaped.rows) ? shaped.rows.length : 0;
+            return res.json(shaped);
         } catch (e) {
             console.error('[exports/marketplaces] issues failed:', e && e.stack ? e.stack : e);
             return res.status(500).json({ error: e.message || String(e), code: 'ISSUES_FAILED' });
