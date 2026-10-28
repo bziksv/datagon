@@ -612,7 +612,10 @@ async function syncSalesPremiums(db, req, opts) {
     let noSales = 0;
     for (const e of salesEmps) {
         const bInfo = bonuses.get(Number(e.user_id));
-        const next = bInfo ? Number(bInfo.bonus) || 0 : 0;
+        // В табель — только к выплате (отгруженные); полная премия — в meta для UI.
+        const next = bInfo ? Number(bInfo.bonus_payable) || 0 : 0;
+        const accruedFull = bInfo ? Number(bInfo.bonus) || 0 : 0;
+        const unshipped = bInfo ? Number(bInfo.bonus_unshipped) || 0 : 0;
         if (!bInfo) noSales += 1;
         const prevRow = prevMap[e.id] || {};
         const prev =
@@ -633,6 +636,10 @@ async function syncSalesPremiums(db, req, opts) {
             full_name: e.full_name,
             department_name: e.department_name,
             bonus: next,
+            bonus_payable: next,
+            bonus_accrued: accruedFull,
+            bonus_unshipped: unshipped,
+            unshipped_count: bInfo ? Number(bInfo.unshipped_count) || 0 : 0,
             pct_mp: bInfo ? bInfo.pct_mp : null,
             amount_ex: bInfo ? bInfo.amount_ex : 0,
             previous_manual: prev,
@@ -671,6 +678,9 @@ async function syncSalesPremiums(db, req, opts) {
                 old_value: prev != null ? String(prev) : null,
                 new_value: JSON.stringify({
                     amount: next,
+                    bonus_payable: next,
+                    bonus_accrued: accruedFull,
+                    bonus_unshipped: unshipped,
                     employee: e.full_name,
                     department: e.department_name,
                     period_ym: periodYm,
@@ -2083,7 +2093,7 @@ function createWorkScheduleRouter(db) {
         const from = `${ym}-01`;
         const to = `${ym}-${String(dim).padStart(2, '0')}`;
 
-        let esql = `SELECT e.id, e.salary, e.pay_type, e.department_id, e.hire_date, e.personal_premium_rule_json,
+        let esql = `SELECT e.id, e.user_id, e.salary, e.pay_type, e.department_id, e.hire_date, e.personal_premium_rule_json,
                            e.personal_seniority_base, e.personal_seniority_step, e.personal_seniority_period_months,
                            e.personal_schedule_type, e.personal_work_hours_per_day,
                            e.personal_rate_full_hours, e.personal_rate_half_hours,
@@ -2108,6 +2118,7 @@ function createWorkScheduleRouter(db) {
         const [emps] = await db.query(esql, params);
         const hasSalesDept = (emps || []).some((e) => isSalesDepartmentName(e.department_name));
         let salesPremiumSync = null;
+        let salesBonusesMap = new Map();
         if (hasSalesDept) {
             try {
                 salesPremiumSync = await syncSalesPremiums(db, req, {
@@ -2119,6 +2130,13 @@ function createWorkScheduleRouter(db) {
                 });
             } catch (syncErr) {
                 console.warn('[work-schedule] auto sales premiums:', syncErr && syncErr.message);
+            }
+            try {
+                const y = Number(ym.slice(0, 4));
+                const m = Number(ym.slice(5, 7));
+                salesBonusesMap = await fetchManagerBonusesForMonth(db, y, m);
+            } catch (bonusErr) {
+                console.warn('[work-schedule] sales bonus meta:', bonusErr && bonusErr.message);
             }
         }
         const ids = emps.map((e) => e.id);
@@ -2283,8 +2301,11 @@ function createWorkScheduleRouter(db) {
                     ? totalAccrued
                     : Math.round((salaryRate + premiumPlanned + seniorityFull) * 100) / 100;
             fot += totalAccrued;
+            const salesMeta = salesBonusesMap.get(Number(e.user_id));
+            const isSales = isSalesDepartmentName(e.department_name);
             employeesOut.push({
                 id: e.id,
+                user_id: e.user_id != null ? Number(e.user_id) : null,
                 full_name: e.full_name,
                 department_id: e.department_id,
                 department_name: e.department_name,
@@ -2299,6 +2320,12 @@ function createWorkScheduleRouter(db) {
                 premium_source: premiumSource,
                 premium_accrued: premiumAccrued,
                 premium_planned: premiumPlanned,
+                /** Начисление % МП. со всех оплат (как totals.bonus на manager-sales). */
+                sales_bonus_accrued: isSales && salesMeta ? salesMeta.bonus : null,
+                /** К выплате в табеле — только отгруженные. */
+                sales_bonus_payable: isSales && salesMeta ? salesMeta.bonus_payable : null,
+                sales_bonus_unshipped: isSales && salesMeta ? salesMeta.bonus_unshipped : null,
+                sales_unshipped_count: isSales && salesMeta ? salesMeta.unshipped_count : null,
                 seniority_full: seniorityFull,
                 seniority_accrued: seniorityAccrued,
                 seniority_pay_disabled: senDisabled,
@@ -2798,6 +2825,20 @@ function createWorkScheduleRouter(db) {
                 segments_count: segs.length + (L.check_in && !L.check_out ? 1 : 0),
             };
         }
+        // Для sales — сначала подтянуть к выплате (отгруженные), потом пересчёт payroll.
+        if (isSalesDepartmentName(emp.department_name)) {
+            try {
+                await syncSalesPremiums(db, req, {
+                    periodYm: ym,
+                    orgId: emp.organization_id ? Number(emp.organization_id) : null,
+                    deptId: emp.department_id ? Number(emp.department_id) : null,
+                    dryRun: false,
+                    mode: 'auto',
+                });
+            } catch (syncMeErr) {
+                console.warn('[work-schedule] me auto sales premiums:', syncMeErr && syncMeErr.message);
+            }
+        }
         const payroll = await recalcPayroll(db, emp.id, ym);
         // comment на отпуске может отсутствовать на старых БД — берём reject_reason.
         const [vacs] = await db.query(
@@ -2815,11 +2856,33 @@ function createWorkScheduleRouter(db) {
         });
         hoursMonth = Math.round(hoursMonth * 10000) / 10000;
         const calendar = await rfCalendar.getMonthCalendarMap(db, ym);
+        let salesPremium = null;
+        if (isSalesDepartmentName(emp.department_name)) {
+            try {
+                const y = Number(ym.slice(0, 4));
+                const m = Number(ym.slice(5, 7));
+                const bonuses = await fetchManagerBonusesForMonth(db, y, m);
+                const b = bonuses.get(Number(emp.user_id));
+                if (b) {
+                    salesPremium = {
+                        bonus_accrued: b.bonus,
+                        bonus_payable: b.bonus_payable,
+                        bonus_unshipped: b.bonus_unshipped,
+                        unshipped_count: b.unshipped_count,
+                        pct_mp: b.pct_mp,
+                        amount_ex: b.amount_ex,
+                    };
+                }
+            } catch (spErr) {
+                console.warn('[work-schedule] me sales premium:', spErr && spErr.message);
+            }
+        }
         res.json({
             success: true,
             month: ym,
             cells,
             payroll,
+            sales_premium: salesPremium,
             hours_month: hoursMonth,
             vacations: (vacs || []).map(mapVacationRow),
             employee: {

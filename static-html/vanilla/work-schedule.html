@@ -2529,6 +2529,28 @@
       (senFull != null && Number(senFull) > 0
         ? '<span class="dg-ws-earn-sub">полная ' + money(senFull) + "</span>"
         : "");
+    var sp = state.meMonth.sales_premium;
+    var premLbl = "Премия (доплата)";
+    var premVal = p.premium;
+    var premHtml = false;
+    if (sp && (Number(sp.bonus_accrued) > 0 || Number(sp.bonus_payable) > 0 || Number(sp.bonus_unshipped) > 0)) {
+      premLbl = "Премия из продаж";
+      premHtml = true;
+      var waitN = Number(sp.unshipped_count) || 0;
+      var waitRub = Number(sp.bonus_unshipped) || 0;
+      premVal =
+        money(sp.bonus_payable != null ? sp.bonus_payable : p.premium) +
+        '<span class="dg-ws-earn-sub">к выплате (отгруженные)</span>' +
+        (Number(sp.bonus_accrued) > 0
+          ? '<span class="dg-ws-earn-sub">начислено всего ' + money(sp.bonus_accrued) + "</span>"
+          : "") +
+        (waitRub > 0.004
+          ? '<span class="dg-ws-earn-sub text-warning">ждёт отгрузки ' +
+            money(waitRub) +
+            (waitN ? " · " + waitN + " зак." : "") +
+            "</span>"
+          : "");
+    }
     var rows = [
       ["Часы за месяц", fmtHours(hoursM), false, true, false],
       [
@@ -2539,7 +2561,7 @@
         false,
       ],
       ["Оклад", okladVal, false, true, true],
-      ["Премия (доплата)", p.premium, false, false, false],
+      [premLbl, premVal, false, !!premHtml || false, false],
       ["Доплата за стаж", senVal, false, true, false],
       ["Отпускные", p.vacation_pay, false, false, false],
       ["Больничные", p.sick_pay, false, false, false],
@@ -3425,7 +3447,7 @@
     var html =
       '<table class="dg-ws-sheet"><thead><tr><th class="emp">Сотрудник</th>' +
       '<th class="dg-ws-pay-h" title="Накапало / оклад или ₽·ч">Оклад</th>' +
-      '<th class="dg-ws-pay-h" title="Клик — ручная премия за месяц">Премия</th>' +
+      '<th class="dg-ws-pay-h" title="Из продаж: к выплате только отгруженные; клик — правка">Премия</th>' +
       '<th class="dg-ws-pay-h" title="Накапало / полная за месяц">За стаж</th>' +
       '<th class="dg-ws-pay-h dg-ws-pay-total-h" title="Накапало по графику / плановый итог за полный месяц">Итого</th>';
     for (var d = 1; d <= dim; d++) html += dayColHeaderHtml(pm.y, pm.m, d, sh.calendar || activeMonthCalendar());
@@ -3464,13 +3486,32 @@
                     ? Number(e.premium_manual) || 0
                     : Number(premFull) || 0) +
                 Number(senFull);
-        var premSub = premSrc === "sales"
-          ? "из продаж"
-          : premSrc === "manual" || premManual
-            ? "ручная" + (premFull > 0 ? " · правило " + money(premFull) : "")
-            : premFull > 0
-              ? "полная " + money(premFull)
-              : "клик — ввести";
+        var salesWait = Number(e.sales_bonus_unshipped) || 0;
+        var salesAcc = Number(e.sales_bonus_accrued) || 0;
+        var salesPay = Number(e.sales_bonus_payable) || 0;
+        var premSub =
+          premSrc === "sales"
+            ? salesWait > 0.004
+              ? "к выплате · ждёт " + money(salesWait)
+              : salesAcc > 0 && Math.abs(salesAcc - salesPay) > 0.004
+                ? "к выплате · всего " + money(salesAcc)
+                : "к выплате (отгруж.)"
+            : premSrc === "manual" || premManual
+              ? "ручная" + (premFull > 0 ? " · правило " + money(premFull) : "")
+              : premFull > 0
+                ? "полная " + money(premFull)
+                : "клик — ввести";
+        var premTitle =
+          premSrc === "sales"
+            ? "Премия из продаж: в ячейке — к выплате (только отгруженные)." +
+              (salesAcc > 0 ? " Начислено всего: " + money(salesAcc) + "." : "") +
+              (salesWait > 0.004
+                ? " Ждёт отгрузки: " +
+                  money(salesWait) +
+                  (e.sales_unshipped_count ? " (" + e.sales_unshipped_count + " зак.)" : "") +
+                  "."
+                : "")
+            : "Ручная премия за месяц";
         var rateSub = payHourly ? fmtHourlyRate(salRate) : "ставка " + money(salRate);
         var nameExtra = hasBitcop
           ? ' <span class="dg-ws-bitcop-mark" title="Привязан к Bitcop">B</span>'
@@ -3489,7 +3530,9 @@
           (premSrc === "sales" ? " dg-ws-pay-sales" : premManual ? " dg-ws-pay-manual" : "") +
           '" data-emp-prem="' +
           e.id +
-          '" title="Ручная премия за месяц">' +
+          '" title="' +
+          String(premTitle).replace(/"/g, "&quot;") +
+          '">' +
           '<span class="dg-ws-pay-main">' +
           money(premAcc) +
           '</span><span class="dg-ws-pay-sub">' +
@@ -4798,11 +4841,15 @@
         })
         .slice(0, 20)
         .map(function (r) {
+          var wait = Number(r.bonus_unshipped) || 0;
+          var acc = Number(r.bonus_accrued) || 0;
           return (
             "<li>" +
             (r.full_name || "") +
-            " · " +
-            money(r.bonus) +
+            " · к выплате " +
+            money(r.bonus_payable != null ? r.bonus_payable : r.bonus) +
+            (acc > 0.004 ? " · всего " + money(acc) : "") +
+            (wait > 0.004 ? " · ждёт отгрузки " + money(wait) : "") +
             (r.pct_mp != null ? " (" + r.pct_mp + "% МП)" : "") +
             (r.changed ? "" : " — без изменений") +
             "</li>"
@@ -4814,6 +4861,7 @@
         " · " +
         (j.period_ym || "") +
         "</strong><br>" +
+        "В табель пишется <em>к выплате</em> (только отгруженные); неотгруженные — резерв.<br>" +
         "Отделы «…продаж…»: " +
         (j.total != null ? j.total : "—") +
         "; к записи: " +
@@ -4861,12 +4909,14 @@
                 })
                 .slice(0, 12)
                 .map(function (r) {
+                  var wait = Number(r.bonus_unshipped) || 0;
                   return (
                     "<div>" +
                     (r.full_name || "") +
-                    ": " +
-                    money(r.bonus) +
-                    (r.previous_manual != null ? " (было " + money(r.previous_manual) + ")" : "") +
+                    ": к выплате " +
+                    money(r.bonus_payable != null ? r.bonus_payable : r.bonus) +
+                    (wait > 0.004 ? " (ждёт " + money(wait) + ")" : "") +
+                    (r.previous_manual != null ? " · было " + money(r.previous_manual) : "") +
                     "</div>"
                   );
                 })

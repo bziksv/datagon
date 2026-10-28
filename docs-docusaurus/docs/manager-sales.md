@@ -51,11 +51,11 @@ description: Годовые журналы оплат менеджеров (пе
 
 ## Связь с графиком работы (премия в ФОТ)
 
-Итоговая **премия месяца** менеджера (`GET /api/manager-sales` → `totals.bonus`, на экране целые ₽) может уйти в табель графика:
+**Начисление** (`GET /api/manager-sales` → `totals.bonus`) — % МП. со **всех** оплат месяца. **К выплате в табеле** — только доля отгруженных (`bonus − unshipped_bonus`, как блок «резерв по отгрузкам» на manager-sales). Неотгруженные оплаченные заказы в ФОТ не входят.
 
 1. Сотрудник в `/work-schedule-settings.html` должен быть в отделе **«Менеджер по продажам»** (импорт специальностей), с тем же `user_id`, что в журнале.
-2. На `/work-schedule.html` → **Табель** → месяц: премии подтягиваются **автоматически** при загрузке листа; кнопка **«Обновить из продаж»** — принудительный пересчёт.
-3. API: `GET /api/work-schedule/sheet` (auto) и `POST …/premium-from-sales` (force) → `premium_manual` + `premium_source=sales` (`lib/managerSalesMonthBonus.js`, как `totals.bonus`).
+2. На `/work-schedule.html` → **Табель** → месяц: в ячейку «Премия» пишется **к выплате**; подпись/tooltip — начислено всего и «ждёт отгрузки». Вкладка **«Мои»** показывает ту же разбивку.
+3. API: `GET /api/work-schedule/sheet` (auto) и `POST …/premium-from-sales` (force) → `premium_manual` = `bonus_payable` + `premium_source=sales` (`lib/managerSalesMonthBonus.js`). Поля meta: `sales_bonus_accrued` / `sales_bonus_payable` / `sales_bonus_unshipped`.
 
 Ручная правка одной ячейки «Премия» в табеле — `PATCH /api/work-schedule/sheet/premium`. Подробнее: [График работы](/docs/work-schedule/).
 

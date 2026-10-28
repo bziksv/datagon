@@ -125,6 +125,7 @@ description: Учёт рабочего времени, табель, отпус�
 | Стаж | полная сумма за месяц × (ставки / норма); `seniority_full` + `seniority_bonus` |
 | Премия из правила | `stub` / `fixed` (пропорция) / `fixed_full` (целиком); личное правило → отдел |
 | Премия ручная / из продаж | `premium_manual` + `premium_source` (`manual` / `sales`) за `period_ym` **перекрывает** правило; автозагрузка sales при открытии табеля |
+| Премия из продаж → ФОТ | в `premium_manual` только **к выплате** (отгруженные); полная премия и резерв — в `sales_bonus_*` / `sales_premium` на «Мои» |
 
 Норма дней для **5/2** — из **производственного календаря РФ** (`ws_work_calendar`, источник xmlcalendar.ru / бандл `lib/data/rf-calendar-YYYY.json`). Подтягивается автоматически при расчёте или кнопкой **«Подтянуть календарь РФ»** в настройках графика (`POST /calendar/sync-rf`). В UI «Мой календарь» / табель нерабочие дни подсвечены розовым. Для **2/2** и **3/3** — ≈ половина дней месяца; для сменный/гибкий — как будни без календаря (`monthNormDays`).
 
@@ -132,9 +133,11 @@ description: Учёт рабочего времени, табель, отпус�
 
 | Manager-sales | Work schedule |
 |---------------|---------------|
-| `GET /api/manager-sales` → `totals.bonus` | `GET /sheet` (auto) и `POST /sheet/premium-from-sales` (force) → `premium_manual` + `premium_source=sales` |
+| `totals.bonus` (все оплаты) | UI: «начислено всего» (`sales_bonus_accrued`) |
+| `unshipped_bonus` (резерв) | UI: «ждёт отгрузки»; **не** в `premium_manual` |
+| `bonus − unshipped` | `premium_manual` + `premium_source=sales` (auto/force) |
 | credit = `COALESCE(handed_to_user_id, manager_user_id)` | сопоставление по `ws_employee.user_id` |
-| % МП. от суммы F и плана | `lib/managerSalesMonthBonus.js` (та же логика) |
+| % МП. от суммы F и плана | `lib/managerSalesMonthBonus.js` |
 
 Специальность для доступа к журналу — **«Менеджер по продажам»**; отдел в графике должен называться так же после «Подтянуть группы».
 
