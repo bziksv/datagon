@@ -1032,6 +1032,16 @@
     return r.kind;
   }
 
+  function fmtCompDate(v) {
+    if (v == null || v === "") return "—";
+    if (window.DatagonFmt && typeof window.DatagonFmt.formatDate === "function") {
+      return window.DatagonFmt.formatDate(v) || "—";
+    }
+    var s = String(v).slice(0, 10);
+    var m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    return m ? m[3] + "-" + m[2] + "-" + m[1] : s;
+  }
+
   function renderCompPeriods(periods) {
     var tb = document.getElementById("dg-ws-set-comp-tbody");
     if (!tb) return;
@@ -1045,9 +1055,9 @@
         var pay = String(p.pay_type || "") === "hourly" ? "по часам" : "оклад";
         return (
           "<tr><td>" +
-          (p.date_from || "—") +
+          fmtCompDate(p.date_from) +
           "</td><td>" +
-          (p.date_to || "∞") +
+          (p.date_to ? fmtCompDate(p.date_to) : "∞") +
           "</td><td>" +
           pay +
           "</td><td>" +
@@ -1063,6 +1073,17 @@
         );
       })
       .join("");
+  }
+
+  /** Если открыта карточка сотрудника — подтянуть оклад/тип с сервера после смены периодов. */
+  function refreshOpenEmpPayFields(empId, emp) {
+    var openId = Number((document.getElementById("dg-ws-set-emp-id") || {}).value);
+    if (!openId || Number(empId) !== openId || !emp) return;
+    var salEl = document.getElementById("dg-ws-set-emp-salary");
+    var paySel = document.getElementById("dg-ws-set-emp-pay-type");
+    if (salEl) salEl.value = String(emp.salary != null ? emp.salary : 0);
+    if (paySel) paySel.value = String(emp.pay_type || "salary") === "hourly" ? "hourly" : "salary";
+    syncEmpPayTypeLabel();
   }
 
   function openSalaryHistory(empId) {
@@ -1177,8 +1198,13 @@
         body: JSON.stringify(body),
       }).then(function () {
         toast("success", "Период оплаты сохранён");
-        openSalaryHistory(id);
-        return loadAll();
+        return loadAll().then(function () {
+          var e = (state.employees || []).find(function (x) {
+            return Number(x.id) === id;
+          });
+          refreshOpenEmpPayFields(id, e);
+          openSalaryHistory(id);
+        });
       });
     };
     if (window.DatagonNotify && window.DatagonNotify.busyRun) window.DatagonNotify.busyRun(btn, run);
@@ -1197,8 +1223,15 @@
       return api("/compensation/" + id, { method: "DELETE" })
         .then(function () {
           toast("success", "Период удалён");
-          if (empId) openSalaryHistory(empId);
-          return loadAll();
+          return loadAll().then(function () {
+            if (empId) {
+              var e = (state.employees || []).find(function (x) {
+                return Number(x.id) === empId;
+              });
+              refreshOpenEmpPayFields(empId, e);
+              openSalaryHistory(empId);
+            }
+          });
         })
         .catch(function (e) {
           toast("danger", (e && e.message) || "Не удалось удалить период");

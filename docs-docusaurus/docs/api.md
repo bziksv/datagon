@@ -2435,7 +2435,7 @@ Preflight матча «Менеджер по продажам» ↔ Planfix `/us
 | GET | `/api/work-schedule/access` | любой авторизованный; `visible_departments[]` (`id`, `name`, `can_edit`, `is_own`, `is_headed`, `via_manage`), `headed_department_ids` |
 | GET/POST/PUT | `/organizations`, `/departments`, `/employees`, `/users-available` | accounting; `GET /departments` — сотрудник/рук: свой + headed + `ws_department_manage_scope`; accounting: все поля `d.*` + `manage_scopes[]` (`department_id`, `name`, `can_edit`). `POST/PUT /departments` body: `manage_scopes: [{ department_id, can_edit }]` — отделы, которые видят/правят сотрудники **этого** отдела (пример: «Руководитель склада» → «Склад» / «Делопроизводитель» / «Логистика») |
 | GET | `/employees/:id/salary-history` | accounting (любой) / employee (свой); аудит `field_name=salary` + `periods[]` из `ws_employee_comp` |
-| GET/POST | `/employees/:id/compensation` | accounting; периоды оплаты (с–по, `pay_type`, `salary`, `premium_rule_json`). POST с `replace_from_date=1` — закрыть предыдущий и открыть с `date_from` |
+| GET/POST | `/employees/:id/compensation` | accounting; периоды оплаты (с–по, `pay_type`, `salary`, `premium_rule_json`). POST с `replace_from_date=1` — закрыть предыдущий и открыть с `date_from` (будущие периоды с более поздним `date_from` сохраняются; `ws_employee.salary` = период на **сегодня**) |
 | PUT/DELETE | `/compensation/:id` | accounting; правка / удаление периода (нельзя удалить единственный) |
 | DELETE | `/organizations/:id` | accounting (409, если есть сотрудники) |
 | POST | `/departments/import-specialties` | accounting; отделы из `specialties` в **общий** справочник (без привязки к орг.; без «Полный доступ»), без дублей имён |
