@@ -134,9 +134,9 @@ description: Учёт рабочего времени, табель, отпус�
 
 | Manager-sales | Work schedule |
 |---------------|---------------|
-| `totals.bonus` (все оплаты) | UI: «начислено всего» (`sales_bonus_accrued`) |
-| `unshipped_bonus` (резерв) | UI: «ждёт отгрузки»; **не** в `premium_manual` |
-| `bonus − unshipped` | `premium_manual` + `premium_source=sales` (auto/force) |
+| `totals.bonus` (оплаты месяца) | UI: «начислено всего» (`sales_bonus_accrued`) |
+| отгрузка **в другом** месяце / ещё нет | UI: «ждёт отгрузки»; **не** в `premium_manual` этого месяца |
+| отгрузка **в этом** месяце (в т.ч. оплата раньше) | `premium_manual` = к выплате (`bonus_payable`) |
 | credit = `COALESCE(handed_to_user_id, manager_user_id)` | сопоставление по `ws_employee.user_id` |
 | % МП. от суммы F и плана | `lib/managerSalesMonthBonus.js` |
 

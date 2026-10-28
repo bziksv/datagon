@@ -4001,9 +4001,11 @@
           .map(function (o) {
             var badge =
               o.bucket === "shipped"
-                ? '<span class="badge bg-success">отгружен</span>'
+                ? '<span class="badge bg-success">к выплате</span>'
                 : o.bucket === "waiting"
-                  ? '<span class="badge bg-warning text-dark">ждёт</span>'
+                  ? o.shipped_at || o.shipped_effective
+                    ? '<span class="badge bg-warning text-dark">отгрузка позже</span>'
+                    : '<span class="badge bg-warning text-dark">ждёт</span>'
                   : '<span class="badge bg-secondary">возврат</span>';
             var inv = o.our_invoice_no || "—";
             if (o.order_url) {
@@ -4015,15 +4017,17 @@
                 "</a>";
             }
             var shipTxt = fmtYmdUi(o.shipped_effective || o.shipped_at);
-            if (o.bucket === "waiting") shipTxt = "—";
+            if (o.bucket === "waiting" && !(o.shipped_at || o.shipped_effective)) shipTxt = "—";
             else if (o.shipped_fallback) shipTxt += ' <span class="text-muted">(≈ оплата)</span>';
-            var stExtra = o.status && o.bucket !== "shipped" ? " · " + o.status : "";
+            var stExtra =
+              o.status && o.bucket !== "shipped" ? " · " + o.status : "";
             return (
               "<tr" +
               (o.bucket === "waiting" ? ' class="table-warning"' : "") +
               "><td>" +
               inv +
               (o.handed ? ' <span class="badge bg-info text-dark">передан</span>' : "") +
+              (o.paid_prior ? ' <span class="badge bg-secondary">оплата ранее</span>' : "") +
               "</td>" +
               (hideOrg ? "" : "<td>" + (o.invoice_org || "—") + "</td>") +
               "<td>" +
