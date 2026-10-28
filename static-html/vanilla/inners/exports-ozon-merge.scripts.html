@@ -1352,6 +1352,21 @@
           .then(function (r) { return r.json(); })
           .then(function (res) {
             clearInterval(timer);
+            if (res && res.pending) {
+              showActionLog(
+                "warning",
+                "<div><strong>Нужно второе подтверждение (dual-control)</strong></div>" +
+                  '<div class="small mt-1">Заявка #' +
+                  esc(String(res.approval_id || "")) +
+                  ": " +
+                  esc(res.summary || res.message || "") +
+                  "</div>" +
+                  '<div class="small text-muted">Запись в Ozon выполнит другой пользователь с полным доступом к «Настройки» (или admin). Admin может писать сразу.</div>'
+              );
+              toast("warning", "Заявка на объединение создана — ждёт подтверждения");
+              loadPendingApprovals();
+              return;
+            }
             if (!res || (!res.success && !res.ms_ok)) {
               var errText = (res && res.error) || "Ошибка объединения карточек в Ozon";
               var errList = "";
@@ -1451,6 +1466,20 @@
         })
           .then(function (r) { return r.json(); })
           .then(function (res) {
+            if (res && res.pending) {
+              showActionLog(
+                "warning",
+                "<div><strong>Разъединение ждёт dual-control</strong></div>" +
+                  '<div class="small mt-1">Заявка #' +
+                  esc(String(res.approval_id || "")) +
+                  ": " +
+                  esc(res.summary || res.message || "") +
+                  "</div>"
+              );
+              toast("warning", "Заявка на разъединение создана");
+              loadPendingApprovals();
+              return;
+            }
             if (!res || !res.success) {
               throw new Error((res && res.error) || "Ошибка разъединения карточек");
             }
@@ -2027,6 +2056,127 @@
       });
     }
 
+    function loadPendingApprovals() {
+      var box = byId("dg-ozm-approvals-box");
+      var list = byId("dg-ozm-approvals-list");
+      if (!box || !list) return Promise.resolve();
+      return fetch("/api/exports/marketplaces/ozon-merge/approvals", {
+        credentials: "same-origin",
+      })
+        .then(function (r) {
+          if (r.status === 403 || r.status === 401) {
+            box.classList.add("d-none");
+            return null;
+          }
+          return r.json().then(function (j) {
+            return { ok: r.ok, j: j };
+          });
+        })
+        .then(function (pack) {
+          if (!pack) return;
+          if (!pack.ok || !pack.j || !pack.j.success) {
+            box.classList.add("d-none");
+            return;
+          }
+          var rows = pack.j.rows || [];
+          if (!rows.length) {
+            box.classList.add("d-none");
+            list.innerHTML = "";
+            return;
+          }
+          box.classList.remove("d-none");
+          list.innerHTML = rows
+            .map(function (row) {
+              return (
+                '<div class="d-flex flex-wrap align-items-center justify-content-between gap-2 border-bottom py-2" data-ozm-approval="' +
+                esc(String(row.id)) +
+                '">' +
+                "<div><code>#" +
+                esc(String(row.id)) +
+                "</code> · " +
+                esc(row.kind || "") +
+                " · " +
+                esc(row.payload_summary || "") +
+                '<div class="text-muted">заявил: ' +
+                esc(row.requested_by_name || "#" + row.requested_by) +
+                "</div></div>" +
+                '<div class="d-flex gap-2">' +
+                '<button type="button" class="btn btn-sm btn-success" data-ozm-approve="' +
+                esc(String(row.id)) +
+                '" data-dg-notify-start="Подтверждаем запись в Ozon…">Подтвердить</button>' +
+                '<button type="button" class="btn btn-sm btn-outline-danger" data-ozm-reject="' +
+                esc(String(row.id)) +
+                '" data-dg-notify-start="Отклоняем заявку…">Отклонить</button>' +
+                "</div></div>"
+              );
+            })
+            .join("");
+        })
+        .catch(function () {
+          box.classList.add("d-none");
+        });
+    }
+
+    function bindApprovalsUi() {
+      var box = byId("dg-ozm-approvals-box");
+      var refresh = byId("dg-ozm-approvals-refresh");
+      if (refresh) {
+        refresh.addEventListener("click", function () {
+          var run = function () {
+            return loadPendingApprovals();
+          };
+          if (window.DatagonNotify && window.DatagonNotify.busyRun) {
+            window.DatagonNotify.busyRun(refresh, run);
+          } else run();
+        });
+      }
+      if (!box) return;
+      box.addEventListener("click", function (ev) {
+        var ap = ev.target.closest("[data-ozm-approve]");
+        var rj = ev.target.closest("[data-ozm-reject]");
+        if (!ap && !rj) return;
+        var id = Number((ap || rj).getAttribute(ap ? "data-ozm-approve" : "data-ozm-reject"));
+        if (!id) return;
+        var path = ap
+          ? "/api/exports/marketplaces/ozon-merge/approvals/" + id + "/confirm"
+          : "/api/exports/marketplaces/ozon-merge/approvals/" + id + "/reject";
+        var body = ap ? { confirm: true } : {};
+        var btn = ap || rj;
+        var run = function () {
+          return fetch(path, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "same-origin",
+            body: JSON.stringify(body),
+          })
+            .then(function (r) {
+              return r.json().then(function (j) {
+                return { ok: r.ok, j: j };
+              });
+            })
+            .then(function (pack) {
+              if (!pack.ok || !pack.j || pack.j.success === false) {
+                throw new Error((pack.j && pack.j.error) || "Ошибка");
+              }
+              toast("success", ap ? "Запись в Ozon выполнена" : "Заявка отклонена");
+              showActionLog(
+                "success",
+                ap
+                  ? "<strong>Dual-control:</strong> заявка #" + id + " подтверждена и выполнена."
+                  : "<strong>Заявка #" + id + " отклонена.</strong>"
+              );
+              return loadPendingApprovals().then(loadGroupsList);
+            })
+            .catch(function (err) {
+              toast("danger", err.message || String(err));
+            });
+        };
+        if (window.DatagonNotify && window.DatagonNotify.busyRun) {
+          window.DatagonNotify.busyRun(btn, run);
+        } else run();
+      });
+    }
+
     function init() {
       loadColsPrefs();
       loadFilterState();
@@ -2036,6 +2186,8 @@
       initCardCollapses();
       initConfirmModalEvents();
       bindOzmLogUi();
+      bindApprovalsUi();
+      loadPendingApprovals();
       bindFilterAndHeaderEvents();
       loadGroupsList();
     }

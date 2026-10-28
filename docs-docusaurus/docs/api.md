@@ -1082,6 +1082,7 @@ UI: кнопка **«Исправить НДС на Я.М»**, колонка **
 ### POST `/api/exports/marketplaces/ozon-merge/unmerge`
 Разъединение ошибочно склеенных карточек в Ozon (удаление атрибута `9048` через `POST /v3/product/import` и очистка `merge_key_9048` в `dg_ozon_merge_cards_cache`).
 - Принимает `{ offer_ids: string[], signature?: string, confirm: true }`.
+- **Dual-control (F-MPK-02):** live-запись сразу только для `username=admin` (break-glass). Остальные с `exports-ozon-merge`/shop=full создают заявку в `dg_mp_write_approvals` (`pending: true`, `approval_id`, `code: APPROVAL_PENDING`); исполнение — через `POST …/approvals/:id/confirm` другим пользователем с `settings=full` (или admin).
 
 ### POST `/api/exports/marketplaces/ozon-merge/preview`
 Предпросмотр групп карточек для объединения в одну карточку на Ozon (экран `/exports-ozon-merge.html`, пункт меню **Маркетплейсы → Объединение Ozon**, ключ доступа `exports-ozon-merge`).
@@ -1103,7 +1104,18 @@ UI: кнопка **«Исправить НДС на Я.М»**, колонка **
 Применение объединения карточек Ozon через `POST /v3/product/import` и ожидание `task_id` через `/v1/product/import/info` (`lib/ozonProductMerge.js`).
 - Принимает `{ groups: [{ group_key, main_offer_id, copy_from_main, aspect_attribute_id, items: [{ offer_id, aspect_value, aspect_dictionary_value_id }] }], dry_run?: boolean, confirm?: boolean }`.
 - При `copy_from_main: true` (по умолчанию) выравнивает `description_category_id`, `type_id`, Бренд (`id: 85`) и недостающие обязательные атрибуты по главной карточке.
+- `dry_run: true` — без dual-control и без записи в Ozon.
+- **Dual-control (F-MPK-02):** при live (`confirm: true`, не dry_run) не-admin получает `{ success, pending: true, approval_id, summary, code: 'APPROVAL_PENDING' }` вместо записи в кабинет; admin пишет сразу. Mutex: не параллельно с `POST /sync` и fill-* (`MP_HEAVY_BUSY` / `MP_SYNC_RUNNING`).
 - Возвращает расширенные счётчики для `#dg-ozm-action-log`: `{ success, dry_run, total_groups, total, to_update, would_update, filled, corrected, skipped, ms_ok, ms_failed, errors[], groups_result[], duration_sec }`.
+
+### GET `/api/exports/marketplaces/ozon-merge/approvals`
+Список pending mass-write заявок (`dg_mp_write_approvals`). Доступ: `settings=full` или `admin`. Ответ: `{ success, rows: [{ id, kind, requested_by, requested_by_name, payload_summary, created_at }] }`. UI: блок `#dg-ozm-approvals-box` на `/exports-ozon-merge.html`.
+
+### POST `/api/exports/marketplaces/ozon-merge/approvals/:id/confirm`
+Подтверждение dual-control и исполнение apply/unmerge в Ozon. Body: `{ confirm: true }`. Approver ≠ requester (`SAME_ACTOR` → 403). Доступ: `settings=full` / admin.
+
+### POST `/api/exports/marketplaces/ozon-merge/approvals/:id/reject`
+Отклонение pending-заявки. Доступ: `settings=full` / admin.
 
 Поле `bundle_component_codes_known` — размер набора кодов-компонентов, отбираемых из `ms_entity_details`. `removed_by_bundle_filter` — сколько строк было отрезано серверным фильтром «исключить товары из комплектов» (полезно для отладки). Когда `exclude_bundle_components=0`, `bundle_component_codes_known` равно `0` и `removed_by_bundle_filter` равно `0`.
 

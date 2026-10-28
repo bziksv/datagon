@@ -51,6 +51,18 @@ const {
     unmergeOzonGroup,
     searchOzonAttributeDictionaryValues,
 } = require('../lib/ozonProductMerge');
+const {
+    createPendingApproval,
+    listPendingApprovals,
+    markApproved,
+    markExecuted,
+    markRejected,
+    getApproval,
+    tryAcquireMpHeavyLock,
+    releaseMpHeavyLock,
+    getMpHeavyLock,
+    ensureMpWriteApprovalsSchema,
+} = require('../lib/datagonMpWriteApprovals');
 
 const MARKETPLACE_EXTERNAL_KEY = {
     ozon: 'offer_id',
@@ -467,6 +479,73 @@ function requireAdminSettingsOrMarketplacesFull(req, res, next) {
         error: 'Нужен полный доступ к «Настройки» или «Маркетплейсы».',
         code: 'FORBIDDEN',
     });
+}
+
+/** F-MPK-02 dual-control: подтверждение mass write — admin или settings=full. */
+function actorCanApproveMpMassWrite(actor) {
+    if (!actor) return false;
+    if (actor.username === 'admin') return true;
+    return getActorPageMode(actor, 'settings') === 'full';
+}
+
+function requireSettingsFullOrAdmin(req, res, next) {
+    const a = req.datagonActor;
+    if (!a) {
+        res.status(401).json({ error: 'Не авторизован', code: 'AUTH_REQUIRED' });
+        return;
+    }
+    if (actorCanApproveMpMassWrite(a)) return next();
+    res.status(403).json({
+        error: 'Подтверждение записи в кабинет МП: только администратор или полный доступ к «Настройки».',
+        code: 'APPROVER_REQUIRED',
+    });
+}
+
+/**
+ * Live mass-write: admin — сразу; иначе pending для dual-control.
+ * @returns {{mode:'execute',...}|null} null — ответ уже отправлен (pending)
+ */
+async function beginOzonMergeLiveWrite(dbConn, req, res, kind, payload) {
+    const a = req.datagonActor || {};
+    const s = req.session || {};
+    const actorUserId =
+        a.id != null && Number.isFinite(Number(a.id))
+            ? Number(a.id)
+            : s.userId != null && Number.isFinite(Number(s.userId))
+              ? Number(s.userId)
+              : null;
+    const actorName = String(
+        a.full_name || a.fullName || a.username || s.full_name || s.username || 'user'
+    ).slice(0, 255);
+    if (a.username === 'admin') {
+        return { mode: 'execute', actorName, actorUserId, approvalId: null };
+    }
+    if (!Number.isFinite(actorUserId) || actorUserId <= 0) {
+        res.status(401).json({ success: false, error: 'Нет user id сессии', code: 'AUTH_REQUIRED' });
+        return null;
+    }
+    await ensureMpWriteApprovalsSchema(dbConn);
+    const pending = await createPendingApproval(dbConn, {
+        kind,
+        requested_by: actorUserId,
+        requested_by_name: actorName,
+        payload,
+    });
+    await auditMarketplaceMassWrite(dbConn, req, `${kind}-pending`, {
+        shop: 'ozon',
+        approval_id: pending.id,
+        summary: pending.summary,
+    });
+    res.json({
+        success: true,
+        pending: true,
+        approval_id: pending.id,
+        summary: pending.summary,
+        message:
+            'Заявка создана. Запись в Ozon выполнит другой пользователь с полным доступом к «Настройки» (или admin).',
+        code: 'APPROVAL_PENDING',
+    });
+    return null;
 }
 
 const syncState = {
@@ -1051,6 +1130,22 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
         const kinds = kind === 'all' ? ['ozon', 'wb', 'ym'] : [normalizeShopKind(kind)];
         if (!kinds[0]) return { started: false, reason: 'bad_shop' };
         if (syncState.active) return { started: false, reason: 'already_running' };
+        const busy = getMpHeavyLock();
+        if (busy) {
+            return {
+                started: false,
+                reason: 'heavy_busy',
+                error: `Идёт операция «${busy.owner}» — дождитесь окончания`,
+            };
+        }
+        const lock = tryAcquireMpHeavyLock('mp-sync');
+        if (!lock.ok) {
+            return {
+                started: false,
+                reason: 'heavy_busy',
+                error: `Занято: ${lock.holder}`,
+            };
+        }
         resetSyncState();
         try {
             for (const k of kinds) {
@@ -1099,7 +1194,49 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
             syncState.finishedAt = new Date().toISOString();
             syncState.message = e.message || String(e);
             return { started: false, reason: 'failed', error: e.message || String(e) };
+        } finally {
+            releaseMpHeavyLock('mp-sync');
         }
+    }
+
+    /** F-MPK-02: не параллелить fill с sync / другой heavy. false → 409 уже отправлен. */
+    function acquireFillHeavyOrReject(res, owner) {
+        if (syncState.active) {
+            res.status(409).json({
+                error: 'Идёт синхронизация маркетплейсов — fill позже',
+                code: 'MP_SYNC_RUNNING',
+            });
+            return false;
+        }
+        const lock = tryAcquireMpHeavyLock(owner);
+        if (!lock.ok) {
+            res.status(409).json({
+                error: `Занято: ${lock.holder}`,
+                code: 'MP_HEAVY_BUSY',
+            });
+            return false;
+        }
+        return true;
+    }
+
+    /** Fill: отказ если sync/merge уже держит heavy (без долгого hold). */
+    function rejectIfMpHeavyBusy(res) {
+        if (syncState.active) {
+            res.status(409).json({
+                error: 'Идёт синхронизация маркетплейсов — fill позже',
+                code: 'MP_SYNC_RUNNING',
+            });
+            return true;
+        }
+        const busy = getMpHeavyLock();
+        if (busy) {
+            res.status(409).json({
+                error: `Занято: ${busy.owner}`,
+                code: 'MP_HEAVY_BUSY',
+            });
+            return true;
+        }
+        return false;
     }
 
     exportsMarketplacesRouter.triggerSync = triggerRefreshMarkets;
@@ -1956,6 +2093,7 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
             if (!dryRun && !confirm) {
                 return res.status(400).json({ error: 'confirm required (или dry_run=1)', code: 'CONFIRM_REQUIRED' });
             }
+            if (!dryRun && rejectIfMpHeavyBusy(res)) return;
             let codes = [];
             if (Array.isArray(body.codes)) {
                 codes = body.codes.map((c) => String(c == null ? '' : c).trim()).filter(Boolean);
@@ -2146,6 +2284,7 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
             if (!dryRun && !confirm) {
                 return res.status(400).json({ error: 'confirm required (или dry_run=1)', code: 'CONFIRM_REQUIRED' });
             }
+            if (!dryRun && rejectIfMpHeavyBusy(res)) return;
             let codes = [];
             if (Array.isArray(body.codes)) {
                 codes = body.codes.map((c) => String(c == null ? '' : c).trim()).filter(Boolean);
@@ -2390,6 +2529,7 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
             if (!dryRun && !confirm) {
                 return res.status(400).json({ error: 'confirm required (или dry_run=1)', code: 'CONFIRM_REQUIRED' });
             }
+            if (!dryRun && rejectIfMpHeavyBusy(res)) return;
             let codes = [];
             if (Array.isArray(body.codes)) {
                 codes = body.codes.map((c) => String(c == null ? '' : c).trim()).filter(Boolean);
@@ -2605,6 +2745,7 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
             if (!dryRun && !confirm) {
                 return res.status(400).json({ error: 'confirm required (или dry_run=1)', code: 'CONFIRM_REQUIRED' });
             }
+            if (!dryRun && rejectIfMpHeavyBusy(res)) return;
             let codes = [];
             if (Array.isArray(body.codes)) {
                 codes = body.codes.map((c) => String(c == null ? '' : c).trim()).filter(Boolean);
@@ -2797,6 +2938,7 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
             if (!dryRun && !confirm) {
                 return res.status(400).json({ error: 'confirm required (или dry_run=1)', code: 'CONFIRM_REQUIRED' });
             }
+            if (!dryRun && rejectIfMpHeavyBusy(res)) return;
             let codes = [];
             if (Array.isArray(body.codes)) {
                 codes = body.codes.map((c) => String(c == null ? '' : c).trim()).filter(Boolean);
@@ -3019,6 +3161,7 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
             if (!dryRun && !confirm) {
                 return res.status(400).json({ error: 'confirm required (или dry_run=1)', code: 'CONFIRM_REQUIRED' });
             }
+            if (!dryRun && rejectIfMpHeavyBusy(res)) return;
             let codes = [];
             if (Array.isArray(body.codes)) {
                 codes = body.codes.map((c) => String(c == null ? '' : c).trim()).filter(Boolean);
@@ -3942,6 +4085,7 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
      */
     router.post('/ozon-merge/unmerge', async (req, res) => {
         if (!assertMarketplaceShopAccess(req, res, 'ozon', { write: true })) return;
+        let lockHeld = false;
         try {
             await refreshMarketplaceCredsFromDb(db, appSettings);
             const creds = getOzonCreds(appSettings);
@@ -3960,24 +4104,31 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
                     code: 'CONFIRM_REQUIRED',
                 });
             }
+            const offerIds = Array.isArray(body.offer_ids) ? body.offer_ids : [];
+            const gate = await beginOzonMergeLiveWrite(db, req, res, 'ozon-merge-unmerge', {
+                offer_ids: offerIds,
+                signature: body.signature || null,
+            });
+            if (!gate) return;
+            if (!acquireFillHeavyOrReject(res, 'ozon-merge-unmerge')) return;
+            lockHeld = true;
             const delayMs = Math.max(
                 MP_MIN_DELAY_MS.ozon || 200,
                 Number((appSettings && appSettings.mp_ozon_delay_ms) || 350) || 350
             );
-            const { actorName, actorUserId } = resolveOzonMergeActor(req);
             const logger = createMarketplaceLogger('ozon-unmerge');
-            const offerIds = Array.isArray(body.offer_ids) ? body.offer_ids : [];
             const out = await unmergeOzonGroup(creds, db, {
                 offer_ids: offerIds,
                 signature: body.signature,
                 delayMs,
-                actorName,
-                actorUserId,
+                actorName: gate.actorName,
+                actorUserId: gate.actorUserId,
                 logger,
             });
             await auditMarketplaceMassWrite(db, req, 'ozon-merge-unmerge', {
                 shop: 'ozon',
                 offers: offerIds.length,
+                break_glass_admin: true,
             });
             return res.json(out);
         } catch (e) {
@@ -3987,6 +4138,8 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
                 error: e && e.message ? e.message : String(e),
                 code: 'OZON_UNMERGE_FAILED',
             });
+        } finally {
+            if (lockHeld) releaseMpHeavyLock('ozon-merge-unmerge');
         }
     });
 
@@ -4087,6 +4240,7 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
      */
     router.post('/ozon-merge/apply', async (req, res) => {
         if (!assertMarketplaceShopAccess(req, res, 'ozon', { write: true })) return;
+        let lockHeld = false;
         try {
             await refreshMarketplaceCredsFromDb(db, appSettings);
             const creds = getOzonCreds(appSettings);
@@ -4107,16 +4261,33 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
                     code: 'CONFIRM_REQUIRED',
                 });
             }
+            const groups = Array.isArray(body.groups) ? body.groups : [];
+            const copyFromMain = body.copy_from_main !== false;
+            let actorName;
+            let actorUserId;
+            if (!dryRun) {
+                const gate = await beginOzonMergeLiveWrite(db, req, res, 'ozon-merge-apply', {
+                    groups,
+                    copy_from_main: copyFromMain,
+                });
+                if (!gate) return;
+                actorName = gate.actorName;
+                actorUserId = gate.actorUserId;
+                if (!acquireFillHeavyOrReject(res, 'ozon-merge-apply')) return;
+                lockHeld = true;
+            } else {
+                const a = resolveOzonMergeActor(req);
+                actorName = a.actorName;
+                actorUserId = a.actorUserId;
+            }
             const delayMs = Math.max(
                 MP_MIN_DELAY_MS.ozon || 200,
                 Number((appSettings && appSettings.mp_ozon_delay_ms) || 400) || 400
             );
-            const { actorName, actorUserId } = resolveOzonMergeActor(req);
             const logger = createMarketplaceLogger('ozon-merge');
-            const groups = Array.isArray(body.groups) ? body.groups : [];
             const out = await applyOzonMergeGroups(creds, db, {
                 groups,
-                copyFromMain: body.copy_from_main !== false,
+                copyFromMain,
                 dryRun,
                 delayMs,
                 actorName,
@@ -4128,6 +4299,7 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
                     shop: 'ozon',
                     groups: groups.length,
                     dry_run: false,
+                    break_glass_admin: true,
                 });
             }
             return res.json(out);
@@ -4137,6 +4309,126 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
                 success: false,
                 error: e && e.message ? e.message : String(e),
                 code: 'OZON_MERGE_APPLY_FAILED',
+            });
+        } finally {
+            if (lockHeld) releaseMpHeavyLock('ozon-merge-apply');
+        }
+    });
+
+    /** Список pending mass-write (settings=full / admin). */
+    router.get('/ozon-merge/approvals', requireSettingsFullOrAdmin, async (req, res) => {
+        try {
+            const rows = await listPendingApprovals(db, 30);
+            return res.json({ success: true, rows });
+        } catch (e) {
+            return res.status(500).json({
+                success: false,
+                error: e && e.message ? e.message : String(e),
+                code: 'APPROVALS_LIST_FAILED',
+            });
+        }
+    });
+
+    /** Dual-control: подтвердить и выполнить запись в Ozon (settings=full / admin). */
+    router.post('/ozon-merge/approvals/:id/confirm', requireSettingsFullOrAdmin, async (req, res) => {
+        let lockHeld = false;
+        let lockOwner = 'ozon-merge-apply';
+        try {
+            const body = req.body && typeof req.body === 'object' ? req.body : {};
+            if (!body.confirm) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'confirm: true обязателен',
+                    code: 'CONFIRM_REQUIRED',
+                });
+            }
+            const approvalId = Number(req.params.id);
+            const a = req.datagonActor || {};
+            const { actorName, actorUserId } = resolveOzonMergeActor(req);
+            const marked = await markApproved(db, approvalId, {
+                id: actorUserId,
+                name: actorName,
+            });
+            const kind = marked.row.kind;
+            const payload = marked.payload || {};
+            await refreshMarketplaceCredsFromDb(db, appSettings);
+            const creds = getOzonCreds(appSettings);
+            if (!creds.clientId || !creds.apiKey) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Не заданы ozon_client_id / ozon_api_key',
+                    code: 'MISSING_CREDS',
+                });
+            }
+            lockOwner = kind || lockOwner;
+            if (!acquireFillHeavyOrReject(res, lockOwner)) return;
+            lockHeld = true;
+            const delayMs = Math.max(
+                MP_MIN_DELAY_MS.ozon || 200,
+                Number((appSettings && appSettings.mp_ozon_delay_ms) || 400) || 400
+            );
+            let out;
+            if (kind === 'ozon-merge-apply') {
+                const logger = createMarketplaceLogger('ozon-merge');
+                out = await applyOzonMergeGroups(creds, db, {
+                    groups: Array.isArray(payload.groups) ? payload.groups : [],
+                    copyFromMain: payload.copy_from_main !== false,
+                    dryRun: false,
+                    delayMs,
+                    actorName: marked.row.requested_by_name || actorName,
+                    actorUserId: marked.row.requested_by,
+                    logger,
+                });
+            } else if (kind === 'ozon-merge-unmerge') {
+                const logger = createMarketplaceLogger('ozon-unmerge');
+                out = await unmergeOzonGroup(creds, db, {
+                    offer_ids: Array.isArray(payload.offer_ids) ? payload.offer_ids : [],
+                    signature: payload.signature,
+                    delayMs,
+                    actorName: marked.row.requested_by_name || actorName,
+                    actorUserId: marked.row.requested_by,
+                    logger,
+                });
+            } else {
+                return res.status(400).json({ success: false, error: 'unknown kind', code: 'BAD_KIND' });
+            }
+            await markExecuted(db, approvalId, {
+                ok: !!(out && (out.success || out.ms_ok)),
+                summary: out && (out.message || out.error) ? String(out.message || out.error).slice(0, 500) : null,
+            });
+            await auditMarketplaceMassWrite(db, req, `${kind}-approved`, {
+                shop: 'ozon',
+                approval_id: approvalId,
+                requested_by: marked.row.requested_by,
+                approved_by: actorUserId,
+            });
+            return res.json(Object.assign({ success: true, approval_id: approvalId, dual_control: true }, out || {}));
+        } catch (e) {
+            const status = e && e.status ? e.status : 500;
+            return res.status(status).json({
+                success: false,
+                error: e && e.message ? e.message : String(e),
+                code: (e && e.code) || 'APPROVAL_CONFIRM_FAILED',
+            });
+        } finally {
+            if (lockHeld) releaseMpHeavyLock(lockOwner);
+        }
+    });
+
+    router.post('/ozon-merge/approvals/:id/reject', requireSettingsFullOrAdmin, async (req, res) => {
+        try {
+            const { actorName, actorUserId } = resolveOzonMergeActor(req);
+            await markRejected(db, Number(req.params.id), { id: actorUserId, name: actorName });
+            await auditMarketplaceMassWrite(db, req, 'ozon-merge-approval-reject', {
+                approval_id: Number(req.params.id),
+            });
+            return res.json({ success: true, rejected: true });
+        } catch (e) {
+            const status = e && e.status ? e.status : 500;
+            return res.status(status).json({
+                success: false,
+                error: e && e.message ? e.message : String(e),
+                code: (e && e.code) || 'APPROVAL_REJECT_FAILED',
             });
         }
     });
