@@ -1699,16 +1699,26 @@
       toast("warning", "Нет сотрудника");
       return;
     }
-    state._salesOrdersCtx = { empId: empId, month: month, fromMe: !!opts.fromMe, allowEdit: !!opts.allowEdit };
+    var hideOrg = !!opts.fromMe;
+    state._salesOrdersCtx = {
+      empId: empId,
+      month: month,
+      fromMe: !!opts.fromMe,
+      allowEdit: !!opts.allowEdit,
+      hideOrg: hideOrg,
+    };
     var title = document.getElementById("dg-ws-sales-orders-title");
     var meta = document.getElementById("dg-ws-sales-orders-meta");
     var sum = document.getElementById("dg-ws-sales-orders-sum");
     var tb = document.getElementById("dg-ws-sales-orders-tbody");
     var editBtn = document.getElementById("dg-ws-sales-orders-edit");
+    var thOrg = document.getElementById("dg-ws-sales-orders-th-org");
+    if (thOrg) thOrg.style.display = hideOrg ? "none" : "";
+    var colSpan = hideOrg ? 6 : 7;
     if (title) title.textContent = "Премия из продаж — заказы";
     if (meta) meta.textContent = "Загрузка…";
     if (sum) sum.innerHTML = "";
-    if (tb) tb.innerHTML = '<tr><td colspan="7" class="text-muted">Загрузка…</td></tr>';
+    if (tb) tb.innerHTML = '<tr><td colspan="' + colSpan + '" class="text-muted">Загрузка…</td></tr>';
     if (editBtn) {
       editBtn.classList.toggle("d-none", !opts.allowEdit);
       editBtn.disabled = !opts.allowEdit;
@@ -1749,7 +1759,9 @@
         if (!tb) return;
         if (!orders.length) {
           tb.innerHTML =
-            '<tr><td colspan="7" class="text-muted">Нет оплаченных заказов за этот месяц в журнале</td></tr>';
+            '<tr><td colspan="' +
+            colSpan +
+            '" class="text-muted">Нет оплаченных заказов за этот месяц в журнале</td></tr>';
           return;
         }
         var sorted = orders.slice().sort(function (a, b) {
@@ -1786,9 +1798,9 @@
               "><td>" +
               inv +
               (o.handed ? ' <span class="badge bg-info text-dark">передан</span>' : "") +
-              "</td><td>" +
-              (o.invoice_org || "—") +
-              "</td><td>" +
+              "</td>" +
+              (hideOrg ? "" : "<td>" + (o.invoice_org || "—") + "</td>") +
+              "<td>" +
               badge +
               stExtra +
               "</td><td>" +
@@ -1806,7 +1818,13 @@
       })
       .catch(function (e) {
         if (meta) meta.textContent = e.message || "Ошибка";
-        if (tb) tb.innerHTML = '<tr><td colspan="7" class="text-danger">' + (e.message || "Ошибка") + "</td></tr>";
+        if (tb)
+          tb.innerHTML =
+            '<tr><td colspan="' +
+            colSpan +
+            '" class="text-danger">' +
+            (e.message || "Ошибка") +
+            "</td></tr>";
         toast("danger", e.message || "Не удалось загрузить заказы");
       });
   }

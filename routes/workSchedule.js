@@ -2421,6 +2421,14 @@ function createWorkScheduleRouter(db) {
             return res.status(400).json({ success: false, error: 'сотрудник не в отделе продаж' });
         }
         const details = await fetchManagerBonusOrderDetails(db, emp.user_id, year, month);
+        // Менеджеру (не accounting) не отдаём организацию контрагента.
+        const orders = isAccounting(a)
+            ? details.orders
+            : (details.orders || []).map((o) => {
+                  const copy = Object.assign({}, o);
+                  delete copy.invoice_org;
+                  return copy;
+              });
         res.json({
             success: true,
             month: ym,
@@ -2439,7 +2447,7 @@ function createWorkScheduleRouter(db) {
                 amount_ex: details.amount_ex,
                 diff: details.diff,
             },
-            orders: details.orders,
+            orders,
         });
     });
 
