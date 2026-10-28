@@ -2079,12 +2079,14 @@
         </div>
       </div>
 
-      <div class="finding" id="F-MPK-04">
-        <div class="title"><span class="badge med">medium</span> F-MPK-04 · Sync / snapshot-run = burn квот МП и Node</div>
+      <div class="finding fixed-out" id="F-MPK-04">
+        <div class="title"><span class="badge med">medium</span> <span class="badge fixed">исправлено</span> F-MPK-04 · Sync / snapshot-run = burn квот МП и Node</div>
         <div class="ev">
           <code>POST /sync</code> (settings|mp full) + auto-sync; issues snapshot-run доступен
           любому mp full. Параллельно с ручными fill → 429 кабинетов, долгие job.
           <strong>Fix:</strong> глобальный mutex fill+sync; квоты; snapshot-run без лишних прав.
+          <div class="fix-note"><strong>2026-10-28:</strong> fill-* держит <code>mpHeavyLock</code> на время записи (не только reject);
+          ручной <code>/sync</code> cooldown 90 с; <code>snapshot-run</code> — admin/settings=full/parent marketplaces=full + cooldown 60 с + отказ при heavy busy.</div>
         </div>
       </div>
 

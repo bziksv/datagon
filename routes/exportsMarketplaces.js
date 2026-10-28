@@ -1214,23 +1214,39 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
         return true;
     }
 
-    /** Fill: отказ если sync/merge уже держит heavy (без долгого hold). */
-    function rejectIfMpHeavyBusy(res) {
-        if (syncState.active) {
-            res.status(409).json({
-                error: 'Идёт синхронизация маркетплейсов — fill позже',
-                code: 'MP_SYNC_RUNNING',
-            });
-            return true;
+    /** F-MPK-04: квоты ручных тяжёлых операций (auto-sync через triggerSync — без cooldown). */
+    let lastManualSyncAt = 0;
+    let lastSnapshotRunAt = 0;
+    const MANUAL_SYNC_COOLDOWN_MS = 90 * 1000;
+    const SNAPSHOT_RUN_COOLDOWN_MS = 60 * 1000;
+
+    function rejectManualCooldown(res, lastAt, cooldownMs, code) {
+        const left = cooldownMs - (Date.now() - lastAt);
+        if (left <= 0) return false;
+        const retryAfterSec = Math.max(1, Math.ceil(left / 1000));
+        res.status(429).json({
+            error: `Подождите ${retryAfterSec} с перед следующим запуском`,
+            code,
+            retry_after_sec: retryAfterSec,
+        });
+        return true;
+    }
+
+    /** snapshot-run: admin / settings=full / parent marketplaces=full (не issues-only). */
+    function requireSnapshotRunAccess(req, res) {
+        const a = req.datagonActor;
+        if (!a) {
+            res.status(401).json({ error: 'Не авторизован', code: 'AUTH_REQUIRED' });
+            return false;
         }
-        const busy = getMpHeavyLock();
-        if (busy) {
-            res.status(409).json({
-                error: `Занято: ${busy.owner}`,
-                code: 'MP_HEAVY_BUSY',
-            });
-            return true;
-        }
+        if (a.username === 'admin') return true;
+        if (getActorPageMode(a, 'settings') === 'full') return true;
+        if (getActorPageMode(a, 'exports-marketplaces') === 'full') return true;
+        res.status(403).json({
+            error:
+                'Запись снимка проблем: нужен полный доступ к «Маркетплейсы» (родитель) или «Настройки», либо admin.',
+            code: 'SNAPSHOT_RUN_FORBIDDEN',
+        });
         return false;
     }
 
@@ -1259,11 +1275,14 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
                 });
             }
         }
+        if (rejectManualCooldown(res, lastManualSyncAt, MANUAL_SYNC_COOLDOWN_MS, 'SYNC_COOLDOWN')) return;
         const r = await triggerRefreshMarkets(shop || 'all');
         if (!r.started) {
-            const code = r.reason === 'already_running' ? 409 : 400;
+            const code =
+                r.reason === 'already_running' || r.reason === 'heavy_busy' ? 409 : 400;
             return res.status(code).json({ error: r.error || r.reason || 'Не удалось запустить', code: r.reason || 'FAILED' });
         }
+        lastManualSyncAt = Date.now();
         return res.json({ success: true, started: true });
     });
 
@@ -2077,6 +2096,8 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
     router.post('/issues/fix-ozon-dims', async (req, res) => {
         if (!assertMarketplaceShopAccess(req, res, 'ozon', { write: true })) return;
         if (!assertMarketplaceIssuesAccess(req, res, { write: true })) return;
+        let lockHeld = false;
+        const lockOwner = 'fill-ozon-dims';
         const t0 = Date.now();
         try {
             if (!db || typeof db.query !== 'function') {
@@ -2088,7 +2109,10 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
             if (!dryRun && !confirm) {
                 return res.status(400).json({ error: 'confirm required (или dry_run=1)', code: 'CONFIRM_REQUIRED' });
             }
-            if (!dryRun && rejectIfMpHeavyBusy(res)) return;
+            if (!dryRun) {
+                if (!acquireFillHeavyOrReject(res, lockOwner)) return;
+                lockHeld = true;
+            }
             let codes = [];
             if (Array.isArray(body.codes)) {
                 codes = body.codes.map((c) => String(c == null ? '' : c).trim()).filter(Boolean);
@@ -2256,6 +2280,8 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
         } catch (e) {
             console.error('[exports/marketplaces] fix-ozon-dims failed:', e && e.stack ? e.stack : e);
             return res.status(500).json({ error: e.message || String(e), code: 'FIX_OZON_DIMS_FAILED' });
+        } finally {
+            if (lockHeld) releaseMpHeavyLock(lockOwner);
         }
     });
 
@@ -2268,6 +2294,8 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
     router.post('/issues/fix-wb-dims', async (req, res) => {
         if (!assertMarketplaceShopAccess(req, res, 'wb', { write: true })) return;
         if (!assertMarketplaceIssuesAccess(req, res, { write: true })) return;
+        let lockHeld = false;
+        const lockOwner = 'fill-wb-dims';
         const t0 = Date.now();
         try {
             if (!db || typeof db.query !== 'function') {
@@ -2279,7 +2307,10 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
             if (!dryRun && !confirm) {
                 return res.status(400).json({ error: 'confirm required (или dry_run=1)', code: 'CONFIRM_REQUIRED' });
             }
-            if (!dryRun && rejectIfMpHeavyBusy(res)) return;
+            if (!dryRun) {
+                if (!acquireFillHeavyOrReject(res, lockOwner)) return;
+                lockHeld = true;
+            }
             let codes = [];
             if (Array.isArray(body.codes)) {
                 codes = body.codes.map((c) => String(c == null ? '' : c).trim()).filter(Boolean);
@@ -2501,6 +2532,8 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
         } catch (e) {
             console.error('[exports/marketplaces] fix-wb-dims failed:', e && e.stack ? e.stack : e);
             return res.status(500).json({ error: e.message || String(e), code: 'FIX_WB_DIMS_FAILED' });
+        } finally {
+            if (lockHeld) releaseMpHeavyLock(lockOwner);
         }
     });
 
@@ -2513,6 +2546,8 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
     router.post('/issues/fix-ym-dims', async (req, res) => {
         if (!assertMarketplaceShopAccess(req, res, 'ym', { write: true })) return;
         if (!assertMarketplaceIssuesAccess(req, res, { write: true })) return;
+        let lockHeld = false;
+        const lockOwner = 'fill-ym-dims';
         const t0 = Date.now();
         try {
             if (!db || typeof db.query !== 'function') {
@@ -2524,7 +2559,10 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
             if (!dryRun && !confirm) {
                 return res.status(400).json({ error: 'confirm required (или dry_run=1)', code: 'CONFIRM_REQUIRED' });
             }
-            if (!dryRun && rejectIfMpHeavyBusy(res)) return;
+            if (!dryRun) {
+                if (!acquireFillHeavyOrReject(res, lockOwner)) return;
+                lockHeld = true;
+            }
             let codes = [];
             if (Array.isArray(body.codes)) {
                 codes = body.codes.map((c) => String(c == null ? '' : c).trim()).filter(Boolean);
@@ -2718,6 +2756,8 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
         } catch (e) {
             console.error('[exports/marketplaces] fix-ym-dims failed:', e && e.stack ? e.stack : e);
             return res.status(500).json({ error: e.message || String(e), code: 'FIX_YM_DIMS_FAILED' });
+        } finally {
+            if (lockHeld) releaseMpHeavyLock(lockOwner);
         }
     });
 
@@ -2729,6 +2769,8 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
     router.post('/issues/fix-ozon-vat', async (req, res) => {
         if (!assertMarketplaceShopAccess(req, res, 'ozon', { write: true })) return;
         if (!assertMarketplaceIssuesAccess(req, res, { write: true })) return;
+        let lockHeld = false;
+        const lockOwner = 'fill-ozon-vat';
         const t0 = Date.now();
         try {
             if (!db || typeof db.query !== 'function') {
@@ -2740,7 +2782,10 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
             if (!dryRun && !confirm) {
                 return res.status(400).json({ error: 'confirm required (или dry_run=1)', code: 'CONFIRM_REQUIRED' });
             }
-            if (!dryRun && rejectIfMpHeavyBusy(res)) return;
+            if (!dryRun) {
+                if (!acquireFillHeavyOrReject(res, lockOwner)) return;
+                lockHeld = true;
+            }
             let codes = [];
             if (Array.isArray(body.codes)) {
                 codes = body.codes.map((c) => String(c == null ? '' : c).trim()).filter(Boolean);
@@ -2911,6 +2956,8 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
         } catch (e) {
             console.error('[exports/marketplaces] fix-ozon-vat failed:', e && e.stack ? e.stack : e);
             return res.status(500).json({ error: e.message || String(e), code: 'FIX_OZON_VAT_FAILED' });
+        } finally {
+            if (lockHeld) releaseMpHeavyLock(lockOwner);
         }
     });
 
@@ -2922,6 +2969,8 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
     router.post('/issues/fix-wb-vat', async (req, res) => {
         if (!assertMarketplaceShopAccess(req, res, 'wb', { write: true })) return;
         if (!assertMarketplaceIssuesAccess(req, res, { write: true })) return;
+        let lockHeld = false;
+        const lockOwner = 'fill-wb-vat';
         const t0 = Date.now();
         try {
             if (!db || typeof db.query !== 'function') {
@@ -2933,7 +2982,10 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
             if (!dryRun && !confirm) {
                 return res.status(400).json({ error: 'confirm required (или dry_run=1)', code: 'CONFIRM_REQUIRED' });
             }
-            if (!dryRun && rejectIfMpHeavyBusy(res)) return;
+            if (!dryRun) {
+                if (!acquireFillHeavyOrReject(res, lockOwner)) return;
+                lockHeld = true;
+            }
             let codes = [];
             if (Array.isArray(body.codes)) {
                 codes = body.codes.map((c) => String(c == null ? '' : c).trim()).filter(Boolean);
@@ -3134,6 +3186,8 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
         } catch (e) {
             console.error('[exports/marketplaces] fix-wb-vat failed:', e && e.stack ? e.stack : e);
             return res.status(500).json({ error: e.message || String(e), code: 'FIX_WB_VAT_FAILED' });
+        } finally {
+            if (lockHeld) releaseMpHeavyLock(lockOwner);
         }
     });
 
@@ -3145,6 +3199,8 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
     router.post('/issues/fix-ym-vat', async (req, res) => {
         if (!assertMarketplaceShopAccess(req, res, 'ym', { write: true })) return;
         if (!assertMarketplaceIssuesAccess(req, res, { write: true })) return;
+        let lockHeld = false;
+        const lockOwner = 'fill-ym-vat';
         const t0 = Date.now();
         try {
             if (!db || typeof db.query !== 'function') {
@@ -3156,7 +3212,10 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
             if (!dryRun && !confirm) {
                 return res.status(400).json({ error: 'confirm required (или dry_run=1)', code: 'CONFIRM_REQUIRED' });
             }
-            if (!dryRun && rejectIfMpHeavyBusy(res)) return;
+            if (!dryRun) {
+                if (!acquireFillHeavyOrReject(res, lockOwner)) return;
+                lockHeld = true;
+            }
             let codes = [];
             if (Array.isArray(body.codes)) {
                 codes = body.codes.map((c) => String(c == null ? '' : c).trim()).filter(Boolean);
@@ -3343,6 +3402,8 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
         } catch (e) {
             console.error('[exports/marketplaces] fix-ym-vat failed:', e && e.stack ? e.stack : e);
             return res.status(500).json({ error: e.message || String(e), code: 'FIX_YM_VAT_FAILED' });
+        } finally {
+            if (lockHeld) releaseMpHeavyLock(lockOwner);
         }
     });
 
@@ -3920,7 +3981,17 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
      * Удобно, если журнал пустой, а полный синк давно не запускали.
      */
     router.post('/issues/snapshot-run', async (req, res) => {
-        if (!assertMarketplaceIssuesAccess(req, res, { write: true })) return;
+        // F-MPK-04: не issues-only; плюс cooldown (DB-тяжёлый пересчёт).
+        if (!requireSnapshotRunAccess(req, res)) return;
+        if (rejectManualCooldown(res, lastSnapshotRunAt, SNAPSHOT_RUN_COOLDOWN_MS, 'SNAPSHOT_COOLDOWN')) {
+            return;
+        }
+        if (syncState.active || getMpHeavyLock()) {
+            return res.status(409).json({
+                error: 'Идёт sync/fill маркетплейсов — снимок позже',
+                code: 'MP_HEAVY_BUSY',
+            });
+        }
         try {
             if (!db || typeof db.query !== 'function') {
                 return res.status(500).json({ error: 'БД недоступна', code: 'NO_DB' });
@@ -3929,6 +4000,7 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
             const triggerType = String(body.trigger_type || 'manual_ui').trim().slice(0, 24) || 'manual_ui';
             const scheduleSlotTime = String(body.schedule_slot_time || '').trim().slice(0, 8);
             await appendMarketplaceIssuesSnapshot(db, appSettings, { triggerType, scheduleSlotTime });
+            lastSnapshotRunAt = Date.now();
             return res.json({ success: true, trigger_type: triggerType });
         } catch (e) {
             console.error('[exports/marketplaces] issues snapshot-run failed:', e && e.stack ? e.stack : e);

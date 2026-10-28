@@ -928,7 +928,7 @@ Body (JSON):
 
 - `shop` — `all` (по умолчанию), `ozon`, `wildberries` (`wb`), `yandex-market` (`ym`).
 
-Ответ: `{ success: true, started: true }`. Если задача уже выполняется — `409`.
+Ответ: `{ success: true, started: true }`. Если задача уже выполняется или занят heavy-mutex (fill/merge) — `409`. Ручной вызов: cooldown **90 с** (`429` `SYNC_COOLDOWN`); автосинк через `triggerSync` без cooldown. Live fill-* / ozon-merge держат тот же mutex до конца пакета (F-MPK-04).
 
 ### GET `/api/exports/marketplaces/sync-status`
 
@@ -1139,6 +1139,8 @@ Query:
 Добавить строку в журнал снимков **без** вызова API маркетплейсов: тот же расчёт, что `GET /issues` при `scope=any` и `exclude_bundle_components=1`, результат пишется в **`mp_issues_daily_snapshot`**.
 
 Body (JSON, опционально): `trigger_type` (по умолчанию `manual_ui`), `schedule_slot_time` (обычно пусто).
+
+**Доступ (F-MPK-04):** `admin`, либо `settings=full`, либо parent `exports-marketplaces=full` (одного `issues=full` недостаточно). Cooldown **60 с** (`429` `SNAPSHOT_COOLDOWN`); при активном sync/fill — `409` `MP_HEAVY_BUSY`.
 
 Ответ: `{ success: true, trigger_type }`. Ошибка БД — `500` с `code: ISSUES_SNAPSHOT_RUN_FAILED`.
 
