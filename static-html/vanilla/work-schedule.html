@@ -1936,6 +1936,20 @@
               </div>
               <div class="card-body">
                 <p class="small text-muted mb-2" id="dg-ws-salary-hist-meta"></p>
+                <div class="fw-semibold small mb-1">Периоды оклада</div>
+                <div class="table-responsive mb-3">
+                  <table class="table table-sm table-bordered mb-0">
+                    <thead>
+                      <tr>
+                        <th>С</th>
+                        <th>По</th>
+                        <th>Сумма</th>
+                      </tr>
+                    </thead>
+                    <tbody id="dg-ws-salary-hist-periods"></tbody>
+                  </table>
+                </div>
+                <div class="fw-semibold small mb-1">Журнал изменений</div>
                 <div class="table-responsive">
                   <table class="table table-sm table-bordered mb-0">
                     <thead>
@@ -2711,6 +2725,31 @@
     ov.setAttribute("aria-hidden", "true");
   }
 
+  function fmtYmdUi(ymd) {
+    if (!ymd) return "—";
+    if (window.DatagonFmt && window.DatagonFmt.formatDate) return window.DatagonFmt.formatDate(ymd);
+    var s = String(ymd).slice(0, 10);
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+    return m ? m[3] + "-" + m[2] + "-" + m[1] : s;
+  }
+
+  function dedupeSalaryAuditRows(rows) {
+    var out = [];
+    (rows || []).forEach(function (r) {
+      var prev = out[out.length - 1];
+      if (
+        prev &&
+        String(prev.old_value || "") === String(r.old_value || "") &&
+        String(prev.new_value || "") === String(r.new_value || "") &&
+        String(prev.user_id || "") === String(r.user_id || "")
+      ) {
+        return;
+      }
+      out.push(r);
+    });
+    return out;
+  }
+
   function openSalaryHistModal() {
     var empId =
       (state.meMonth && state.meMonth.employee && state.meMonth.employee.id) ||
@@ -2723,9 +2762,11 @@
     var title = document.getElementById("dg-ws-salary-hist-title");
     var meta = document.getElementById("dg-ws-salary-hist-meta");
     var tb = document.getElementById("dg-ws-salary-hist-tbody");
+    var tbP = document.getElementById("dg-ws-salary-hist-periods");
     if (!ov) return;
     if (title) title.textContent = "История оклада";
     if (meta) meta.textContent = "Загрузка…";
+    if (tbP) tbP.innerHTML = '<tr><td colspan="3" class="text-muted">Загрузка…</td></tr>';
     if (tb) tb.innerHTML = '<tr><td colspan="4" class="text-muted">Загрузка…</td></tr>';
     ov.style.display = "flex";
     ov.setAttribute("aria-hidden", "false");
@@ -2733,8 +2774,34 @@
       .then(function (j) {
         var emp = j.employee || {};
         if (title) title.textContent = "История оклада · " + (emp.full_name || "");
-        if (meta) meta.textContent = "Текущий оклад: " + money(emp.salary) + " · кто менял и когда";
-        var rows = j.rows || [];
+        if (meta) {
+          meta.textContent =
+            "Сейчас (на сегодня): " +
+            money(emp.salary) +
+            " · ниже периоды оплаты — источник истины для ФОТ";
+        }
+        var periods = j.periods || [];
+        if (tbP) {
+          if (!periods.length) {
+            tbP.innerHTML = '<tr><td colspan="3" class="text-muted">Периоды не заданы</td></tr>';
+          } else {
+            tbP.innerHTML = periods
+              .map(function (p) {
+                return (
+                  "<tr><td>" +
+                  fmtYmdUi(p.date_from) +
+                  "</td><td>" +
+                  (p.date_to ? fmtYmdUi(p.date_to) : "∞") +
+                  "</td><td>" +
+                  money(p.salary) +
+                  (String(p.pay_type) === "hourly" ? " ₽/ч" : "") +
+                  "</td></tr>"
+                );
+              })
+              .join("");
+          }
+        }
+        var rows = dedupeSalaryAuditRows(j.rows || []);
         if (!tb) return;
         if (!rows.length) {
           tb.innerHTML =
@@ -2762,6 +2829,7 @@
       })
       .catch(function (e) {
         if (meta) meta.textContent = e.message || "Ошибка";
+        if (tbP) tbP.innerHTML = '<tr><td colspan="3" class="text-danger">' + escapeHtml(e.message || "Ошибка") + "</td></tr>";
         if (tb) tb.innerHTML = '<tr><td colspan="4" class="text-danger">' + escapeHtml(e.message || "Ошибка") + "</td></tr>";
         toast("danger", e.message || "Не удалось загрузить историю оклада");
       });
@@ -3893,14 +3961,6 @@
     if (!el) return;
     el.style.display = show ? "flex" : "none";
     el.setAttribute("aria-hidden", show ? "false" : "true");
-  }
-
-  function fmtYmdUi(ymd) {
-    if (!ymd) return "—";
-    if (window.DatagonFmt && window.DatagonFmt.formatDate) return window.DatagonFmt.formatDate(ymd);
-    var s = String(ymd).slice(0, 10);
-    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
-    return m ? m[3] + "-" + m[2] + "-" + m[1] : s;
   }
 
   function showSalesOrdersOverlay(show) {

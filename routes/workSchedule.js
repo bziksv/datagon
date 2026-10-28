@@ -1489,36 +1489,6 @@ function createWorkScheduleRouter(db) {
             b.crm_user_id === '' || b.crm_user_id == null ? null : Number(b.crm_user_id);
         const seniorityOff = b.seniority_pay_disabled === true || b.seniority_pay_disabled === 1 || b.seniority_pay_disabled === '1';
         const payType = calc.normalizePayType(b.pay_type);
-        await db.query(
-            `UPDATE ws_employee SET
-             organization_id=?, department_id=?, position=?, hire_date=?, fire_date=?, salary=?, pay_type=?, grade=?,
-             official_employment=?, personal_work_hours_per_day=?, personal_rate_full_hours=?,
-             personal_rate_half_hours=?, personal_sick_leave_rate=?, personal_schedule_type=?,
-             personal_premium_rule_json=?, bitcop_employee_id=?, crm_user_id=?, seniority_pay_disabled=?
-             WHERE id=?`,
-            [
-                Number(b.organization_id),
-                Number(b.department_id),
-                b.position || null,
-                dateOnlyYmd(b.hire_date),
-                dateOnlyYmd(b.fire_date),
-                newSalary,
-                payType,
-                b.grade || null,
-                b.official_employment ? 1 : 0,
-                nullIfEmpty(b.personal_work_hours_per_day),
-                nullIfEmpty(b.personal_rate_full_hours),
-                nullIfEmpty(b.personal_rate_half_hours),
-                nullIfEmpty(b.personal_sick_leave_rate),
-                b.personal_schedule_type || null,
-                normalizePremiumRuleBody(b.personal_premium_rule_json, { allowInherit: true }),
-                Number.isFinite(bitcopId) && bitcopId > 0 ? bitcopId : null,
-                Number.isFinite(crmUserId) && crmUserId > 0 ? crmUserId : null,
-                seniorityOff ? 1 : 0,
-                id,
-            ]
-        );
-        await writeAudit(db, req, { entity_type: 'employee', entity_id: id, action: 'update' });
         const newPremRaw = normalizePremiumRuleBody(b.personal_premium_rule_json, {
             allowInherit: true,
         });
@@ -1531,6 +1501,67 @@ function createWorkScheduleRouter(db) {
         const premActuallyChanged = String(newPremRaw || '') !== String(oldPremRaw || '');
         const payTermsChanged =
             oldSalary !== newSalary || oldPayType !== payType || premActuallyChanged;
+        // При смене оплаты salary/pay_type/премию на карточку пишет sync из периода
+        // (не из формы) — иначе будущий оклад на миг попадает в карточку и в audit мусор.
+        if (payTermsChanged) {
+            await db.query(
+                `UPDATE ws_employee SET
+                 organization_id=?, department_id=?, position=?, hire_date=?, fire_date=?, grade=?,
+                 official_employment=?, personal_work_hours_per_day=?, personal_rate_full_hours=?,
+                 personal_rate_half_hours=?, personal_sick_leave_rate=?, personal_schedule_type=?,
+                 bitcop_employee_id=?, crm_user_id=?, seniority_pay_disabled=?
+                 WHERE id=?`,
+                [
+                    Number(b.organization_id),
+                    Number(b.department_id),
+                    b.position || null,
+                    dateOnlyYmd(b.hire_date),
+                    dateOnlyYmd(b.fire_date),
+                    b.grade || null,
+                    b.official_employment ? 1 : 0,
+                    nullIfEmpty(b.personal_work_hours_per_day),
+                    nullIfEmpty(b.personal_rate_full_hours),
+                    nullIfEmpty(b.personal_rate_half_hours),
+                    nullIfEmpty(b.personal_sick_leave_rate),
+                    b.personal_schedule_type || null,
+                    Number.isFinite(bitcopId) && bitcopId > 0 ? bitcopId : null,
+                    Number.isFinite(crmUserId) && crmUserId > 0 ? crmUserId : null,
+                    seniorityOff ? 1 : 0,
+                    id,
+                ]
+            );
+        } else {
+            await db.query(
+                `UPDATE ws_employee SET
+                 organization_id=?, department_id=?, position=?, hire_date=?, fire_date=?, salary=?, pay_type=?, grade=?,
+                 official_employment=?, personal_work_hours_per_day=?, personal_rate_full_hours=?,
+                 personal_rate_half_hours=?, personal_sick_leave_rate=?, personal_schedule_type=?,
+                 personal_premium_rule_json=?, bitcop_employee_id=?, crm_user_id=?, seniority_pay_disabled=?
+                 WHERE id=?`,
+                [
+                    Number(b.organization_id),
+                    Number(b.department_id),
+                    b.position || null,
+                    dateOnlyYmd(b.hire_date),
+                    dateOnlyYmd(b.fire_date),
+                    newSalary,
+                    payType,
+                    b.grade || null,
+                    b.official_employment ? 1 : 0,
+                    nullIfEmpty(b.personal_work_hours_per_day),
+                    nullIfEmpty(b.personal_rate_full_hours),
+                    nullIfEmpty(b.personal_rate_half_hours),
+                    nullIfEmpty(b.personal_sick_leave_rate),
+                    b.personal_schedule_type || null,
+                    newPremRaw,
+                    Number.isFinite(bitcopId) && bitcopId > 0 ? bitcopId : null,
+                    Number.isFinite(crmUserId) && crmUserId > 0 ? crmUserId : null,
+                    seniorityOff ? 1 : 0,
+                    id,
+                ]
+            );
+        }
+        await writeAudit(db, req, { entity_type: 'employee', entity_id: id, action: 'update' });
         if (payTermsChanged) {
             const compFrom = calc.toYmd(b.comp_from) || calc.moscowYmd();
             let premJson = null;
@@ -1566,14 +1597,19 @@ function createWorkScheduleRouter(db) {
                     error: (e && e.message) || String(e),
                 });
             }
-            if (oldSalary !== newSalary) {
+            const [afterRows] = await db.query(`SELECT salary FROM ws_employee WHERE id=? LIMIT 1`, [
+                id,
+            ]);
+            const actualSalary = Number(afterRows[0] && afterRows[0].salary) || 0;
+            // В журнал — только реальная смена оклада «на сегодня», не сумма из будущего периода в форме.
+            if (Math.abs(oldSalary - actualSalary) > 0.005) {
                 await writeAudit(db, req, {
                     entity_type: 'employee',
                     entity_id: id,
                     action: 'salary_change',
                     field_name: 'salary',
                     old_value: String(oldSalary),
-                    new_value: String(newSalary),
+                    new_value: String(actualSalary),
                 });
             }
             if (premActuallyChanged) {
