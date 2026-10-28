@@ -384,14 +384,16 @@
     var premLbl = "Премия (доплата)";
     var premVal = p.premium;
     var premHtml = false;
+    var premSalesClick = false;
     if (sp && (Number(sp.bonus_accrued) > 0 || Number(sp.bonus_payable) > 0 || Number(sp.bonus_unshipped) > 0)) {
       premLbl = "Премия из продаж";
       premHtml = true;
+      premSalesClick = true;
       var waitN = Number(sp.unshipped_count) || 0;
       var waitRub = Number(sp.bonus_unshipped) || 0;
       premVal =
         money(sp.bonus_payable != null ? sp.bonus_payable : p.premium) +
-        '<span class="dg-ws-earn-sub">к выплате (отгруженные)</span>' +
+        '<span class="dg-ws-earn-sub">к выплате (отгруженные) · клик — заказы</span>' +
         (Number(sp.bonus_accrued) > 0
           ? '<span class="dg-ws-earn-sub">начислено всего ' + money(sp.bonus_accrued) + "</span>"
           : "") +
@@ -402,28 +404,33 @@
             "</span>"
           : "");
     }
+    // row: [label, value, isTotal, rawHtml, salaryClick, salesClick]
     var rows = [
-      ["Часы за месяц", fmtHours(hoursM), false, true, false],
+      ["Часы за месяц", fmtHours(hoursM), false, true, false, false],
       [
         p.pay_type === "hourly" ? "Дней с Bitcop" : "Смены (ставки)",
         (p.worked_days != null ? p.worked_days : "—") + " / " + (p.norm_days != null ? p.norm_days : "—"),
         false,
         true,
         false,
+        false,
       ],
-      ["Оклад", okladVal, false, true, true],
-      [premLbl, premVal, false, !!premHtml || false, false],
-      ["Доплата за стаж", senVal, false, true, false],
-      ["Отпускные", p.vacation_pay, false, false, false],
-      ["Больничные", p.sick_pay, false, false, false],
-      ["Итого к выплате", p.total, true, false, false],
+      ["Оклад", okladVal, false, true, true, false],
+      [premLbl, premVal, false, !!premHtml, false, premSalesClick],
+      ["Доплата за стаж", senVal, false, true, false, false],
+      ["Отпускные", p.vacation_pay, false, false, false, false],
+      ["Больничные", p.sick_pay, false, false, false, false],
+      ["Итого к выплате", p.total, true, false, false, false],
     ];
     grid.innerHTML = rows
       .map(function (r) {
-        var tag = r[4] ? "button" : "div";
+        var isBtn = r[4] || r[5];
+        var tag = isBtn ? "button" : "div";
         var extra = r[4]
           ? ' type="button" class="dg-ws-earn-chip dg-ws-earn-salary" data-dg-ws-salary-hist="1" data-dg-notify-start="Загружаем историю оклада…" title="История изменений оклада"'
-          : ' class="dg-ws-earn-chip' + (r[2] ? " total" : "") + '"';
+          : r[5]
+            ? ' type="button" class="dg-ws-earn-chip dg-ws-earn-sales" data-dg-ws-sales-orders="1" data-dg-notify-start="Загружаем заказы премии…" title="Заказы: отгрузка и резерв"'
+            : ' class="dg-ws-earn-chip' + (r[2] ? " total" : "") + '"';
         var valHtml = r[3] ? String(r[1]) : money(r[1]);
         return (
           "<" +
@@ -1354,7 +1361,7 @@
                 : "клик — ввести";
         var premTitle =
           premSrc === "sales"
-            ? "Премия из продаж: в ячейке — к выплате (только отгруженные)." +
+            ? "Клик — список заказов (оплата / отгрузка). В ячейке — к выплате (отгруженные)." +
               (salesAcc > 0 ? " Начислено всего: " + money(salesAcc) + "." : "") +
               (salesWait > 0.004
                 ? " Ждёт отгрузки: " +
@@ -1660,6 +1667,148 @@
     if (!el) return;
     el.style.display = show ? "flex" : "none";
     el.setAttribute("aria-hidden", show ? "false" : "true");
+  }
+
+  function fmtYmdUi(ymd) {
+    if (!ymd) return "—";
+    if (window.DatagonFmt && window.DatagonFmt.formatDate) return window.DatagonFmt.formatDate(ymd);
+    var s = String(ymd).slice(0, 10);
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+    return m ? m[3] + "-" + m[2] + "-" + m[1] : s;
+  }
+
+  function showSalesOrdersOverlay(show) {
+    var el = document.getElementById("dg-ws-sales-orders-overlay");
+    if (!el) return;
+    el.style.display = show ? "flex" : "none";
+    el.setAttribute("aria-hidden", show ? "false" : "true");
+  }
+
+  function openSalesOrdersModal(opts) {
+    opts = opts || {};
+    var empId = opts.empId != null ? Number(opts.empId) : null;
+    var month = opts.month || (state.filters && state.filters.month) || defaultMonthStr();
+    if (opts.fromMe) {
+      empId =
+        (state.meMonth && state.meMonth.employee && state.meMonth.employee.id) ||
+        (state.access && state.access.employee && state.access.employee.id) ||
+        empId;
+      month = (state.meMonth && state.meMonth.month) || month;
+    }
+    if (!empId && !opts.fromMe) {
+      toast("warning", "Нет сотрудника");
+      return;
+    }
+    state._salesOrdersCtx = { empId: empId, month: month, fromMe: !!opts.fromMe, allowEdit: !!opts.allowEdit };
+    var title = document.getElementById("dg-ws-sales-orders-title");
+    var meta = document.getElementById("dg-ws-sales-orders-meta");
+    var sum = document.getElementById("dg-ws-sales-orders-sum");
+    var tb = document.getElementById("dg-ws-sales-orders-tbody");
+    var editBtn = document.getElementById("dg-ws-sales-orders-edit");
+    if (title) title.textContent = "Премия из продаж — заказы";
+    if (meta) meta.textContent = "Загрузка…";
+    if (sum) sum.innerHTML = "";
+    if (tb) tb.innerHTML = '<tr><td colspan="7" class="text-muted">Загрузка…</td></tr>';
+    if (editBtn) {
+      editBtn.classList.toggle("d-none", !opts.allowEdit);
+      editBtn.disabled = !opts.allowEdit;
+    }
+    showSalesOrdersOverlay(true);
+    var q = "/sales-premium-orders?month=" + encodeURIComponent(month);
+    if (empId) q += "&employee_id=" + encodeURIComponent(empId);
+    api(q)
+      .then(function (j) {
+        var emp = j.employee || {};
+        var s = j.summary || {};
+        var orders = j.orders || [];
+        if (title) {
+          title.textContent =
+            "Премия из продаж · " + (emp.full_name || "") + " · " + formatMonthRu(j.month || month);
+        }
+        if (meta) {
+          meta.textContent =
+            (emp.department_name || "отдел продаж") +
+            (s.pct_mp != null ? " · " + s.pct_mp + "% МП." : "") +
+            " · в табель — только отгруженные; клик по счёту открывает заказ";
+        }
+        if (sum) {
+          sum.innerHTML =
+            '<span class="chip ok">к выплате ' +
+            money(s.bonus_payable) +
+            "</span>" +
+            '<span class="chip">начислено ' +
+            money(s.bonus_accrued) +
+            "</span>" +
+            (Number(s.bonus_unshipped) > 0.004
+              ? '<span class="chip warn">ждёт отгрузки ' +
+                money(s.bonus_unshipped) +
+                (s.unshipped_count ? " · " + s.unshipped_count + " зак." : "") +
+                "</span>"
+              : "");
+        }
+        if (!tb) return;
+        if (!orders.length) {
+          tb.innerHTML =
+            '<tr><td colspan="7" class="text-muted">Нет оплаченных заказов за этот месяц в журнале</td></tr>';
+          return;
+        }
+        var sorted = orders.slice().sort(function (a, b) {
+          var rank = { waiting: 0, shipped: 1, refund: 2 };
+          var ra = rank[a.bucket] != null ? rank[a.bucket] : 9;
+          var rb = rank[b.bucket] != null ? rank[b.bucket] : 9;
+          if (ra !== rb) return ra - rb;
+          return String(a.paid_at || "").localeCompare(String(b.paid_at || ""));
+        });
+        tb.innerHTML = sorted
+          .map(function (o) {
+            var badge =
+              o.bucket === "shipped"
+                ? '<span class="badge bg-success">отгружен</span>'
+                : o.bucket === "waiting"
+                  ? '<span class="badge bg-warning text-dark">ждёт</span>'
+                  : '<span class="badge bg-secondary">возврат</span>';
+            var inv = o.our_invoice_no || "—";
+            if (o.order_url) {
+              inv =
+                '<a href="' +
+                String(o.order_url).replace(/"/g, "&quot;") +
+                '" target="_blank" rel="noopener">' +
+                inv +
+                "</a>";
+            }
+            var shipTxt = fmtYmdUi(o.shipped_effective || o.shipped_at);
+            if (o.bucket === "waiting") shipTxt = "—";
+            else if (o.shipped_fallback) shipTxt += ' <span class="text-muted">(≈ оплата)</span>';
+            var stExtra = o.status && o.bucket !== "shipped" ? " · " + o.status : "";
+            return (
+              "<tr" +
+              (o.bucket === "waiting" ? ' class="table-warning"' : "") +
+              "><td>" +
+              inv +
+              (o.handed ? ' <span class="badge bg-info text-dark">передан</span>' : "") +
+              "</td><td>" +
+              (o.invoice_org || "—") +
+              "</td><td>" +
+              badge +
+              stExtra +
+              "</td><td>" +
+              fmtYmdUi(o.paid_at) +
+              "</td><td>" +
+              shipTxt +
+              "</td><td>" +
+              money(o.diff) +
+              "</td><td>" +
+              money(o.bonus_share) +
+              "</td></tr>"
+            );
+          })
+          .join("");
+      })
+      .catch(function (e) {
+        if (meta) meta.textContent = e.message || "Ошибка";
+        if (tb) tb.innerHTML = '<tr><td colspan="7" class="text-danger">' + (e.message || "Ошибка") + "</td></tr>";
+        toast("danger", e.message || "Не удалось загрузить заказы");
+      });
   }
 
   function openPremModal(empId) {
@@ -2427,9 +2576,27 @@
     var earnGrid = document.getElementById("dg-ws-earn-grid");
     if (earnGrid) {
       earnGrid.addEventListener("click", function (ev) {
+        var salesBtn = ev.target.closest("[data-dg-ws-sales-orders]");
+        if (salesBtn) {
+          openSalesOrdersModal({ fromMe: true, allowEdit: false });
+          return;
+        }
         var btn = ev.target.closest("[data-dg-ws-salary-hist]");
         if (!btn) return;
         openSalaryHistModal();
+      });
+    }
+    document.querySelectorAll("[data-dg-ws-sales-orders-close]").forEach(function (el) {
+      el.addEventListener("click", function () {
+        showSalesOrdersOverlay(false);
+      });
+    });
+    var salesEdit = document.getElementById("dg-ws-sales-orders-edit");
+    if (salesEdit) {
+      salesEdit.addEventListener("click", function () {
+        var ctx = state._salesOrdersCtx || {};
+        showSalesOrdersOverlay(false);
+        if (ctx.empId) openPremModal(ctx.empId);
       });
     }
     ["dg-ws-salary-hist-close", "dg-ws-salary-hist-cancel", "dg-ws-salary-hist-backdrop"].forEach(function (id) {
@@ -2536,7 +2703,19 @@
         var premTd = ev.target.closest("td[data-emp-prem]");
         if (premTd) {
           if (state.bulkMode) return;
-          openPremModal(Number(premTd.getAttribute("data-emp-prem")));
+          var empIdPrem = Number(premTd.getAttribute("data-emp-prem"));
+          var empRow = (state.sheet && state.sheet.employees || []).find(function (e) {
+            return Number(e.id) === empIdPrem;
+          });
+          if (empRow && empRow.premium_source === "sales") {
+            openSalesOrdersModal({
+              empId: empIdPrem,
+              month: state.filters.month || defaultMonthStr(),
+              allowEdit: true,
+            });
+            return;
+          }
+          openPremModal(empIdPrem);
           return;
         }
         var td = ev.target.closest("td.cell-click[data-emp][data-day]");
@@ -2629,6 +2808,11 @@
     }
     document.addEventListener("keydown", function (ev) {
       if (ev.key !== "Escape") return;
+      var salesOv = document.getElementById("dg-ws-sales-orders-overlay");
+      if (salesOv && salesOv.style.display === "flex") {
+        showSalesOrdersOverlay(false);
+        return;
+      }
       var premOv = document.getElementById("dg-ws-prem-overlay");
       if (premOv && premOv.style.display === "flex") {
         showPremOverlay(false);

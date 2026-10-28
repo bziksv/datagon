@@ -9,6 +9,7 @@ const {
 const calc = require('../lib/datagonWorkScheduleCalc');
 const {
     fetchManagerBonusesForMonth,
+    fetchManagerBonusOrderDetails,
     isSalesDepartmentName,
 } = require('../lib/managerSalesMonthBonus');
 const bitcop = require('../lib/datagonBitcopClient');
@@ -2386,6 +2387,60 @@ function createWorkScheduleRouter(db) {
             mode: forceOff ? 'auto' : 'force',
         });
         res.json(result);
+    });
+
+    /**
+     * Расшифровка премии из продаж: заказы месяца (оплата), отгружено / ждёт, даты.
+     * query: month=YYYY-MM, employee_id? (обязателен для accounting; для «Мои» — свой).
+     */
+    router.get('/sales-premium-orders', async (req, res) => {
+        const a = actorOf(req);
+        const ym = String(req.query.month || calc.moscowYmd().slice(0, 7));
+        if (!/^\d{4}-\d{2}$/.test(ym)) {
+            return res.status(400).json({ success: false, error: 'month=YYYY-MM' });
+        }
+        const year = Number(ym.slice(0, 4));
+        const month = Number(ym.slice(5, 7));
+        const empIdQ = req.query.employee_id != null ? Number(req.query.employee_id) : null;
+        const self = await getEmployeeByUserId(db, a.id);
+        let emp = null;
+        if (isAccounting(a)) {
+            if (!empIdQ) {
+                return res.status(400).json({ success: false, error: 'employee_id required' });
+            }
+            emp = await getEmployeeById(db, empIdQ);
+        } else {
+            if (!self) return res.status(403).json({ success: false, error: 'no employee card' });
+            if (empIdQ && Number(empIdQ) !== Number(self.id)) {
+                return res.status(403).json({ success: false, error: 'forbidden' });
+            }
+            emp = self;
+        }
+        if (!emp) return res.status(404).json({ success: false, error: 'employee not found' });
+        if (!isSalesDepartmentName(emp.department_name)) {
+            return res.status(400).json({ success: false, error: 'сотрудник не в отделе продаж' });
+        }
+        const details = await fetchManagerBonusOrderDetails(db, emp.user_id, year, month);
+        res.json({
+            success: true,
+            month: ym,
+            employee: {
+                id: emp.id,
+                user_id: emp.user_id,
+                full_name: emp.user_full_name || emp.full_name || null,
+                department_name: emp.department_name,
+            },
+            summary: {
+                bonus_accrued: details.bonus,
+                bonus_payable: details.bonus_payable,
+                bonus_unshipped: details.bonus_unshipped,
+                unshipped_count: details.unshipped_count,
+                pct_mp: details.pct_mp,
+                amount_ex: details.amount_ex,
+                diff: details.diff,
+            },
+            orders: details.orders,
+        });
     });
 
     /**

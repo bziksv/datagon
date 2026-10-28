@@ -2453,6 +2453,7 @@ Preflight матча «Менеджер по продажам» ↔ Planfix `/us
 | POST | `/bitcop/sync-hours` | accounting; **продуктивные** часы → `ws_work_log.hours_bitcop` (+ `hours_worked`/`rate`/`source=bitcop` только если нет таймера/ручной правки/сегментов). `force=1` — писать и в locked-дни. Период: `date_from`+`date_to`, или `days` (дефолт **7**), или `period_ym`. Опц. `only_hourly`, `dry_run`, фильтры орг/отдел/`employee_id`. В `GET /sheet` ячейки: `hours`, `hours_clock`, `hours_bitcop`, `check_in`/`check_out` (ЧЧ:ММ), `clock_spans: [{in,out}]` для hover внутреннего таймера |
 | PATCH | `/sheet/premium` | accounting; ручная премия: `{ employee_id, period_ym, premium_manual }` (`null` — сброс); пишет `premium_source=manual` |
 | POST | `/sheet/premium-from-sales` | accounting; принудительный пересчёт: `bonus_payable` (отгруженные) → `premium_manual` + `premium_source=sales`; в `rows[]` также `bonus_accrued` / `bonus_unshipped`; body `{ period_ym, dry_run?, force?, organization_id?, department_id? }` |
+| GET | `/sales-premium-orders` | employee (свой) / accounting (`employee_id`); `month=YYYY-MM` → `summary` + `orders[]` (`bucket` shipped/waiting/refund, `paid_at`, `shipped_at` / `shipped_effective`, `bonus_share`) |
 | POST | `/vacations`, `/vacations/:id/approve` | employee / head+accounting |
 | GET | `/vacations/pending` | head / accounting → `can_approve`, `rows[]` (+ `department_name`); остальные роли — `{ success, can_approve:false, rows:[] }` (для футер-уведомлений, без 403) |
 | POST | `/sick`, `/absences`, `/vacation-compensation` | accounting |
