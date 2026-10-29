@@ -72,6 +72,10 @@ const {
 const { SUPPLIER_NEED_QTY_SQL, SUPPLIER_IN_TRANSIT_SQL } = require('../lib/datagonSuppliersSql');
 const { loadSkuRecommendedDaysByCodes } = require('../lib/datagonSupplierAbsenceProfile');
 const {
+    isStagnantTrialStock,
+    loadStockStagnancyProfilesByCodes,
+} = require('../lib/datagonStockStagnancy');
+const {
     ensureProductAnalysisDecisionsSchema,
     upsertProductDecision,
 } = require('../lib/datagonProductAnalysisDecisions');
@@ -2553,6 +2557,11 @@ async function enrichPurchaseRowsWithFormula(db, appSettings, sqlRows, data, opt
         absenceRows.map((row) => [String(row.code || '').trim(), Number(row.distinct_days || 0)]).filter(([k]) => k),
     );
 
+    const stagnancyMap =
+        mode !== 'windows_only'
+            ? await loadStockStagnancyProfilesByCodes(db, codes, appSettings)
+            : new Map();
+
     function sumWindowQty(codeStr, isBundleRow, w) {
         const k = `w${w}`;
         const dr = dirWinMap.get(codeStr);
@@ -2624,6 +2633,14 @@ async function enrichPurchaseRowsWithFormula(db, appSettings, sqlRows, data, opt
                 replenishmentDaysOverride: resolved.replenishmentDays,
                 replenishmentSourceHint: resolved.replenishmentSource,
             });
+            const stagProf = stagnancyMap.get(codeKey) || {};
+            const stagnantTrial = isStagnantTrialStock({
+                stockQty: d.stock,
+                firstPositiveDate: stagProf.first_positive_date,
+                stockMinPos: stagProf.stock_min_pos != null ? stagProf.stock_min_pos : stagProf.stock_min,
+                stockMaxPos: stagProf.stock_max_pos != null ? stagProf.stock_max_pos : stagProf.stock_max,
+                salesSinceFirst: stagProf.sales_since_first,
+            });
             const formulaArgs = {
                 sumQty,
                 sumQtyAbsenceWindow: sumQtyAbs,
@@ -2633,6 +2650,8 @@ async function enrichPurchaseRowsWithFormula(db, appSettings, sqlRows, data, opt
                 stockQty: d.stock,
                 prevBaseline,
                 prevBaselineSource,
+                stagnantTrial,
+                stagnantTrialMeta: stagProf,
             };
             // Всегда считаем на странице: нужны поля разбивки (спрос / база / прирост от рек. дней).
             const fr = computeSalesFormula({
@@ -2640,6 +2659,7 @@ async function enrichPurchaseRowsWithFormula(db, appSettings, sqlRows, data, opt
                 ...formulaArgs,
             });
             d.formula_proposed_min_stock = applyMinStockDgFloor(fr.proposed_min_stock, d.min_stock_dg);
+            d.formula_stagnant_trial = Boolean(fr.inputs && fr.inputs.stagnant_trial);
             const inp = fr.inputs || {};
             d.formula_sum_qty_window = inp.sum_qty_window;
             d.formula_adjusted_sales_sum = inp.adjusted_sales_sum;

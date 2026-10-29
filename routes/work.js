@@ -405,31 +405,43 @@ function sortWorkRows(rows, sortKey, sortDir) {
 /**
  * Unscoped WORK-admin: только username=admin (не can_manage_users). F-WORK-02.
  * Обычный пользователь — только свои назначения / себя в персонале.
+ * «Проект-Менеджер» — seeAll: все проекты/пароли/сотрудники по page_modes,
+ * без обязательного назначения специалистом на проект.
  */
 function isWorkUnscopedAdmin(actor) {
     if (!actor) return false;
     return actor.username === 'admin';
 }
 
+function isProjectManagerSpecialty(actor) {
+    const n = normalizeName(actor && actor.specialty_name).replace(/-/g, ' ');
+    return n === 'проект менеджер';
+}
+
+function workScopeSeesAll(scope) {
+    return !!(scope && (scope.unscoped || scope.seeAll));
+}
+
 async function resolveWorkActorScope(db, actor) {
     if (isWorkUnscopedAdmin(actor)) {
-        return { unscoped: true, legacyUserId: null, datagonUserId: null };
+        return { unscoped: true, seeAll: true, legacyUserId: null, datagonUserId: null };
     }
     const datagonUserId = actor && actor.id != null ? Number(actor.id) : 0;
     if (!datagonUserId) {
-        return { unscoped: false, legacyUserId: null, datagonUserId: null };
+        return { unscoped: false, seeAll: false, legacyUserId: null, datagonUserId: null };
     }
     const [st] = await db.query(
         `SELECT legacy_user_id FROM work_seo_staff WHERE datagon_user_id = ? LIMIT 1`,
         [datagonUserId]
     );
     const legacyUserId = st[0] ? Number(st[0].legacy_user_id) || null : null;
-    return { unscoped: false, legacyUserId, datagonUserId };
+    const seeAll = isProjectManagerSpecialty(actor);
+    return { unscoped: false, seeAll, legacyUserId, datagonUserId };
 }
 
 /** SQL-условие «запись доступна актору» (для list / get / mutate). */
 function appendWorkActorScopeSql(ent, scope, sql, params) {
-    if (!scope || scope.unscoped) return { sql, params };
+    if (!scope || workScopeSeesAll(scope)) return { sql, params };
     if (ent.isStaff) {
         if (!scope.datagonUserId) {
             sql += ` AND 1=0`;
@@ -487,7 +499,7 @@ function appendWorkActorScopeSql(ent, scope, sql, params) {
 }
 
 async function actorCanAccessWorkRow(db, ent, row, scope) {
-    if (!scope || scope.unscoped) return true;
+    if (!scope || workScopeSeesAll(scope)) return true;
     if (!row) return false;
     if (ent.isStaff) {
         return Number(row.datagon_user_id) === Number(scope.datagonUserId);
@@ -529,8 +541,8 @@ async function buildWorkSummary(db, ent, scope) {
         let sql = `SELECT t.status, t.our_project, t.budget, t.osvoeno, t.id_glavn_user, t.id, t.legacy_id
                    FROM work_seo_projects t WHERE 1=1`;
         const params = [];
-        // Сводка у не-админа — только проекты где он главный (как WORK).
-        if (scope && !scope.unscoped) {
+        // Сводка у не-админа / не-ПМ — только проекты где он главный (как WORK).
+        if (scope && !workScopeSeesAll(scope)) {
             const lid = Number(scope.legacyUserId) || 0;
             if (!lid) {
                 return {
@@ -601,7 +613,7 @@ async function buildWorkSummary(db, ent, scope) {
         let sql = `SELECT t.status, t.our_project, t.ya_direct, t.go_advords, t.MyTarget
                    FROM work_context_projects t WHERE 1=1`;
         const params = [];
-        if (scope && !scope.unscoped) {
+        if (scope && !workScopeSeesAll(scope)) {
             const lid = Number(scope.legacyUserId) || 0;
             if (!lid) {
                 return {
@@ -659,7 +671,7 @@ async function buildWorkSummary(db, ent, scope) {
         let sql = `SELECT legacy_user_id, sum_many_first, status, datagon_user_id
                    FROM work_seo_staff WHERE status = 1`;
         const params = [];
-        if (scope && !scope.unscoped) {
+        if (scope && !workScopeSeesAll(scope)) {
             if (!scope.datagonUserId) {
                 return { kind: 'staff', active: 0, itog_sum: 0 };
             }
@@ -883,7 +895,7 @@ module.exports = (db) => {
                  LEFT JOIN users u ON u.id = s.datagon_user_id
                  WHERE COALESCE(s.status, 1) = 1`;
             const params = [];
-            if (!scope.unscoped) {
+            if (!workScopeSeesAll(scope)) {
                 if (!scope.datagonUserId) {
                     return res.json({ success: true, rows: [] });
                 }
@@ -1104,7 +1116,10 @@ module.exports = (db) => {
                     secrets_masked: true,
                 },
                 summary,
+                // UI chrome (Добавить / выплаты): только unscoped admin → 'all'.
+                // ПМ с seeAll видит все строки, но scope остаётся 'self' (без admin-кнопок).
                 scope: scope.unscoped ? 'all' : 'self',
+                see_all: workScopeSeesAll(scope),
                 rows: pageRows,
                 total,
                 page,

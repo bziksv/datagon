@@ -2,6 +2,10 @@
 
 const { parseFormulaSettings, pickMarketPriceRub, computeSalesFormula, applyMinStockDgFloor, loadSupplierReplenishmentDaysForKey, resolveEffectiveReplenishment } = require('../lib/datagonSalesFormula');
 const {
+    isStagnantTrialStock,
+    loadStockStagnancyProfilesByCodes,
+} = require('../lib/datagonStockStagnancy');
+const {
     msDemandProjectFilterClause,
     describeSalesFormulaProjectFilter,
     loadMsDemandProjectNameMap,
@@ -1856,6 +1860,15 @@ function createProductRouter(db, appSettings) {
                 analysisDaysA: formulaCfg.absenceAnalysisDays,
             });
 
+            const stagnancyMap = await loadStockStagnancyProfilesByCodes(db, [code], appSettings);
+            const stagProf = stagnancyMap.get(String(code || '').trim()) || {};
+            const stagnantTrial = isStagnantTrialStock({
+                stockQty: ms.stock,
+                firstPositiveDate: stagProf.first_positive_date,
+                stockMinPos: stagProf.stock_min_pos != null ? stagProf.stock_min_pos : stagProf.stock_min,
+                stockMaxPos: stagProf.stock_max_pos != null ? stagProf.stock_max_pos : stagProf.stock_max,
+                salesSinceFirst: stagProf.sales_since_first,
+            });
             const formulaResult = computeSalesFormula({
                 settings: formulaCfg,
                 sumQty: salesWindowSum.sum_qty,
@@ -1866,6 +1879,8 @@ function createProductRouter(db, appSettings) {
                 stockQty: ms.stock,
                 prevBaseline,
                 prevBaselineSource,
+                stagnantTrial,
+                stagnantTrialMeta: stagProf,
             });
 
             formulaResult.inputs.absence_distinct_days_log = absenceMerged.log;

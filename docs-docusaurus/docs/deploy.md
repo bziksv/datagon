@@ -99,6 +99,7 @@ Hard refresh browser cache after deploy:
   - **Прод:** переменную **не задавать** — по умолчанию scheduler включён (`pm2` → `node server.js`).
   - В логе при старте локально должна быть строка: `[AUTO SYNC] scheduler ВЫКЛЮЧЕН …`.
 - **`DATAGON_AUTO_SYNC_WORKER_ID`** — `1` (default, `parser-app`), `2` (`parser-autosync-w2`), `3` (`parser-autosync-w3`). Назначение задачи → поле `worker` в `lib/datagonAutoSyncRegistry.js` (**банки/Planfix/Bitcop → 2**, **`results_reparse_products` → 3**, остальное → 1). Ручной запуск с HTTP-воркера 1 для чужой задачи пишется в `auto_sync_dispatch`, целевой воркер забирает её за несколько секунд.
+- **Zombie-reconcile `moysklad`:** закрытие «зависших» `auto_sync_runs` для МС выполняется **только на воркере-владельце** задачи (`autoSyncTaskBelongsHere('moysklad')`, обычно w1). W2/w3 не смотрят на чужой `jobState` и не пишут в журнал ложное «Ожидание» / `interrupted` за 3–5 с. Плюс grace **90 с** для свежих `running` (гонка `startAutoSyncRun` → `active=true`). Очередь автосинка ждёт promise `triggerSync().done`, а не мгновенный `waitUntil(!active)`. HTTP к МС на выгрузке каталога — таймаут **120 с** (`MS_HTTP_TIMEOUT_MS` в `routes/moysklad.js`).
 - **`DATAGON_HTTP=off`** — процесс без `listen` (только автосинк). Нужен для `parser-autosync-w2` / `parser-autosync-w3`. На основном `parser-app` **не** задавать.
 - **Доп. воркеры на проде:**
 

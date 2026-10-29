@@ -118,6 +118,16 @@ function sqlPriceHoldWhere(priceHoldFilter) {
     if (f === '0' || f === 'free' || f === 'no') {
         return ' AND (mp.price_hold_until IS NULL OR mp.price_hold_until <= NOW())';
     }
+    // Срок вышел: дата в прошлом, поля hold ещё не сброшены вручную — для повторной заморозки.
+    if (f === 'expired' || f === 'was' || f === 'ended') {
+        return ' AND mp.price_hold_until IS NOT NULL AND mp.price_hold_until <= NOW()';
+    }
+    // Активные, истекают в ближайшие 7 дней — заранее продлить / сменить цену.
+    if (f === 'expiring' || f === 'soon') {
+        return ` AND mp.price_hold_until IS NOT NULL
+                 AND mp.price_hold_until > NOW()
+                 AND mp.price_hold_until <= (NOW() + INTERVAL 7 DAY)`;
+    }
     return '';
 }
 
@@ -608,6 +618,8 @@ function myProductsRouterFactory(db, settings) {
                 sku: 'mp.sku',
                 name: 'mp.name',
                 price: 'mp.price',
+                price_hold: 'mp.price_hold_until',
+                hold_until: 'mp.price_hold_until',
                 currency: 'mp.currency',
                 stock: 'mp.stock',
                 status: 'mp.is_active',

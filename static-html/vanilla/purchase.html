@@ -4421,15 +4421,34 @@
         for (var i = 0; i < batches.length; i++) {
           var b = batches[i] || {};
           var bid = Number(b.id);
-          msApplyItemsCache[bid] = msApplyItemsCache[bid] || {};
-          msApplyItemsCache[bid].status = String(b.status || "");
+          var prevCache = msApplyItemsCache[bid] || {};
+          var prevStatus = String(prevCache.status || "");
+          var nextStatus = String(b.status || "");
+          msApplyItemsCache[bid] = prevCache;
+          msApplyItemsCache[bid].status = nextStatus;
           msApplyItemsCache[bid].whoMeta = {
             created_by_name: b.created_by_name,
             created_by_user_id: b.created_by_user_id,
             reverted_by_name: b.reverted_by_name,
             status: b.status,
           };
-          if (String(b.status) === "reverted" || String(b.status) === "running") msApplyItemsCache[bid].loaded = false;
+          // Пока пакет в работе / откачен — всегда перечитываем строки.
+          // После running→completed/failed кэш тоже сбрасываем: иначе остаётся
+          // пустой снимок с раннего poll («В пакете нет изменённых позиций»),
+          // хотя в шапке уже «обновлено N».
+          if (
+            nextStatus === "reverted" ||
+            nextStatus === "running" ||
+            (prevStatus === "running" && (nextStatus === "completed" || nextStatus === "failed"))
+          ) {
+            msApplyItemsCache[bid].loaded = false;
+          } else if (
+            msApplyItemsCache[bid].loaded &&
+            Number(b.rows_updated || 0) > 0 &&
+            String(msApplyItemsCache[bid].html || "").indexOf("В пакете нет изменённых позиций") >= 0
+          ) {
+            msApplyItemsCache[bid].loaded = false;
+          }
           var open = Number(msApplyExpandedBatchId) === bid;
           var st = String(b.status || "");
           var statusBadge = st === "running" ? '<span class="badge bg-warning text-dark">в работе</span>'

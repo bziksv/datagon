@@ -16,6 +16,8 @@ const { createSupplierNameResolver } = require('../lib/datagonMsSupplierLabel');
 const router = express.Router();
 
 const BASE_URL = 'https://api.moysklad.ru/api/remap/1.2';
+/** Таймаут HTTP к api.moysklad.ru на тяжёлых страницах (каталог/остатки). 30 с на ночном пике давал массовые failed. */
+const MS_HTTP_TIMEOUT_MS = 120000;
 const MS_DETAIL_EXPAND_PRODUCT =
     'attributes,supplier,images,country,uom,salePrices,buyPrice,minPrice,barcodes,countryOfOrigin';
 const MS_DETAIL_EXPAND_BUNDLE =
@@ -354,7 +356,10 @@ const msRefNameCache = new Map();
 async function getMsProductAttributesMeta(headers) {
     const now = Date.now();
     if (msAttrsMetaCache.rows.length && now - msAttrsMetaCache.ts < MS_ATTRS_META_CACHE_TTL_MS) return msAttrsMetaCache.rows;
-    const resp = await axios.get(`${BASE_URL}/entity/product/metadata/attributes`, { headers, timeout: 30000 });
+    const resp = await axios.get(`${BASE_URL}/entity/product/metadata/attributes`, {
+        headers,
+        timeout: MS_HTTP_TIMEOUT_MS,
+    });
     msAttrsMetaCache = { ts: now, rows: resp.data?.rows || [] };
     return msAttrsMetaCache.rows;
 }
@@ -364,7 +369,7 @@ async function resolveMsMetaNameByHref(headers, refObj) {
     if (!href || !headers) return '';
     if (msRefNameCache.has(href)) return msRefNameCache.get(href);
     try {
-        const resp = await axios.get(href, { headers, timeout: 30000 });
+        const resp = await axios.get(href, { headers, timeout: MS_HTTP_TIMEOUT_MS });
         const name = String(resp?.data?.name || '').trim();
         msRefNameCache.set(href, name);
         return name;
@@ -1092,7 +1097,7 @@ async function fetchPaged(url, headers, params = {}) {
         const resp = await axios.get(url, {
             headers,
             params: { ...queryParams, limit, offset },
-            timeout: 30000,
+            timeout: MS_HTTP_TIMEOUT_MS,
         });
         const rows = resp.data?.rows || [];
         const metaSize = Number(resp.data?.meta?.size || 0);
@@ -1155,7 +1160,7 @@ async function resolveAssortmentCode(assortment, headers, assortmentCodeCache) {
     if (assortmentCodeCache.has(href)) return assortmentCodeCache.get(href);
 
     try {
-        const resp = await axios.get(href, { headers, timeout: 30000 });
+        const resp = await axios.get(href, { headers, timeout: MS_HTTP_TIMEOUT_MS });
         const data = resp.data || {};
         const code = normalizeCode(data.code || data.article || '');
         assortmentCodeCache.set(href, code);
@@ -1190,7 +1195,10 @@ async function syncMsExport(db, config, settings = {}) {
     addLog('Старт синхронизации');
     addLog('Этап 1/6: метаданные атрибутов');
 
-    const attrResp = await axios.get(`${BASE_URL}/entity/product/metadata/attributes`, { headers, timeout: 30000 });
+    const attrResp = await axios.get(`${BASE_URL}/entity/product/metadata/attributes`, {
+        headers,
+        timeout: MS_HTTP_TIMEOUT_MS,
+    });
     ensureNotCancelled();
     const attrRows = attrResp.data?.rows || [];
     const attrsMap = {};
@@ -1605,14 +1613,16 @@ function createMoyskladRouter(db, settings, config) {
     async function triggerMsSyncNow() {
         if (jobState.active) return { started: false, reason: 'already_running' };
         msStatsCache.clear();
-        syncMsExport(db, config, settings).catch((e) => {
+        // HTTP `/sync` — fire-and-forget; автосинк в server.js ждёт `done`.
+        const done = syncMsExport(db, config, settings).catch((e) => {
             jobState.active = false;
             jobState.done = true;
             jobState.cancelRequested = false;
             jobState.message = `Ошибка: ${e.message}`;
             addLog(jobState.message);
+            throw e;
         });
-        return { started: true };
+        return { started: true, done };
     }
     createMoyskladRouter.triggerSync = triggerMsSyncNow;
 

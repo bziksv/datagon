@@ -1716,21 +1716,30 @@ async function getDiskUsageMetrics(forceRefresh = false) {
  * Сброс «зомби» в autoSyncRunIds: в памяти задача «running», а в БД строка уже
  * interrupted/completed (типично после рестарта Node или сбоя без finish).
  */
-/** Закрыть `auto_sync_runs` для moysklad, если синк в памяти уже не active (обрыв MySQL / finish не вызван). */
+/** Закрыть `auto_sync_runs` для moysklad, если синк в памяти уже не active (обрыв MySQL / finish не вызван).
+ *  Только на воркере, которому принадлежит задача `moysklad` (обычно parser-app / worker 1).
+ *  Иначе w2/w3 видят чужой running + свой пустой jobState («Ожидание») и убивают живой прогон. */
 async function reconcileMoyskladZombieAutoSyncRuns() {
+    if (!autoSyncTaskBelongsHere('moysklad')) return;
     if (typeof moyskladRouterFactory.getJobState !== 'function') return;
     const js = moyskladRouterFactory.getJobState();
     if (js && js.active) return;
     try {
         await ensureAutoSyncRunsTable();
+        // Grace 90 с: startAutoSyncRun пишет running до triggerSync/active=true —
+        // не закрывать свежие строки с дефолтным «Ожидание» (гонка с опросом /processes).
         const [rows] = await db.query(
-            `SELECT id FROM auto_sync_runs
-             WHERE task_type = 'moysklad' AND status = 'running' AND finished_at IS NULL`
+            `SELECT id, message, started_at FROM auto_sync_runs
+             WHERE task_type = 'moysklad' AND status = 'running' AND finished_at IS NULL
+               AND started_at < (NOW() - INTERVAL 90 SECOND)`
         );
         if (!rows || !rows.length) return;
         const msg = String(js?.message || '').trim();
         const status = msg.startsWith('Ошибка') ? 'failed' : 'interrupted';
-        const tail = msg || 'Синхронизация МС в памяти не активна (закрыто reconcile)';
+        const tail =
+            msg && msg !== 'Ожидание'
+                ? msg
+                : 'Синхронизация МС в памяти не активна (закрыто reconcile)';
         for (const row of rows) {
             await db.query(
                 `UPDATE auto_sync_runs
@@ -2410,25 +2419,61 @@ async function processAutoSyncQueue() {
             } else if (task === 'moysklad') {
                 console.log('[AUTO SYNC] Queue start: moysklad');
                 await startAutoSyncRun('moysklad', triggerType);
+                let startRes = { started: false, reason: 'no_trigger' };
                 if (typeof moyskladRouterFactory.triggerSync === 'function') {
-                    await moyskladRouterFactory.triggerSync();
+                    startRes = (await moyskladRouterFactory.triggerSync()) || startRes;
                 }
-                const done = await waitUntil(() => {
-                    const s = typeof moyskladRouterFactory.getJobState === 'function'
-                        ? moyskladRouterFactory.getJobState()
-                        : { active: false };
-                    return !s.active;
-                }, 12 * 60 * 60 * 1000, 1000);
+                // Ждём именно promise синка (не гонку waitUntil до active=true).
+                let done = false;
+                const touchMsProgress = setInterval(() => {
+                    try {
+                        const s =
+                            typeof moyskladRouterFactory.getJobState === 'function'
+                                ? moyskladRouterFactory.getJobState()
+                                : null;
+                        const m = String(s?.message || '').trim();
+                        if (m && m !== 'Ожидание') {
+                            touchAutoSyncRunMessage('moysklad', m).catch(() => {});
+                        }
+                    } catch (_) {}
+                }, 5000);
+                try {
+                    if (startRes && startRes.done && typeof startRes.done.then === 'function') {
+                        try {
+                            await startRes.done;
+                            done = true;
+                        } catch (_) {
+                            done = true; // ошибка уже в jobState.message
+                        }
+                    } else {
+                        // already_running / старый контракт без done — ждём снятия active
+                        // (первый тик через 1 с, чтобы не закрыть до выставления active).
+                        await new Promise((r) => setTimeout(r, 1000));
+                        done = await waitUntil(() => {
+                            const s =
+                                typeof moyskladRouterFactory.getJobState === 'function'
+                                    ? moyskladRouterFactory.getJobState()
+                                    : { active: false };
+                            return !s.active;
+                        }, 12 * 60 * 60 * 1000, 1000);
+                    }
+                } finally {
+                    clearInterval(touchMsProgress);
+                }
                 const msJob =
                     typeof moyskladRouterFactory.getJobState === 'function'
                         ? moyskladRouterFactory.getJobState()
                         : null;
                 const msMsg = String(msJob?.message || '').trim();
-                const msFailed = !done || msMsg.startsWith('Ошибка');
+                const msFailed =
+                    !done ||
+                    msMsg.startsWith('Ошибка') ||
+                    (startRes && startRes.started === false && startRes.reason === 'no_trigger');
                 await finishAutoSyncRun(
                     'moysklad',
                     msFailed ? 'failed' : 'completed',
-                    (msFailed ? msMsg : 'Завершено') || (done ? 'Завершено' : 'Таймаут ожидания')
+                    (msFailed ? msMsg || startRes.reason || 'Ошибка' : 'Завершено') ||
+                        (done ? 'Завершено' : 'Таймаут ожидания')
                 );
                 console.log('[AUTO SYNC] Queue done: moysklad');
             } else if (task === 'ms_inventory_month') {

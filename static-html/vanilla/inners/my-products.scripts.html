@@ -115,7 +115,9 @@
         else if (f.ms_linked === "0") parts.push("МС: без связи");
         if (f.match_audit && f.match_audit !== "all") parts.push("сопоставление: " + escHtml(f.match_audit));
         if (f.price_hold === "1") parts.push("заморозка: да");
-        else if (f.price_hold === "0") parts.push("заморозка: нет");
+        else if (f.price_hold === "0") parts.push("заморозка: нет (активной)");
+        else if (f.price_hold === "expired") parts.push("заморозка: срок истёк");
+        else if (f.price_hold === "expiring") parts.push("заморозка: истекает ≤7 дн.");
         if (f.search) parts.push("поиск: «" + escHtml(f.search) + "»");
         if (f.stock_min) parts.push("остаток от " + escHtml(f.stock_min));
         if (f.stock_max) parts.push("остаток до " + escHtml(f.stock_max));
@@ -674,6 +676,19 @@
         if (!r || !r.price_hold_until) return false;
         var t = new Date(r.price_hold_until).getTime();
         return Number.isFinite(t) && t > Date.now();
+      }
+
+      /** Была заморозка, срок прошёл (поля ещё не сняты вручную). */
+      function isRowPriceHoldExpired(r) {
+        if (!r || !r.price_hold_until) return false;
+        var t = new Date(r.price_hold_until).getTime();
+        return Number.isFinite(t) && t <= Date.now();
+      }
+
+      function isRowPriceHoldExpiringSoon(r) {
+        if (!isRowPriceHoldActive(r)) return false;
+        var t = new Date(r.price_hold_until).getTime();
+        return t - Date.now() <= 7 * 86400000;
       }
 
       function formatHoldUntilShort(v) {
@@ -1508,13 +1523,21 @@
           }
 
           var holdActive = isRowPriceHoldActive(r);
+          var holdExpired = isRowPriceHoldExpired(r);
+          var holdExpiring = isRowPriceHoldExpiringSoon(r);
           var holdTd = document.createElement("td");
           holdTd.className = "text-center";
           var holdBtn = document.createElement("button");
           holdBtn.type = "button";
           holdBtn.className =
             "btn btn-sm dg-mp-hold-btn " +
-            (holdActive ? "btn-warning" : "btn-outline-secondary");
+            (holdActive
+              ? holdExpiring
+                ? "btn-outline-warning"
+                : "btn-warning"
+              : holdExpired
+                ? "btn-outline-danger"
+                : "btn-outline-secondary");
           holdBtn.setAttribute("data-dg-no-activity", "1");
           holdBtn.setAttribute(
             "data-dg-tooltip",
@@ -1522,8 +1545,12 @@
               ? "Заморожено до " +
                   formatHoldUntilShort(r.price_hold_until) +
                   (r.price_hold_by ? " (" + r.price_hold_by + ")" : "") +
-                  ". Клик — снять или изменить цену."
-              : "Заморозить свою цену на " +
+                  (holdExpiring ? ". Скоро истечёт — клик: продлить или сменить цену." : ". Клик — снять или изменить цену.")
+              : holdExpired
+                ? "Срок заморозки истёк " +
+                  formatHoldUntilShort(r.price_hold_until) +
+                  ". Синк с конкурентов снова может менять цену. Клик — заморозить снова / задать цену."
+                : "Заморозить свою цену на " +
                   getHoldDays() +
                   " дн. (срок из фильтров). Синк с конкурентов будет пропущен."
           );
@@ -1546,9 +1573,17 @@
           }
           if (holdActive) {
             var hb = document.createElement("div");
-            hb.className = "small text-warning fw-semibold dg-mp-hold-badge mt-1";
-            hb.textContent = "до " + formatHoldUntilShort(r.price_hold_until);
+            hb.className =
+              "small fw-semibold dg-mp-hold-badge mt-1 " +
+              (holdExpiring ? "text-danger" : "text-warning");
+            hb.textContent =
+              (holdExpiring ? "до (скоро) " : "до ") + formatHoldUntilShort(r.price_hold_until);
             myTd.appendChild(hb);
+          } else if (holdExpired) {
+            var he = document.createElement("div");
+            he.className = "small text-danger fw-semibold dg-mp-hold-badge mt-1";
+            he.textContent = "истёк " + formatHoldUntilShort(r.price_hold_until);
+            myTd.appendChild(he);
           }
 
           tr.appendChild(tdText(r.cms_product_id || r.source_id || "—"));
@@ -2153,10 +2188,15 @@
           });
           return;
         }
+        var wasExpired = isRowPriceHoldExpired(row);
         openMpConfirm({
-          title: "Заморозить цену",
+          title: wasExpired ? "Снова заморозить цену" : "Заморозить цену",
           text:
-            "Заморозить текущую цену на " +
+            (wasExpired
+              ? "Срок прошлой заморозки истёк (" +
+                formatHoldUntilShort(row.price_hold_until) +
+                "). Заморозить снова на "
+              : "Заморозить текущую цену на ") +
             days +
             " дн.? Синк с конкурентов будет пропускать этот товар до даты окончания.",
           meta:
@@ -2165,7 +2205,7 @@
             ". Можно сразу указать другую цену — тогда запишем в CMS сайта.",
           showPrice: true,
           price: row.price,
-          okText: "Заморозить",
+          okText: wasExpired ? "Заморозить снова" : "Заморозить",
           okClass: "btn-warning",
         }).then(function (res) {
           if (!res || !res.ok) return;
