@@ -20,6 +20,10 @@ const {
     parseSiteMsStockStoreUuids,
     serializeSiteMsStockStoreUuids,
 } = require('../lib/msExportStockByStore');
+const {
+    parseSitePriceMarginConfig,
+    serializeSitePriceMarginConfig,
+} = require('../lib/datagonSitePriceMargin');
 
 function maskMySiteRow(row) {
     return maskCmsDbPassFields(row);
@@ -96,11 +100,53 @@ module.exports = (db, settings) => {
         msStockStoresColReady = true;
     }
 
+    let priceMarginColReady = false;
+    async function ensurePriceMarginCol() {
+        if (priceMarginColReady) return;
+        const [rows] = await db.query(`
+            SELECT COUNT(*) AS cnt
+            FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = 'my_sites'
+              AND COLUMN_NAME = 'price_margin_json'
+        `);
+        if (!rows[0]?.cnt) {
+            await db.query(
+                'ALTER TABLE my_sites ADD COLUMN price_margin_json TEXT NULL DEFAULT NULL'
+            );
+        }
+        priceMarginColReady = true;
+    }
+
     function decorateMySiteRow(row) {
         const masked = maskMySiteRow(row);
         const uuids = parseSiteMsStockStoreUuids(masked && masked.ms_stock_store_uuids);
         masked.ms_stock_store_uuids = uuids;
+        const margin = parseSitePriceMarginConfig(masked && masked.price_margin_json);
+        masked.price_margin = margin;
+        masked.price_margin_source = margin.source;
+        masked.price_margin_tiers = margin.tiers;
         return masked;
+    }
+
+    function marginPayloadFromBody(body) {
+        if (!body || typeof body !== 'object') return undefined;
+        if (Object.prototype.hasOwnProperty.call(body, 'price_margin')) {
+            return body.price_margin;
+        }
+        if (Object.prototype.hasOwnProperty.call(body, 'price_margin_json')) {
+            return body.price_margin_json;
+        }
+        if (
+            Object.prototype.hasOwnProperty.call(body, 'price_margin_source') ||
+            Object.prototype.hasOwnProperty.call(body, 'price_margin_tiers')
+        ) {
+            return {
+                source: body.price_margin_source,
+                tiers: body.price_margin_tiers,
+            };
+        }
+        return undefined;
     }
     let sourceEnabledColumnReady = false;
     let sourceIdentityIndexesReady = false;
@@ -315,6 +361,7 @@ module.exports = (db, settings) => {
         try {
             await ensureDbPassCol();
             await ensureMsStockStoresCol();
+            await ensurePriceMarginCol();
             const [rows] = await db.query('SELECT * FROM my_sites ORDER BY id DESC');
             return res.json((rows || []).map(decorateMySiteRow));
         } catch (e) {
@@ -325,8 +372,14 @@ module.exports = (db, settings) => {
     router.post('/', async (req, res) => {
         await ensureDbPassCol();
         await ensureMsStockStoresCol();
+        await ensurePriceMarginCol();
         const { name, domain, cms_type, db_host, db_name, db_user, db_pass, table_products, field_name, field_sku, field_code, field_price, field_currency, field_stock, wa_table_skus, wa_field_sku_val, wa_field_price_val, wa_field_stock_val, ms_stock_store_uuids } = req.body;
         const storedMsStores = serializeSiteMsStockStoreUuids(ms_stock_store_uuids);
+        const storedPriceMargin = serializeSitePriceMarginConfig(
+            marginPayloadFromBody(req.body) !== undefined
+                ? marginPayloadFromBody(req.body)
+                : { source: 'buy_price', tiers: {} }
+        );
         const safeCms = cms_type || 'bitrix';
         const safeWaTable = wa_table_skus || 'shop_product_skus';
         let effectiveTableProducts = table_products;
@@ -368,8 +421,39 @@ module.exports = (db, settings) => {
             await conn.end();
             assertSqlIdent(effectiveTableProducts, 'table_products');
             const storedPass = prepareCmsDbPassForStore(db_pass, '');
-            const [result] = await db.query(`INSERT INTO my_sites (name, domain, cms_type, db_host, db_name, db_user, db_pass, table_products, field_name, field_sku, field_code, field_price, field_currency, field_stock, wa_table_skus, wa_field_sku_val, wa_field_price_val, wa_field_stock_val, ms_stock_store_uuids) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, [name, domain, safeCms, db_host, db_name, db_user, storedPass, effectiveTableProducts, effectiveFieldName, effectiveFieldSku, effectiveFieldCode, effectiveFieldPrice, effectiveFieldCurrency, effectiveFieldStock, safeWaTable, wa_field_sku_val, wa_field_price_val, wa_field_stock_val, storedMsStores]);
-            res.json({ success: true, id: result.insertId, auto_prepared: autoPrepared, ms_stock_store_uuids: parseSiteMsStockStoreUuids(storedMsStores) });
+            const [result] = await db.query(
+                `INSERT INTO my_sites (name, domain, cms_type, db_host, db_name, db_user, db_pass, table_products, field_name, field_sku, field_code, field_price, field_currency, field_stock, wa_table_skus, wa_field_sku_val, wa_field_price_val, wa_field_stock_val, ms_stock_store_uuids, price_margin_json) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+                [
+                    name,
+                    domain,
+                    safeCms,
+                    db_host,
+                    db_name,
+                    db_user,
+                    storedPass,
+                    effectiveTableProducts,
+                    effectiveFieldName,
+                    effectiveFieldSku,
+                    effectiveFieldCode,
+                    effectiveFieldPrice,
+                    effectiveFieldCurrency,
+                    effectiveFieldStock,
+                    safeWaTable,
+                    wa_field_sku_val,
+                    wa_field_price_val,
+                    wa_field_stock_val,
+                    storedMsStores,
+                    storedPriceMargin,
+                ]
+            );
+            const marginOut = parseSitePriceMarginConfig(storedPriceMargin);
+            res.json({
+                success: true,
+                id: result.insertId,
+                auto_prepared: autoPrepared,
+                ms_stock_store_uuids: parseSiteMsStockStoreUuids(storedMsStores),
+                price_margin: marginOut,
+            });
         } catch (e) {
             if (e && (e.code === 'BAD_SQL_IDENT' || e.code === 'CMS_HOST_DENIED')) {
                 return res.status(400).json({ error: e.message, code: e.code });
@@ -381,11 +465,17 @@ module.exports = (db, settings) => {
     router.put('/:id', async (req, res) => {
         await ensureDbPassCol();
         await ensureMsStockStoresCol();
+        await ensurePriceMarginCol();
         const { id } = req.params;
         const { name, domain, cms_type, db_host, db_name, db_user, db_pass, table_products, field_name, field_sku, field_code, field_price, field_currency, field_stock, wa_table_skus, wa_field_sku_val, wa_field_price_val, wa_field_stock_val, ms_stock_store_uuids } = req.body;
         const hasMsStoresKey = Object.prototype.hasOwnProperty.call(req.body || {}, 'ms_stock_store_uuids');
         const storedMsStores = hasMsStoresKey
             ? serializeSiteMsStockStoreUuids(ms_stock_store_uuids)
+            : undefined;
+        const marginIncoming = marginPayloadFromBody(req.body);
+        const hasMarginKey = marginIncoming !== undefined;
+        const storedPriceMargin = hasMarginKey
+            ? serializeSitePriceMarginConfig(marginIncoming)
             : undefined;
         const safeCms = cms_type || 'bitrix';
         const safeWaTable = wa_table_skus || 'shop_product_skus';
@@ -409,11 +499,12 @@ module.exports = (db, settings) => {
                 return res.status(400).json({ error: ve.message || 'Недопустимые имена таблиц/полей', code: 'BAD_SQL_IDENT' });
             }
             const [existingRows] = await db.query(
-                'SELECT db_pass, ms_stock_store_uuids FROM my_sites WHERE id = ? LIMIT 1',
+                'SELECT db_pass, ms_stock_store_uuids, price_margin_json FROM my_sites WHERE id = ? LIMIT 1',
                 [id]
             );
             const existingPass = existingRows[0] ? existingRows[0].db_pass : '';
             const existingMsStores = existingRows[0] ? existingRows[0].ms_stock_store_uuids : null;
+            const existingPriceMargin = existingRows[0] ? existingRows[0].price_margin_json : null;
             const storedPass = prepareCmsDbPassForStore(db_pass, existingPass);
             const conn = await openCmsDbConnection(
                 { db_host, db_user, db_pass: storedPass, db_name },
@@ -435,11 +526,38 @@ module.exports = (db, settings) => {
             await conn.end();
             assertSqlIdent(effectiveTableProducts, 'table_products');
             const msStoresToWrite = hasMsStoresKey ? storedMsStores : existingMsStores;
-            await db.query(`UPDATE my_sites SET name=?, domain=?, cms_type=?, db_host=?, db_name=?, db_user=?, db_pass=?, table_products=?, field_name=?, field_sku=?, field_code=?, field_price=?, field_currency=?, field_stock=?, wa_table_skus=?, wa_field_sku_val=?, wa_field_price_val=?, wa_field_stock_val=?, ms_stock_store_uuids=? WHERE id=?`, [name, domain, safeCms, db_host, db_name, db_user, storedPass, effectiveTableProducts, effectiveFieldName, effectiveFieldSku, effectiveFieldCode, effectiveFieldPrice, effectiveFieldCurrency, effectiveFieldStock, safeWaTable, wa_field_sku_val, wa_field_price_val, wa_field_stock_val, msStoresToWrite, id]);
+            const priceMarginToWrite = hasMarginKey ? storedPriceMargin : existingPriceMargin;
+            await db.query(
+                `UPDATE my_sites SET name=?, domain=?, cms_type=?, db_host=?, db_name=?, db_user=?, db_pass=?, table_products=?, field_name=?, field_sku=?, field_code=?, field_price=?, field_currency=?, field_stock=?, wa_table_skus=?, wa_field_sku_val=?, wa_field_price_val=?, wa_field_stock_val=?, ms_stock_store_uuids=?, price_margin_json=? WHERE id=?`,
+                [
+                    name,
+                    domain,
+                    safeCms,
+                    db_host,
+                    db_name,
+                    db_user,
+                    storedPass,
+                    effectiveTableProducts,
+                    effectiveFieldName,
+                    effectiveFieldSku,
+                    effectiveFieldCode,
+                    effectiveFieldPrice,
+                    effectiveFieldCurrency,
+                    effectiveFieldStock,
+                    safeWaTable,
+                    wa_field_sku_val,
+                    wa_field_price_val,
+                    wa_field_stock_val,
+                    msStoresToWrite,
+                    priceMarginToWrite,
+                    id,
+                ]
+            );
             res.json({
                 success: true,
                 auto_prepared: autoPrepared,
                 ms_stock_store_uuids: parseSiteMsStockStoreUuids(msStoresToWrite),
+                price_margin: parseSitePriceMarginConfig(priceMarginToWrite),
             });
         } catch (e) {
             if (e && (e.code === 'BAD_SQL_IDENT' || e.code === 'CMS_HOST_DENIED')) {

@@ -94,6 +94,39 @@
                       <div id="ms-stock-stores-empty" class="form-text text-muted d-none">Нет складов в выгрузке — нужен полный синк МойСклад (bystore).</div>
                     </div>
                   </div>
+                  <div class="row g-2 mt-3" id="ms-fields-price-margin">
+                    <div class="col-12">
+                      <label class="form-label mb-1">Наценка при экспорте в CMS</label>
+                      <div class="form-text mb-2">
+                        Цена на сайте считается так, чтобы из неё можно было «забрать» указанный % маржи
+                        (закупка 1&nbsp;000 и 20% → 1&nbsp;250, а не 1&nbsp;200). Пустой тир — цену по этому диапазону не трогаем.
+                        Замороженные цены в «Мои товары» не перезаписываются. Применяется в синке
+                        «Наклейки, остатки и цены → Webasyst».
+                      </div>
+                    </div>
+                    <div class="col-md-3">
+                      <label class="form-label" for="ms-price_margin_source">Цену берём</label>
+                      <select class="form-select" id="ms-price_margin_source">
+                        <option value="buy_price" selected>Закупочная</option>
+                      </select>
+                    </div>
+                    <div class="col-md-2">
+                      <label class="form-label" for="ms-margin-lt_1000">до 1&nbsp;000&nbsp;₽, %</label>
+                      <input type="text" class="form-control" id="ms-margin-lt_1000" inputmode="decimal" placeholder="напр. 20" autocomplete="off" />
+                    </div>
+                    <div class="col-md-2">
+                      <label class="form-label" for="ms-margin-from_1000_lt_5000">1&nbsp;000–5&nbsp;000&nbsp;₽, %</label>
+                      <input type="text" class="form-control" id="ms-margin-from_1000_lt_5000" inputmode="decimal" placeholder="%" autocomplete="off" />
+                    </div>
+                    <div class="col-md-2">
+                      <label class="form-label" for="ms-margin-from_5000_lt_50000">5&nbsp;000–50&nbsp;000&nbsp;₽, %</label>
+                      <input type="text" class="form-control" id="ms-margin-from_5000_lt_50000" inputmode="decimal" placeholder="%" autocomplete="off" />
+                    </div>
+                    <div class="col-md-2">
+                      <label class="form-label" for="ms-margin-gte_50000">свыше 50&nbsp;000&nbsp;₽, %</label>
+                      <input type="text" class="form-control" id="ms-margin-gte_50000" inputmode="decimal" placeholder="%" autocomplete="off" />
+                    </div>
+                  </div>
                   <div class="row g-2 mt-1" id="ms-fields-bitrix">
                     <div class="col-md-2">
                       <label class="form-label" for="ms-table_products-bx">Таблица</label>

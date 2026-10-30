@@ -21,7 +21,23 @@
         wa_field_price_val: "price",
         wa_field_stock_val: "count",
         ms_stock_store_uuids: [],
+        price_margin: {
+          source: "buy_price",
+          tiers: {
+            lt_1000: null,
+            from_1000_lt_5000: null,
+            from_5000_lt_50000: null,
+            gte_50000: null,
+          },
+        },
       };
+
+      var MARGIN_TIER_IDS = [
+        ["lt_1000", "ms-margin-lt_1000"],
+        ["from_1000_lt_5000", "ms-margin-from_1000_lt_5000"],
+        ["from_5000_lt_50000", "ms-margin-from_5000_lt_50000"],
+        ["gte_50000", "ms-margin-gte_50000"],
+      ];
 
       var sites = [];
       var statsMap = {};
@@ -188,6 +204,41 @@
           });
       }
 
+      function parseMarginInput(raw) {
+        var s = String(raw == null ? "" : raw).trim().replace(",", ".").replace(/%/g, "");
+        if (!s) return null;
+        var n = Number(s);
+        return Number.isFinite(n) ? n : null;
+      }
+
+      function collectPriceMargin() {
+        var srcEl = document.getElementById("ms-price_margin_source");
+        var tiers = {};
+        for (var i = 0; i < MARGIN_TIER_IDS.length; i++) {
+          var key = MARGIN_TIER_IDS[i][0];
+          var el = document.getElementById(MARGIN_TIER_IDS[i][1]);
+          tiers[key] = el ? parseMarginInput(el.value) : null;
+        }
+        return {
+          source: srcEl && srcEl.value ? srcEl.value : "buy_price",
+          tiers: tiers,
+        };
+      }
+
+      function fillPriceMargin(margin) {
+        var m = margin && typeof margin === "object" ? margin : DEFAULT_FORM.price_margin;
+        var srcEl = document.getElementById("ms-price_margin_source");
+        if (srcEl) srcEl.value = m.source || "buy_price";
+        var tiers = m.tiers || {};
+        for (var i = 0; i < MARGIN_TIER_IDS.length; i++) {
+          var key = MARGIN_TIER_IDS[i][0];
+          var el = document.getElementById(MARGIN_TIER_IDS[i][1]);
+          if (!el) continue;
+          var v = tiers[key];
+          el.value = v == null || v === "" ? "" : String(v).replace(".", ",");
+        }
+      }
+
       function collectBody() {
         var cms = document.getElementById("ms-cms_type").value;
         var o = {
@@ -203,6 +254,7 @@
           wa_field_price_val: document.getElementById("ms-wa_field_price_val").value.trim() || DEFAULT_FORM.wa_field_price_val,
           wa_field_stock_val: document.getElementById("ms-wa_field_stock_val").value.trim() || DEFAULT_FORM.wa_field_stock_val,
           ms_stock_store_uuids: collectSelectedStoreUuids(),
+          price_margin: collectPriceMargin(),
         };
         if (cms === "webasyst") {
           o.table_products = document.getElementById("ms-table_products-wa").value.trim() || DEFAULT_FORM.table_products;
@@ -240,6 +292,7 @@
         document.getElementById("ms-wa_field_price_val").value = DEFAULT_FORM.wa_field_price_val;
         document.getElementById("ms-wa_field_stock_val").value = DEFAULT_FORM.wa_field_stock_val;
         renderMsStoresPicker([]);
+        fillPriceMargin(DEFAULT_FORM.price_margin);
       }
 
       function fillFormFromSite(s) {
@@ -276,6 +329,7 @@
             renderMsStoresPicker(selected);
           });
         }
+        fillPriceMargin(s.price_margin || { source: s.price_margin_source, tiers: s.price_margin_tiers });
       }
 
       function clearFormNew() {

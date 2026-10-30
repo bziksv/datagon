@@ -1066,6 +1066,39 @@
                       <div id="ms-stock-stores-empty" class="form-text text-muted d-none">Нет складов в выгрузке — нужен полный синк МойСклад (bystore).</div>
                     </div>
                   </div>
+                  <div class="row g-2 mt-3" id="ms-fields-price-margin">
+                    <div class="col-12">
+                      <label class="form-label mb-1">Наценка при экспорте в CMS</label>
+                      <div class="form-text mb-2">
+                        Цена на сайте считается так, чтобы из неё можно было «забрать» указанный % маржи
+                        (закупка 1&nbsp;000 и 20% → 1&nbsp;250, а не 1&nbsp;200). Пустой тир — цену по этому диапазону не трогаем.
+                        Замороженные цены в «Мои товары» не перезаписываются. Применяется в синке
+                        «Наклейки, остатки и цены → Webasyst».
+                      </div>
+                    </div>
+                    <div class="col-md-3">
+                      <label class="form-label" for="ms-price_margin_source">Цену берём</label>
+                      <select class="form-select" id="ms-price_margin_source">
+                        <option value="buy_price" selected>Закупочная</option>
+                      </select>
+                    </div>
+                    <div class="col-md-2">
+                      <label class="form-label" for="ms-margin-lt_1000">до 1&nbsp;000&nbsp;₽, %</label>
+                      <input type="text" class="form-control" id="ms-margin-lt_1000" inputmode="decimal" placeholder="напр. 20" autocomplete="off" />
+                    </div>
+                    <div class="col-md-2">
+                      <label class="form-label" for="ms-margin-from_1000_lt_5000">1&nbsp;000–5&nbsp;000&nbsp;₽, %</label>
+                      <input type="text" class="form-control" id="ms-margin-from_1000_lt_5000" inputmode="decimal" placeholder="%" autocomplete="off" />
+                    </div>
+                    <div class="col-md-2">
+                      <label class="form-label" for="ms-margin-from_5000_lt_50000">5&nbsp;000–50&nbsp;000&nbsp;₽, %</label>
+                      <input type="text" class="form-control" id="ms-margin-from_5000_lt_50000" inputmode="decimal" placeholder="%" autocomplete="off" />
+                    </div>
+                    <div class="col-md-2">
+                      <label class="form-label" for="ms-margin-gte_50000">свыше 50&nbsp;000&nbsp;₽, %</label>
+                      <input type="text" class="form-control" id="ms-margin-gte_50000" inputmode="decimal" placeholder="%" autocomplete="off" />
+                    </div>
+                  </div>
                   <div class="row g-2 mt-1" id="ms-fields-bitrix">
                     <div class="col-md-2">
                       <label class="form-label" for="ms-table_products-bx">Таблица</label>
@@ -1388,7 +1421,23 @@
         wa_field_price_val: "price",
         wa_field_stock_val: "count",
         ms_stock_store_uuids: [],
+        price_margin: {
+          source: "buy_price",
+          tiers: {
+            lt_1000: null,
+            from_1000_lt_5000: null,
+            from_5000_lt_50000: null,
+            gte_50000: null,
+          },
+        },
       };
+
+      var MARGIN_TIER_IDS = [
+        ["lt_1000", "ms-margin-lt_1000"],
+        ["from_1000_lt_5000", "ms-margin-from_1000_lt_5000"],
+        ["from_5000_lt_50000", "ms-margin-from_5000_lt_50000"],
+        ["gte_50000", "ms-margin-gte_50000"],
+      ];
 
       var sites = [];
       var statsMap = {};
@@ -1555,6 +1604,41 @@
           });
       }
 
+      function parseMarginInput(raw) {
+        var s = String(raw == null ? "" : raw).trim().replace(",", ".").replace(/%/g, "");
+        if (!s) return null;
+        var n = Number(s);
+        return Number.isFinite(n) ? n : null;
+      }
+
+      function collectPriceMargin() {
+        var srcEl = document.getElementById("ms-price_margin_source");
+        var tiers = {};
+        for (var i = 0; i < MARGIN_TIER_IDS.length; i++) {
+          var key = MARGIN_TIER_IDS[i][0];
+          var el = document.getElementById(MARGIN_TIER_IDS[i][1]);
+          tiers[key] = el ? parseMarginInput(el.value) : null;
+        }
+        return {
+          source: srcEl && srcEl.value ? srcEl.value : "buy_price",
+          tiers: tiers,
+        };
+      }
+
+      function fillPriceMargin(margin) {
+        var m = margin && typeof margin === "object" ? margin : DEFAULT_FORM.price_margin;
+        var srcEl = document.getElementById("ms-price_margin_source");
+        if (srcEl) srcEl.value = m.source || "buy_price";
+        var tiers = m.tiers || {};
+        for (var i = 0; i < MARGIN_TIER_IDS.length; i++) {
+          var key = MARGIN_TIER_IDS[i][0];
+          var el = document.getElementById(MARGIN_TIER_IDS[i][1]);
+          if (!el) continue;
+          var v = tiers[key];
+          el.value = v == null || v === "" ? "" : String(v).replace(".", ",");
+        }
+      }
+
       function collectBody() {
         var cms = document.getElementById("ms-cms_type").value;
         var o = {
@@ -1570,6 +1654,7 @@
           wa_field_price_val: document.getElementById("ms-wa_field_price_val").value.trim() || DEFAULT_FORM.wa_field_price_val,
           wa_field_stock_val: document.getElementById("ms-wa_field_stock_val").value.trim() || DEFAULT_FORM.wa_field_stock_val,
           ms_stock_store_uuids: collectSelectedStoreUuids(),
+          price_margin: collectPriceMargin(),
         };
         if (cms === "webasyst") {
           o.table_products = document.getElementById("ms-table_products-wa").value.trim() || DEFAULT_FORM.table_products;
@@ -1607,6 +1692,7 @@
         document.getElementById("ms-wa_field_price_val").value = DEFAULT_FORM.wa_field_price_val;
         document.getElementById("ms-wa_field_stock_val").value = DEFAULT_FORM.wa_field_stock_val;
         renderMsStoresPicker([]);
+        fillPriceMargin(DEFAULT_FORM.price_margin);
       }
 
       function fillFormFromSite(s) {
@@ -1643,6 +1729,7 @@
             renderMsStoresPicker(selected);
           });
         }
+        fillPriceMargin(s.price_margin || { source: s.price_margin_source, tiers: s.price_margin_tiers });
       }
 
       function clearFormNew() {

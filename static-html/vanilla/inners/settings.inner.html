@@ -666,7 +666,7 @@
                 <strong>Воркер 1</strong> (`parser-app`) — большинство задач (МС, маркеты, Huckster…).
                 <strong>Воркер 2</strong> (`parser-autosync-w2`) — банки / Точка / финансы Ozon·WB / Planfix / Bitcop.
                 <strong>Воркер 3</strong> (`parser-autosync-w3`) — перепарсинг результатов (товары).
-                <strong>Воркер 4</strong> (`parser-autosync-w4`) — наклейки и остатки → Webasyst (`stickers_cms`).
+                <strong>Воркер 4</strong> (`parser-autosync-w4`) — наклейки, остатки и цены → Webasyst (`stickers_cms`).
                 На карточке виден бейдж воркера. Ответ («принято» / ошибка) — на самой карточке. Ход — на
                 <a href="/processes.html">«Логи фоновых процессов»</a>. Кнопка <strong>«Лог»</strong> — журнал
                 <code>auto_sync_runs</code> за день (МСК).
@@ -711,7 +711,7 @@
                       <span class="dg-as-next-badge dg-as-next-badge-dynamic"></span>
                       <span class="dg-as-worker-badge is-w4" title="Отдельный процесс parser-autosync-w4">Воркер 4</span>
                     </div>
-                    <label class="form-label">Наклейки и остатки → Webasyst (МСК)</label>
+                    <label class="form-label">Наклейки, остатки и цены → Webasyst (МСК)</label>
                     <div class="d-flex gap-2 align-items-center flex-wrap">
                       <input type="checkbox" id="dg-set-auto_stickers_cms_en" />
                       <span>Включить</span>
@@ -735,15 +735,15 @@
                       </div>
                     </div>
                     <p class="small text-muted mb-0 mt-1">
-                      Галки Datagon → Features <code>dg_sticker_*</code>; общий остаток МойСклад
-                      (<code>ms_export.stock</code>, не по складам) → поле остатка SKU на Webasyst
-                      (<code>count</code> / настройка сайта). Без связи с МС остаток CMS не трогаем.
-                      По умолчанию <strong>03:00</strong> МСК. <strong>Воркер 4</strong>
-                      (<code>parser-autosync-w4</code>). Не ждать ночи —
-                      <code>POST /api/hooks/stickers-cms-sync?token=…</code>
-                      (или заголовок <code>X-Datagon-Hook-Token</code>). После смены галки на
-                      <a href="/my-products.html">«Мои товары»</a> — точечный догон карточки (наклейки + остаток).
-                      Расписание — кнопкой «Сохранить расписание автосинхронизации» ниже.
+                      Features <code>dg_sticker_*</code>; остаток МС → SKU (<code>count</code>): общий
+                      <code>ms_export.stock</code> или сумма складов сайта (<code>ms_stock_store_uuids</code>).
+                      Если на <a href="/my-sites.html">«Мои сайты»</a> заданы % маржи по тирам закупочной —
+                      в тот же прогон пишется цена SKU: <code>sale = buy / (1 − %)</code> (не простой +%).
+                      Заморозка цены в «Мои товары» не перезаписывается. Без связи с МС остаток/цену CMS не трогаем.
+                      По умолчанию <strong>03:00</strong> МСК, <strong>воркер 4</strong>
+                      (<code>parser-autosync-w4</code>). Webhook:
+                      <code>POST /api/hooks/stickers-cms-sync?token=…</code>.
+                      Расписание — «Сохранить расписание автосинхронизации» ниже.
                     </p>
                   </div>
                 </div>
