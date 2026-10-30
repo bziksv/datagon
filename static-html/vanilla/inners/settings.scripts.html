@@ -1164,6 +1164,176 @@
         });
       }
 
+      var stickersSitesCatalog = [];
+      var stickersSitesCatalogLoaded = false;
+      var stickersSitesPendingValue = "all";
+
+      function parseStickersCmsSiteRaw(raw) {
+        var s = String(raw == null ? "all" : raw).trim().toLowerCase();
+        if (!s || s === "all" || s === "*") return { all: true, ids: [] };
+        var ids = s
+          .split(/[,;\s]+/)
+          .map(function (p) {
+            return Number(String(p).trim());
+          })
+          .filter(function (n) {
+            return Number.isFinite(n) && n > 0;
+          });
+        var uniq = [];
+        ids.forEach(function (n) {
+          if (uniq.indexOf(n) < 0) uniq.push(n);
+        });
+        return { all: !uniq.length, ids: uniq };
+      }
+
+      function syncStickersCmsSiteHidden() {
+        var hid = document.getElementById("dg-set-auto_stickers_cms_site");
+        if (hid) hid.value = collectStickersCmsSiteSelection();
+      }
+
+      function collectStickersCmsSiteSelection() {
+        var allCb = document.getElementById("dg-set-stickers-site-all");
+        if (allCb && allCb.checked) return "all";
+        var box = document.getElementById("dg-set-auto_stickers_cms_sites-box");
+        if (!box) return "all";
+        var ids = [];
+        var nodes = box.querySelectorAll('input[type="checkbox"][data-site-id]');
+        for (var i = 0; i < nodes.length; i++) {
+          if (nodes[i].checked) {
+            var id = Number(nodes[i].getAttribute("data-site-id"));
+            if (Number.isFinite(id) && id > 0) ids.push(id);
+          }
+        }
+        if (!ids.length) return "all";
+        if (nodes.length && ids.length === nodes.length) return "all";
+        return ids.join(",");
+      }
+
+      function renderStickersCmsSitesPicker(rawValue) {
+        var box = document.getElementById("dg-set-auto_stickers_cms_sites-box");
+        var empty = document.getElementById("dg-set-auto_stickers_cms_sites-empty");
+        if (!box) return;
+        var parsed = parseStickersCmsSiteRaw(rawValue != null ? rawValue : stickersSitesPendingValue);
+        stickersSitesPendingValue = parsed.all ? "all" : parsed.ids.join(",");
+        box.innerHTML = "";
+        if (!stickersSitesCatalog.length) {
+          if (empty) empty.classList.remove("d-none");
+          var hidEmpty = document.getElementById("dg-set-auto_stickers_cms_site");
+          if (hidEmpty) hidEmpty.value = "all";
+          return;
+        }
+        if (empty) empty.classList.add("d-none");
+
+        var allWrap = document.createElement("div");
+        allWrap.className = "form-check";
+        var allId = "dg-set-stickers-site-all";
+        var allCb = document.createElement("input");
+        allCb.type = "checkbox";
+        allCb.className = "form-check-input";
+        allCb.id = allId;
+        allCb.checked = !!parsed.all;
+        var allLab = document.createElement("label");
+        allLab.className = "form-check-label fw-semibold";
+        allLab.htmlFor = allId;
+        allLab.textContent = "Все сайты Webasyst";
+        allWrap.appendChild(allCb);
+        allWrap.appendChild(allLab);
+        box.appendChild(allWrap);
+
+        stickersSitesCatalog.forEach(function (site) {
+          var sid = Number(site.id);
+          var wrap = document.createElement("div");
+          wrap.className = "form-check";
+          var cid = "dg-set-stickers-site-" + sid;
+          var cb = document.createElement("input");
+          cb.type = "checkbox";
+          cb.className = "form-check-input";
+          cb.id = cid;
+          cb.setAttribute("data-site-id", String(sid));
+          cb.checked = parsed.all || parsed.ids.indexOf(sid) >= 0;
+          var lab = document.createElement("label");
+          lab.className = "form-check-label";
+          lab.htmlFor = cid;
+          lab.textContent =
+            (site.name || "сайт") +
+            (site.domain ? " · " + site.domain : "") +
+            " (id " +
+            sid +
+            ")";
+          wrap.appendChild(cb);
+          wrap.appendChild(lab);
+          box.appendChild(wrap);
+        });
+
+        function refreshAllFlag() {
+          var nodes = box.querySelectorAll('input[type="checkbox"][data-site-id]');
+          var checked = 0;
+          for (var i = 0; i < nodes.length; i++) if (nodes[i].checked) checked += 1;
+          var allEl = document.getElementById("dg-set-stickers-site-all");
+          if (allEl) allEl.checked = nodes.length > 0 && checked === nodes.length;
+          syncStickersCmsSiteHidden();
+        }
+
+        allCb.addEventListener("change", function () {
+          var on = !!allCb.checked;
+          var nodes = box.querySelectorAll('input[type="checkbox"][data-site-id]');
+          for (var i = 0; i < nodes.length; i++) nodes[i].checked = on;
+          syncStickersCmsSiteHidden();
+        });
+        box.querySelectorAll('input[type="checkbox"][data-site-id]').forEach(function (cb) {
+          cb.addEventListener("change", refreshAllFlag);
+        });
+        refreshAllFlag();
+      }
+
+      function applyStickersCmsSiteSelection(raw) {
+        stickersSitesPendingValue = String(raw == null || raw === "" ? "all" : raw);
+        var hid = document.getElementById("dg-set-auto_stickers_cms_site");
+        if (hid) hid.value = stickersSitesPendingValue;
+        if (stickersSitesCatalogLoaded) {
+          renderStickersCmsSitesPicker(stickersSitesPendingValue);
+        } else {
+          loadStickersSitesCatalog().then(function () {
+            renderStickersCmsSitesPicker(stickersSitesPendingValue);
+          });
+        }
+      }
+
+      function loadStickersSitesCatalog() {
+        return fetch("/api/my-sites", { credentials: "same-origin" })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { ok: r.ok, j: j };
+            });
+          })
+          .then(function (res) {
+            var rows = Array.isArray(res.j) ? res.j : res.j && Array.isArray(res.j.sites) ? res.j.sites : [];
+            stickersSitesCatalog = rows
+              .filter(function (s) {
+                return String((s && s.cms_type) || "")
+                  .trim()
+                  .toLowerCase() === "webasyst";
+              })
+              .map(function (s) {
+                return {
+                  id: Number(s.id),
+                  name: String(s.name || "").trim(),
+                  domain: String(s.domain || "").trim(),
+                };
+              })
+              .filter(function (s) {
+                return Number.isFinite(s.id) && s.id > 0;
+              });
+            stickersSitesCatalogLoaded = true;
+            return stickersSitesCatalog;
+          })
+          .catch(function () {
+            stickersSitesCatalog = [];
+            stickersSitesCatalogLoaded = true;
+            return stickersSitesCatalog;
+          });
+      }
+
       function applySettingsToForm(s) {
         var merged = {};
         Object.keys(defaults).forEach(function (k) {
@@ -1198,7 +1368,7 @@
         var stickersEn = document.getElementById("dg-set-auto_stickers_cms_en");
         if (stickersEn) stickersEn.checked = Number(merged.auto_sync_stickers_cms_enabled) === 1;
         set("dg-set-auto_stickers_cms_time", merged.auto_sync_stickers_cms_time || "03:00");
-        set("dg-set-auto_stickers_cms_site", merged.auto_sync_stickers_cms_site_id || "all");
+        applyStickersCmsSiteSelection(merged.auto_sync_stickers_cms_site_id || "all");
         set("dg-set-stickers_cms_webhook_token", merged.stickers_cms_webhook_token || "");
         var priceCompEn = document.getElementById("dg-set-auto_price_comp_en");
         if (priceCompEn) priceCompEn.checked = Number(merged.auto_sync_price_comp_enabled) === 1;
@@ -2576,7 +2746,7 @@
           auto_sync_myproducts_time: getStr("dg-set-auto_my_time") || "03:00",
           auto_sync_stickers_cms_enabled: !!(document.getElementById("dg-set-auto_stickers_cms_en") && document.getElementById("dg-set-auto_stickers_cms_en").checked),
           auto_sync_stickers_cms_time: getStr("dg-set-auto_stickers_cms_time") || "03:00",
-          auto_sync_stickers_cms_site_id: getStr("dg-set-auto_stickers_cms_site") || "all",
+          auto_sync_stickers_cms_site_id: collectStickersCmsSiteSelection(),
           stickers_cms_webhook_token: getStr("dg-set-stickers_cms_webhook_token") || "",
           auto_sync_price_comp_enabled: document.getElementById("dg-set-auto_price_comp_en")
             ? document.getElementById("dg-set-auto_price_comp_en").checked

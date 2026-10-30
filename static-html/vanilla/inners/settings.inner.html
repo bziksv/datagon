@@ -721,12 +721,20 @@
                       </button>
                       <button type="button" class="btn btn-outline-secondary btn-sm dg-set-as-log-btn" data-dg-notify-start="Открываем журнал запусков…" data-dg-tooltip="Журнал запусков этой задачи за выбранный день (МСК)">Лог</button>
                     </div>
-                    <div class="row g-2 mt-2 align-items-end">
-                      <div class="col-md-4">
-                        <label class="form-label small mb-0" for="dg-set-auto_stickers_cms_site">Сайт (my_sites)</label>
-                        <input type="text" class="form-control form-control-sm" id="dg-set-auto_stickers_cms_site" placeholder="all или id" />
+                    <div class="row g-2 mt-2">
+                      <div class="col-md-5">
+                        <label class="form-label small mb-1" for="dg-set-auto_stickers_cms_sites-box">Сайты Webasyst</label>
+                        <div class="form-text mb-1">Галочки — в какие CMS писать. «Все» = все Webasyst из «Мои сайты».</div>
+                        <input type="hidden" id="dg-set-auto_stickers_cms_site" value="all" />
+                        <div
+                          id="dg-set-auto_stickers_cms_sites-box"
+                          class="dg-set-stickers-sites-box border rounded px-2 py-2 bg-white"
+                          role="group"
+                          aria-label="Сайты для выгрузки наклеек"
+                        ></div>
+                        <div id="dg-set-auto_stickers_cms_sites-empty" class="form-text text-muted d-none">Нет сайтов Webasyst — добавьте в «Мои сайты».</div>
                       </div>
-                      <div class="col-md-8">
+                      <div class="col-md-7">
                         <label class="form-label small mb-0" for="dg-set-stickers_cms_webhook_token">Webhook token</label>
                         <div class="input-group input-group-sm">
                           <input type="text" class="form-control font-monospace" id="dg-set-stickers_cms_webhook_token" autocomplete="off" spellcheck="false" placeholder="токен для POST /api/hooks/stickers-cms-sync" />
