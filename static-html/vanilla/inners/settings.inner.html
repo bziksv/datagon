@@ -746,8 +746,9 @@
                       Features <code>dg_sticker_*</code>; остаток МС → SKU (<code>count</code>): общий
                       <code>ms_export.stock</code> или сумма складов сайта (<code>ms_stock_store_uuids</code>).
                       Если на <a href="/my-sites.html">«Мои сайты»</a> заданы % маржи по тирам закупочной —
-                      в тот же прогон пишется цена SKU: <code>sale = buy / (1 − %)</code> (не простой +%).
-                      Заморозка цены в «Мои товары» не перезаписывается. Без связи с МС остаток/цену CMS не трогаем.
+                      в тот же прогон пишется цена SKU: <code>sale = buy / (1 − %)</code> (не простой +%),
+                      <strong>только при остатке &gt; 0</strong>. Заморозка цены не перезаписывается.
+                      Без связи с МС остаток/цену CMS не трогаем.
                       По умолчанию <strong>03:00</strong> МСК, <strong>воркер 4</strong>
                       (<code>parser-autosync-w4</code>). Webhook:
                       <code>POST /api/hooks/stickers-cms-sync?token=…</code>.
