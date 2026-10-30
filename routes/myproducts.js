@@ -29,6 +29,10 @@ const {
     isOwnMsStockBlockingCompetitor,
     applySiteWarehouseStockBySiteId,
 } = require('../lib/datagonMyProductOwnStockPriceGuard');
+const {
+    listBuyVsCompetitorAlerts,
+    rebuildBuyVsCompetitorAlerts,
+} = require('../lib/datagonMyProductBuyVsCompetitor');
 let myProductsPerfReady = false;
 let myProductsSyncAuditReady = false;
 let myProductsPriceHoldReady = false;
@@ -2636,6 +2640,53 @@ function myProductsRouterFactory(db, settings) {
             }
             console.error('Error set-sticker:', e);
             return res.status(500).json({ error: e.message });
+        }
+    });
+
+    /**
+     * Снапшот «закупка МС > мин. ДМ/МК >1%» (мгновенно из БД).
+     * Пересчёт — после stickers_cms или POST …/refresh.
+     */
+    router.get('/buy-vs-competitor-alerts', async (req, res) => {
+        try {
+            const out = await listBuyVsCompetitorAlerts(db, {
+                siteId: req.query.site_id,
+                limit: req.query.limit,
+            });
+            return res.json(out);
+        } catch (e) {
+            console.error('Error buy-vs-competitor-alerts:', e);
+            return res.status(500).json({ success: false, error: e.message });
+        }
+    });
+
+    router.post('/buy-vs-competitor-alerts/refresh', async (req, res) => {
+        const t0 = Date.now();
+        try {
+            const body = req.body || {};
+            const siteId =
+                body.site_id != null
+                    ? body.site_id
+                    : req.query.site_id != null
+                      ? req.query.site_id
+                      : 'all';
+            const rebuild = await rebuildBuyVsCompetitorAlerts(db, {
+                siteId,
+                source: 'ui_refresh',
+            });
+            const out = await listBuyVsCompetitorAlerts(db, {
+                siteId,
+                limit: body.limit || req.query.limit || 200,
+            });
+            return res.json({
+                ...out,
+                rebuilt: true,
+                rebuild_duration_sec: rebuild.duration_sec,
+                duration_sec: Number(((Date.now() - t0) / 1000).toFixed(2)),
+            });
+        } catch (e) {
+            console.error('Error buy-vs-competitor-alerts refresh:', e);
+            return res.status(500).json({ success: false, error: e.message });
         }
     });
 

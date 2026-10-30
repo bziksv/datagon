@@ -177,10 +177,12 @@
     #mp-main-table .mp-resize-handle {
       pointer-events: auto;
     }
-    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-confirm-overlay {
+    /* Выше match (1090) и карточки МС (12000): «Разорвать» из алертов не уходит под «Сопоставление» */
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-confirm-overlay,
+    .dg-mp-confirm-overlay {
       position: fixed;
       inset: 0;
-      z-index: 1090;
+      z-index: 13000;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -348,6 +350,394 @@
     body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-log-new {
       color: #146c43;
       font-weight: 500;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-bvc-icon {
+      width: 2rem;
+      height: 2rem;
+      border-radius: 50%;
+      background: #dc3545;
+      color: #fff;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+      box-shadow: 0 1px 0 rgba(255, 255, 255, 0.25) inset, 0 4px 12px rgba(220, 53, 69, 0.28);
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] #mp-buy-vs-comp-card.border-danger {
+      border-width: 1px !important;
+      border-color: #f1aeb5 !important;
+      background: linear-gradient(180deg, #fff8f8 0%, #fff 48%);
+      box-shadow: 0 8px 24px rgba(176, 42, 55, 0.08);
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] #mp-buy-vs-comp-card.dg-mp-bvc-card-stale {
+      border-color: #ffc107 !important;
+      background: linear-gradient(180deg, #fff9e6 0%, #fff 48%);
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-bvc-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 1080;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1.25rem;
+      animation: dg-mp-bvc-fade 0.18s ease-out;
+    }
+    @keyframes dg-mp-bvc-fade {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-bvc-backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.55);
+      backdrop-filter: blur(2px);
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-bvc-panel {
+      position: relative;
+      z-index: 1;
+      width: min(1180px, 100%);
+      max-height: min(86vh, 820px);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      border-radius: 0.65rem;
+      box-shadow: 0 18px 48px rgba(15, 23, 42, 0.28), 0 2px 8px rgba(15, 23, 42, 0.12);
+      animation: dg-mp-bvc-rise 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    @keyframes dg-mp-bvc-rise {
+      from { opacity: 0; transform: translateY(10px) scale(0.985); }
+      to { opacity: 1; transform: none; }
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-bvc-header {
+      background: linear-gradient(135deg, #c82333 0%, #dc3545 48%, #e35d6a 100%);
+      color: #fff;
+      padding: 0.85rem 1rem;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-bvc-header-icon {
+      width: 2.25rem;
+      height: 2.25rem;
+      border-radius: 0.55rem;
+      background: rgba(255, 255, 255, 0.18);
+      border: 1px solid rgba(255, 255, 255, 0.28);
+      color: #fff;
+      font-weight: 700;
+      font-size: 1.05rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-bvc-header-title {
+      font-weight: 650;
+      letter-spacing: 0.01em;
+      line-height: 1.25;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-bvc-header-sub {
+      font-size: 0.78rem;
+      opacity: 0.88;
+      margin-top: 0.15rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-bvc-body {
+      max-height: min(66vh, 620px);
+      overflow: auto;
+      background: #fff;
+      scrollbar-color: #f1aeb5 transparent;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-bvc-body table {
+      margin: 0;
+      font-size: 0.84rem;
+      width: 100%;
+      table-layout: fixed;
+      border-collapse: collapse;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-bvc-body thead th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      background: #fff5f5;
+      color: #842029;
+      font-size: 0.7rem;
+      font-weight: 650;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      border-bottom: 1px solid #f1aeb5;
+      padding: 0.5rem 0.55rem;
+      white-space: nowrap;
+      vertical-align: bottom;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-bvc-body tbody td {
+      padding: 0.45rem 0.55rem;
+      vertical-align: middle;
+      border-bottom: 1px solid #f3f5f8;
+      /* важно: не ставить display:flex на td — ломает колонки thead/tbody */
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-bvc-body tbody tr:hover td {
+      background: #fff8f8;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-bvc-col-site { width: 7%; }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-bvc-col-sku { width: 11%; }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-bvc-col-name { width: 20%; }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-bvc-col-match { width: 11%; }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-bvc-col-ms { width: 7%; }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-bvc-col-buy { width: 8%; }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-bvc-col-comp { width: 11%; }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-bvc-col-delta { width: 9%; }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-bvc-col-stock { width: 7%; }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-bvc-ms-btn {
+      font-size: 0.75rem;
+      font-weight: 650;
+      padding: 0.15rem 0.45rem;
+      line-height: 1.2;
+      white-space: nowrap;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-bvc-num {
+      font-variant-numeric: tabular-nums;
+      font-feature-settings: "tnum" 1;
+      white-space: nowrap;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-buy-vs-comp-over {
+      display: inline-block;
+      color: #842029;
+      background: #f8d7da;
+      border: 1px solid #f1aeb5;
+      border-radius: 999px;
+      font-weight: 650;
+      font-size: 0.76rem;
+      padding: 0.1rem 0.5rem;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-bvc-comp-cell {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 0.15rem;
+      line-height: 1.2;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-bvc-comp-chip {
+      display: inline-block;
+      padding: 0.05rem 0.4rem;
+      border-radius: 0.3rem;
+      background: #eef2ff;
+      color: #3b5bdb;
+      font-size: 0.7rem;
+      font-weight: 650;
+      text-decoration: none !important;
+      line-height: 1.35;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] a.dg-mp-bvc-comp-chip:hover {
+      background: #dbe4ff;
+      color: #364fc7;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-bvc-comp-chip.is-muted {
+      background: #f1f3f5;
+      color: #868e96;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-bvc-inline {
+      display: flex;
+      align-items: center;
+      gap: 0.2rem;
+      min-width: 0;
+      width: 100%;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-bvc-inline > .dg-mp-bvc-name-text,
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-bvc-inline > .dg-mp-bvc-sku-link {
+      min-width: 0;
+      flex: 1 1 auto;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-bvc-copy {
+      flex: 0 0 auto;
+      width: 1.4rem;
+      height: 1.4rem;
+      padding: 0 !important;
+      margin: 0 !important;
+      border-radius: 0.3rem;
+      line-height: 1;
+      color: #868e96;
+      text-decoration: none !important;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0.7;
+      transition: opacity 0.12s ease, background 0.12s ease, color 0.12s ease;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] tr:hover .dg-mp-bvc-copy,
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-bvc-copy:focus {
+      opacity: 1;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-bvc-copy:hover {
+      color: #c82333;
+      background: #fff5f5;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-bvc-copy i {
+      font-size: 0.9rem;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-bvc-sku-link {
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      text-decoration: none;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-bvc-sku-link:hover {
+      text-decoration: underline;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-bvc-match-btn {
+      white-space: nowrap;
+      max-width: 100%;
+      font-size: 0.75rem;
+      padding: 0.15rem 0.45rem;
+      line-height: 1.3;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-bvc-header .btn-outline-light {
+      border-color: rgba(255, 255, 255, 0.65);
+      color: #fff;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-bvc-header .btn-outline-light:hover {
+      background: rgba(255, 255, 255, 0.15);
+      border-color: #fff;
+      color: #fff;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-bvc-match-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 1090;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1.25rem;
+      animation: dg-mp-bvc-fade 0.16s ease-out;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-bvc-match-backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.45);
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-bvc-match-panel {
+      position: relative;
+      z-index: 1;
+      width: min(560px, 100%);
+      max-height: min(80vh, 720px);
+      overflow: auto;
+      border-radius: 0.65rem;
+      box-shadow: 0 18px 48px rgba(15, 23, 42, 0.32);
+      animation: dg-mp-bvc-rise 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-bvc-match-header {
+      background: linear-gradient(135deg, #343a40 0%, #495057 100%);
+      color: #fff;
+      padding: 0.75rem 1rem;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-bvc-match-side {
+      border: 1px solid #e9ecef;
+      border-radius: 0.5rem;
+      padding: 0.75rem;
+      background: #f8f9fa;
+      min-width: 0;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-bvc-match-side-label {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: #868e96;
+      font-weight: 650;
+      margin-bottom: 0.35rem;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-bvc-match-kv {
+      font-size: 0.84rem;
+      margin-bottom: 0.25rem;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-bvc-match-kv strong {
+      font-weight: 650;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-bvc-pack-box {
+      border: 1px solid #dee2e6;
+      border-radius: 0.5rem;
+      padding: 0.75rem;
+      background: #fff;
+    }
+    /* Карточка МС (как /moysklad.html) — оверлей монтируется на body */
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-ms-detail-overlay,
+    .dg-ms-detail-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 12000;
+      background: rgba(15, 23, 42, 0.45);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0.75rem;
+      box-sizing: border-box;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-ms-detail-panel,
+    .dg-ms-detail-overlay .dg-ms-detail-panel {
+      width: 100%;
+      max-width: 920px;
+      max-height: 92vh;
+      overflow: hidden;
+      min-width: 0;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-ms-detail-panel > .card-header.dg-ms-detail-hdr,
+    .dg-ms-detail-overlay .dg-ms-detail-panel > .card-header.dg-ms-detail-hdr {
+      display: grid !important;
+      grid-template-columns: minmax(0, 1fr) auto;
+      column-gap: 0.75rem;
+      align-items: center;
+      min-width: 0;
+      overflow: hidden;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-ms-detail-hdr-title,
+    .dg-ms-detail-overlay .dg-ms-detail-hdr-title {
+      margin: 0;
+      min-width: 0;
+      max-width: 100%;
+      overflow: hidden !important;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-weight: 600;
+      line-height: 1.3;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-ms-detail-hdr-actions,
+    .dg-ms-detail-overlay .dg-ms-detail-hdr-actions {
+      display: flex;
+      flex-wrap: nowrap;
+      align-items: center;
+      gap: 0.5rem;
+      flex-shrink: 0;
+      z-index: 1;
+      position: relative;
+      background: inherit;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-ms-detail-kv,
+    .dg-ms-detail-overlay .dg-ms-detail-kv {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8rem;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-ms-detail-kv th,
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-ms-detail-kv td,
+    .dg-ms-detail-overlay .dg-ms-detail-kv th,
+    .dg-ms-detail-overlay .dg-ms-detail-kv td {
+      border: 1px solid #e6e9ee;
+      padding: 0.35rem 0.5rem;
+      vertical-align: top;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-ms-detail-kv th,
+    .dg-ms-detail-overlay .dg-ms-detail-kv th {
+      width: 32%;
+      background: #f8fafc;
+      font-weight: 600;
+      color: #334155;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-ms-detail-kv td a,
+    .dg-ms-detail-overlay .dg-ms-detail-kv td a {
+      word-break: break-all;
     }
   </style>
 
@@ -1662,6 +2052,29 @@
 
           <p class="text-danger small mb-3" id="dg-status" style="display:none" role="alert"></p>
 
+          <div id="mp-buy-vs-comp-card" class="card border-danger mb-3 d-none" role="region" aria-labelledby="mp-buy-vs-comp-card-title">
+            <div class="card-body py-3">
+              <div class="d-flex flex-wrap align-items-start justify-content-between gap-3">
+                <div class="d-flex align-items-start gap-3" style="min-width:0">
+                  <div class="dg-mp-bvc-icon flex-shrink-0" aria-hidden="true">!</div>
+                  <div style="min-width:0">
+                    <div class="fw-semibold text-danger" id="mp-buy-vs-comp-card-title">
+                      Критично: закупка выше конкурента
+                      <span class="badge bg-danger ms-1" id="mp-buy-vs-comp-badge">0</span>
+                    </div>
+                    <div class="small text-muted mb-0" id="mp-buy-vs-comp-card-meta">
+                      Закупка МС &gt; мин. ДМ/МК более чем на 1%, только с остатком. Считается после синка «Наклейки → Webasyst» или по «Обновить».
+                    </div>
+                  </div>
+                </div>
+                <div class="d-flex flex-wrap gap-2 flex-shrink-0">
+                  <button type="button" class="btn btn-sm btn-danger" id="mp-btn-buy-vs-comp" data-dg-notify-start="Открываем список…">Открыть список</button>
+                  <button type="button" class="btn btn-sm btn-outline-danger" id="mp-btn-buy-vs-comp-refresh" data-dg-notify-start="Пересчитываем алерты…" data-dg-activity-label="Пересчёт закупка &gt; конкурента">Обновить</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div class="main-card mb-3 card">
             <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
               <div class="d-flex align-items-center gap-3 flex-grow-1" style="min-width: 0">
@@ -1783,6 +2196,64 @@
                 <div class="dg-mp-log-body" id="dg-mp-log-body">
                   <div class="text-muted small text-center py-4">Загрузка журнала…</div>
                 </div>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-mp-buy-vs-comp-overlay" class="dg-mp-bvc-overlay" style="display: none" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="dg-mp-buy-vs-comp-title">
+            <div class="dg-mp-bvc-backdrop" data-mp-buy-vs-comp-dismiss="1"></div>
+            <div class="dg-mp-bvc-panel card border-0">
+              <div class="dg-mp-bvc-header d-flex align-items-center justify-content-between gap-3">
+                <div class="d-flex align-items-center gap-3" style="min-width: 0">
+                  <div class="dg-mp-bvc-header-icon" aria-hidden="true">!</div>
+                  <div style="min-width: 0">
+                    <div class="dg-mp-bvc-header-title" id="dg-mp-buy-vs-comp-title">Критично: закупка выше конкурента</div>
+                    <div class="dg-mp-bvc-header-sub" id="dg-mp-buy-vs-comp-subtitle">Снапшот после синка «Наклейки → Webasyst»</div>
+                  </div>
+                </div>
+                <div class="d-flex align-items-center gap-2 flex-shrink-0">
+                  <button type="button" class="btn btn-sm btn-light" id="dg-mp-buy-vs-comp-refresh" data-dg-notify-start="Пересчитываем алерты…">Обновить</button>
+                  <button type="button" class="btn btn-sm btn-outline-light" id="dg-mp-buy-vs-comp-close" data-mp-buy-vs-comp-dismiss="1">Закрыть</button>
+                </div>
+              </div>
+              <div class="card-body p-0">
+                <div class="dg-mp-bvc-body" id="dg-mp-buy-vs-comp-body">
+                  <div class="text-muted small text-center py-4">Нет данных снапшота — нажмите «Обновить».</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-mp-bvc-match-overlay" class="dg-mp-bvc-match-overlay" style="display: none" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="dg-mp-bvc-match-title">
+            <div class="dg-mp-bvc-match-backdrop" data-mp-bvc-match-dismiss="1"></div>
+            <div class="dg-mp-bvc-match-panel card border-0">
+              <div class="dg-mp-bvc-match-header d-flex align-items-center justify-content-between gap-2">
+                <div style="min-width:0">
+                  <div class="fw-semibold" id="dg-mp-bvc-match-title">Сопоставление</div>
+                  <div class="small opacity-75" id="dg-mp-bvc-match-subtitle">Связь с конкурентом и упаковка</div>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-light" id="dg-mp-bvc-match-close" data-mp-bvc-match-dismiss="1">Закрыть</button>
+              </div>
+              <div class="card-body" id="dg-mp-bvc-match-body">
+                <div class="text-muted small text-center py-3">Выберите строку в списке алертов.</div>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-mp-bvc-ms-detail-overlay" class="dg-ms-detail-overlay" style="display: none" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="dg-mp-bvc-ms-detail-title">
+            <div class="dg-ms-detail-panel card shadow-lg border-0">
+              <div class="card-header dg-ms-detail-hdr">
+                <div id="dg-mp-bvc-ms-detail-title" class="dg-ms-detail-hdr-title">Карточка МойСклад</div>
+                <div class="dg-ms-detail-hdr-actions">
+                  <a class="btn btn-sm btn-outline-primary d-none text-nowrap" id="dg-mp-bvc-ms-detail-open-ms" href="#" target="_blank" rel="noopener noreferrer">Открыть в МойСклад</a>
+                  <button type="button" class="btn btn-sm btn-outline-secondary text-nowrap" id="dg-mp-bvc-ms-detail-close" aria-label="Закрыть">Закрыть</button>
+                </div>
+              </div>
+              <div class="card-body" style="max-height: min(78vh, 720px); overflow-y: auto">
+                <p class="text-muted small mb-2">
+                  Данные из МойСклад (полная карточка). Если записи нет в базе или она устарела, сервер запрашивает API и сохраняет ответ.
+                </p>
+                <div id="dg-mp-bvc-ms-detail-body" class="small"></div>
               </div>
             </div>
           </div>
@@ -4358,6 +4829,9 @@
           setMyProductsListBusy(false);
           refreshMyProductsHeavyButtons();
           applyTableFilterAndRender();
+          try {
+            loadBuyVsCompSnapshot();
+          } catch (eBvc) {}
           if (loadQueued) {
             loadQueued = false;
             load();
@@ -4442,10 +4916,19 @@
         mpConfirmState = null;
       }
 
+      function mountMpConfirmOverlayToBody() {
+        var ov = document.getElementById("dg-mp-confirm-overlay");
+        if (!ov) return null;
+        if (ov.parentNode !== document.body) {
+          document.body.appendChild(ov);
+        }
+        return ov;
+      }
+
       function openMpConfirm(opts) {
         var o = opts || {};
         mpConfirmState = o;
-        var ov = document.getElementById("dg-mp-confirm-overlay");
+        var ov = mountMpConfirmOverlayToBody();
         var title = document.getElementById("dg-mp-confirm-title");
         var text = document.getElementById("dg-mp-confirm-text");
         var meta = document.getElementById("dg-mp-confirm-meta");
@@ -5580,6 +6063,1099 @@
         });
       })();
 
+      var buyVsCompState = {
+        loading: false,
+        refreshing: false,
+        stale: false,
+        items: [],
+        total: 0,
+        truncated: false,
+        threshold_pct: 1,
+        duration_sec: null,
+        rebuilt_at: null,
+        source: null,
+        error: "",
+      };
+
+      function buyVsCompSiteLabel(siteId) {
+        var key = String(siteId);
+        if (siteNameById && siteNameById[key]) return siteNameById[key];
+        return "#" + key;
+      }
+
+      function buyVsCompSourceLabel(src) {
+        var s = String(src || "").toLowerCase();
+        if (s === "dealmed") return "ДМ";
+        if (s === "medkompleks") return "МК";
+        return src || "—";
+      }
+
+      function buyVsCompCopyBtnHtml(text, label) {
+        var t = String(text || "").trim();
+        if (!t) return "";
+        return (
+          '<button type="button" class="btn btn-link btn-sm p-0 ms-1 align-baseline dg-mp-bvc-copy" data-mp-bvc-copy="' +
+          encodeURIComponent(t) +
+          '" title="Копировать ' +
+          String(label || "") +
+          '" aria-label="Копировать ' +
+          String(label || "") +
+          '" data-dg-no-activity="1"><i class="pe-7s-copy-file" aria-hidden="true"></i></button>'
+        );
+      }
+
+      function copyBuyVsCompText(raw) {
+        var text = String(raw || "");
+        if (!text) return;
+        var done = function () {
+          if (window.DatagonNotify && window.DatagonNotify.toast) {
+            window.DatagonNotify.toast({ type: "success", message: "Скопировано" });
+          }
+        };
+        var fail = function () {
+          if (window.DatagonNotify && window.DatagonNotify.toast) {
+            window.DatagonNotify.toast({ type: "danger", message: "Не удалось скопировать" });
+          }
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(done).catch(fail);
+          return;
+        }
+        try {
+          var ta = document.createElement("textarea");
+          ta.value = text;
+          ta.setAttribute("readonly", "");
+          ta.style.position = "fixed";
+          ta.style.left = "-9999px";
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand("copy");
+          document.body.removeChild(ta);
+          done();
+        } catch (e) {
+          fail();
+        }
+      }
+
+      function formatBuyVsCompRebuilt(v) {
+        if (!v) return "ещё не считали";
+        try {
+          if (window.DatagonFmt && DatagonFmt.formatDate) {
+            var d = new Date(v);
+            if (!isNaN(d.getTime())) {
+              var dd = DatagonFmt.formatDate(d);
+              var tm = d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+              return dd + " " + tm;
+            }
+          }
+        } catch (e) {}
+        return String(v);
+      }
+
+
+      function formatBuyVsCompPackBadge(packQty, packBasis) {
+        var q = Number(packQty);
+        if (!Number.isFinite(q) || q < 2) return "";
+        if (packBasis === "ours") return "×" + q;
+        if (packBasis === "competitor") return "÷" + q;
+        return "";
+      }
+
+      function formatBuyVsCompConfirmedAt(v) {
+        if (!v) return "";
+        try {
+          if (window.DatagonFmt && DatagonFmt.formatDateTime) {
+            return DatagonFmt.formatDateTime(v);
+          }
+          if (window.DatagonFmt && DatagonFmt.formatDate) {
+            var d = new Date(v);
+            if (!isNaN(d.getTime())) {
+              return DatagonFmt.formatDate(d) + " " + d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+            }
+          }
+        } catch (e) {}
+        return String(v);
+      }
+
+      function formatBuyVsCompConfirmedLine(it) {
+        var by = it && it.confirmed_by ? String(it.confirmed_by).trim() : "";
+        var when = it && it.confirmed_at ? formatBuyVsCompConfirmedAt(it.confirmed_at) : "";
+        if (!by && !when) return "Кто подтвердил: неизвестно";
+        return "Подтверждено" + (by ? ": " + by : "") + (when ? ", " + when : "");
+      }
+
+      function readBuyVsCompPackFromControls(basisSel, qtyInp) {
+        var basis = basisSel ? String(basisSel.value || "").trim() : "";
+        if (!basis || basis === "none") return { pack_qty: null, pack_basis: null };
+        var qty = qtyInp ? parseInt(String(qtyInp.value || "").trim(), 10) : NaN;
+        if (!Number.isFinite(qty) || qty < 2) {
+          return { error: "Укажите количество в упаковке (целое ≥ 2) или выберите «Без коэф.»" };
+        }
+        if (basis !== "ours" && basis !== "competitor") {
+          return { error: "Некорректный режим упаковки" };
+        }
+        return { pack_qty: qty, pack_basis: basis };
+      }
+
+
+      function updateBuyVsCompCard() {
+        var card = document.getElementById("mp-buy-vs-comp-card");
+        var badge = document.getElementById("mp-buy-vs-comp-badge");
+        var meta = document.getElementById("mp-buy-vs-comp-card-meta");
+        var refreshCard = document.getElementById("mp-btn-buy-vs-comp-refresh");
+        var refreshModal = document.getElementById("dg-mp-buy-vs-comp-refresh");
+        var n = Number(buyVsCompState.total || 0);
+        if (badge) badge.textContent = buyVsCompState.error ? "!" : String(n);
+        if (card) {
+          if (!buyVsCompState.error && n > 0) card.classList.remove("d-none");
+          else if (buyVsCompState.error || buyVsCompState.stale) card.classList.remove("d-none");
+          else card.classList.add("d-none");
+          card.classList.toggle("dg-mp-bvc-card-stale", !!buyVsCompState.stale && !buyVsCompState.error);
+        }
+        if (refreshCard) {
+          refreshCard.classList.toggle("btn-warning", !!buyVsCompState.stale);
+          refreshCard.classList.toggle("btn-outline-danger", !buyVsCompState.stale);
+        }
+        if (refreshModal) {
+          refreshModal.classList.toggle("btn-warning", !!buyVsCompState.stale);
+          refreshModal.classList.toggle("btn-light", !buyVsCompState.stale);
+        }
+        if (meta) {
+          if (buyVsCompState.error) {
+            meta.textContent = "Ошибка снапшота: " + buyVsCompState.error;
+          } else if (buyVsCompState.stale) {
+            meta.textContent =
+              "Упаковка изменена, список устарел — нажмите «Обновить», чтобы пересчитать Δ %.";
+          } else if (!buyVsCompState.rebuilt_at && n === 0) {
+            meta.textContent =
+              "Снапшот ещё пуст. Считается после синка «Наклейки → Webasyst» или нажмите «Обновить».";
+          } else {
+            meta.textContent =
+              "Закупка МС > мин. ДМ/МК более чем на " +
+              (buyVsCompState.threshold_pct || 1) +
+              "%, с остатком. Обновлено: " +
+              formatBuyVsCompRebuilt(buyVsCompState.rebuilt_at) +
+              (buyVsCompState.source ? " · " + buyVsCompState.source : "") +
+              (buyVsCompState.truncated ? " · список усечён" : "");
+          }
+        }
+      }
+
+      function renderBuyVsCompBody() {
+        var body = document.getElementById("dg-mp-buy-vs-comp-body");
+        var sub = document.getElementById("dg-mp-buy-vs-comp-subtitle");
+        if (!body) return;
+        var thr = Number(buyVsCompState.threshold_pct || 1);
+        if (sub) {
+          sub.textContent =
+            (buyVsCompState.stale ? "Есть правки — нажмите «Обновить» · " : "") +
+            "Снапшот: " +
+            formatBuyVsCompRebuilt(buyVsCompState.rebuilt_at) +
+            " · порог +" +
+            thr +
+            "%" +
+            (buyVsCompState.source ? " · " + buyVsCompState.source : "");
+        }
+        if (buyVsCompState.refreshing) {
+          body.innerHTML =
+            '<div class="text-muted small text-center py-4">Пересчитываем снапшот…</div>';
+          return;
+        }
+        if (buyVsCompState.error) {
+          body.innerHTML =
+            '<div class="text-danger small text-center py-4">' +
+            String(buyVsCompState.error).replace(/</g, "&lt;") +
+            "</div>";
+          return;
+        }
+        var items = Array.isArray(buyVsCompState.items) ? buyVsCompState.items : [];
+        if (!items.length) {
+          body.innerHTML =
+            '<div class="text-muted small text-center py-4">Критических позиций нет (или снапшот пуст — нажмите «Обновить»).</div>';
+          return;
+        }
+        var html =
+          '<table class="table table-sm mb-0 dg-mp-bvc-table"><thead><tr>' +
+          '<th class="dg-mp-bvc-col-site">Сайт</th>' +
+          '<th class="dg-mp-bvc-col-sku">Артикул</th>' +
+          '<th class="dg-mp-bvc-col-name">Название</th>' +
+          '<th class="dg-mp-bvc-col-match">Сопоставление</th>' +
+          '<th class="dg-mp-bvc-col-ms">МС</th>' +
+          '<th class="dg-mp-bvc-col-buy text-end">Закупка</th>' +
+          '<th class="dg-mp-bvc-col-comp text-end">Мин. конкурент</th>' +
+          '<th class="dg-mp-bvc-col-delta text-end">Δ %</th>' +
+          '<th class="dg-mp-bvc-col-stock text-end">Ост. сайт</th>' +
+          '<th class="dg-mp-bvc-col-stock text-end">Ост. МС</th>' +
+          "</tr></thead><tbody>";
+        items.forEach(function (it) {
+          var q =
+            "/my-products.html?site_id=" +
+            encodeURIComponent(it.site_id) +
+            "&search=" +
+            encodeURIComponent(it.sku || "") +
+            "&gap_filter_enabled=0";
+          var site = siteById[String(it.site_id)];
+          var ourUrl = normalizeSiteProductUrl(it.source_url, site);
+          var ourSafe = safeLink(ourUrl);
+          var skuRaw = String(it.sku || "").trim();
+          var nameRaw = String(it.name || "").trim();
+          var nameEsc = (nameRaw || "—").replace(/</g, "&lt;");
+          var nameInner = ourSafe
+            ? '<a href="' +
+              ourSafe.replace(/"/g, "&quot;") +
+              '" target="_blank" rel="noopener noreferrer" class="text-decoration-none text-body dg-mp-bvc-name-text" title="Открыть на нашем сайте">' +
+              nameEsc +
+              "</a>"
+            : '<span class="dg-mp-bvc-name-text">' + nameEsc + "</span>";
+          var nameCell =
+            '<div class="dg-mp-bvc-inline">' +
+            nameInner +
+            buyVsCompCopyBtnHtml(nameRaw, "название") +
+            "</div>";
+          var skuCell =
+            '<div class="dg-mp-bvc-inline">' +
+            '<a class="dg-mp-bvc-sku-link" href="' +
+            q +
+            '" title="Фильтр в Мои товары">' +
+            (skuRaw || "—").replace(/</g, "&lt;") +
+            "</a>" +
+            buyVsCompCopyBtnHtml(skuRaw, "артикул") +
+            "</div>";
+          var compSafe = safeLink(it.competitor_url);
+          var srcLabel = buyVsCompSourceLabel(it.competitor_source);
+          var chip = compSafe
+            ? '<a href="' +
+              compSafe.replace(/"/g, "&quot;") +
+              '" target="_blank" rel="noopener noreferrer" class="dg-mp-bvc-comp-chip" title="Открыть у конкурента">' +
+              srcLabel +
+              "</a>"
+            : '<span class="dg-mp-bvc-comp-chip is-muted">' + srcLabel + "</span>";
+          var packBadge = formatBuyVsCompPackBadge(it.pack_qty, it.pack_basis);
+          var matchCell = it.match_id
+            ? '<button type="button" class="btn btn-sm btn-outline-secondary dg-mp-bvc-match-btn" data-mp-bvc-open-match="' +
+              encodeURIComponent(String(it.match_id)) +
+              '" data-mp-bvc-product-id="' +
+              encodeURIComponent(String(it.id || "")) +
+              '" title="Открыть связь и упаковку">' +
+              srcLabel +
+              (packBadge ? " · " + packBadge : " · упак.") +
+              "</button>"
+            : '<span class="text-muted small">—</span>';
+          var msUuid = String(it.ms_uuid || "").trim();
+          var msCode = String(it.ms_link_code || it.sku || "").trim();
+          var msCell = msUuid
+            ? '<button type="button" class="btn btn-sm btn-outline-primary dg-mp-bvc-ms-btn" data-mp-bvc-open-ms="' +
+              encodeURIComponent(msUuid) +
+              '" data-mp-bvc-ms-type="' +
+              encodeURIComponent(String(it.ms_type || "")) +
+              '" data-mp-bvc-ms-name="' +
+              encodeURIComponent(nameRaw || msCode || "Товар МойСклад") +
+              '" data-mp-bvc-ms-code="' +
+              encodeURIComponent(msCode) +
+              '" title="Карточка МойСклад">' +
+              (msCode ? msCode.replace(/</g, "&lt;") : "МС") +
+              "</button>"
+            : '<span class="text-muted small">—</span>';
+          var deltaTxt =
+            "+" +
+            (window.DatagonFmt
+              ? DatagonFmt.formatNumber(it.over_pct, { maxFractionDigits: 2 })
+              : Number(it.over_pct).toFixed(2)) +
+            "%";
+          html +=
+            "<tr>" +
+            '<td class="dg-mp-bvc-col-site">' +
+            String(buyVsCompSiteLabel(it.site_id)).replace(/</g, "&lt;") +
+            "</td>" +
+            '<td class="dg-mp-bvc-col-sku">' +
+            skuCell +
+            "</td>" +
+            '<td class="dg-mp-bvc-col-name" title="' +
+            String(it.name || "").replace(/"/g, "&quot;") +
+            '">' +
+            nameCell +
+            "</td>" +
+            '<td class="dg-mp-bvc-col-match">' +
+            matchCell +
+            "</td>" +
+            '<td class="dg-mp-bvc-col-ms">' +
+            msCell +
+            "</td>" +
+            '<td class="dg-mp-bvc-col-buy text-end dg-mp-bvc-num">' +
+            formatMoney(it.buy_rub) +
+            "</td>" +
+            '<td class="dg-mp-bvc-col-comp text-end">' +
+            '<div class="dg-mp-bvc-comp-cell"><span class="dg-mp-bvc-num">' +
+            formatMoney(it.competitor_rub) +
+            "</span>" +
+            chip +
+            "</div></td>" +
+            '<td class="dg-mp-bvc-col-delta text-end"><span class="dg-mp-buy-vs-comp-over">' +
+            deltaTxt +
+            "</span></td>" +
+            '<td class="dg-mp-bvc-col-stock text-end dg-mp-bvc-num">' +
+            fmt(it.stock) +
+            "</td>" +
+            '<td class="dg-mp-bvc-col-stock text-end dg-mp-bvc-num">' +
+            (it.sticker_ms_stock == null ? "—" : fmt(it.sticker_ms_stock)) +
+            "</td>" +
+            "</tr>";
+        });
+        html += "</tbody></table>";
+        body.innerHTML = html;
+      }
+
+      function buyVsCompMsOpenInWebHref(uuid, typeMs) {
+        var u = String(uuid || "").trim();
+        if (!u) return "";
+        var t = String(typeMs || "").toLowerCase();
+        if (t.indexOf("комплект") >= 0) {
+          return "https://online.moysklad.ru/app/#bundle/edit?id=" + encodeURIComponent(u);
+        }
+        return "https://online.moysklad.ru/app/#good/edit?id=" + encodeURIComponent(u);
+      }
+
+      function buyVsCompMsKindQueryParam(typeMs) {
+        var t = String(typeMs || "").toLowerCase();
+        if (t.indexOf("комплект") >= 0) return "bundle";
+        return "product";
+      }
+
+      function buyVsCompTrimLinkHref(raw) {
+        return String(raw || "").replace(/[)\].,;:!?]+$/g, "");
+      }
+
+      function buyVsCompIsDangerousAutoLinkHref(href) {
+        var low = String(href || "").trim().toLowerCase();
+        return (
+          low.indexOf("javascript:") === 0 ||
+          low.indexOf("data:") === 0 ||
+          low.indexOf("vbscript:") === 0
+        );
+      }
+
+      function buyVsCompAppendTextWithAutoLinks(el, raw) {
+        var s = String(raw == null ? "" : raw);
+        el.textContent = "";
+        if (!s) return;
+        var re =
+          /(https?:\/\/[^\s<>"'`]+)|(www\.[^\s<>"'`]+)|([a-z][a-z0-9+.-]*:\/\/[^\s<>"'`]+)|(mailto:[^\s<>"'`]+)|(tel:\+?[^\s<>"'`]+)/gi;
+        var last = 0;
+        var m;
+        while ((m = re.exec(s)) !== null) {
+          if (m.index > last) {
+            el.appendChild(document.createTextNode(s.slice(last, m.index)));
+          }
+          var full = m[0];
+          var href = buyVsCompTrimLinkHref(full);
+          var display = href;
+          if (!href) {
+            last = m.index + full.length;
+            continue;
+          }
+          if (/^www\./i.test(href)) href = "https://" + href;
+          if (href.length < 4 || buyVsCompIsDangerousAutoLinkHref(href)) {
+            el.appendChild(document.createTextNode(full));
+            last = m.index + full.length;
+            continue;
+          }
+          var a = document.createElement("a");
+          a.href = href;
+          a.className = "text-break";
+          a.textContent = display;
+          var low = href.toLowerCase();
+          if (
+            low.indexOf("http:") === 0 ||
+            low.indexOf("https:") === 0 ||
+            low.indexOf("ftp:") === 0
+          ) {
+            a.target = "_blank";
+            a.rel = "noopener noreferrer";
+          }
+          el.appendChild(a);
+          last = m.index + full.length;
+        }
+        if (last < s.length) {
+          el.appendChild(document.createTextNode(s.slice(last)));
+        }
+      }
+
+      function mountBuyVsCompMsDetailOverlayToBody() {
+        var ov = document.getElementById("dg-mp-bvc-ms-detail-overlay");
+        if (!ov) return null;
+        if (ov.parentNode !== document.body) {
+          document.body.appendChild(ov);
+        }
+        return ov;
+      }
+
+      function closeBuyVsCompMsDetailModal() {
+        var ov = document.getElementById("dg-mp-bvc-ms-detail-overlay");
+        if (!ov) return;
+        ov.style.display = "none";
+        ov.setAttribute("aria-hidden", "true");
+      }
+
+      function renderBuyVsCompMsDetailBlocks(blocks) {
+        var body = document.getElementById("dg-mp-bvc-ms-detail-body");
+        if (!body) return;
+        body.innerHTML = "";
+        if (!blocks || !blocks.length) {
+          body.textContent = "Нет данных.";
+          return;
+        }
+        blocks.forEach(function (blk) {
+          if (blk.title) {
+            var h = document.createElement("div");
+            h.className = "fw-semibold mb-2 mt-2";
+            h.style.fontSize = "0.9rem";
+            h.textContent = blk.title;
+            body.appendChild(h);
+          }
+          var tbl = document.createElement("table");
+          tbl.className = "dg-ms-detail-kv mb-3";
+          (blk.rows || []).forEach(function (row) {
+            var tr = document.createElement("tr");
+            var th = document.createElement("th");
+            th.textContent = row.label || "";
+            var td = document.createElement("td");
+            td.style.whiteSpace = "pre-wrap";
+            td.style.wordBreak = "break-word";
+            buyVsCompAppendTextWithAutoLinks(td, row.value == null ? "" : String(row.value));
+            tr.appendChild(th);
+            tr.appendChild(td);
+            tbl.appendChild(tr);
+          });
+          body.appendChild(tbl);
+        });
+      }
+
+      function openBuyVsCompMsDetailModal(uuid, code, nameText, typeMs) {
+        var u = String(uuid || "").trim();
+        var ov = mountBuyVsCompMsDetailOverlayToBody();
+        var titleEl = document.getElementById("dg-mp-bvc-ms-detail-title");
+        var body = document.getElementById("dg-mp-bvc-ms-detail-body");
+        var openMs = document.getElementById("dg-mp-bvc-ms-detail-open-ms");
+        if (!ov || !titleEl || !body) return;
+        if (!u) {
+          if (window.DatagonNotify && window.DatagonNotify.toast) {
+            window.DatagonNotify.toast({
+              type: "warning",
+              message: "Нет uuid МойСклад — нажмите «Обновить» снапшот",
+            });
+          }
+          return;
+        }
+        titleEl.textContent = nameText || code || "Товар МойСклад";
+        titleEl.setAttribute("title", nameText || code || "Товар МойСклад");
+        body.innerHTML = '<p class="text-muted mb-0">Загрузка…</p>';
+        if (openMs) {
+          openMs.classList.add("d-none");
+          openMs.href = "#";
+        }
+        ov.style.display = "flex";
+        ov.setAttribute("aria-hidden", "false");
+        var q =
+          "/api/ms/detail/" +
+          encodeURIComponent(u) +
+          "?kind=" +
+          encodeURIComponent(buyVsCompMsKindQueryParam(typeMs));
+        fetch(q, { credentials: "same-origin" })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { ok: r.ok, st: r.status, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.ok) {
+              body.innerHTML =
+                '<p class="text-danger mb-0">' +
+                String(x.j && x.j.error ? x.j.error : "Ошибка " + x.st).replace(/</g, "&lt;") +
+                "</p>";
+              return;
+            }
+            var j = x.j || {};
+            if (openMs) {
+              var hrefMs = j.webHref || buyVsCompMsOpenInWebHref(u, typeMs);
+              if (hrefMs) {
+                openMs.href = hrefMs;
+                openMs.classList.remove("d-none");
+              }
+            }
+            if (j.name || j.title) {
+              var nm = String(j.name || j.title || "").trim();
+              if (nm) {
+                titleEl.textContent = nm;
+                titleEl.setAttribute("title", nm);
+              }
+            }
+            renderBuyVsCompMsDetailBlocks(j.blocks);
+          })
+          .catch(function () {
+            body.innerHTML = '<p class="text-danger mb-0">Сеть недоступна</p>';
+          });
+      }
+
+      var buyVsCompMatchState = { item: null, saving: false };
+
+      function closeBuyVsCompMatchOverlay() {
+        var ov = document.getElementById("dg-mp-bvc-match-overlay");
+        if (!ov) return;
+        ov.style.display = "none";
+        ov.setAttribute("aria-hidden", "true");
+        buyVsCompMatchState.item = null;
+      }
+
+      function findBuyVsCompItemByMatchId(matchId) {
+        var mid = Number(matchId);
+        var items = Array.isArray(buyVsCompState.items) ? buyVsCompState.items : [];
+        for (var i = 0; i < items.length; i++) {
+          if (Number(items[i].match_id) === mid) return items[i];
+        }
+        return null;
+      }
+
+      function renderBuyVsCompMatchBody(it) {
+        var body = document.getElementById("dg-mp-bvc-match-body");
+        var sub = document.getElementById("dg-mp-bvc-match-subtitle");
+        if (!body || !it) return;
+        if (sub) {
+          sub.textContent =
+            buyVsCompSourceLabel(it.competitor_source) +
+            " · match #" +
+            (it.match_id || "—") +
+            (formatBuyVsCompPackBadge(it.pack_qty, it.pack_basis)
+              ? " · упак. " + formatBuyVsCompPackBadge(it.pack_qty, it.pack_basis)
+              : "");
+        }
+        var site = siteById[String(it.site_id)];
+        var ourSafe = safeLink(normalizeSiteProductUrl(it.source_url, site));
+        var compSafe = safeLink(it.competitor_url);
+        var ourName = String(it.name || "—").replace(/</g, "&lt;");
+        var ourSku = String(it.sku || "—").replace(/</g, "&lt;");
+        var compName = String(it.competitor_name || "—").replace(/</g, "&lt;");
+        var compSku = String(it.competitor_sku || "—").replace(/</g, "&lt;");
+        var packBadge = formatBuyVsCompPackBadge(it.pack_qty, it.pack_basis);
+        var initBasis =
+          it.pack_basis === "ours" || it.pack_basis === "competitor" ? it.pack_basis : "none";
+        var initQty = Number(it.pack_qty) >= 2 ? String(it.pack_qty) : "";
+        var listPrice =
+          it.competitor_price_list != null
+            ? formatMoney(it.competitor_price_list)
+            : "—";
+        body.innerHTML =
+          '<div class="row g-2 mb-3">' +
+          '<div class="col-md-6"><div class="dg-mp-bvc-match-side">' +
+          '<div class="dg-mp-bvc-match-side-label">Наш товар</div>' +
+          '<div class="dg-mp-bvc-match-kv"><strong>SKU:</strong> ' +
+          ourSku +
+          "</div>" +
+          '<div class="dg-mp-bvc-match-kv"><strong>Название:</strong> ' +
+          (ourSafe
+            ? '<a href="' +
+              ourSafe.replace(/"/g, "&quot;") +
+              '" target="_blank" rel="noopener noreferrer">' +
+              ourName +
+              "</a>"
+            : ourName) +
+          "</div>" +
+          '<div class="dg-mp-bvc-match-kv"><strong>Закупка:</strong> ' +
+          formatMoney(it.buy_rub) +
+          " ₽</div>" +
+          "</div></div>" +
+          '<div class="col-md-6"><div class="dg-mp-bvc-match-side">' +
+          '<div class="dg-mp-bvc-match-side-label">Конкурент (' +
+          buyVsCompSourceLabel(it.competitor_source) +
+          ")</div>" +
+          '<div class="dg-mp-bvc-match-kv"><strong>SKU:</strong> ' +
+          compSku +
+          "</div>" +
+          '<div class="dg-mp-bvc-match-kv"><strong>Название:</strong> ' +
+          (compSafe
+            ? '<a href="' +
+              compSafe.replace(/"/g, "&quot;") +
+              '" target="_blank" rel="noopener noreferrer">' +
+              compName +
+              "</a>"
+            : compName) +
+          "</div>" +
+          '<div class="dg-mp-bvc-match-kv"><strong>Цена лист:</strong> ' +
+          listPrice +
+          "</div>" +
+          '<div class="dg-mp-bvc-match-kv"><strong>Сопоставимо:</strong> ' +
+          formatMoney(it.competitor_rub) +
+          " ₽" +
+          (packBadge ? " <span class=\"text-muted\">(" + packBadge + ")</span>" : "") +
+          "</div>" +
+          "</div></div></div>" +
+          '<div class="dg-mp-bvc-pack-box mb-3">' +
+          '<div class="small text-muted text-uppercase mb-1">Упаковка на сопоставлении</div>' +
+          '<label class="form-label small mb-1">Режим</label>' +
+          '<select class="form-select form-select-sm mb-2" id="dg-mp-bvc-pack-basis" data-dg-no-activity="1">' +
+          '<option value="none"' +
+          (initBasis === "none" ? " selected" : "") +
+          ">Без коэф.</option>" +
+          '<option value="ours"' +
+          (initBasis === "ours" ? " selected" : "") +
+          ">У нас упаковка (× N)</option>" +
+          '<option value="competitor"' +
+          (initBasis === "competitor" ? " selected" : "") +
+          ">У нас поштучно (÷ N)</option>" +
+          "</select>" +
+          '<div id="dg-mp-bvc-pack-qty-wrap"' +
+          (initBasis === "none" ? ' class="d-none"' : "") +
+          ">" +
+          '<label class="form-label small mb-1">Кол-во в упаковке</label>' +
+          '<input type="number" min="2" step="1" inputmode="numeric" class="form-control form-control-sm" id="dg-mp-bvc-pack-qty" data-dg-no-activity="1" value="' +
+          initQty +
+          '">' +
+          "</div>" +
+          '<div class="alert alert-light border small mb-3 py-2" id="dg-mp-bvc-match-audit">' +
+          String(formatBuyVsCompConfirmedLine(it)).replace(/</g, "&lt;") +
+          "</div>" +
+          '<div class="d-flex flex-wrap gap-2 mt-3">' +
+          '<button type="button" class="btn btn-sm btn-primary" id="dg-mp-bvc-pack-save" data-dg-notify-start="Сохраняем упаковку…">Сохранить упаковку</button>' +
+          '<button type="button" class="btn btn-sm btn-outline-danger" id="dg-mp-bvc-match-unlink" data-dg-notify-start="Разорвать связь…" data-dg-activity-label="Разорвать сопоставление из алертов"><i class="pe-7s-link me-1"></i>Разорвать</button>' +
+          (it.match_id
+            ? '<a class="btn btn-sm btn-outline-secondary" target="_blank" rel="noopener noreferrer" href="/matches.html?search=' +
+              encodeURIComponent(it.sku || "") +
+              '">Открыть в Сопоставлении</a>'
+            : "") +
+          "</div>" +
+          '<div class="small text-muted mt-2 mb-0">Упаковка сохранится сразу. Список алертов и Δ % — по «Обновить». «Разорвать» снимает confirmed-связь.</div>' +
+          "</div>";
+
+        var basisSel = document.getElementById("dg-mp-bvc-pack-basis");
+        var qtyWrap = document.getElementById("dg-mp-bvc-pack-qty-wrap");
+        var qtyInp = document.getElementById("dg-mp-bvc-pack-qty");
+        var saveBtn = document.getElementById("dg-mp-bvc-pack-save");
+        if (basisSel && qtyWrap) {
+          basisSel.addEventListener("change", function () {
+            var v = String(basisSel.value || "");
+            qtyWrap.classList.toggle("d-none", !v || v === "none");
+          });
+        }
+        if (saveBtn) {
+          saveBtn.addEventListener("click", function () {
+            saveBuyVsCompMatchPack(it, basisSel, qtyInp, saveBtn);
+          });
+        }
+        var unlinkBtn = document.getElementById("dg-mp-bvc-match-unlink");
+        if (unlinkBtn) {
+          unlinkBtn.addEventListener("click", function () {
+            unlinkBuyVsCompMatch(it, unlinkBtn);
+          });
+        }
+      }
+
+      function saveBuyVsCompMatchPack(it, basisSel, qtyInp, saveBtn) {
+        if (!it || !it.match_id || buyVsCompMatchState.saving) return;
+        var pack = readBuyVsCompPackFromControls(basisSel, qtyInp);
+        if (pack.error) {
+          if (window.DatagonNotify && window.DatagonNotify.toast) {
+            window.DatagonNotify.toast({ type: "warning", message: pack.error });
+          }
+          return;
+        }
+        buyVsCompMatchState.saving = true;
+        var run = function () {
+          return fetch("/api/matches/" + encodeURIComponent(it.match_id) + "/pack", {
+            method: "PATCH",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ pack_qty: pack.pack_qty, pack_basis: pack.pack_basis }),
+          }).then(function (r) {
+            return r.json().then(function (j) {
+              return { ok: r.ok, j: j };
+            });
+          });
+        };
+        var p =
+          window.DatagonNotify && window.DatagonNotify.busyRun
+            ? window.DatagonNotify.busyRun(saveBtn, run)
+            : run();
+        p.then(function (packRes) {
+          var j = packRes.j || {};
+          if (!packRes.ok || j.success === false) {
+            throw new Error((j && (j.error || j.message)) || "Не удалось сохранить упаковку");
+          }
+          it.pack_qty = j.pack_qty != null ? j.pack_qty : pack.pack_qty;
+          it.pack_basis = j.pack_basis != null ? j.pack_basis : pack.pack_basis;
+          buyVsCompState.stale = true;
+          if (window.DatagonNotify && window.DatagonNotify.toast) {
+            window.DatagonNotify.toast({
+              type: "warning",
+              message: "Упаковка сохранена. Нажмите «Обновить», чтобы пересчитать Δ %.",
+            });
+          }
+          closeBuyVsCompMatchOverlay();
+          updateBuyVsCompCard();
+          renderBuyVsCompBody();
+        })
+          .catch(function (e) {
+            if (window.DatagonNotify && window.DatagonNotify.toast) {
+              window.DatagonNotify.toast({
+                type: "danger",
+                message: e && e.message ? e.message : String(e),
+              });
+            }
+          })
+          .finally(function () {
+            buyVsCompMatchState.saving = false;
+          });
+      }
+
+
+      function unlinkBuyVsCompMatch(it, unlinkBtn) {
+        if (!it || !it.match_id || buyVsCompMatchState.saving) return;
+        var ourLabel = String(it.sku || it.name || "").trim() || "товар";
+        var compLabel = String(it.competitor_sku || it.competitor_name || "").trim() || "конкурент";
+        openMpConfirm({
+          title: "Разорвать сопоставление?",
+          text:
+            "Связь «" +
+            ourLabel +
+            "» ↔ «" +
+            compLabel +
+            "» (" +
+            buyVsCompSourceLabel(it.competitor_source) +
+            ") станет pending. Строка пропадёт из алертов до следующего пересчёта.",
+          meta: formatBuyVsCompConfirmedLine(it),
+          okText: "Разорвать",
+          okClass: "btn-danger",
+        }).then(function (res) {
+          if (!res || !res.ok) return;
+          buyVsCompMatchState.saving = true;
+          var run = function () {
+            return fetch("/api/matches/unlink", {
+              method: "POST",
+              credentials: "same-origin",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ id: Number(it.match_id) }),
+            }).then(function (r) {
+              return r.json().then(function (j) {
+                return { ok: r.ok, j: j };
+              });
+            });
+          };
+          var p =
+            window.DatagonNotify && window.DatagonNotify.busyRun
+              ? window.DatagonNotify.busyRun(unlinkBtn, run)
+              : run();
+          return p
+            .then(function (packRes) {
+              var j = packRes.j || {};
+              if (!packRes.ok || j.success === false) {
+                throw new Error((j && (j.error || j.message)) || "Не удалось разорвать");
+              }
+              var mid = Number(it.match_id);
+              buyVsCompState.items = (buyVsCompState.items || []).filter(function (row) {
+                return Number(row.match_id) !== mid;
+              });
+              buyVsCompState.total = Math.max(0, Number(buyVsCompState.total || 0) - 1);
+              if (buyVsCompState.total < buyVsCompState.items.length) {
+                buyVsCompState.total = buyVsCompState.items.length;
+              }
+              buyVsCompState.stale = true;
+              if (window.DatagonNotify && window.DatagonNotify.toast) {
+                window.DatagonNotify.toast({
+                  type: "warning",
+                  message: "Связь разорвана. Нажмите «Обновить», чтобы пересчитать список.",
+                });
+              }
+              closeBuyVsCompMatchOverlay();
+              updateBuyVsCompCard();
+              renderBuyVsCompBody();
+            })
+            .catch(function (e) {
+              if (window.DatagonNotify && window.DatagonNotify.toast) {
+                window.DatagonNotify.toast({
+                  type: "danger",
+                  message: e && e.message ? e.message : String(e),
+                });
+              }
+            })
+            .finally(function () {
+              buyVsCompMatchState.saving = false;
+            });
+        });
+      }
+
+      function openBuyVsCompMatchOverlay(matchId) {
+        var it = findBuyVsCompItemByMatchId(matchId);
+        if (!it || !it.match_id) {
+          if (window.DatagonNotify && window.DatagonNotify.toast) {
+            window.DatagonNotify.toast({
+              type: "warning",
+              message: "Сопоставление не найдено в снапшоте — нажмите «Обновить»",
+            });
+          }
+          return;
+        }
+        buyVsCompMatchState.item = it;
+        var ov = document.getElementById("dg-mp-bvc-match-overlay");
+        if (!ov) return;
+        ov.style.display = "flex";
+        ov.setAttribute("aria-hidden", "false");
+        renderBuyVsCompMatchBody(it);
+      }
+
+      function openBuyVsCompOverlay() {
+        var ov = document.getElementById("dg-mp-buy-vs-comp-overlay");
+        if (!ov) return;
+        ov.style.display = "flex";
+        ov.setAttribute("aria-hidden", "false");
+        renderBuyVsCompBody();
+      }
+
+      function closeBuyVsCompOverlay() {
+        var ov = document.getElementById("dg-mp-buy-vs-comp-overlay");
+        if (!ov) return;
+        ov.style.display = "none";
+        ov.setAttribute("aria-hidden", "true");
+      }
+
+      function applyBuyVsCompPayload(j) {
+        buyVsCompState.items = Array.isArray(j.items) ? j.items : [];
+        buyVsCompState.total = Number(j.total || buyVsCompState.items.length || 0);
+        buyVsCompState.truncated = !!j.truncated;
+        buyVsCompState.threshold_pct = Number(j.threshold_pct || 1);
+        buyVsCompState.duration_sec = j.duration_sec != null ? j.duration_sec : j.rebuild_duration_sec;
+        buyVsCompState.rebuilt_at = j.rebuilt_at || null;
+        buyVsCompState.source = j.source || null;
+        buyVsCompState.error = "";
+        buyVsCompState.stale = false;
+      }
+
+      function loadBuyVsCompSnapshot() {
+        var siteEl = document.getElementById("f-site");
+        var siteId = siteEl && siteEl.value ? siteEl.value : "all";
+        var qs = new URLSearchParams();
+        qs.set("limit", "200");
+        if (siteId && siteId !== "all") qs.set("site_id", siteId);
+        buyVsCompState.loading = true;
+        return fetch("/api/my-products/buy-vs-competitor-alerts?" + qs.toString(), {
+          credentials: "same-origin",
+        })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { ok: r.ok, j: j };
+            });
+          })
+          .then(function (pack) {
+            var j = pack.j || {};
+            if (!pack.ok || j.success === false) {
+              throw new Error((j && (j.error || j.message)) || "Ошибка API");
+            }
+            applyBuyVsCompPayload(j);
+          })
+          .catch(function (e) {
+            buyVsCompState.items = [];
+            buyVsCompState.total = 0;
+            buyVsCompState.error = e && e.message ? e.message : String(e);
+          })
+          .finally(function () {
+            buyVsCompState.loading = false;
+            updateBuyVsCompCard();
+            var ov = document.getElementById("dg-mp-buy-vs-comp-overlay");
+            if (ov && ov.style.display !== "none") renderBuyVsCompBody();
+          });
+      }
+
+      function refreshBuyVsCompSnapshot() {
+        var siteEl = document.getElementById("f-site");
+        var siteId = siteEl && siteEl.value ? siteEl.value : "all";
+        buyVsCompState.refreshing = true;
+        buyVsCompState.error = "";
+        updateBuyVsCompCard();
+        renderBuyVsCompBody();
+        var run = function () {
+          return fetch("/api/my-products/buy-vs-competitor-alerts/refresh", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ site_id: siteId === "all" ? "all" : siteId, limit: 200 }),
+          }).then(function (r) {
+            return r.json().then(function (j) {
+              return { ok: r.ok, j: j };
+            });
+          });
+        };
+        var btn =
+          document.getElementById("mp-btn-buy-vs-comp-refresh") ||
+          document.getElementById("dg-mp-buy-vs-comp-refresh");
+        var p =
+          window.DatagonNotify && window.DatagonNotify.busyRun
+            ? window.DatagonNotify.busyRun(btn, run)
+            : run();
+        return p
+          .then(function (pack) {
+            var j = pack.j || {};
+            if (!pack.ok || j.success === false) {
+              throw new Error((j && (j.error || j.message)) || "Ошибка пересчёта");
+            }
+            applyBuyVsCompPayload(j);
+            if (window.DatagonNotify && window.DatagonNotify.toast) {
+              window.DatagonNotify.toast({
+                type: Number(j.total || 0) > 0 ? "warning" : "success",
+                message:
+                  "Алерты пересчитаны: " +
+                  Number(j.total || 0).toLocaleString("ru-RU") +
+                  " поз." +
+                  (j.rebuild_duration_sec != null ? " · " + j.rebuild_duration_sec + " с" : ""),
+              });
+            }
+          })
+          .catch(function (e) {
+            buyVsCompState.error = e && e.message ? e.message : String(e);
+            if (window.DatagonNotify && window.DatagonNotify.toast) {
+              window.DatagonNotify.toast({
+                type: "danger",
+                message: buyVsCompState.error,
+              });
+            }
+          })
+          .finally(function () {
+            buyVsCompState.refreshing = false;
+            updateBuyVsCompCard();
+            renderBuyVsCompBody();
+          });
+      }
+
+      (function bindBuyVsCompUi() {
+        var openBtn = document.getElementById("mp-btn-buy-vs-comp");
+        var refreshCard = document.getElementById("mp-btn-buy-vs-comp-refresh");
+        var refreshModal = document.getElementById("dg-mp-buy-vs-comp-refresh");
+        var ov = document.getElementById("dg-mp-buy-vs-comp-overlay");
+        if (openBtn) {
+          openBtn.addEventListener("click", function () {
+            openBuyVsCompOverlay();
+            if (!buyVsCompState.items.length && !buyVsCompState.loading) {
+              loadBuyVsCompSnapshot();
+            }
+          });
+        }
+        if (refreshCard) {
+          refreshCard.addEventListener("click", function () {
+            refreshBuyVsCompSnapshot();
+          });
+        }
+        if (refreshModal) {
+          refreshModal.addEventListener("click", function () {
+            refreshBuyVsCompSnapshot();
+          });
+        }
+        if (ov) {
+          ov.addEventListener("click", function (e) {
+            var t = e.target;
+            if (!t) return;
+            var matchBtn =
+              t.closest && t.closest("[data-mp-bvc-open-match]")
+                ? t.closest("[data-mp-bvc-open-match]")
+                : null;
+            if (matchBtn) {
+              e.preventDefault();
+              e.stopPropagation();
+              var midEnc = matchBtn.getAttribute("data-mp-bvc-open-match") || "";
+              try {
+                openBuyVsCompMatchOverlay(decodeURIComponent(midEnc));
+              } catch (errM) {
+                openBuyVsCompMatchOverlay(midEnc);
+              }
+              return;
+            }
+            var msBtn =
+              t.closest && t.closest("[data-mp-bvc-open-ms]")
+                ? t.closest("[data-mp-bvc-open-ms]")
+                : null;
+            if (msBtn) {
+              e.preventDefault();
+              e.stopPropagation();
+              function decAttr(name) {
+                var raw = msBtn.getAttribute(name) || "";
+                try {
+                  return decodeURIComponent(raw);
+                } catch (errDec) {
+                  return raw;
+                }
+              }
+              openBuyVsCompMsDetailModal(
+                decAttr("data-mp-bvc-open-ms"),
+                decAttr("data-mp-bvc-ms-code"),
+                decAttr("data-mp-bvc-ms-name"),
+                decAttr("data-mp-bvc-ms-type")
+              );
+              return;
+            }
+            var copyBtn =
+              t.closest && t.closest("[data-mp-bvc-copy]")
+                ? t.closest("[data-mp-bvc-copy]")
+                : t.getAttribute && t.getAttribute("data-mp-bvc-copy") != null
+                  ? t
+                  : null;
+            if (copyBtn) {
+              e.preventDefault();
+              e.stopPropagation();
+              var enc = copyBtn.getAttribute("data-mp-bvc-copy") || "";
+              try {
+                copyBuyVsCompText(decodeURIComponent(enc));
+              } catch (err) {
+                copyBuyVsCompText(enc);
+              }
+              return;
+            }
+            if (t.getAttribute && t.getAttribute("data-mp-buy-vs-comp-dismiss") === "1") {
+              closeBuyVsCompOverlay();
+            }
+          });
+        }
+        var matchOv = document.getElementById("dg-mp-bvc-match-overlay");
+        if (matchOv) {
+          matchOv.addEventListener("click", function (e) {
+            var t = e.target;
+            if (t && t.getAttribute && t.getAttribute("data-mp-bvc-match-dismiss") === "1") {
+              closeBuyVsCompMatchOverlay();
+            }
+          });
+        }
+        (function initBuyVsCompMsDetailModal() {
+          var msOv = mountBuyVsCompMsDetailOverlayToBody();
+          var closeBtn = document.getElementById("dg-mp-bvc-ms-detail-close");
+          var panel = msOv ? msOv.querySelector(".dg-ms-detail-panel") : null;
+          if (closeBtn) closeBtn.addEventListener("click", closeBuyVsCompMsDetailModal);
+          if (msOv) {
+            msOv.addEventListener("click", function (e) {
+              if (e.target === msOv) closeBuyVsCompMsDetailModal();
+            });
+          }
+          if (panel) {
+            panel.addEventListener("click", function (e) {
+              e.stopPropagation();
+            });
+          }
+        })();
+        document.addEventListener("keydown", function (e) {
+          if (e.key !== "Escape") return;
+          var confirmOv = document.getElementById("dg-mp-confirm-overlay");
+          if (confirmOv && confirmOv.style.display !== "none") {
+            /* closeMpConfirm обрабатывается в bindMpConfirmUi — не закрывать слой ниже */
+            return;
+          }
+          var msOverlay = document.getElementById("dg-mp-bvc-ms-detail-overlay");
+          if (msOverlay && msOverlay.style.display !== "none") {
+            closeBuyVsCompMsDetailModal();
+            return;
+          }
+          var matchOverlay = document.getElementById("dg-mp-bvc-match-overlay");
+          if (matchOverlay && matchOverlay.style.display !== "none") {
+            closeBuyVsCompMatchOverlay();
+            return;
+          }
+          var overlay = document.getElementById("dg-mp-buy-vs-comp-overlay");
+          if (overlay && overlay.style.display !== "none") closeBuyVsCompOverlay();
+        });
+      })();
+
       // Зеркало умного поиска в card-header «Таблица товаров» — синхрон с #mp-f-smart.
       (function bindHeaderSearchMirror() {
         var primary = document.getElementById("mp-f-smart");
@@ -5636,6 +7212,7 @@
         updateSubtitle();
         updateSyncSiteButton();
         updateSortHeaders();
+        loadBuyVsCompSnapshot();
         await load();
         mpRefreshFloatingAfterLayout();
       })();

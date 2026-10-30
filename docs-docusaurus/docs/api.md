@@ -627,6 +627,12 @@ Body:
 Ручные наклейки строки `my_products`. Body: `site_id`, `source_id` или `sku`, и одно/несколько из: `sticker_no_ru`, `sticker_discontinued`, `sticker_not_supplied`, `sticker_sale` (`0|1`).  
 `sticker_sale=1` только при активной заморозке (`400 STICKER_SALE_REQUIRES_HOLD`). Авто-наклейки **Есть РУ** / **Есть в наличии** считаются на чтении списка (РУ из атрибутов МС, остаток из `ms_export`). Изменения → `dg_my_products_log`.
 
+### GET `/api/my-products/buy-vs-competitor-alerts`
+Быстрое чтение **снапшота** позиций, где **закупка МС** выше **минимума ДМ/МК** (RUB) более чем на `threshold_pct` % (по умолчанию **1**). Снапшот в таблицах `dg_my_product_buy_vs_comp_*`; полный пересчёт — после автосинка `stickers_cms` или `POST …/refresh` (не при каждом открытии UI). Query: `site_id`, `limit` (≤500). Ответ: `from_snapshot`, `total`, `rebuilt_at`, `source`, `threshold_pct`, `truncated`, `items[]` (`sku`, `name`, `source_url`, `buy_rub`, `competitor_rub`, `competitor_source`, `competitor_url`, `match_id`, `competitor_sku` / `competitor_name`, `pack_qty` / `pack_basis`, `competitor_price_list`, `confirmed_by` / `confirmed_at`, `ms_uuid` / `ms_type` / `ms_link_code`, `over_pct`, остатки…). Цена конкурента в снапшоте — **сопоставимая** (с учётом упаковки на `product_matches`). UI: `/my-products.html` — карточка + модалка; колонка **«Сопоставление»** — кто/когда подтвердил, правка упаковки (`PATCH /api/matches/:id/pack`) и **«Разорвать»** (`POST /api/matches/unlink`); колонка **«МС»** — полная карточка (`GET /api/ms/detail/:uuid`, как на `/moysklad.html`); полный пересчёт Δ % — только по **«Обновить»**.
+
+### POST `/api/my-products/buy-vs-competitor-alerts/refresh`
+Пересчёт снапшота (тяжёлый) и сразу ответ как у GET. Body/query: `site_id` (`all` = все сайты), `limit`. Ответ: поля GET + `rebuilt: true`, `rebuild_duration_sec`.
+
 ### GET `/api/my-products/:id/log`
 Журнал изменений наклеек и заморозки по `my_products.id`. Query: `field`, `limit`, `offset`. Ответ: `{ success, rows, total, field_labels }`.
 
