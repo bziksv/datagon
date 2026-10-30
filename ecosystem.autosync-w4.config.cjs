@@ -23,7 +23,9 @@ module.exports = {
       instances: 1,
       exec_mode: 'fork',
       autorestart: true,
-      max_memory_restart: '900M',
+      // Полный каталог ~40k SKU; батчи в stickers_cms + запас по heap.
+      max_memory_restart: '3500M',
+      node_args: '--max-old-space-size=3072',
       env: {
         DATAGON_AUTO_SYNC_WORKER_ID: '4',
         DATAGON_HTTP: 'off',
