@@ -25,6 +25,10 @@ const {
     STICKER_MANUAL_FIELDS,
     as01,
 } = require('../lib/datagonMyProductStickers');
+const {
+    isOwnMsStockBlockingCompetitor,
+    applySiteWarehouseStockBySiteId,
+} = require('../lib/datagonMyProductOwnStockPriceGuard');
 let myProductsPerfReady = false;
 let myProductsSyncAuditReady = false;
 let myProductsPriceHoldReady = false;
@@ -747,14 +751,18 @@ function myProductsRouterFactory(db, settings) {
                 }
             }
 
-            const stockMinNum = Number(String(stock_min ?? '').replace(',', '.'));
+            // Пустая строка → Number('') === 0; без trim-проверки «Остаток до»
+            // молча становился <= 0 и вместе с stock_min=1 давал пустую выборку.
+            const stockMinRaw = String(stock_min ?? '').trim().replace(',', '.');
+            const stockMinNum = stockMinRaw === '' ? NaN : Number(stockMinRaw);
             if (Number.isFinite(stockMinNum)) {
                 q += ' AND COALESCE(mp.stock, 0) >= ?';
                 qc += ' AND COALESCE(mp.stock, 0) >= ?';
                 p.push(stockMinNum);
                 pc.push(stockMinNum);
             }
-            const stockMaxNum = Number(String(stock_max ?? '').replace(',', '.'));
+            const stockMaxRaw = String(stock_max ?? '').trim().replace(',', '.');
+            const stockMaxNum = stockMaxRaw === '' ? NaN : Number(stockMaxRaw);
             if (Number.isFinite(stockMaxNum)) {
                 q += ' AND COALESCE(mp.stock, 0) <= ?';
                 qc += ' AND COALESCE(mp.stock, 0) <= ?';
@@ -847,6 +855,7 @@ function myProductsRouterFactory(db, settings) {
                         enrichWithCompetitorPrices(dataRows),
                         enrichRowsWithStickersAndMs(db, dataRows),
                     ]);
+                    await applySiteWarehouseStockBySiteId(db, dataRows);
                     gapRows = dataRows.filter((row) => rowMatchesGapFilter(row, gapCfg));
                     myProductsGapSetCache.set(gapSetKey, {
                         ts: Date.now(),
@@ -863,6 +872,7 @@ function myProductsRouterFactory(db, settings) {
                     enrichWithCompetitorPrices(dataRows),
                     enrichRowsWithStickersAndMs(db, dataRows),
                 ]);
+                await applySiteWarehouseStockBySiteId(db, dataRows);
                 if (isCustomCompetitorSort) {
                     sortProductRows(dataRows, customCompetitorSort, sortDirection);
                     finalRows = dataRows.slice(o, o + l);
@@ -1722,8 +1732,10 @@ function myProductsRouterFactory(db, settings) {
                 }
             }
         }
-        const stockMinNum = Number(String(stock_min ?? '').replace(',', '.'));
-        const stockMaxNum = Number(String(stock_max ?? '').replace(',', '.'));
+        const stockMinRaw = String(stock_min ?? '').trim().replace(',', '.');
+        const stockMaxRaw = String(stock_max ?? '').trim().replace(',', '.');
+        const stockMinNum = stockMinRaw === '' ? NaN : Number(stockMinRaw);
+        const stockMaxNum = stockMaxRaw === '' ? NaN : Number(stockMaxRaw);
         if (Number.isFinite(stockMinNum)) {
             whereSql += ' AND COALESCE(mp.stock, 0) >= ?';
             params.push(stockMinNum);
@@ -1974,6 +1986,7 @@ function myProductsRouterFactory(db, settings) {
         skipped_gap: 0,
         skipped_no_competitor: 0,
         skipped_hold: 0,
+        skipped_own_stock: 0,
         errors: []
     };
 
@@ -1987,7 +2000,8 @@ function myProductsRouterFactory(db, settings) {
         const skipped =
             Number(priceSyncJob.skipped_gap || 0) +
             Number(priceSyncJob.skipped_no_competitor || 0) +
-            Number(priceSyncJob.skipped_hold || 0);
+            Number(priceSyncJob.skipped_hold || 0) +
+            Number(priceSyncJob.skipped_own_stock || 0);
         return {
             active: !!priceSyncJob.active,
             cancel_requested: !!priceSyncJob.cancelRequested,
@@ -2004,6 +2018,7 @@ function myProductsRouterFactory(db, settings) {
             skipped_gap: Number(priceSyncJob.skipped_gap || 0),
             skipped_no_competitor: Number(priceSyncJob.skipped_no_competitor || 0),
             skipped_hold: Number(priceSyncJob.skipped_hold || 0),
+            skipped_own_stock: Number(priceSyncJob.skipped_own_stock || 0),
             no_dm_mk_price: Number(priceSyncJob.skipped_no_competitor || 0),
             skipped,
             no_competitor: Number(priceSyncJob.skipped_no_competitor || 0),
@@ -2041,6 +2056,7 @@ function myProductsRouterFactory(db, settings) {
         priceSyncJob.skipped_gap = 0;
         priceSyncJob.skipped_no_competitor = 0;
         priceSyncJob.skipped_hold = 0;
+        priceSyncJob.skipped_own_stock = 0;
         priceSyncJob.errors = [];
     }
 
@@ -2065,6 +2081,7 @@ function myProductsRouterFactory(db, settings) {
                 `, ошибок × ${priceSyncJob.cms_failed.toLocaleString('ru-RU')}` +
                 `, без цены ДМ/МК ${priceSyncJob.skipped_no_competitor.toLocaleString('ru-RU')}` +
                 `, заморозка ${priceSyncJob.skipped_hold.toLocaleString('ru-RU')}` +
+                `, свой остаток ${priceSyncJob.skipped_own_stock.toLocaleString('ru-RU')}` +
                 (showGapSkips ? `, отсеяно по Δ ${priceSyncJob.skipped_gap.toLocaleString('ru-RU')}` : '')
             );
         }
@@ -2184,7 +2201,11 @@ function myProductsRouterFactory(db, settings) {
             }
 
             async function processRows(rows) {
-                await enrichWithCompetitorPrices(rows);
+                await Promise.all([
+                    enrichWithCompetitorPrices(rows),
+                    enrichRowsWithStickersAndMs(db, rows),
+                ]);
+                await applySiteWarehouseStockBySiteId(db, rows);
 
                 const toWrite = [];
                 for (const product of rows) {
@@ -2199,6 +2220,12 @@ function myProductsRouterFactory(db, settings) {
 
                     if (isPriceHoldActive(product)) {
                         priceSyncJob.skipped_hold += 1;
+                        continue;
+                    }
+
+                    // Свой остаток МС (> 0) — цену с конкурента не берём (маржа / своя).
+                    if (isOwnMsStockBlockingCompetitor(product)) {
+                        priceSyncJob.skipped_own_stock += 1;
                         continue;
                     }
 
@@ -2308,8 +2335,7 @@ function myProductsRouterFactory(db, settings) {
                 finishPriceSyncJob(
                     serial,
                     'cancelled',
-                    `Остановлено: просмотрено ${priceSyncJob.scanned}/${totalWork}, записано ✓ ${priceSyncJob.cms_ok}, ошибок × ${priceSyncJob.cms_failed}, без цены ДМ/МК ${priceSyncJob.skipped_no_competitor}` +
-                        (showGapSkips ? `, отсеяно по Δ ${priceSyncJob.skipped_gap}` : '')
+                    `Остановлено: ${formatProgressMessage(totalWork, showGapSkips)}`
                 );
             } else {
                 const cacheFails = (priceSyncJob.errors || []).filter((e) =>
@@ -2320,9 +2346,7 @@ function myProductsRouterFactory(db, settings) {
                     cacheFails ? 'error' : 'done',
                     (cacheFails
                         ? `Цены записаны ✓ ${priceSyncJob.cms_ok}, но кэш Bitrix НЕ сброшен (${cacheFails}). `
-                        : '') +
-                        `Готово: просмотрено ${priceSyncJob.scanned}/${totalWork}, записано ✓ ${priceSyncJob.cms_ok}, ошибок × ${priceSyncJob.cms_failed}, без цены ДМ/МК ${priceSyncJob.skipped_no_competitor}` +
-                        (showGapSkips ? `, отсеяно по Δ ${priceSyncJob.skipped_gap}` : '')
+                        : '') + `Готово: ${formatProgressMessage(totalWork, showGapSkips)}`
                 );
             }
         } catch (e) {
@@ -2864,7 +2888,22 @@ function myProductsRouterFactory(db, settings) {
                     price_hold_by: product.price_hold_by || null
                 });
             }
-            await enrichWithCompetitorPrices([product]);
+            await Promise.all([
+                enrichWithCompetitorPrices([product]),
+                enrichRowsWithStickersAndMs(db, [product]),
+            ]);
+            await applySiteWarehouseStockBySiteId(db, [product]);
+            if (isOwnMsStockBlockingCompetitor(product)) {
+                return res.status(409).json({
+                    success: false,
+                    error:
+                        'Синк с конкурента отключён: есть свой остаток МС (' +
+                        Number(product.sticker_ms_stock) +
+                        '). Цена задаётся маржой / вручную.',
+                    code: 'OWN_MS_STOCK_BLOCK',
+                    sticker_ms_stock: Number(product.sticker_ms_stock),
+                });
+            }
 
             const fxSnap = snapshotFx();
             const usdRate = Number(fxSnap.usd_to_rub || 90);

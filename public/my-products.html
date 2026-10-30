@@ -1356,12 +1356,12 @@
                     </select>
                   </div>
                   <div class="col-lg-2 col-md-4 col-sm-6" data-dg-mp-filter-field="stock_min">
-                    <label class="form-label" for="mp-f-stock_min">Остаток от</label>
-                    <input type="number" class="form-control" id="mp-f-stock_min" placeholder="0" />
+                    <label class="form-label" for="mp-f-stock_min" title="Остаток на сайте (CMS / my_products.stock), не МойСклад">Остаток сайта от</label>
+                    <input type="number" class="form-control" id="mp-f-stock_min" placeholder="пусто = без фильтра" />
                   </div>
                   <div class="col-lg-2 col-md-4 col-sm-6" data-dg-mp-filter-field="stock_max">
-                    <label class="form-label" for="mp-f-stock_max">Остаток до</label>
-                    <input type="number" class="form-control" id="mp-f-stock_max" placeholder="1000" />
+                    <label class="form-label" for="mp-f-stock_max" title="Остаток на сайте (CMS / my_products.stock), не МойСклад">Остаток сайта до</label>
+                    <input type="number" class="form-control" id="mp-f-stock_max" placeholder="пусто = без фильтра" />
                   </div>
                   <div class="col-lg-2 col-md-4 col-sm-6" data-dg-mp-filter-field="source_enabled">
                     <label class="form-label" for="mp-f-source_enabled">На сайте (вкл/выкл)</label>
@@ -1717,13 +1717,13 @@
                       <th data-mp-sort="sticker_discontinued" data-mp-label="Снят / аналог" class="text-center dg-mp-sticker-th" title="Вручную: «Снят с производства/аналог по запросу». В списке — в конце.">Снят / аналог</th>
                       <th data-mp-sort="sticker_not_supplied" data-mp-label="Не поставляется" class="text-center dg-mp-sticker-th" title="Вручную: «Не поставляется, предлагаем аналог». В списке — в конце.">Не поставляется</th>
                       <th data-mp-sort="sticker_sale" data-mp-label="Скидка" class="text-center dg-mp-sticker-th" title="Вручную, только при активной заморозке цены. По истечении заморозки стикер снимается.">Скидка</th>
-                      <th data-mp-sort="price_hold" data-mp-label="Ручн." class="text-center" title="Заморозка своей цены: синк с конкурентов отключён до даты">Ручн.</th>
+                      <th data-mp-sort="price_hold" data-mp-label="Ручн." class="text-center" title="Замок — ручная заморозка цены. Синий бейдж «МС» — синк с конкурента отключён, пока остаток по складам сайта (my_sites) &gt; 0. Без привязки складов бейджа нет.">Ручн.</th>
                       <th role="button" data-mp-sort="price" class="text-center" style="cursor:pointer">Цена</th>
                       <th role="button" data-mp-sort="dealmed_price" class="text-center" style="cursor:pointer">Цена ДМ</th>
                       <th role="button" data-mp-sort="medkompleks_price" class="text-center" style="cursor:pointer">Цена МК</th>
                       <th role="button" data-mp-sort="currency" class="text-center" style="cursor:pointer">Валюта</th>
                       <th role="button" data-mp-sort="stock" data-mp-label="Остаток Сайт" class="text-center" style="cursor:pointer" title="Остаток с сайта (CMS / my_products.stock)">Остаток Сайт</th>
-                      <th role="button" data-mp-sort="sticker_ms_stock" data-mp-label="Остаток МС" class="text-center" style="cursor:pointer" title="Общий остаток МойСклад (ms_export.stock). «—» если нет связи с МС">Остаток МС</th>
+                      <th role="button" data-mp-sort="sticker_ms_stock" data-mp-label="Остаток МС" class="text-center" style="cursor:pointer" title="Остаток МойСклад: если у сайта заданы склады — сумма только по ним (и тогда при &gt; 0 блок синка с конкурента), иначе общий ms_export.stock без блока. «—» если нет связи с МС">Остаток МС</th>
                       <th role="button" data-mp-sort="status" class="text-center" style="cursor:pointer">Статус</th>
                       <th role="button" data-mp-sort="updated" class="text-center" style="cursor:pointer">Обновлен</th>
                       <th class="text-center">Цена от конкурента</th>
@@ -2110,6 +2110,10 @@
               ).toLocaleString("ru-RU") +
               (Number(st.skipped_hold || 0)
                 ? "; заморозка: " + Number(st.skipped_hold || 0).toLocaleString("ru-RU")
+                : "") +
+              (Number(st.skipped_own_stock || 0)
+                ? "; свой остаток МС: " +
+                  Number(st.skipped_own_stock || 0).toLocaleString("ru-RU")
                 : "") +
               (Number(st.skipped_gap || 0)
                 ? "; отсеяно по Δ: " + Number(st.skipped_gap || 0).toLocaleString("ru-RU")
@@ -3316,6 +3320,13 @@
           }
 
           var myPriceUi = formatBasePriceWithRub(r.price, r.currency, usdRate, eurRate);
+          var msStockN = Number(r.sticker_ms_stock);
+          // Блок только если у сайта заданы склады МС (site_ms_stock_guard) и сумма > 0.
+          var ownStockBlock =
+            Number(r.site_ms_stock_guard) === 1 &&
+            Number(r.sticker_ms_linked) === 1 &&
+            Number.isFinite(msStockN) &&
+            msStockN > 0;
           var dmPriceUi = formatBasePriceWithRub(
             r.dealmed_price,
             r.dealmed_currency || "RUB",
@@ -3450,10 +3461,19 @@
           btnSy.className = "btn btn-sm btn-outline-success";
           btnSy.id = rowIdBase + "-sync";
           btnSy.setAttribute("data-dg-no-activity", "1");
-          btnSy.setAttribute(
-            "data-dg-tooltip",
-            "Записать на сайт цену от самого дешёвого конкурента: скидка в процентах из полей «Синх. % мин / макс» ниже фильтров."
-          );
+          if (ownStockBlock) {
+            btnSy.className = "btn btn-sm btn-outline-secondary";
+            btnSy.disabled = true;
+            btnSy.setAttribute(
+              "data-dg-tooltip",
+              "Недоступно: свой остаток МС > 0 — цену с конкурента не пишем (маржа / ручная)."
+            );
+          } else {
+            btnSy.setAttribute(
+              "data-dg-tooltip",
+              "Записать на сайт цену от самого дешёвого конкурента: скидка в процентах из полей «Синх. % мин / макс» ниже фильтров."
+            );
+          }
           btnSy.innerHTML = '<i class="pe-7s-graph3 me-1"></i>Синх. цену';
           btnSy.addEventListener("click", function () {
             onSyncPrice(r);
@@ -3515,6 +3535,21 @@
             onPriceHoldClick(r);
           });
           holdTd.appendChild(holdBtn);
+          if (ownStockBlock) {
+            var stockBadge = document.createElement("span");
+            stockBadge.className =
+              "badge rounded-pill bg-info text-dark ms-1 align-middle dg-mp-own-stock-block";
+            stockBadge.textContent = "МС";
+            stockBadge.setAttribute(
+              "data-dg-tooltip",
+              "Синк цены с конкурента отключён: остаток по складам сайта = " +
+                (window.DatagonFmt && window.DatagonFmt.formatNumber
+                  ? window.DatagonFmt.formatNumber(msStockN, { maxFractionDigits: 3 })
+                  : String(msStockN)) +
+                ". Без привязки складов на «Мои сайты» блок не действует. Когда остаток по складам станет 0 — синк с ДМ/МК снова разрешён."
+            );
+            holdTd.appendChild(stockBadge);
+          }
           attachMpFieldLog(holdTd, r, "price_hold_until");
 
           var myTd = document.createElement("td");
@@ -3539,6 +3574,16 @@
             he.className = "small text-danger fw-semibold dg-mp-hold-badge mt-1";
             he.textContent = "истёк " + formatHoldUntilShort(r.price_hold_until);
             myTd.appendChild(he);
+          }
+          if (ownStockBlock) {
+            var sb = document.createElement("div");
+            sb.className = "small fw-semibold text-info dg-mp-own-stock-block mt-1";
+            sb.textContent = "блок: остаток МС";
+            sb.setAttribute(
+              "data-dg-tooltip",
+              "Цена с конкурента не применяется, пока остаток МС > 0"
+            );
+            myTd.appendChild(sb);
           }
 
           tr.appendChild(tdText(r.cms_product_id || r.source_id || "—"));
@@ -4856,6 +4901,22 @@
             "Цена заморожена до " +
               formatHoldUntilShort(row.price_hold_until) +
               " — сначала снимите заморозку"
+          );
+          return;
+        }
+        var msN = Number(row.sticker_ms_stock);
+        if (
+          Number(row.site_ms_stock_guard) === 1 &&
+          Number(row.sticker_ms_linked) === 1 &&
+          Number.isFinite(msN) &&
+          msN > 0
+        ) {
+          notifyMp(
+            "warning",
+            "Синк с конкурента отключён: свой остаток МС (склады сайта) = " +
+              (window.DatagonFmt && window.DatagonFmt.formatNumber
+                ? window.DatagonFmt.formatNumber(msN, { maxFractionDigits: 3 })
+                : String(msN))
           );
           return;
         }
