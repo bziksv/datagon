@@ -449,6 +449,9 @@
           timeMin = timeStrToMinutes(timeStr);
           nextMeta = computeAutoSyncNextRunMeta(en, timeStr, wdCsv);
         }
+        var workerAttr = Number(taskEl.getAttribute("data-as-worker") || 1);
+        var workerN =
+          workerAttr === 2 ? 2 : workerAttr === 3 ? 3 : workerAttr === 4 ? 4 : 1;
         return {
           el: taskEl,
           task: String(taskEl.getAttribute("data-as-task") || ""),
@@ -460,6 +463,7 @@
           timeMin: timeMin,
           weekdaysCsv: wdCsv,
           nextMeta: nextMeta,
+          worker: workerN,
         };
       }
 
@@ -508,6 +512,10 @@
           for (var j = i + 1; j < enabled.length; j++) {
             var a = enabled[i];
             var b = enabled[j];
+            // Очередь одна на воркер (pm2 w1/w2/w3/w4). Разные воркеры — параллельно, не конфликт.
+            var wa = Number(a.worker) || 1;
+            var wb = Number(b.worker) || 1;
+            if (wa !== wb) continue;
             if (!weekdaysSetsOverlap(a.weekdaysCsv, b.weekdaysCsv)) continue;
             if (a.scheduleMode === "interval" || b.scheduleMode === "interval") continue;
             var diff = Math.abs(a.timeMin - b.timeMin);
@@ -521,6 +529,7 @@
               diffMin: diff,
               exact: diff === 0,
               crossMs: crossMs,
+              worker: wa,
             });
           }
         }
@@ -674,8 +683,10 @@
           return;
         }
         var html =
-          "<strong>⚠ Совпадение времени запуска (МСК)</strong>" +
-          '<p class="small mb-2 mt-1">Очередь автосинка выполняет задачи по одной — при одном слоте они не идут параллельно, но нагрузка на API/БД может наслоиться. Разнесите время, особенно <strong>импорт</strong> и <strong>экспорт</strong> в МойСклад.</p><ul class="small mb-0">';
+          "<strong>⚠ Совпадение времени на одном воркере (МСК)</strong>" +
+          '<p class="small mb-2 mt-1">У каждого воркера (1–4) своя очередь: задачи <strong>на одном</strong> воркере идут по одной. ' +
+          "Пары на <strong>разных</strong> воркерах сюда не попадают — они могут стартовать параллельно. " +
+          "Разнесите слоты на одном воркере, особенно <strong>импорт</strong> и <strong>экспорт</strong> в МойСклад.</p><ul class=\"small mb-0\">";
         conflicts.forEach(function (c) {
           var timeNote = c.exact
             ? "одно и то же время <code>" + escAutoSyncHtml(c.a.timeStr) + "</code>"
@@ -683,6 +694,10 @@
           var crossNote = c.crossMs
             ? ' <span class="text-danger fw-semibold">импорт ↔ экспорт в МС</span>'
             : "";
+          var workerNote =
+            c.worker != null
+              ? ' <span class="text-muted">(воркер ' + Number(c.worker) + ")</span>"
+              : "";
           html +=
             "<li><strong>" +
             escAutoSyncHtml(c.a.title) +
@@ -691,6 +706,7 @@
             "</strong> — " +
             timeNote +
             crossNote +
+            workerNote +
             "</li>";
         });
         box.innerHTML = html + "</ul>";
