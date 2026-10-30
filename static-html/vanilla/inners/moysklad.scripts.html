@@ -10,7 +10,7 @@
         ["stock_position", "Склад. поз."],
         ["no_longer_cooperation", "Перестали сотруднич."],
         ["min_stock", "Неснижаемый остаток"],
-        ["stock", "Остаток"],
+        ["stock", "Остаток МС"],
         ["stock_days", "Дней на складе"],
         ["price_comment", "Проработка цены / коммент"],
         ["vat", "НДС"],
@@ -1076,7 +1076,39 @@
         }
         var v = r[key];
         if (key === "stock") {
-          return numericInner(key, document.createTextNode(fmtNum(v)));
+          var stockWrap = document.createElement("span");
+          stockWrap.textContent = fmtNum(v);
+          var byStore = Array.isArray(r.stock_by_store)
+            ? r.stock_by_store
+            : Array.isArray(r.sticker_ms_stock_by_store)
+              ? r.sticker_ms_stock_by_store
+              : [];
+          var tipLines = byStore
+            .filter(function (s) {
+              var sn = Number(s.stock);
+              return Number.isFinite(sn) && sn !== 0;
+            })
+            .map(function (s) {
+              var sn = Number(s.stock);
+              return String(s.store_name || s.store_uuid || "Склад") + ": " + fmtNum(sn);
+            });
+          if (tipLines.length) {
+            stockWrap.setAttribute(
+              "data-dg-tooltip",
+              "Остаток МС по складам:\n" + tipLines.join("\n")
+            );
+          } else if (byStore.length) {
+            stockWrap.setAttribute(
+              "data-dg-tooltip",
+              "Остаток МС по складам: все нули (общий " + fmtNum(v) + ")"
+            );
+          } else {
+            stockWrap.setAttribute(
+              "data-dg-tooltip",
+              "Остаток МС (общий). Разбивки по складам нет — нужен полный синк МойСклад."
+            );
+          }
+          return numericInner(key, stockWrap);
         }
         if (key === "min_stock") {
           // Для Комплектов в МС поле minimumBalance не задано — выводим прочерк,

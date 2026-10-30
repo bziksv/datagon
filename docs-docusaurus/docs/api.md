@@ -262,11 +262,21 @@ Query:
 
 **F-SET-02:** `admin` — всегда; иначе нужен `settings=full` **и** `confirm: true` (UI шлёт confirm). Без confirm → 403 `AUTO_SYNC_RUN_FORBIDDEN`.
 
-Body: `{ "task": "myproducts" | "moysklad" | "ms_inventory_month" | "ms_orders" | "marketplaces_ozon" | "marketplaces_wb" | "marketplaces_ym" | "marketplaces" | "huckster" | "np_ms_enrich" | "np_crm_notify" | "db_size" | "dimensions" | "min_stock_export" | "mssales" | "mssales_full" | "purchase_formula_cache" | "medmarket" | "medmarket_fill" | "price_comp_sync" | "network_prices" | "results_reparse_products" | "finance_tochka" | "ops_planfix" | "bitcop_hours", "confirm": true }`. Whitelist — `lib/datagonAutoSyncRegistry.js → getAutoSyncTaskKeys()` плюс legacy **`marketplaces`** (все три площадки одним прогоном). **`ms_inventory_month`**: снимок товарного остатка МС в `dg_finance_ms_inventory_month` (по расписанию — только EOM МСК; manual — сразу). Запись в `auto_sync_runs` с `trigger_type = "manual"`. Для `dimensions` — балк как по расписанию. Для `mssales` / `mssales_full` / `ms_orders` — см. соответствующие `auto_sync_*` выше. Для **`purchase_formula_cache`** — `runPurchaseFormulaCacheBatch(db, appSettings)` (дефолтные фильтры закупок, чанками без RAM-снимка). Для **`medmarket`** — `routes/medmarket.js → triggerSync(db)` (каталог из `ms_export`). Для **`price_comp_sync`** — `routes/myproducts.js → triggerPriceCompSyncFromSettings(appSettings)` (фильтры из `auto_sync_price_comp_*`). Для **`network_prices`** — `routes/networkPrices.js → triggerNetworkPricesSyncFromSettings` (все enabled-сайты с заданным `%`). Для **`results_reparse_products`** — `lib/datagonResultsRefresh.js → refreshResultsByFilters({ page_type: "product" })` (воркер 3). Для **`finance_tochka`** — `routes/finance.js → triggerFinanceSyncFromSettings` (счета + выписка Точки за `auto_sync_finance_tochka_days`). Для **`np_ms_enrich`** — `lib/dgNewProductsMarkets.js → backfillMarketsMsFieldsFromCache` (кэш МС, без live API).
+Body: `{ "task": "myproducts" | "stickers_cms" | "moysklad" | "ms_inventory_month" | "ms_orders" | "marketplaces_ozon" | "marketplaces_wb" | "marketplaces_ym" | "marketplaces" | "huckster" | "np_ms_enrich" | "np_crm_notify" | "db_size" | "dimensions" | "min_stock_export" | "mssales" | "mssales_full" | "purchase_formula_cache" | "medmarket" | "medmarket_fill" | "price_comp_sync" | "network_prices" | "results_reparse_products" | "finance_tochka" | "ops_planfix" | "bitcop_hours", "confirm": true }`. Whitelist — `lib/datagonAutoSyncRegistry.js → getAutoSyncTaskKeys()` плюс legacy **`marketplaces`** (все три площадки одним прогоном). **`stickers_cms`**: выгрузка наклеек `my_products` → Webasyst Features `dg_sticker_*` (`lib/datagonMyProductStickersCmsSync.js`); ключи `auto_sync_stickers_cms_*`, webhook `POST /api/hooks/stickers-cms-sync`. **`ms_inventory_month`**: снимок товарного остатка МС в `dg_finance_ms_inventory_month` (по расписанию — только EOM МСК; manual — сразу). Запись в `auto_sync_runs` с `trigger_type = "manual"`. Для `dimensions` — балк как по расписанию. Для `mssales` / `mssales_full` / `ms_orders` — см. соответствующие `auto_sync_*` выше. Для **`purchase_formula_cache`** — `runPurchaseFormulaCacheBatch(db, appSettings)` (дефолтные фильтры закупок, чанками без RAM-снимка). Для **`medmarket`** — `routes/medmarket.js → triggerSync(db)` (каталог из `ms_export`). Для **`price_comp_sync`** — `routes/myproducts.js → triggerPriceCompSyncFromSettings(appSettings)` (фильтры из `auto_sync_price_comp_*`). Для **`network_prices`** — `routes/networkPrices.js → triggerNetworkPricesSyncFromSettings` (все enabled-сайты с заданным `%`). Для **`results_reparse_products`** — `lib/datagonResultsRefresh.js → refreshResultsByFilters({ page_type: "product" })` (воркер 3). Для **`finance_tochka`** — `routes/finance.js → triggerFinanceSyncFromSettings` (счета + выписка Точки за `auto_sync_finance_tochka_days`). Для **`np_ms_enrich`** — `lib/dgNewProductsMarkets.js → backfillMarketsMsFieldsFromCache` (кэш МС, без live API).
 
-Ответ `{ "success": true, "queued": true|false, "skip_reason": null|"already_running"|"already_queued"|"invalid_task"|"wrong_worker", "task", "worker", "local_worker", "dispatch_id?", "queue", "runner_active", "running_tasks" }`. Поле **`worker`** — целевой воркер задачи из реестра (`1` = `parser-app`, `2` = `parser-autosync-w2`, `3` = `parser-autosync-w3`). Если целевой воркер ≠ HTTP-процессу, задача пишется в **`auto_sync_dispatch`** и подхватывается нужным процессом (см. [Деплой](/docs/deploy)). Поле **`running_tasks`** — массив строк `task_type` с незавершённой записью в `auto_sync_runs`. Поле **`queued: false`** — задача **не** добавлена (`skip_reason`). На `/settings.html` ответ показывается плашкой на карточке; у каждой задачи бейдж **«Воркер N»**.
+Ответ `{ "success": true, "queued": true|false, "skip_reason": null|"already_running"|"already_queued"|"invalid_task"|"wrong_worker", "task", "worker", "local_worker", "dispatch_id?", "queue", "runner_active", "running_tasks" }`. Поле **`worker`** — целевой воркер задачи из реестра (`1` = `parser-app`, `2` = `parser-autosync-w2`, `3` = `parser-autosync-w3`, `4` = `parser-autosync-w4` / `stickers_cms`). Если целевой воркер ≠ HTTP-процессу, задача пишется в **`auto_sync_dispatch`** и подхватывается нужным процессом (см. [Деплой](/docs/deploy)). Поле **`running_tasks`** — массив строк `task_type` с незавершённой записью в `auto_sync_runs`. Поле **`queued: false`** — задача **не** добавлена (`skip_reason`). На `/settings.html` ответ показывается плашкой на карточке; у каждой задачи бейдж **«Воркер N»**.
 
 **Локально:** при `DATAGON_AUTO_SYNC_SCHEDULER=off` (`npm run dev:local`) этот endpoint **работает** (ручной запуск), а тики расписания в `startAutoSyncScheduler` — нет. На проде scheduler включён. См. [Деплой](/docs/deploy).
+
+### POST `/api/hooks/stickers-cms-sync`
+
+Без сессии. Токен: заголовок **`X-Datagon-Hook-Token`**, query `?token=` или body `token` = `app_settings.stickers_cms_webhook_token` (карточка «Наклейки → Webasyst» на `/settings.html`).
+
+- По умолчанию — **синхронный** прогон `syncMyProductStickersToCms` (ответ со счётчиками).
+- Body опционально: `site_id`, `product_ids[]` (`my_products.id`), `cms_product_ids[]` (`shop_product.id`).
+- `async=1` / `"async": true` — поставить `stickers_cms` в очередь автосинка (`trigger_type` webhook) и сразу ответить `{ queued: true }`.
+
+См. [Мои товары — наклейки](/docs/myproducts/#наклейки-стикеры).
 
 ### GET `/api/processes/min-stock-export-errors`
 
@@ -439,16 +449,19 @@ Query:
 
 ## My sites
 
-Подключение к CMS MySQL (F-SQL-02): host только из allowlist (`DATAGON_CMS_DB_HOSTS` + дефолтные прод-IP в `lib/datagonCmsDb.js`); `db_pass` at-rest AES-GCM (`enc:v1:…`, тот же `DATAGON_VAULT_KEY`, что WORK vault); list/detail маскируют пароль (`db_pass=""`, `db_pass_set` / `db_pass_mask`); PUT с пустым паролем не затирает. Миграция legacy: `node scripts/migrate-cms-db-pass-encrypt.mjs`.
+Подключение к CMS MySQL (F-SQL-02): host только из allowlist (`DATAGON_CMS_DB_HOSTS` + дефолтные прод-IP в `lib/datagonCmsDb.js`); `db_pass` at-rest AES-GCM (`enc:v1:…`, тот же `DATAGON_VAULT_KEY`, что WORK vault); list/detail маскируют пароль (`db_pass=""`, `db_pass_set` / `db_pass_mask`); PUT с пустым паролем не затирает. Миграция legacy: `node scripts/migrate-cms-db-pass-encrypt.mjs`. Локально (`npm run dev:local`): **`DATAGON_CMS_DB_OVERRIDE_<siteId>=host:user:pass:database`** (для Альмамед site `2` → `127.0.0.1:almamed:localdev:almamed_su_db`) — plaintext override без vault и без правки `my_sites` в общей БД; нужен, чтобы `set-sticker` / `stickers_cms` писали в локальный Webasyst, а не в прод CMS.
 
 ### GET `/api/my-sites`
-Список подключенных сайтов-источников (без plaintext `db_pass`).
+Список подключенных сайтов-источников (без plaintext `db_pass`). В каждой строке **`ms_stock_store_uuids`**: массив UUID складов МойСклад (пусто = при экспорте остатков писать общий `ms_export.stock`).
+
+### GET `/api/my-sites/ms-stores`
+Справочник складов для привязки к сайту: `{ success, stores: [{ uuid, name }] }` из `ms_export_stock_by_store` (+ имена из заказов МС). Нужен полный синк МойСклад.
 
 ### POST `/api/my-sites`
-Добавить источник и проверить подключение к внешней БД (host allowlist + encrypt pass).
+Добавить источник и проверить подключение к внешней БД (host allowlist + encrypt pass). Body: опционально **`ms_stock_store_uuids`** (массив UUID или JSON-строка) — склады, чьи остатки **суммируются** при `stickers_cms` / выгрузке count в Webasyst.
 
 ### PUT `/api/my-sites/:id`
-Изменить настройки источника (пустой `db_pass` = keep).
+Изменить настройки источника (пустой `db_pass` = keep). То же поле **`ms_stock_store_uuids`**.
 
 ### DELETE `/api/my-sites/:id`
 Удалить источник.
@@ -605,13 +618,20 @@ Body:
 Записать свою цену в CMS сайта и поставить **заморозку** синка с конкурентов. Body: **`confirm: true`** (обяз., F-MP-01), `site_id`, `source_id` или `sku`, `price`, `hold_days` (`30|60|90|180`, default **90**) или `hold_until` (`YYYY-MM-DD` / ISO, не далее 366 дней). Поля в `my_products`: `price`, `price_hold_until`, `price_hold_by`, `price_hold_note`.
 
 ### POST `/api/my-products/set-price-hold`
-Только заморозка текущей цены (без записи в CMS). Те же идентификаторы + `hold_days` / `hold_until`.
+Только заморозка текущей цены (без записи в CMS). Те же идентификаторы + `hold_days` / `hold_until`. Пишет строку в журнал `dg_my_products_log` (поле `price_hold_until`).
 
 ### POST `/api/my-products/clear-price-hold`
-Снять заморозку у одной строки (`price_hold_*` → NULL). Цену не меняет.
+Снять заморозку у одной строки (`price_hold_*` → NULL). Цену не меняет. При снятии также обнуляет `sticker_sale` (наклейка «Скидка»).
+
+### POST `/api/my-products/set-sticker`
+Ручные наклейки строки `my_products`. Body: `site_id`, `source_id` или `sku`, и одно/несколько из: `sticker_no_ru`, `sticker_discontinued`, `sticker_not_supplied`, `sticker_sale` (`0|1`).  
+`sticker_sale=1` только при активной заморозке (`400 STICKER_SALE_REQUIRES_HOLD`). Авто-наклейки **Есть РУ** / **Есть в наличии** считаются на чтении списка (РУ из атрибутов МС, остаток из `ms_export`). Изменения → `dg_my_products_log`.
+
+### GET `/api/my-products/:id/log`
+Журнал изменений наклеек и заморозки по `my_products.id`. Query: `field`, `limit`, `offset`. Ответ: `{ success, rows, total, field_labels }`.
 
 ### POST `/api/my-products/set-price-hold-bulk` / `clear-price-hold-bulk`
-Массовая заморозка / снятие по **тем же фильтрам**, что у list / sync-price-bulk (включая `price_hold`, Δ). `dry_run=1` или `confirm=1`. Для set — ещё `hold_days` / `hold_until`. Ответ: `total`, `already_held`, `free`, `would_hold` / `held` или `would_clear` / `cleared`, `duration_sec`, `applied_filters`. Потолок выборки — **50 000**. CMS не трогает.
+Массовая заморозка / снятие по **тем же фильтрам**, что у list / sync-price-bulk (включая `price_hold`, Δ). `dry_run=1` или `confirm=1`. Для set — ещё `hold_days` / `hold_until`. Ответ: `total`, `already_held`, `free`, `would_hold` / `held` или `would_clear` / `cleared`, `duration_sec`, `applied_filters`. Потолок выборки — **50 000**. CMS не трогает. При clear также снимает `sticker_sale`.
 
 ### POST `/api/my-products/sync-price-from-competitor`
 Подтянуть цену с конкурента в источник (логика в `routes/myproducts.js`). В теле: **`confirm: true`** (обяз., F-MP-01), `site_id`, `sku`, опционально `source_id`, `random_min_pct` / `random_max_pct`. Берётся **минимальная** цена среди Dealmed/Медкомплекс (в RUB), минус случайный % из диапазона; запись в CMS + аудит `comp_sync_*` в `my_products`. Заголовок `x-auth-username` / сессия попадает в аудит. Если у товара активна заморозка (`price_hold_until > NOW()`) → **`409 PRICE_HOLD_ACTIVE`**.
@@ -779,7 +799,7 @@ Body:
 
 Этап 6/6 (`сохранение в ms_export`) выполняется **батчами по 2000 строк** (раньше шла одна команда `INSERT ... VALUES ?` на все ~60k строк × 24 колонки — на боевых снапшотах формировала SQL в десятки/сотни МБ и упиралась либо в `max_allowed_packet` MySQL, либо в OOM Node, после чего pm2/systemd рестартовал процесс и UI «зависал» на сообщении «Этап 6/6: сохранение в ms_export» с `jobState = {active:false, message:'Ожидание', total:0, processed:0}`). Прогресс-лог архивируется каждые ~10k строк (а также на последнем чанке) — в журнале синка видны записи `Сохранено в ms_export: N/M`. Сразу после завершения всех чанков выполняется пакетный upsert в `dg_product_zero_stock_log` за **сегодня** (`routes/product.js → syncZeroStockLogAfterMoyskladExport`): только строки с `stock_position='Да'`, `is_archived=0` и (`stock≤0` или для кода без «-» остаток строго меньше минимального числового суффикса среди номенклатур `<тот же код>-<целое>` в `ms_export`) (источник `moysklad_sync`; запись с `manual` за тот же день не перезаписывается). Затем буфер `exportRows` освобождается до старта `saveMoyskladEntityDetails` — это снимает пик памяти перед потоковой записью полных карточек.
 
-**Поле `min_stock`** (DECIMAL(15,3) NULL, миграция `ensureMsMinStockColumn`) — нативное поле МС API `product.minimumBalance` («Неснижаемый остаток»). Заполняется только для строк `type='Товар'`; для `type='Комплект'` хранится `NULL`, потому что у `bundle` в МС-схеме поле `minimumBalance` не задано. UI `/moysklad.html` рендерит колонку «Неснижаемый остаток» прямо перед «Остаток»; для `NULL` показывает «—», чтобы пользователь отличал «норматив не задан» от честного 0. Сортировка по полю поддерживается (входит в `allowedSortFields` API list-эндпоинта).
+**Поле `min_stock`** (DECIMAL(15,3) NULL, миграция `ensureMsMinStockColumn`) — нативное поле МС API `product.minimumBalance` («Неснижаемый остаток»). Заполняется только для строк `type='Товар'`; для `type='Комплект'` хранится `NULL`, потому что у `bundle` в МС-схеме поле `minimumBalance` не задано. UI `/moysklad.html` рендерит колонку «Неснижаемый остаток» прямо перед «Остаток МС»; для `NULL` показывает «—», чтобы пользователь отличал «норматив не задан» от честного 0. Сортировка по полю поддерживается (входит в `allowedSortFields` API list-эндпоинта).
 
 Этап «Сохранение полных карточек МойСклад» (`ms_entity_details`) — потоковый: накапливается батч на 100 сущностей, тут же делается `INSERT ... ON DUPLICATE KEY UPDATE` и буфер обнуляется. Раньше функция сначала собирала `JSON.stringify` ВСЕХ сущностей в массив (`payload_json` под 280 МБ – 1 ГБ), и в паре с живым `all` в памяти Node уходил в OOM на боевом стенде ровно после успешного сохранения `ms_export`. Прогресс архивируется на круглых процентах (5 / 10 / … / 100) и при `processed === total`.
 
@@ -789,7 +809,7 @@ Body:
 Проверить статус задачи синхронизации.
 
 ### GET `/api/ms/export`
-Получить экспортированные строки.
+Получить экспортированные строки. В каждой строке `data[]` дополнительно **`stock_by_store`**: массив `{ store_uuid, store_name, stock }` из `ms_export_stock_by_store` (полный синк МС, `report/stock/bystore`). На `/moysklad.html` колонка «Остаток МС» при наведении показывает ненулевые склады (каждый с новой строки).
 
 Query:
 - `search` — **умный поиск** по `code`, `name`, `supplier`, `supplier2`. Поддерживает группы через `|` (как ИЛИ) и явные ключи `sku:` (=`code:`), `name:`, `supplier:`, `manager:`, `content_manager:`, `stock:` (`да|нет|yes|no|1|0`). Без префикса token ищется по `code OR name OR supplier OR supplier2`. Реализация — `buildSmartSearchClause` в `routes/moysklad.js`.

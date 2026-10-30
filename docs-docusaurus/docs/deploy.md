@@ -98,9 +98,9 @@ Hard refresh browser cache after deploy:
   - **Локально всегда:** `npm run dev:local` (агент Cursor и разработчик — та же команда; не `npm start`).
   - **Прод:** переменную **не задавать** — по умолчанию scheduler включён (`pm2` → `node server.js`).
   - В логе при старте локально должна быть строка: `[AUTO SYNC] scheduler ВЫКЛЮЧЕН …`.
-- **`DATAGON_AUTO_SYNC_WORKER_ID`** — `1` (default, `parser-app`), `2` (`parser-autosync-w2`), `3` (`parser-autosync-w3`). Назначение задачи → поле `worker` в `lib/datagonAutoSyncRegistry.js` (**банки/Planfix/Bitcop → 2**, **`results_reparse_products` → 3**, остальное → 1). Ручной запуск с HTTP-воркера 1 для чужой задачи пишется в `auto_sync_dispatch`, целевой воркер забирает её за несколько секунд.
+- **`DATAGON_AUTO_SYNC_WORKER_ID`** — `1` (default, `parser-app`), `2` (`parser-autosync-w2`), `3` (`parser-autosync-w3`), `4` (`parser-autosync-w4`). Назначение задачи → поле `worker` в `lib/datagonAutoSyncRegistry.js` (**банки/Planfix/Bitcop → 2**, **`results_reparse_products` → 3**, **`stickers_cms` → 4**, остальное → 1). Ручной запуск с HTTP-воркера 1 для чужой задачи пишется в `auto_sync_dispatch`, целевой воркер забирает её за несколько секунд.
 - **Zombie-reconcile `moysklad`:** закрытие «зависших» `auto_sync_runs` для МС выполняется **только на воркере-владельце** задачи (`autoSyncTaskBelongsHere('moysklad')`, обычно w1). W2/w3 не смотрят на чужой `jobState` и не пишут в журнал ложное «Ожидание» / `interrupted` за 3–5 с. Плюс grace **90 с** для свежих `running` (гонка `startAutoSyncRun` → `active=true`). Очередь автосинка ждёт promise `triggerSync().done`, а не мгновенный `waitUntil(!active)`. HTTP к МС на выгрузке каталога — таймаут **120 с** (`MS_HTTP_TIMEOUT_MS` в `routes/moysklad.js`).
-- **`DATAGON_HTTP=off`** — процесс без `listen` (только автосинк). Нужен для `parser-autosync-w2` / `parser-autosync-w3`. На основном `parser-app` **не** задавать.
+- **`DATAGON_HTTP=off`** — процесс без `listen` (только автосинк). Нужен для `parser-autosync-w2` / `w3` / `w4`. На основном `parser-app` **не** задавать.
 - **Доп. воркеры на проде:**
 
 ```bash
@@ -108,14 +108,15 @@ cd /var/www/p_datagon_ru_usr/data/www/p.datagon.ru
 # тот же DATAGON_VAULT_KEY, что у parser-app (иначе finance_tochka на w2: «Добавьте JWT…»)
 DATAGON_VAULT_KEY='…' pm2 start ecosystem.autosync-w2.config.cjs
 DATAGON_VAULT_KEY='…' pm2 start ecosystem.autosync-w3.config.cjs
+DATAGON_VAULT_KEY='…' pm2 start ecosystem.autosync-w4.config.cjs
 pm2 save
 pm2 restart parser-app
-pm2 ls   # parser-app + parser-autosync-w2 + parser-autosync-w3
+pm2 ls   # parser-app + parser-autosync-w2 + w3 + w4
 ```
 
 - **`DATAGON_STARTUP_DEFER_MS`** — отсрочка тяжёлых фоновых задач после старта (default 60000 мс).
 - **`DATAGON_CLOCK_SYNC_SECRET`** — общий секрет для `POST /api/work-schedule/clock/sync-from-crm` (вызов из CRM после attendance). Передавать **только** в header `X-Datagon-Clock-Sync` (не в body). Без него endpoint отвечает 401.
-- **`DATAGON_VAULT_KEY`** — ключ AES-256-GCM для WORK vault at-rest (`lib/datagonVaultCrypto.js`): **64 hex** или **base64(32 байта)**. Обязателен **на всех** pm2-процессах Datagon (`parser-app`, `parser-autosync-w2`, `parser-autosync-w3`): банки (`finance_*_credentials`), Bitcop, CMS `db_pass`, WORK vault — `enc:v1:…`. Ручной синк с `/finance.html` идёт через воркер 1; автосинк `finance_tochka` — через **w2**. Без ключа на w2 автосинк не расшифрует JWT и пишет «Добавьте JWT…», хотя UI обновление работает. Без ключа новые секреты пишутся plaintext (warn); уже `enc:v1:…` без ключа не reveal'ятся (503). Массовая миграция legacy: на **проде** сначала выкатить код + тот же ключ в pm2, затем `DATAGON_VAULT_MIGRATE=1` при старте или `node scripts/migrate-work-vault-encrypt.mjs`. Сгенерировать: `openssl rand -hex 32`. Не коммитить ключ; локально с общей БД не шифровать без выката ключа на сервер.
+- **`DATAGON_VAULT_KEY`** — ключ AES-256-GCM для WORK vault at-rest (`lib/datagonVaultCrypto.js`): **64 hex** или **base64(32 байта)**. Обязателен **на всех** pm2-процессах Datagon (`parser-app`, `parser-autosync-w2`, `w3`, `w4`): банки (`finance_*_credentials`), Bitcop, CMS `db_pass`, WORK vault — `enc:v1:…`. Ручной синк с `/finance.html` идёт через воркер 1; автосинк `finance_tochka` — через **w2**; `stickers_cms` — через **w4**. Без ключа на w2 автосинк не расшифрует JWT и пишет «Добавьте JWT…», хотя UI обновление работает. Без ключа новые секреты пишутся plaintext (warn); уже `enc:v1:…` без ключа не reveal'ятся (503). Массовая миграция legacy: на **проде** сначала выкатить код + тот же ключ в pm2, затем `DATAGON_VAULT_MIGRATE=1` при старте или `node scripts/migrate-work-vault-encrypt.mjs`. Сгенерировать: `openssl rand -hex 32`. Не коммитить ключ; локально с общей БД не шифровать без выката ключа на сервер.
 - **`DATAGON_BIND_HOST`** — адрес listen Node (F-DEP-02). По умолчанию **`127.0.0.1`** (nginx `proxy_pass` на localhost). Для отладки снаружи: `DATAGON_BIND_HOST=0.0.0.0`.
 - Security headers (F-DEP-03 / F-XSS-02): Express выставляет `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy` и **CSP Report-Only** (inline scripts пока нужны). Пример nginx — `deploy/nginx-p.datagon.ru-frontend.conf` (после правки conf: `nginx -t && reload`).
 - **nginx HTTP→HTTPS (F-DEP-01):** канон — `return 301 https://$host$request_uri` на `:80` + `Strict-Transport-Security` на `:443`. Упрощённый `deploy/nginx-p.datagon.ru.conf` приведён к тому же паттерну; **не** выкладывать conf, где `:80` проксирует Node без редиректа (cleartext cookie/session).

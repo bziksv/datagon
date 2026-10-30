@@ -59,6 +59,10 @@
         ms_orders_sync_days: 30,
         auto_sync_myproducts_enabled: 0,
         auto_sync_myproducts_time: "03:00",
+        auto_sync_stickers_cms_enabled: 0,
+        auto_sync_stickers_cms_time: "03:00",
+        auto_sync_stickers_cms_site_id: "all",
+        stickers_cms_webhook_token: "",
         auto_sync_price_comp_enabled: 0,
         auto_sync_price_comp_time: "10:00",
         auto_sync_price_comp_weekdays: "1,2,3,4,5,6,7",
@@ -803,7 +807,8 @@
         if (catPill) catPill.textContent = AS_CATEGORY_LABELS[meta.category] || meta.category;
         var head = meta.el.querySelector(".dg-as-task-head");
         var workerAttr = Number(meta.el.getAttribute("data-as-worker") || 1);
-        var workerN = workerAttr === 2 ? 2 : workerAttr === 3 ? 3 : 1;
+        var workerN =
+          workerAttr === 2 ? 2 : workerAttr === 3 ? 3 : workerAttr === 4 ? 4 : 1;
         var wBadge = head ? head.querySelector(".dg-as-worker-badge") : null;
         if (head) {
           if (!wBadge) {
@@ -816,6 +821,7 @@
           wBadge.textContent = "Воркер " + workerN;
           wBadge.classList.toggle("is-w2", workerN === 2);
           wBadge.classList.toggle("is-w3", workerN === 3);
+          wBadge.classList.toggle("is-w4", workerN === 4);
           wBadge.title =
             workerN === 2
               ? "Отдельный процесс parser-autosync-w2 (банки / Точка)"
@@ -1173,6 +1179,11 @@
         set("dg-set-ms_orders_sync_days", String(Number(merged.ms_orders_sync_days || 30)));
         document.getElementById("dg-set-auto_my_en").checked = Number(merged.auto_sync_myproducts_enabled) === 1;
         set("dg-set-auto_my_time", merged.auto_sync_myproducts_time || "03:00");
+        var stickersEn = document.getElementById("dg-set-auto_stickers_cms_en");
+        if (stickersEn) stickersEn.checked = Number(merged.auto_sync_stickers_cms_enabled) === 1;
+        set("dg-set-auto_stickers_cms_time", merged.auto_sync_stickers_cms_time || "03:00");
+        set("dg-set-auto_stickers_cms_site", merged.auto_sync_stickers_cms_site_id || "all");
+        set("dg-set-stickers_cms_webhook_token", merged.stickers_cms_webhook_token || "");
         var priceCompEn = document.getElementById("dg-set-auto_price_comp_en");
         if (priceCompEn) priceCompEn.checked = Number(merged.auto_sync_price_comp_enabled) === 1;
         set("dg-set-auto_price_comp_time", merged.auto_sync_price_comp_time || "10:00");
@@ -2547,6 +2558,10 @@
         var payload = {
           auto_sync_myproducts_enabled: document.getElementById("dg-set-auto_my_en").checked,
           auto_sync_myproducts_time: getStr("dg-set-auto_my_time") || "03:00",
+          auto_sync_stickers_cms_enabled: !!(document.getElementById("dg-set-auto_stickers_cms_en") && document.getElementById("dg-set-auto_stickers_cms_en").checked),
+          auto_sync_stickers_cms_time: getStr("dg-set-auto_stickers_cms_time") || "03:00",
+          auto_sync_stickers_cms_site_id: getStr("dg-set-auto_stickers_cms_site") || "all",
+          stickers_cms_webhook_token: getStr("dg-set-stickers_cms_webhook_token") || "",
           auto_sync_price_comp_enabled: document.getElementById("dg-set-auto_price_comp_en")
             ? document.getElementById("dg-set-auto_price_comp_en").checked
             : false,
@@ -2720,6 +2735,10 @@
           okText: "Расписание автосинхронизации сохранено",
           verifyKeys: [
             "auto_sync_myproducts_time",
+            "auto_sync_stickers_cms_enabled",
+            "auto_sync_stickers_cms_time",
+            "auto_sync_stickers_cms_site_id",
+            "stickers_cms_webhook_token",
             "auto_sync_price_comp_time",
             "auto_sync_price_comp_weekdays",
             "auto_sync_price_comp_match_audit",
@@ -4311,6 +4330,26 @@
         });
       }
       document.getElementById("dg-set-auto_my_run").addEventListener("click", function () { runAutoSyncNow("myproducts", "Мои товары", "dg-set-auto_my_run"); });
+      var stickersRunBtn = document.getElementById("dg-set-auto_stickers_cms_run");
+      if (stickersRunBtn) {
+        stickersRunBtn.addEventListener("click", function () {
+          runAutoSyncNow("stickers_cms", "Наклейки → Webasyst", "dg-set-auto_stickers_cms_run");
+        });
+      }
+      var stickersTokGen = document.getElementById("dg-set-stickers_cms_webhook_gen");
+      if (stickersTokGen) {
+        stickersTokGen.addEventListener("click", function () {
+          var bytes = new Uint8Array(24);
+          if (window.crypto && window.crypto.getRandomValues) window.crypto.getRandomValues(bytes);
+          else for (var i = 0; i < bytes.length; i++) bytes[i] = (Math.random() * 256) | 0;
+          var hex = Array.prototype.map.call(bytes, function (b) { return ("0" + b.toString(16)).slice(-2); }).join("");
+          var inp = document.getElementById("dg-set-stickers_cms_webhook_token");
+          if (inp) inp.value = hex;
+          if (window.DatagonNotify && window.DatagonNotify.toast) {
+            window.DatagonNotify.toast({ type: "info", message: "Токен сгенерирован — нажмите «Сохранить расписание…»" });
+          }
+        });
+      }
       var priceCompRunBtn = document.getElementById("dg-set-auto_price_comp_run");
       if (priceCompRunBtn) {
         priceCompRunBtn.addEventListener("click", function () {

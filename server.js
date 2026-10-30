@@ -7,7 +7,12 @@ const fsSync = require('fs');
 const bcrypt = require('bcryptjs');
 const os = require('os');
 const config = require('./config');
-const { parseAutoSyncWeekdaysMon17, getAutoSyncTaskWorker, getAutoSyncTaskKeys } = require('./lib/datagonAutoSyncRegistry');
+const {
+    parseAutoSyncWeekdaysMon17,
+    getAutoSyncTaskWorker,
+    getAutoSyncTaskKeys,
+    normalizeAutoSyncWorkerId,
+} = require('./lib/datagonAutoSyncRegistry');
 const { attachBitrixUrlKeys } = require('./lib/datagonBitrixProductUrl');
 const { openCmsDbConnection } = require('./lib/datagonCmsDb');
 
@@ -66,17 +71,15 @@ const AUTO_SYNC_SCHEDULER_DISABLED = ['0', 'off', 'false', 'no'].includes(
 );
 
 /**
- * Номер воркера автосинка (1|2|3). Воркер 1 — основной `parser-app` (HTTP + МС/маркеты).
+ * Номер воркера автосинка (1|2|3|4). Воркер 1 — основной `parser-app` (HTTP + МС/маркеты).
  * Воркер 2 — `parser-autosync-w2` (банки / Planfix / Bitcop).
  * Воркер 3 — `parser-autosync-w3` (перепарсинг результатов).
+ * Воркер 4 — `parser-autosync-w4` (наклейки → Webasyst / stickers_cms).
  * Задачи маршрутизируются по полю `worker` в `lib/datagonAutoSyncRegistry.js`.
  */
-const AUTO_SYNC_WORKER_ID = (() => {
-    const n = Number(process.env.DATAGON_AUTO_SYNC_WORKER_ID || 1);
-    if (n === 2) return 2;
-    if (n === 3) return 3;
-    return 1;
-})();
+const AUTO_SYNC_WORKER_ID = normalizeAutoSyncWorkerId(
+    process.env.DATAGON_AUTO_SYNC_WORKER_ID || 1
+);
 
 /**
  * DATAGON_HTTP=off — процесс без HTTP (второй воркер автосинка): только scheduler/queue.
@@ -143,6 +146,10 @@ let appSettings = {
     product_stock_snapshot_retention_days: 365,
     auto_sync_myproducts_enabled: 0,
     auto_sync_myproducts_time: '03:00',
+    auto_sync_stickers_cms_enabled: 0,
+    auto_sync_stickers_cms_time: '03:00',
+    auto_sync_stickers_cms_site_id: 'all',
+    stickers_cms_webhook_token: '',
     auto_sync_price_comp_enabled: 0,
     auto_sync_price_comp_time: '10:00',
     auto_sync_price_comp_weekdays: '1,2,3,4,5,6,7',
@@ -548,6 +555,9 @@ async function initDB() {
             ['ms_orders_exclude_owner_names','Новикова И.\nНовикова Ирина'],
             ['ms_orders_sync_days','30'],
             ['auto_sync_myproducts_enabled','0'],['auto_sync_myproducts_time','03:00'],
+            ['auto_sync_stickers_cms_enabled','0'],['auto_sync_stickers_cms_time','03:00'],
+            ['auto_sync_stickers_cms_site_id','all'],
+            ['stickers_cms_webhook_token',''],
             ['auto_sync_price_comp_enabled','0'],['auto_sync_price_comp_time','10:00'],
             ['auto_sync_price_comp_weekdays','1,2,3,4,5,6,7'],
             ['auto_sync_price_comp_match_audit','confirmed'],
@@ -1849,7 +1859,7 @@ async function ensureAutoSyncDispatchTable() {
 async function dispatchAutoSyncTaskToWorker(taskType, triggerType, workerId) {
     await ensureAutoSyncDispatchTable();
     const type = String(taskType || '').trim();
-    const wid = Number(workerId) === 2 ? 2 : 1;
+    const wid = normalizeAutoSyncWorkerId(workerId);
     const trig = String(triggerType || 'manual').trim() || 'manual';
     const [pending] = await db.query(
         `SELECT id FROM auto_sync_dispatch
@@ -1958,7 +1968,7 @@ async function listPendingAutoSyncDispatches() {
         return (rows || []).map((r) => ({
             type: String(r.task_type || ''),
             triggerType: String(r.trigger_type || 'manual'),
-            worker: Number(r.worker_id) === 2 ? 2 : 1,
+            worker: normalizeAutoSyncWorkerId(r.worker_id),
         }));
     } catch (_) {
         return [];
@@ -2416,6 +2426,32 @@ async function processAutoSyncQueue() {
                 const done = await waitUntil(() => !syncState.active, 12 * 60 * 60 * 1000, 1000);
                 await finishAutoSyncRun('myproducts', done ? 'completed' : 'failed', done ? 'Завершено' : 'Таймаут ожидания');
                 console.log('[AUTO SYNC] Queue done: myproducts');
+            } else if (task === 'stickers_cms') {
+                console.log('[AUTO SYNC] Queue start: stickers_cms');
+                await startAutoSyncRun('stickers_cms', triggerType);
+                let stickersRes = null;
+                try {
+                    const { syncMyProductStickersToCms } = require('./lib/datagonMyProductStickersCmsSync');
+                    stickersRes = await syncMyProductStickersToCms(db, {
+                        siteId: appSettings.auto_sync_stickers_cms_site_id || 'all',
+                        onProgress: (msg) => {
+                            touchAutoSyncRunMessage('stickers_cms', msg).catch(() => {});
+                        },
+                    });
+                    const ok = stickersRes && stickersRes.success !== false;
+                    await finishAutoSyncRun(
+                        'stickers_cms',
+                        ok ? 'completed' : 'failed',
+                        (stickersRes && stickersRes.message) || (ok ? 'Завершено' : 'Ошибка')
+                    );
+                } catch (e) {
+                    await finishAutoSyncRun(
+                        'stickers_cms',
+                        'failed',
+                        e && e.message ? e.message : 'Ошибка синка наклеек'
+                    );
+                }
+                console.log('[AUTO SYNC] Queue done: stickers_cms', stickersRes && stickersRes.message);
             } else if (task === 'moysklad') {
                 console.log('[AUTO SYNC] Queue start: moysklad');
                 await startAutoSyncRun('moysklad', triggerType);
@@ -3450,6 +3486,9 @@ async function processAutoSyncQueue() {
         if (autoSyncRunIds.has('myproducts')) {
             await finishAutoSyncRun('myproducts', 'failed', e.message || 'Ошибка очереди');
         }
+        if (autoSyncRunIds.has('stickers_cms')) {
+            await finishAutoSyncRun('stickers_cms', 'failed', e.message || 'Ошибка очереди');
+        }
         if (autoSyncRunIds.has('moysklad')) {
             await finishAutoSyncRun('moysklad', 'failed', e.message || 'Ошибка очереди');
         }
@@ -3544,6 +3583,11 @@ function startAutoSyncScheduler() {
                     type: 'myproducts',
                     enabled: Number(appSettings.auto_sync_myproducts_enabled || 0) === 1,
                     time: String(appSettings.auto_sync_myproducts_time || '03:00').slice(0, 5)
+                },
+                {
+                    type: 'stickers_cms',
+                    enabled: Number(appSettings.auto_sync_stickers_cms_enabled || 0) === 1,
+                    time: String(appSettings.auto_sync_stickers_cms_time || '03:00').slice(0, 5)
                 },
                 {
                     type: 'moysklad',
@@ -3864,7 +3908,9 @@ initDB().then(async () => {
             (req.method === 'POST' && (pathOnly === '/login' || pathOnly === '/auth/login')) ||
             (req.method === 'POST' && (pathOnly === '/logout' || pathOnly === '/auth/logout')) ||
             // CRM attendance → Datagon (секрет в X-Datagon-Clock-Sync, без сессии)
-            (req.method === 'POST' && pathOnly === '/work-schedule/clock/sync-from-crm');
+            (req.method === 'POST' && pathOnly === '/work-schedule/clock/sync-from-crm') ||
+            // Наклейки → Webasyst (токен stickers_cms_webhook_token)
+            (req.method === 'POST' && pathOnly === '/hooks/stickers-cms-sync');
         if (isPublicAuth) return next();
         try {
             const actor = await authModule.getActor(req);
@@ -4480,6 +4526,71 @@ initDB().then(async () => {
     app.use('/api/results', resultsRouter);
     app.use('/api/my-sites', require('./routes/mysites')(db, appSettings));
     app.use('/api/my-products', myProductsRouterFactory(db, appSettings));
+
+    /** Webhook: Datagon stickers → Webasyst Features (без сессии, по токену). */
+    app.post('/api/hooks/stickers-cms-sync', async (req, res) => {
+        try {
+            const expected = String(appSettings.stickers_cms_webhook_token || '').trim();
+            if (!expected) {
+                return res.status(503).json({
+                    success: false,
+                    error: 'Webhook token не задан (settings → Наклейки → Webasyst)',
+                    code: 'HOOK_TOKEN_NOT_CONFIGURED',
+                });
+            }
+            const got = String(
+                req.get('x-datagon-hook-token') ||
+                    req.get('X-Datagon-Hook-Token') ||
+                    (req.query && req.query.token) ||
+                    (req.body && req.body.token) ||
+                    ''
+            ).trim();
+            const a = Buffer.from(got);
+            const b = Buffer.from(expected);
+            if (a.length !== b.length || !require('crypto').timingSafeEqual(a, b)) {
+                return res.status(401).json({ success: false, error: 'Неверный token', code: 'HOOK_UNAUTHORIZED' });
+            }
+            const body = req.body || {};
+            const wantAsync =
+                body.async === true || body.async === 1 || body.async === '1' || String(req.query.async || '') === '1';
+            if (wantAsync) {
+                const enq = await enqueueAutoSyncTaskRouted('stickers_cms', 'webhook');
+                if (enq.ok && enq.worker === AUTO_SYNC_WORKER_ID) {
+                    processAutoSyncQueue();
+                }
+                return res.json({
+                    success: true,
+                    queued: enq.ok,
+                    task: 'stickers_cms',
+                    mode: 'async',
+                    skip_reason: enq.ok ? null : enq.reason || null,
+                });
+            }
+            const { syncMyProductStickersToCms } = require('./lib/datagonMyProductStickersCmsSync');
+            const productIds = Array.isArray(body.product_ids) ? body.product_ids : undefined;
+            const cmsProductIds = Array.isArray(body.cms_product_ids) ? body.cms_product_ids : undefined;
+            const siteId =
+                body.site_id != null
+                    ? body.site_id
+                    : appSettings.auto_sync_stickers_cms_site_id || 'all';
+            const result = await syncMyProductStickersToCms(db, {
+                siteId,
+                productIds,
+                cmsProductIds,
+            });
+            return res.status(result.success === false ? 500 : 200).json({
+                success: result.success !== false,
+                mode: 'sync',
+                ...result,
+            });
+        } catch (e) {
+            console.error('[hooks/stickers-cms-sync]', e);
+            return res.status(500).json({
+                success: false,
+                error: e && e.message ? e.message : String(e),
+            });
+        }
+    });
     app.use('/api/network-prices', networkPricesRouterFactory(db, appSettings));
     matchesRouter = matchesRouterFactory(db, appSettings);
     app.use('/api/matches', matchesRouter);

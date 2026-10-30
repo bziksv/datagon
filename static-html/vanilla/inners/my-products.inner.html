@@ -62,260 +62,304 @@
               </div>
             </div>
             <div class="card-body">
-              <div id="dg-mp-filters-body">
-              <div class="row g-2">
-                <div class="col-md-6" data-dg-mp-filter-field="smart">
-                  <label class="form-label" for="mp-f-smart">Умный поиск</label>
-                  <input type="text" class="form-control" id="mp-f-smart" placeholder='code:123 sku:ABC-12 name:"насос 25" или просто текст' autocomplete="off" />
+              <div id="dg-mp-filters-body" class="dg-mp-filters-body">
+
+              <section class="dg-mp-flt-section" data-dg-mp-filter-section="catalog">
+                <div class="dg-mp-flt-section__head">
+                  <span class="dg-mp-flt-section__title">Каталог</span>
+                  <span class="dg-mp-flt-section__sub">Поиск и отбор с сервера · «Применить»</span>
                 </div>
-                <div class="col-md-2" data-dg-mp-filter-field="site">
-                  <label class="form-label" for="f-site">Сайт</label>
-                  <select class="form-select" id="f-site"></select>
+                <div class="row g-2">
+                  <div class="col-lg-6 col-md-12" data-dg-mp-filter-field="smart">
+                    <label class="form-label" for="mp-f-smart">Умный поиск</label>
+                    <input type="text" class="form-control" id="mp-f-smart" placeholder='code:123 sku:ABC-12 name:"насос 25" или просто текст' autocomplete="off" />
+                  </div>
+                  <div class="col-lg-2 col-md-4 col-sm-6" data-dg-mp-filter-field="site">
+                    <label class="form-label" for="f-site">Сайт</label>
+                    <select class="form-select" id="f-site"></select>
+                  </div>
+                  <div class="col-lg-2 col-md-4 col-sm-6" data-dg-mp-filter-field="status">
+                    <label class="form-label" for="mp-f-status">Статус</label>
+                    <select class="form-select" id="mp-f-status">
+                      <option value="all">Все</option>
+                      <option value="1">Активные</option>
+                      <option value="0">Неактивные</option>
+                    </select>
+                  </div>
+                  <div class="col-lg-2 col-md-4 col-sm-6" data-dg-mp-filter-field="ms_link">
+                    <label class="form-label" for="f-ms">Связь с МС</label>
+                    <select class="form-select" id="f-ms">
+                      <option value="all">Все</option>
+                      <option value="1">Только связанные</option>
+                      <option value="0">Только без связи</option>
+                    </select>
+                  </div>
+                  <div class="col-lg-2 col-md-4 col-sm-6" data-dg-mp-filter-field="stock_min">
+                    <label class="form-label" for="mp-f-stock_min">Остаток от</label>
+                    <input type="number" class="form-control" id="mp-f-stock_min" placeholder="0" />
+                  </div>
+                  <div class="col-lg-2 col-md-4 col-sm-6" data-dg-mp-filter-field="stock_max">
+                    <label class="form-label" for="mp-f-stock_max">Остаток до</label>
+                    <input type="number" class="form-control" id="mp-f-stock_max" placeholder="1000" />
+                  </div>
+                  <div class="col-lg-2 col-md-4 col-sm-6" data-dg-mp-filter-field="source_enabled">
+                    <label class="form-label" for="mp-f-source_enabled">На сайте (вкл/выкл)</label>
+                    <select class="form-select" id="mp-f-source_enabled">
+                      <option value="all">Все</option>
+                      <option value="1">Да</option>
+                      <option value="0">Нет</option>
+                    </select>
+                  </div>
+                  <div class="col-lg-2 col-md-4 col-sm-6" data-dg-mp-filter-field="match_audit">
+                    <label class="form-label" for="mp-f-match_audit">Статус сопоставления</label>
+                    <select class="form-select" id="mp-f-match_audit">
+                      <option value="all">Все</option>
+                      <option value="confirmed">Только подтверждено</option>
+                      <option value="unlinked">Только разорвано</option>
+                      <option value="none">Без действий</option>
+                    </select>
+                  </div>
+                  <div class="col-lg-2 col-md-4 col-sm-6" data-dg-mp-filter-field="limit">
+                    <label class="form-label" for="mp-f-limit">На странице</label>
+                    <input type="number" class="form-control" id="mp-f-limit" min="1" value="100" />
+                  </div>
                 </div>
-                <div class="col-md-2" data-dg-mp-filter-field="status">
-                  <label class="form-label" for="mp-f-status">Статус</label>
-                  <select class="form-select" id="mp-f-status">
-                    <option value="all">Все</option>
-                    <option value="1">Активные</option>
-                    <option value="0">Неактивные</option>
-                  </select>
+              </section>
+
+              <section class="dg-mp-flt-section" data-dg-mp-filter-section="table">
+                <div class="dg-mp-flt-section__head">
+                  <span class="dg-mp-flt-section__title">Быстрый отбор по странице</span>
+                  <span class="dg-mp-flt-section__sub">Только уже загруженные строки · без запроса на сервер</span>
                 </div>
-                <div class="col-md-2" data-dg-mp-filter-field="ms_link">
-                  <label class="form-label" for="f-ms">Связь с МС</label>
-                  <select class="form-select" id="f-ms">
-                    <option value="all">Все</option>
-                    <option value="1">Только связанные</option>
-                    <option value="0">Только без связи</option>
-                  </select>
+                <div class="row g-2">
+                  <div class="col-lg-2 col-md-4 col-sm-6" data-dg-mp-filter-field="tf_id">
+                    <label class="form-label" for="mp-tf-source_id">ID / КОД</label>
+                    <input type="text" class="form-control" id="mp-tf-source_id" autocomplete="off" />
+                  </div>
+                  <div class="col-lg-2 col-md-4 col-sm-6" data-dg-mp-filter-field="tf_site">
+                    <label class="form-label" for="mp-tf-site_name">Сайт</label>
+                    <input type="text" class="form-control" id="mp-tf-site_name" autocomplete="off" />
+                  </div>
+                  <div class="col-lg-2 col-md-4 col-sm-6" data-dg-mp-filter-field="tf_sku">
+                    <label class="form-label" for="mp-tf-sku">SKU</label>
+                    <input type="text" class="form-control" id="mp-tf-sku" autocomplete="off" />
+                  </div>
+                  <div class="col-lg-4 col-md-8 col-sm-12" data-dg-mp-filter-field="tf_name">
+                    <label class="form-label" for="mp-tf-name">Название</label>
+                    <input type="text" class="form-control" id="mp-tf-name" autocomplete="off" />
+                  </div>
+                  <div class="col-lg-2 col-md-4 col-sm-6" data-dg-mp-filter-field="tf_currency">
+                    <label class="form-label" for="mp-tf-currency">Валюта</label>
+                    <select class="form-select" id="mp-tf-currency">
+                      <option value="all">Все</option>
+                      <option value="RUB">RUB</option>
+                      <option value="USD">USD</option>
+                      <option value="EUR">EUR</option>
+                    </select>
+                  </div>
                 </div>
-              </div>
-              <div class="row g-2 mt-1">
-                <div class="col-md-2" data-dg-mp-filter-field="tf_id">
-                  <label class="form-label" for="mp-tf-source_id">ID / КОД</label>
-                  <input type="text" class="form-control" id="mp-tf-source_id" autocomplete="off" />
+                <p class="text-muted small mb-0 mt-2" data-dg-mp-filter-field="table_hint">
+                  Остаток, статус и связь с МС — в блоке «Каталог» и кнопке «Применить».
+                </p>
+              </section>
+
+              <section class="dg-mp-flt-section dg-mp-flt-section--hold" data-dg-mp-filter-section="hold">
+                <div class="dg-mp-flt-section__head">
+                  <span class="dg-mp-flt-section__title">Заморозка цены</span>
+                  <span class="dg-mp-flt-section__sub">Не перезаписывать цену синком с конкурентов</span>
                 </div>
-                <div class="col-md-2" data-dg-mp-filter-field="tf_site">
-                  <label class="form-label" for="mp-tf-site_name">Сайт (таблица)</label>
-                  <input type="text" class="form-control" id="mp-tf-site_name" autocomplete="off" />
+                <div class="row g-2 align-items-end">
+                  <div class="col-lg-3 col-md-4 col-sm-6" data-dg-mp-filter-field="price_hold">
+                    <label class="form-label" for="mp-f-price_hold">Фильтр заморозки</label>
+                    <select class="form-select" id="mp-f-price_hold" title="Фильтр по заморозке своей цены (синк с ДМ/МК). «Срок истёк» — размороженные по дате, можно снова заморозить.">
+                      <option value="all">Все</option>
+                      <option value="1">Только замороженные</option>
+                      <option value="expiring">Истекают ≤ 7 дн.</option>
+                      <option value="expired">Срок истёк (разморожены)</option>
+                      <option value="0">Без активной заморозки</option>
+                    </select>
+                  </div>
+                  <div class="col-lg-2 col-md-4 col-sm-6" data-dg-mp-filter-field="hold_days">
+                    <label class="form-label" for="mp-f-hold_days">Срок (для замка)</label>
+                    <select class="form-select" id="mp-f-hold_days" title="Общий срок для замка в строке и массовой заморозки по фильтрам">
+                      <option value="30">30 дней</option>
+                      <option value="60">60 дней</option>
+                      <option value="90" selected>90 дней</option>
+                      <option value="180">180 дней</option>
+                    </select>
+                  </div>
+                  <div class="col-lg-7 col-md-12 d-flex flex-wrap gap-2 pb-1">
+                    <span class="d-inline-flex" data-dg-mp-filter-field="btn_hold_price_bulk">
+                      <button
+                        type="button"
+                        class="btn btn-sm btn-outline-warning"
+                        id="mp-btn-hold-price-bulk"
+                        title="Заморозить текущие цены по применённым фильтрам на срок из «Срок заморозки» (без записи в CMS)"
+                        data-dg-notify-start="Считаем выборку для заморозки цен…"
+                        data-dg-activity-label="Массовая заморозка цен"
+                      ><i class="pe-7s-lock me-1"></i>Заморозить по фильтрам</button>
+                    </span>
+                    <span class="d-inline-flex" data-dg-mp-filter-field="btn_clear_hold_bulk">
+                      <button
+                        type="button"
+                        class="btn btn-sm btn-outline-secondary"
+                        id="mp-btn-clear-hold-bulk"
+                        title="Снять заморозку по применённым фильтрам (цену не меняет)"
+                        data-dg-notify-start="Считаем выборку для снятия заморозки…"
+                        data-dg-activity-label="Снятие заморозки цен"
+                      ><i class="pe-7s-unlock me-1"></i>Снять заморозку по фильтрам</button>
+                    </span>
+                  </div>
                 </div>
-                <div class="col-md-2" data-dg-mp-filter-field="tf_sku">
-                  <label class="form-label" for="mp-tf-sku">SKU (таблица)</label>
-                  <input type="text" class="form-control" id="mp-tf-sku" autocomplete="off" />
+              </section>
+
+              <section class="dg-mp-flt-section dg-mp-flt-section--accent" data-dg-mp-filter-section="parsing">
+                <div class="dg-mp-flt-section__head">
+                  <span class="dg-mp-flt-section__title">Цены и конкуренты</span>
+                  <span class="dg-mp-flt-section__sub">Расхождение Δ, курсы, синк цены с ДМ/МК</span>
                 </div>
-                <div class="col-md-4" data-dg-mp-filter-field="tf_name">
-                  <label class="form-label" for="mp-tf-name">Название (таблица)</label>
-                  <input type="text" class="form-control" id="mp-tf-name" autocomplete="off" />
+                <div class="row g-2">
+                  <div class="col-md-auto d-flex align-items-center" data-dg-mp-filter-field="gap_enabled">
+                    <label class="form-check mb-0">
+                      <input class="form-check-input me-1" type="checkbox" id="mp-f-gap_enabled" />
+                      Включить фильтр расхождения Δ
+                    </label>
+                  </div>
+                  <div class="col-md-auto d-flex align-items-center" data-dg-mp-filter-field="gap_exclude_zero">
+                    <label class="form-check mb-0">
+                      <input class="form-check-input me-1" type="checkbox" id="mp-f-gap_exclude_zero" checked />
+                      Не показывать Δ 0%
+                    </label>
+                  </div>
                 </div>
-                <div class="col-md-2" data-dg-mp-filter-field="tf_currency">
-                  <label class="form-label" for="mp-tf-currency">Валюта</label>
-                  <select class="form-select" id="mp-tf-currency">
-                    <option value="all">Все</option>
-                    <option value="RUB">RUB</option>
-                    <option value="USD">USD</option>
-                    <option value="EUR">EUR</option>
-                  </select>
+                <div class="row g-2 mt-1 align-items-end">
+                  <div class="col-lg-3 col-md-4" data-dg-mp-filter-field="gap_competitor">
+                    <label class="form-label" for="mp-f-gap_competitor">Конкурент</label>
+                    <select class="form-select" id="mp-f-gap_competitor">
+                      <option value="all">Любой (ДМ/МК)</option>
+                      <option value="dealmed">Деалмед</option>
+                      <option value="medkompleks">Медкомплекс</option>
+                    </select>
+                  </div>
+                  <div class="col-lg-2 col-md-4 col-6" data-dg-mp-filter-field="gap_min_pct">
+                    <label class="form-label" for="mp-f-gap_min_pct">Δ % от</label>
+                    <input type="number" step="0.01" class="form-control" id="mp-f-gap_min_pct" value="-100" />
+                  </div>
+                  <div class="col-lg-2 col-md-4 col-6" data-dg-mp-filter-field="gap_max_pct">
+                    <label class="form-label" for="mp-f-gap_max_pct">Δ % до</label>
+                    <input type="number" step="0.01" class="form-control" id="mp-f-gap_max_pct" value="-2" />
+                  </div>
+                  <div class="col-lg-1 col-md-12 d-flex justify-content-lg-center align-items-center pb-2" data-dg-mp-filter-field="gap_or_label">
+                    <span class="small text-muted fw-semibold">или</span>
+                  </div>
+                  <div class="col-lg-2 col-md-4 col-6" data-dg-mp-filter-field="gap_min_pct_2">
+                    <label class="form-label" for="mp-f-gap_min_pct_2">Δ % от</label>
+                    <input type="number" step="0.01" class="form-control" id="mp-f-gap_min_pct_2" value="2" title="Второй диапазон (ИЛИ). Пусто = не используется." />
+                  </div>
+                  <div class="col-lg-2 col-md-4 col-6" data-dg-mp-filter-field="gap_max_pct_2">
+                    <label class="form-label" for="mp-f-gap_max_pct_2">Δ % до</label>
+                    <input type="number" step="0.01" class="form-control" id="mp-f-gap_max_pct_2" value="100" title="Второй диапазон (ИЛИ). Пусто = не используется." />
+                  </div>
                 </div>
-              </div>
-              <p class="text-muted small mb-0 mt-1" data-dg-mp-filter-field="table_hint">
-                «(таблица)» — быстрый отбор по уже загруженной странице; остаток и «Статус» — в блоке ниже и «Применить».
-              </p>
-              <div class="row g-2 mt-1">
-                <div class="col-md-2" data-dg-mp-filter-field="stock_min">
-                  <label class="form-label" for="mp-f-stock_min">Остаток от</label>
-                  <input type="number" class="form-control" id="mp-f-stock_min" placeholder="0" />
+                <div class="row g-2 mt-1 align-items-end">
+                  <div class="col-lg-2 col-md-3 col-6" data-dg-mp-filter-field="usd_to_rub">
+                    <label class="form-label" for="mp-f-usd_to_rub">USD→RUB</label>
+                    <input type="number" step="0.01" class="form-control" id="mp-f-usd_to_rub" />
+                  </div>
+                  <div class="col-lg-2 col-md-3 col-6" data-dg-mp-filter-field="eur_to_rub">
+                    <label class="form-label" for="mp-f-eur_to_rub">EUR→RUB</label>
+                    <input type="number" step="0.01" class="form-control" id="mp-f-eur_to_rub" />
+                  </div>
+                  <div class="col-lg-2 col-md-3 col-6" data-dg-mp-filter-field="comp_min">
+                    <label class="form-label" for="mp-f-comp_min">Синх. % мин</label>
+                    <input type="text" class="form-control" id="mp-f-comp_min" value="0.1" />
+                  </div>
+                  <div class="col-lg-2 col-md-3 col-6" data-dg-mp-filter-field="comp_max">
+                    <label class="form-label" for="mp-f-comp_max">Синх. % макс</label>
+                    <input type="text" class="form-control" id="mp-f-comp_max" value="0.99" />
+                  </div>
+                  <div class="col-lg-4 col-md-12 d-flex flex-wrap gap-2 pb-1">
+                    <span class="d-inline-flex" data-dg-mp-filter-field="btn_fx">
+                      <button type="button" class="btn btn-sm btn-outline-secondary" id="mp-btn-fx" title="Принудительно обновить валютные курсы" data-dg-notify-start="Обновляем валютные курсы…"><i class="pe-7s-refresh-2 me-1"></i>Обновить курс</button>
+                    </span>
+                    <span class="d-inline-flex" data-dg-mp-filter-field="btn_sync_price_bulk">
+                      <button
+                        type="button"
+                        class="btn btn-sm btn-outline-success"
+                        id="mp-btn-sync-price-bulk"
+                        title="Массово подтянуть цену с конкурента по текущим применённым фильтрам списка. Для больших выборок (тысячи строк) — фоновая задача чанками с прогрессом."
+                        data-dg-notify-start="Синхронизируем цены с конкурента по фильтрам…"
+                        data-dg-activity-label="Массовая синхронизация цены с конкурента"
+                      ><i class="pe-7s-cash me-1"></i>Синх. цены по фильтрам</button>
+                    </span>
+                    <span class="d-inline-flex" data-dg-mp-filter-field="btn_sync_price_bulk_stop">
+                      <button
+                        type="button"
+                        class="btn btn-sm btn-outline-danger d-none"
+                        id="mp-btn-sync-price-bulk-stop"
+                        title="Остановить фоновую синхронизацию цен"
+                        data-dg-notify-start="Останавливаем синхронизацию цен…"
+                      >Стоп синх. цен</button>
+                    </span>
+                  </div>
                 </div>
-                <div class="col-md-2" data-dg-mp-filter-field="stock_max">
-                  <label class="form-label" for="mp-f-stock_max">Остаток до</label>
-                  <input type="number" class="form-control" id="mp-f-stock_max" placeholder="1000" />
+              </section>
+
+              <section class="dg-mp-flt-section dg-mp-flt-section--apply" data-dg-mp-filter-section="apply">
+                <div class="row g-2 align-items-end">
+                  <div class="col-lg-2 col-md-3 col-sm-6" data-dg-mp-filter-field="sort_by">
+                    <label class="form-label" for="mp-f-sort-by">Сортировать по</label>
+                    <select class="form-select" id="mp-f-sort-by">
+                      <option value="id">ID / КОД</option>
+                      <option value="site">Сайт</option>
+                      <option value="sku">Артикул (SKU)</option>
+                      <option value="name">Название</option>
+                      <option value="price">Цена</option>
+                      <option value="price_hold">Срок заморозки</option>
+                      <option value="dealmed_price">Цена ДМ</option>
+                      <option value="medkompleks_price">Цена МК</option>
+                      <option value="currency">Валюта</option>
+                      <option value="stock">Остаток Сайт</option>
+                      <option value="sticker_ms_stock">Остаток МС</option>
+                      <option value="status">Статус</option>
+                      <option value="updated">Обновлен</option>
+                    </select>
+                  </div>
+                  <div class="col-lg-2 col-md-3 col-sm-6" data-dg-mp-filter-field="sort_dir">
+                    <label class="form-label" for="mp-f-sort-dir">Направление</label>
+                    <select class="form-select" id="mp-f-sort-dir">
+                      <option value="asc">По возрастанию</option>
+                      <option value="desc">По убыванию</option>
+                    </select>
+                  </div>
+                  <div class="col-lg-8 col-md-6 d-flex flex-wrap gap-2 align-items-center pb-1">
+                    <button type="button" class="btn btn-sm btn-primary" id="btn-apply" data-dg-tooltip="Применить фильтры и обновить данные. Сохраняет выбранные значения для следующего визита." data-dg-notify-start="Применяем фильтры и обновляем данные…"><i class="pe-7s-search me-1"></i>Применить</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="mp-filter-default" data-dg-tooltip="Сбросить фильтры к значениям по умолчанию и очистить сохранённые настройки." data-dg-notify-start="Сбрасываем фильтры и применяем…"><i class="pe-7s-refresh me-1"></i>По умолчанию</button>
+                  </div>
                 </div>
-                <div class="col-md-2" data-dg-mp-filter-field="source_enabled">
-                  <label class="form-label" for="mp-f-source_enabled">На сайте (вкл/выкл)</label>
-                  <select class="form-select" id="mp-f-source_enabled">
-                    <option value="all">Все</option>
-                    <option value="1">Да</option>
-                    <option value="0">Нет</option>
-                  </select>
+              </section>
+
+              <section class="dg-mp-flt-section" data-dg-mp-filter-section="actions">
+                <div class="dg-mp-flt-section__head">
+                  <span class="dg-mp-flt-section__title">Синхронизация каталога</span>
+                  <span class="dg-mp-flt-section__sub">Обновление товаров с сайтов и кэш МС</span>
                 </div>
-                <div class="col-md-2" data-dg-mp-filter-field="limit">
-                  <label class="form-label" for="mp-f-limit">На странице</label>
-                  <input type="number" class="form-control" id="mp-f-limit" min="1" value="100" />
+                <div class="d-flex flex-wrap gap-2">
+                  <span class="d-inline-flex" data-dg-mp-filter-field="btn_syncall">
+                    <button type="button" class="btn btn-sm btn-outline-primary" id="mp-btn-syncall" title="Запустить синхронизацию товаров по всем сайтам" data-dg-notify-start="Запускаем синхронизацию по всем сайтам…"><i class="pe-7s-repeat me-1"></i>Синхронизировать все</button>
+                  </span>
+                  <span class="d-inline-flex" id="mp-btn-sync-site-wrap" data-dg-mp-filter-field="btn_sync_site" title="Сначала выберите конкретный сайт (не «Все сайты»)">
+                    <button type="button" class="btn btn-sm btn-outline-primary" id="mp-btn-sync-site" disabled data-dg-notify-start="Запускаем синхронизацию выбранного сайта…"><i class="pe-7s-repeat me-1"></i>Синхронизировать выбранный сайт</button>
+                  </span>
+                  <span class="d-inline-flex" data-dg-mp-filter-field="btn_rebuild">
+                    <button type="button" class="btn btn-sm btn-outline-warning" id="mp-btn-rebuild" title="Перестроить кэш связей с МойСклад" data-dg-notify-start="Перестраиваем кэш связей…"><i class="pe-7s-refresh me-1"></i>Перестроить кэш</button>
+                  </span>
+                  <span class="d-inline-flex" data-dg-mp-filter-field="btn_copy">
+                    <button type="button" class="btn btn-sm btn-outline-dark" id="mp-btn-copy" title="Скопировать ссылку на текущую страницу с фильтрами"><i class="pe-7s-link me-1"></i>Скопировать ссылку</button>
+                  </span>
                 </div>
-                <div class="col-md-2" data-dg-mp-filter-field="match_audit">
-                  <label class="form-label" for="mp-f-match_audit">Статус сопоставления</label>
-                  <select class="form-select" id="mp-f-match_audit">
-                    <option value="all">Все</option>
-                    <option value="confirmed">Только подтверждено</option>
-                    <option value="unlinked">Только разорвано</option>
-                    <option value="none">Без действий</option>
-                  </select>
-                </div>
-                <div class="col-md-2" data-dg-mp-filter-field="price_hold">
-                  <label class="form-label" for="mp-f-price_hold">Заморозка цены</label>
-                  <select class="form-select" id="mp-f-price_hold" title="Фильтр по заморозке своей цены (синк с ДМ/МК). «Срок истёк» — размороженные по дате, можно снова заморозить.">
-                    <option value="all">Все</option>
-                    <option value="1">Только замороженные</option>
-                    <option value="expiring">Истекают ≤ 7 дн.</option>
-                    <option value="expired">Срок истёк (разморожены)</option>
-                    <option value="0">Без активной заморозки</option>
-                  </select>
-                </div>
-                <div class="col-md-2" data-dg-mp-filter-field="hold_days">
-                  <label class="form-label" for="mp-f-hold_days">Срок заморозки</label>
-                  <select class="form-select" id="mp-f-hold_days" title="Общий срок для замка в строке и массовой заморозки по фильтрам">
-                    <option value="30">30 дней</option>
-                    <option value="60">60 дней</option>
-                    <option value="90" selected>90 дней</option>
-                    <option value="180">180 дней</option>
-                  </select>
-                </div>
-              </div>
-              <div class="row g-2 mt-1 align-items-end">
-                <div class="col-md-2" data-dg-mp-filter-field="sort_by">
-                  <label class="form-label" for="mp-f-sort-by">Сортировать по</label>
-                  <select class="form-select" id="mp-f-sort-by">
-                    <option value="id">ID / КОД</option>
-                    <option value="site">Сайт</option>
-                    <option value="sku">Артикул (SKU)</option>
-                    <option value="name">Название</option>
-                    <option value="price">Цена</option>
-                    <option value="price_hold">Срок заморозки</option>
-                    <option value="dealmed_price">Цена ДМ</option>
-                    <option value="medkompleks_price">Цена МК</option>
-                    <option value="currency">Валюта</option>
-                    <option value="stock">Остаток</option>
-                    <option value="status">Статус</option>
-                    <option value="updated">Обновлен</option>
-                  </select>
-                </div>
-                <div class="col-md-2" data-dg-mp-filter-field="sort_dir">
-                  <label class="form-label" for="mp-f-sort-dir">Направление</label>
-                  <select class="form-select" id="mp-f-sort-dir">
-                    <option value="asc">По возрастанию</option>
-                    <option value="desc">По убыванию</option>
-                  </select>
-                </div>
-                <div class="col-md-8 d-flex flex-wrap gap-2 align-items-center pb-1">
-                  <button type="button" class="btn btn-sm btn-primary" id="btn-apply" data-dg-tooltip="Применить фильтры и обновить данные. Сохраняет выбранные значения для следующего визита." data-dg-notify-start="Применяем фильтры и обновляем данные…"><i class="pe-7s-search me-1"></i>Применить</button>
-                  <button type="button" class="btn btn-sm btn-outline-secondary" id="mp-filter-default" data-dg-tooltip="Сбросить фильтры к значениям по умолчанию и очистить сохранённые настройки." data-dg-notify-start="Сбрасываем фильтры и применяем…"><i class="pe-7s-refresh me-1"></i>По умолчанию</button>
-                </div>
-              </div>
-              <div class="row g-2 mt-2">
-                <div class="col-md-4 d-flex align-items-center" data-dg-mp-filter-field="gap_enabled">
-                  <label class="form-check mb-0">
-                    <input class="form-check-input me-1" type="checkbox" id="mp-f-gap_enabled" />
-                    Включить фильтр расхождения
-                  </label>
-                </div>
-                <div class="col-md-4 d-flex align-items-center" data-dg-mp-filter-field="gap_exclude_zero">
-                  <label class="form-check mb-0">
-                    <input class="form-check-input me-1" type="checkbox" id="mp-f-gap_exclude_zero" checked />
-                    Не показывать Δ 0%
-                  </label>
-                </div>
-              </div>
-              <div class="row g-2 mt-1 align-items-end">
-                <div class="col-md-3" data-dg-mp-filter-field="gap_competitor">
-                  <label class="form-label" for="mp-f-gap_competitor">Конкурент (Δ)</label>
-                  <select class="form-select" id="mp-f-gap_competitor">
-                    <option value="all">Любой (ДМ/МК)</option>
-                    <option value="dealmed">Деалмед</option>
-                    <option value="medkompleks">Медкомплекс</option>
-                  </select>
-                </div>
-                <div class="col-md-2" data-dg-mp-filter-field="gap_min_pct">
-                  <label class="form-label" for="mp-f-gap_min_pct">Δ % от</label>
-                  <input type="number" step="0.01" class="form-control" id="mp-f-gap_min_pct" value="-100" />
-                </div>
-                <div class="col-md-2" data-dg-mp-filter-field="gap_max_pct">
-                  <label class="form-label" for="mp-f-gap_max_pct">Δ % до</label>
-                  <input type="number" step="0.01" class="form-control" id="mp-f-gap_max_pct" value="-2" />
-                </div>
-                <div class="col-md-1 d-flex justify-content-center align-items-center pb-2" data-dg-mp-filter-field="gap_or_label">
-                  <span class="small text-muted fw-semibold">или</span>
-                </div>
-                <div class="col-md-2" data-dg-mp-filter-field="gap_min_pct_2">
-                  <label class="form-label" for="mp-f-gap_min_pct_2">Δ % от</label>
-                  <input type="number" step="0.01" class="form-control" id="mp-f-gap_min_pct_2" value="2" title="Второй диапазон (ИЛИ). Пусто = не используется." />
-                </div>
-                <div class="col-md-2" data-dg-mp-filter-field="gap_max_pct_2">
-                  <label class="form-label" for="mp-f-gap_max_pct_2">Δ % до</label>
-                  <input type="number" step="0.01" class="form-control" id="mp-f-gap_max_pct_2" value="100" title="Второй диапазон (ИЛИ). Пусто = не используется." />
-                </div>
-              </div>
-              <div class="row g-2 mt-1">
-                <div class="col-md-2" data-dg-mp-filter-field="usd_to_rub">
-                  <label class="form-label" for="mp-f-usd_to_rub">USD-&gt;RUB</label>
-                  <input type="number" step="0.01" class="form-control" id="mp-f-usd_to_rub" />
-                </div>
-                <div class="col-md-2" data-dg-mp-filter-field="eur_to_rub">
-                  <label class="form-label" for="mp-f-eur_to_rub">EUR-&gt;RUB</label>
-                  <input type="number" step="0.01" class="form-control" id="mp-f-eur_to_rub" />
-                </div>
-                <div class="col-md-2" data-dg-mp-filter-field="comp_min">
-                  <label class="form-label" for="mp-f-comp_min">Синх. % мин</label>
-                  <input type="text" class="form-control" id="mp-f-comp_min" value="0.1" />
-                </div>
-                <div class="col-md-2" data-dg-mp-filter-field="comp_max">
-                  <label class="form-label" for="mp-f-comp_max">Синх. % макс</label>
-                  <input type="text" class="form-control" id="mp-f-comp_max" value="0.99" />
-                </div>
-              </div>
-              <div class="mt-3 d-flex flex-wrap gap-2">
-                <span class="d-inline-flex" data-dg-mp-filter-field="btn_fx">
-                  <button type="button" class="btn btn-sm btn-outline-secondary" id="mp-btn-fx" title="Принудительно обновить валютные курсы" data-dg-notify-start="Обновляем валютные курсы…"><i class="pe-7s-refresh-2 me-1"></i>Обновить курс</button>
-                </span>
-                <span class="d-inline-flex" data-dg-mp-filter-field="btn_syncall">
-                  <button type="button" class="btn btn-sm btn-outline-primary" id="mp-btn-syncall" title="Запустить синхронизацию товаров по всем сайтам" data-dg-notify-start="Запускаем синхронизацию по всем сайтам…"><i class="pe-7s-repeat me-1"></i>Синхронизировать все</button>
-                </span>
-                <span class="d-inline-flex" id="mp-btn-sync-site-wrap" data-dg-mp-filter-field="btn_sync_site" title="Сначала выберите конкретный сайт (не «Все сайты»)">
-                  <button type="button" class="btn btn-sm btn-outline-primary" id="mp-btn-sync-site" disabled data-dg-notify-start="Запускаем синхронизацию выбранного сайта…"><i class="pe-7s-repeat me-1"></i>Синхронизировать выбранный сайт</button>
-                </span>
-                <span class="d-inline-flex" data-dg-mp-filter-field="btn_rebuild">
-                  <button type="button" class="btn btn-sm btn-outline-warning" id="mp-btn-rebuild" title="Перестроить кэш связей с МойСклад" data-dg-notify-start="Перестраиваем кэш связей…"><i class="pe-7s-refresh me-1"></i>Перестроить кэш</button>
-                </span>
-                <span class="d-inline-flex" data-dg-mp-filter-field="btn_copy">
-                  <button type="button" class="btn btn-sm btn-outline-dark" id="mp-btn-copy" title="Скопировать ссылку на текущую страницу с фильтрами"><i class="pe-7s-link me-1"></i>Скопировать ссылку</button>
-                </span>
-                <span class="d-inline-flex" data-dg-mp-filter-field="btn_sync_price_bulk">
-                  <button
-                    type="button"
-                    class="btn btn-sm btn-outline-success"
-                    id="mp-btn-sync-price-bulk"
-                    title="Массово подтянуть цену с конкурента по текущим применённым фильтрам списка. Для больших выборок (тысячи строк) — фоновая задача чанками с прогрессом."
-                    data-dg-notify-start="Синхронизируем цены с конкурента по фильтрам…"
-                    data-dg-activity-label="Массовая синхронизация цены с конкурента"
-                  ><i class="pe-7s-cash me-1"></i>Синх. цены по фильтрам</button>
-                </span>
-                <span class="d-inline-flex" data-dg-mp-filter-field="btn_sync_price_bulk_stop">
-                  <button
-                    type="button"
-                    class="btn btn-sm btn-outline-danger d-none"
-                    id="mp-btn-sync-price-bulk-stop"
-                    title="Остановить фоновую синхронизацию цен"
-                    data-dg-notify-start="Останавливаем синхронизацию цен…"
-                  >Стоп синх. цен</button>
-                </span>
-                <span class="d-inline-flex" data-dg-mp-filter-field="btn_hold_price_bulk">
-                  <button
-                    type="button"
-                    class="btn btn-sm btn-outline-warning"
-                    id="mp-btn-hold-price-bulk"
-                    title="Заморозить текущие цены по применённым фильтрам на срок из «Срок заморозки» (без записи в CMS)"
-                    data-dg-notify-start="Считаем выборку для заморозки цен…"
-                    data-dg-activity-label="Массовая заморозка цен"
-                  ><i class="pe-7s-lock me-1"></i>Заморозить цены по фильтрам</button>
-                </span>
-                <span class="d-inline-flex" data-dg-mp-filter-field="btn_clear_hold_bulk">
-                  <button
-                    type="button"
-                    class="btn btn-sm btn-outline-secondary"
-                    id="mp-btn-clear-hold-bulk"
-                    title="Снять заморозку по применённым фильтрам (цену не меняет)"
-                    data-dg-notify-start="Считаем выборку для снятия заморозки…"
-                    data-dg-activity-label="Снятие заморозки цен"
-                  ><i class="pe-7s-unlock me-1"></i>Снять заморозку по фильтрам</button>
-                </span>
-              </div>
+              </section>
+
               <div id="mp-action-log" class="alert mt-3 mb-0 d-none" role="status"></div>
               </div>
               <p class="text-muted mb-0 mt-2" id="dg-fx-hint">FX: —</p>
@@ -406,12 +450,19 @@
                       <th role="button" data-mp-sort="site" class="text-center" style="cursor:pointer">Сайт</th>
                       <th role="button" data-mp-sort="sku" class="text-center" style="cursor:pointer">Артикул (SKU)</th>
                       <th role="button" data-mp-sort="name" class="text-center" style="cursor:pointer">Название</th>
+                      <th data-mp-sort="sticker_has_ru" data-mp-label="Есть РУ" class="text-center dg-mp-sticker-th" title="Авто: есть ссылка «Регистрационное удостоверение (РУ)» в МойСклад. Если стоит «Нет РУ» — галка снимается.">Есть РУ</th>
+                      <th data-mp-sort="sticker_no_ru" data-mp-label="Нет РУ" class="text-center dg-mp-sticker-th" title="Вручную. Даже при ссылке на РУ в МС при этой галке на товаре — «Нет РУ».">Нет РУ</th>
+                      <th data-mp-sort="sticker_in_stock" data-mp-label="Есть в наличии" class="text-center dg-mp-sticker-th" title="Авто по остатку МойСклад (если товар связан). Такие строки в списке — первыми.">Есть в наличии</th>
+                      <th data-mp-sort="sticker_discontinued" data-mp-label="Снят / аналог" class="text-center dg-mp-sticker-th" title="Вручную: «Снят с производства/аналог по запросу». В списке — в конце.">Снят / аналог</th>
+                      <th data-mp-sort="sticker_not_supplied" data-mp-label="Не поставляется" class="text-center dg-mp-sticker-th" title="Вручную: «Не поставляется, предлагаем аналог». В списке — в конце.">Не поставляется</th>
+                      <th data-mp-sort="sticker_sale" data-mp-label="Скидка" class="text-center dg-mp-sticker-th" title="Вручную, только при активной заморозке цены. По истечении заморозки стикер снимается.">Скидка</th>
                       <th data-mp-sort="price_hold" data-mp-label="Ручн." class="text-center" title="Заморозка своей цены: синк с конкурентов отключён до даты">Ручн.</th>
                       <th role="button" data-mp-sort="price" class="text-center" style="cursor:pointer">Цена</th>
                       <th role="button" data-mp-sort="dealmed_price" class="text-center" style="cursor:pointer">Цена ДМ</th>
                       <th role="button" data-mp-sort="medkompleks_price" class="text-center" style="cursor:pointer">Цена МК</th>
                       <th role="button" data-mp-sort="currency" class="text-center" style="cursor:pointer">Валюта</th>
-                      <th role="button" data-mp-sort="stock" class="text-center" style="cursor:pointer">Остаток</th>
+                      <th role="button" data-mp-sort="stock" data-mp-label="Остаток Сайт" class="text-center" style="cursor:pointer" title="Остаток с сайта (CMS / my_products.stock)">Остаток Сайт</th>
+                      <th role="button" data-mp-sort="sticker_ms_stock" data-mp-label="Остаток МС" class="text-center" style="cursor:pointer" title="Общий остаток МойСклад (ms_export.stock). «—» если нет связи с МС">Остаток МС</th>
                       <th role="button" data-mp-sort="status" class="text-center" style="cursor:pointer">Статус</th>
                       <th role="button" data-mp-sort="updated" class="text-center" style="cursor:pointer">Обновлен</th>
                       <th class="text-center">Цена от конкурента</th>
@@ -450,6 +501,27 @@
                 <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mp-confirm-cancel" data-mp-confirm-dismiss="1">Отмена</button>
                 <button type="button" class="btn btn-sm btn-outline-secondary d-none" id="dg-mp-confirm-alt">Снять заморозку</button>
                 <button type="button" class="btn btn-sm btn-warning" id="dg-mp-confirm-ok" data-dg-notify-start="Выполняем…">Подтвердить</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-mp-log-overlay" class="dg-mp-log-overlay" style="display: none" aria-hidden="true">
+            <div class="dg-mp-log-backdrop" id="dg-mp-log-backdrop"></div>
+            <div class="dg-mp-log-panel card shadow-lg border-0">
+              <div class="card-header d-flex align-items-center justify-content-between gap-2">
+                <div class="d-flex flex-column" style="min-width: 0">
+                  <div class="fw-semibold" id="dg-mp-log-title">Журнал изменений</div>
+                  <div class="text-muted small" id="dg-mp-log-subtitle"></div>
+                </div>
+                <div class="d-flex align-items-center gap-2 flex-shrink-0">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mp-log-refresh" data-dg-notify-start="Обновляем журнал…">Обновить</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mp-log-close">Закрыть</button>
+                </div>
+              </div>
+              <div class="card-body p-0">
+                <div class="dg-mp-log-body" id="dg-mp-log-body">
+                  <div class="text-muted small text-center py-4">Загрузка журнала…</div>
+                </div>
               </div>
             </div>
           </div>

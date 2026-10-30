@@ -531,6 +531,13 @@
     ensureTooltipNode();
     if (!dgTooltip || !dgTooltipInner) return;
     dgTooltipInner.textContent = text;
+    // Многострочные подсказки (напр. остатки по складам) — не схлопывать в одну строку.
+    dgTooltipInner.style.whiteSpace =
+      String(text || "").indexOf("\n") >= 0 ? "pre-line" : "";
+    dgTooltipInner.style.maxWidth =
+      String(text || "").indexOf("\n") >= 0 ? "320px" : "";
+    dgTooltipInner.style.textAlign =
+      String(text || "").indexOf("\n") >= 0 ? "left" : "";
     dgTooltip.style.transform = "";
     dgTooltip.style.left = "0px";
     dgTooltip.style.top = "0px";

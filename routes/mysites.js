@@ -15,6 +15,11 @@ const {
     maskCmsDbPassFields,
     ensureMySitesDbPassColumn,
 } = require('../lib/datagonCmsDb');
+const {
+    listDistinctMsStores,
+    parseSiteMsStockStoreUuids,
+    serializeSiteMsStockStoreUuids,
+} = require('../lib/msExportStockByStore');
 
 function maskMySiteRow(row) {
     return maskCmsDbPassFields(row);
@@ -71,6 +76,31 @@ module.exports = (db, settings) => {
         if (dbPassColReady) return;
         await ensureMySitesDbPassColumn(db);
         dbPassColReady = true;
+    }
+
+    let msStockStoresColReady = false;
+    async function ensureMsStockStoresCol() {
+        if (msStockStoresColReady) return;
+        const [rows] = await db.query(`
+            SELECT COUNT(*) AS cnt
+            FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = 'my_sites'
+              AND COLUMN_NAME = 'ms_stock_store_uuids'
+        `);
+        if (!rows[0]?.cnt) {
+            await db.query(
+                'ALTER TABLE my_sites ADD COLUMN ms_stock_store_uuids TEXT NULL DEFAULT NULL'
+            );
+        }
+        msStockStoresColReady = true;
+    }
+
+    function decorateMySiteRow(row) {
+        const masked = maskMySiteRow(row);
+        const uuids = parseSiteMsStockStoreUuids(masked && masked.ms_stock_store_uuids);
+        masked.ms_stock_store_uuids = uuids;
+        return masked;
     }
     let sourceEnabledColumnReady = false;
     let sourceIdentityIndexesReady = false;
@@ -272,11 +302,21 @@ module.exports = (db, settings) => {
     }
 
     // --- ГЛАВНЫЕ МАРШРУТЫ (Сайты) ---
+    router.get('/ms-stores', async (req, res) => {
+        try {
+            const stores = await listDistinctMsStores(db);
+            return res.json({ success: true, stores });
+        } catch (e) {
+            return res.status(500).json({ error: e.message });
+        }
+    });
+
     router.get('/', async (req, res) => {
         try {
             await ensureDbPassCol();
+            await ensureMsStockStoresCol();
             const [rows] = await db.query('SELECT * FROM my_sites ORDER BY id DESC');
-            return res.json((rows || []).map(maskMySiteRow));
+            return res.json((rows || []).map(decorateMySiteRow));
         } catch (e) {
             return res.status(500).json({ error: e.message });
         }
@@ -284,7 +324,9 @@ module.exports = (db, settings) => {
 
     router.post('/', async (req, res) => {
         await ensureDbPassCol();
-        const { name, domain, cms_type, db_host, db_name, db_user, db_pass, table_products, field_name, field_sku, field_code, field_price, field_currency, field_stock, wa_table_skus, wa_field_sku_val, wa_field_price_val, wa_field_stock_val } = req.body;
+        await ensureMsStockStoresCol();
+        const { name, domain, cms_type, db_host, db_name, db_user, db_pass, table_products, field_name, field_sku, field_code, field_price, field_currency, field_stock, wa_table_skus, wa_field_sku_val, wa_field_price_val, wa_field_stock_val, ms_stock_store_uuids } = req.body;
+        const storedMsStores = serializeSiteMsStockStoreUuids(ms_stock_store_uuids);
         const safeCms = cms_type || 'bitrix';
         const safeWaTable = wa_table_skus || 'shop_product_skus';
         let effectiveTableProducts = table_products;
@@ -326,8 +368,8 @@ module.exports = (db, settings) => {
             await conn.end();
             assertSqlIdent(effectiveTableProducts, 'table_products');
             const storedPass = prepareCmsDbPassForStore(db_pass, '');
-            const [result] = await db.query(`INSERT INTO my_sites (name, domain, cms_type, db_host, db_name, db_user, db_pass, table_products, field_name, field_sku, field_code, field_price, field_currency, field_stock, wa_table_skus, wa_field_sku_val, wa_field_price_val, wa_field_stock_val) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, [name, domain, safeCms, db_host, db_name, db_user, storedPass, effectiveTableProducts, effectiveFieldName, effectiveFieldSku, effectiveFieldCode, effectiveFieldPrice, effectiveFieldCurrency, effectiveFieldStock, safeWaTable, wa_field_sku_val, wa_field_price_val, wa_field_stock_val]);
-            res.json({ success: true, id: result.insertId, auto_prepared: autoPrepared });
+            const [result] = await db.query(`INSERT INTO my_sites (name, domain, cms_type, db_host, db_name, db_user, db_pass, table_products, field_name, field_sku, field_code, field_price, field_currency, field_stock, wa_table_skus, wa_field_sku_val, wa_field_price_val, wa_field_stock_val, ms_stock_store_uuids) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, [name, domain, safeCms, db_host, db_name, db_user, storedPass, effectiveTableProducts, effectiveFieldName, effectiveFieldSku, effectiveFieldCode, effectiveFieldPrice, effectiveFieldCurrency, effectiveFieldStock, safeWaTable, wa_field_sku_val, wa_field_price_val, wa_field_stock_val, storedMsStores]);
+            res.json({ success: true, id: result.insertId, auto_prepared: autoPrepared, ms_stock_store_uuids: parseSiteMsStockStoreUuids(storedMsStores) });
         } catch (e) {
             if (e && (e.code === 'BAD_SQL_IDENT' || e.code === 'CMS_HOST_DENIED')) {
                 return res.status(400).json({ error: e.message, code: e.code });
@@ -338,8 +380,13 @@ module.exports = (db, settings) => {
 
     router.put('/:id', async (req, res) => {
         await ensureDbPassCol();
+        await ensureMsStockStoresCol();
         const { id } = req.params;
-        const { name, domain, cms_type, db_host, db_name, db_user, db_pass, table_products, field_name, field_sku, field_code, field_price, field_currency, field_stock, wa_table_skus, wa_field_sku_val, wa_field_price_val, wa_field_stock_val } = req.body;
+        const { name, domain, cms_type, db_host, db_name, db_user, db_pass, table_products, field_name, field_sku, field_code, field_price, field_currency, field_stock, wa_table_skus, wa_field_sku_val, wa_field_price_val, wa_field_stock_val, ms_stock_store_uuids } = req.body;
+        const hasMsStoresKey = Object.prototype.hasOwnProperty.call(req.body || {}, 'ms_stock_store_uuids');
+        const storedMsStores = hasMsStoresKey
+            ? serializeSiteMsStockStoreUuids(ms_stock_store_uuids)
+            : undefined;
         const safeCms = cms_type || 'bitrix';
         const safeWaTable = wa_table_skus || 'shop_product_skus';
         let effectiveTableProducts = table_products;
@@ -361,8 +408,12 @@ module.exports = (db, settings) => {
                 }
                 return res.status(400).json({ error: ve.message || 'Недопустимые имена таблиц/полей', code: 'BAD_SQL_IDENT' });
             }
-            const [existingRows] = await db.query('SELECT db_pass FROM my_sites WHERE id = ? LIMIT 1', [id]);
+            const [existingRows] = await db.query(
+                'SELECT db_pass, ms_stock_store_uuids FROM my_sites WHERE id = ? LIMIT 1',
+                [id]
+            );
             const existingPass = existingRows[0] ? existingRows[0].db_pass : '';
+            const existingMsStores = existingRows[0] ? existingRows[0].ms_stock_store_uuids : null;
             const storedPass = prepareCmsDbPassForStore(db_pass, existingPass);
             const conn = await openCmsDbConnection(
                 { db_host, db_user, db_pass: storedPass, db_name },
@@ -383,8 +434,13 @@ module.exports = (db, settings) => {
             }
             await conn.end();
             assertSqlIdent(effectiveTableProducts, 'table_products');
-            await db.query(`UPDATE my_sites SET name=?, domain=?, cms_type=?, db_host=?, db_name=?, db_user=?, db_pass=?, table_products=?, field_name=?, field_sku=?, field_code=?, field_price=?, field_currency=?, field_stock=?, wa_table_skus=?, wa_field_sku_val=?, wa_field_price_val=?, wa_field_stock_val=? WHERE id=?`, [name, domain, safeCms, db_host, db_name, db_user, storedPass, effectiveTableProducts, effectiveFieldName, effectiveFieldSku, effectiveFieldCode, effectiveFieldPrice, effectiveFieldCurrency, effectiveFieldStock, safeWaTable, wa_field_sku_val, wa_field_price_val, wa_field_stock_val, id]);
-            res.json({ success: true, auto_prepared: autoPrepared });
+            const msStoresToWrite = hasMsStoresKey ? storedMsStores : existingMsStores;
+            await db.query(`UPDATE my_sites SET name=?, domain=?, cms_type=?, db_host=?, db_name=?, db_user=?, db_pass=?, table_products=?, field_name=?, field_sku=?, field_code=?, field_price=?, field_currency=?, field_stock=?, wa_table_skus=?, wa_field_sku_val=?, wa_field_price_val=?, wa_field_stock_val=?, ms_stock_store_uuids=? WHERE id=?`, [name, domain, safeCms, db_host, db_name, db_user, storedPass, effectiveTableProducts, effectiveFieldName, effectiveFieldSku, effectiveFieldCode, effectiveFieldPrice, effectiveFieldCurrency, effectiveFieldStock, safeWaTable, wa_field_sku_val, wa_field_price_val, wa_field_stock_val, msStoresToWrite, id]);
+            res.json({
+                success: true,
+                auto_prepared: autoPrepared,
+                ms_stock_store_uuids: parseSiteMsStockStoreUuids(msStoresToWrite),
+            });
         } catch (e) {
             if (e && (e.code === 'BAD_SQL_IDENT' || e.code === 'CMS_HOST_DENIED')) {
                 return res.status(400).json({ error: e.message, code: e.code });

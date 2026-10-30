@@ -52,6 +52,14 @@
     #ms-main-table tbody td:last-child {
       border-right: 0;
     }
+    .dg-msites-stores-box {
+      max-height: 180px;
+      overflow: auto;
+      min-height: 2.5rem;
+    }
+    .dg-msites-stores-box .form-check {
+      margin-bottom: 0.25rem;
+    }
   </style>
 
   <style>
@@ -1047,6 +1055,17 @@
                       <input type="text" class="form-control" id="ms-wa_field_stock_val" />
                     </div>
                   </div>
+                  <div class="row g-2 mt-2" id="ms-fields-ms-stores">
+                    <div class="col-12">
+                      <label class="form-label mb-1" for="ms-stock-stores-box">Склады МойСклад для остатка на сайте</label>
+                      <div class="form-text mb-1">
+                        Можно выбрать несколько. При экспорте остатков (наклейки → Webasyst) в CMS пишется
+                        <strong>сумма</strong> остатков только по отмеченным складам. Без выбора — общий остаток МС.
+                      </div>
+                      <div id="ms-stock-stores-box" class="dg-msites-stores-box border rounded px-2 py-2 bg-white" role="group" aria-label="Склады МойСклад"></div>
+                      <div id="ms-stock-stores-empty" class="form-text text-muted d-none">Нет складов в выгрузке — нужен полный синк МойСклад (bystore).</div>
+                    </div>
+                  </div>
                   <div class="row g-2 mt-1" id="ms-fields-bitrix">
                     <div class="col-md-2">
                       <label class="form-label" for="ms-table_products-bx">Таблица</label>
@@ -1368,6 +1387,7 @@
         wa_field_sku_val: "sku",
         wa_field_price_val: "price",
         wa_field_stock_val: "count",
+        ms_stock_store_uuids: [],
       };
 
       var sites = [];
@@ -1383,6 +1403,8 @@
       var SORT_STORAGE_VERSION = "v1";
       var columnWidths = {};
       var resizeState = null;
+      var msStoresCatalog = [];
+      var msStoresCatalogLoaded = false;
 
       function userSortKey() {
         try {
@@ -1454,6 +1476,85 @@
         }
       }
 
+      function normalizeStoreUuidList(raw) {
+        var list = Array.isArray(raw) ? raw : [];
+        var out = [];
+        var seen = {};
+        for (var i = 0; i < list.length; i++) {
+          var id = String(list[i] || "").trim().toLowerCase();
+          if (!id || seen[id]) continue;
+          seen[id] = true;
+          out.push(id);
+        }
+        return out;
+      }
+
+      function collectSelectedStoreUuids() {
+        var box = document.getElementById("ms-stock-stores-box");
+        if (!box) return [];
+        var checks = box.querySelectorAll('input[type="checkbox"][data-ms-store-uuid]:checked');
+        var out = [];
+        for (var i = 0; i < checks.length; i++) {
+          out.push(String(checks[i].getAttribute("data-ms-store-uuid") || "").toLowerCase());
+        }
+        return normalizeStoreUuidList(out);
+      }
+
+      function renderMsStoresPicker(selectedUuids) {
+        var box = document.getElementById("ms-stock-stores-box");
+        var emptyHint = document.getElementById("ms-stock-stores-empty");
+        if (!box) return;
+        var selected = {};
+        normalizeStoreUuidList(selectedUuids).forEach(function (id) {
+          selected[id] = true;
+        });
+        box.innerHTML = "";
+        if (!msStoresCatalog.length) {
+          if (emptyHint) emptyHint.classList.remove("d-none");
+          return;
+        }
+        if (emptyHint) emptyHint.classList.add("d-none");
+        msStoresCatalog.forEach(function (st, idx) {
+          var uuid = String(st.uuid || "").toLowerCase();
+          if (!uuid) return;
+          var id = "ms-store-cb-" + idx;
+          var wrap = document.createElement("div");
+          wrap.className = "form-check";
+          var input = document.createElement("input");
+          input.type = "checkbox";
+          input.className = "form-check-input";
+          input.id = id;
+          input.setAttribute("data-ms-store-uuid", uuid);
+          input.checked = !!selected[uuid];
+          var label = document.createElement("label");
+          label.className = "form-check-label";
+          label.setAttribute("for", id);
+          label.textContent = String(st.name || uuid);
+          wrap.appendChild(input);
+          wrap.appendChild(label);
+          box.appendChild(wrap);
+        });
+      }
+
+      function loadMsStoresCatalog() {
+        return fetch("/api/my-sites/ms-stores", { credentials: "same-origin" })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { ok: r.ok, j: j };
+            });
+          })
+          .then(function (res) {
+            msStoresCatalog = res.ok && res.j && Array.isArray(res.j.stores) ? res.j.stores : [];
+            msStoresCatalogLoaded = true;
+            return msStoresCatalog;
+          })
+          .catch(function () {
+            msStoresCatalog = [];
+            msStoresCatalogLoaded = true;
+            return msStoresCatalog;
+          });
+      }
+
       function collectBody() {
         var cms = document.getElementById("ms-cms_type").value;
         var o = {
@@ -1468,6 +1569,7 @@
           wa_field_sku_val: document.getElementById("ms-wa_field_sku_val").value.trim() || DEFAULT_FORM.wa_field_sku_val,
           wa_field_price_val: document.getElementById("ms-wa_field_price_val").value.trim() || DEFAULT_FORM.wa_field_price_val,
           wa_field_stock_val: document.getElementById("ms-wa_field_stock_val").value.trim() || DEFAULT_FORM.wa_field_stock_val,
+          ms_stock_store_uuids: collectSelectedStoreUuids(),
         };
         if (cms === "webasyst") {
           o.table_products = document.getElementById("ms-table_products-wa").value.trim() || DEFAULT_FORM.table_products;
@@ -1504,6 +1606,7 @@
         document.getElementById("ms-wa_field_sku_val").value = DEFAULT_FORM.wa_field_sku_val;
         document.getElementById("ms-wa_field_price_val").value = DEFAULT_FORM.wa_field_price_val;
         document.getElementById("ms-wa_field_stock_val").value = DEFAULT_FORM.wa_field_stock_val;
+        renderMsStoresPicker([]);
       }
 
       function fillFormFromSite(s) {
@@ -1532,6 +1635,14 @@
         document.getElementById("ms-wa_field_price_val").value = s.wa_field_price_val || DEFAULT_FORM.wa_field_price_val;
         document.getElementById("ms-wa_field_stock_val").value = s.wa_field_stock_val || DEFAULT_FORM.wa_field_stock_val;
         toggleCmsRows();
+        var selected = normalizeStoreUuidList(s.ms_stock_store_uuids);
+        if (msStoresCatalogLoaded) {
+          renderMsStoresPicker(selected);
+        } else {
+          loadMsStoresCatalog().then(function () {
+            renderMsStoresPicker(selected);
+          });
+        }
       }
 
       function clearFormNew() {
@@ -2320,6 +2431,9 @@
       }
       clearFormNew();
       initColumnResizeHandles();
+      loadMsStoresCatalog().then(function () {
+        renderMsStoresPicker([]);
+      });
       updateSortHeaders();
       syncSortUrl();
       loadMySites();

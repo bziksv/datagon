@@ -212,6 +212,8 @@ module.exports = (db, appSettings) => {
             default_limit, parse_batch_size, page_delay_ms, sync_batch_size, sync_delay_ms, sync_mode, log_retention_days, results_retention_days, ms_dimensions_log_retention_days, dg_purchase_overrides_log_retention_days, auto_sync_runs_retention_days, product_stock_snapshot_retention_days,
             ms_sync_page_limit, ms_sync_delay_ms, ms_purchase_order_organization_name, ms_orders_exclude_owner_names, ms_orders_sync_days,
             auto_sync_myproducts_enabled, auto_sync_myproducts_time,
+            auto_sync_stickers_cms_enabled, auto_sync_stickers_cms_time, auto_sync_stickers_cms_site_id,
+            stickers_cms_webhook_token,
             auto_sync_price_comp_enabled, auto_sync_price_comp_time, auto_sync_price_comp_weekdays,
             auto_sync_price_comp_match_audit, auto_sync_price_comp_rand_min, auto_sync_price_comp_rand_max,
             auto_sync_price_comp_stock_min, auto_sync_price_comp_stock_max, auto_sync_price_comp_site_id,
@@ -301,6 +303,20 @@ module.exports = (db, appSettings) => {
             }
             if (auto_sync_myproducts_enabled !== undefined) queries.push(['auto_sync_myproducts_enabled', auto_sync_myproducts_enabled ? 1 : 0]);
             if (auto_sync_myproducts_time !== undefined) queries.push(['auto_sync_myproducts_time', auto_sync_myproducts_time || '03:00']);
+            if (auto_sync_stickers_cms_enabled !== undefined) {
+                queries.push(['auto_sync_stickers_cms_enabled', auto_sync_stickers_cms_enabled ? 1 : 0]);
+            }
+            if (auto_sync_stickers_cms_time !== undefined) {
+                queries.push(['auto_sync_stickers_cms_time', auto_sync_stickers_cms_time || '03:00']);
+            }
+            if (auto_sync_stickers_cms_site_id !== undefined) {
+                const sid = String(auto_sync_stickers_cms_site_id || 'all').trim() || 'all';
+                queries.push(['auto_sync_stickers_cms_site_id', sid]);
+            }
+            if (stickers_cms_webhook_token !== undefined) {
+                const tok = String(stickers_cms_webhook_token || '').trim();
+                queries.push(['stickers_cms_webhook_token', tok]);
+            }
             if (auto_sync_price_comp_enabled !== undefined) {
                 queries.push(['auto_sync_price_comp_enabled', auto_sync_price_comp_enabled ? 1 : 0]);
             }
@@ -788,6 +804,18 @@ module.exports = (db, appSettings) => {
             }
             if(auto_sync_myproducts_enabled !== undefined) appSettings.auto_sync_myproducts_enabled = auto_sync_myproducts_enabled ? 1 : 0;
             if(auto_sync_myproducts_time !== undefined) appSettings.auto_sync_myproducts_time = auto_sync_myproducts_time || '03:00';
+            if(auto_sync_stickers_cms_enabled !== undefined) {
+                appSettings.auto_sync_stickers_cms_enabled = auto_sync_stickers_cms_enabled ? 1 : 0;
+            }
+            if(auto_sync_stickers_cms_time !== undefined) {
+                appSettings.auto_sync_stickers_cms_time = auto_sync_stickers_cms_time || '03:00';
+            }
+            if(auto_sync_stickers_cms_site_id !== undefined) {
+                appSettings.auto_sync_stickers_cms_site_id = String(auto_sync_stickers_cms_site_id || 'all').trim() || 'all';
+            }
+            if(stickers_cms_webhook_token !== undefined) {
+                appSettings.stickers_cms_webhook_token = String(stickers_cms_webhook_token || '').trim();
+            }
             if(auto_sync_price_comp_enabled !== undefined) appSettings.auto_sync_price_comp_enabled = auto_sync_price_comp_enabled ? 1 : 0;
             if(auto_sync_price_comp_time !== undefined) appSettings.auto_sync_price_comp_time = auto_sync_price_comp_time || '10:00';
             if(auto_sync_price_comp_weekdays !== undefined) {

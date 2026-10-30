@@ -10,6 +10,7 @@ const {
 const {
     replaceMsExportStockByStoreFromReport,
     buildAssortmentUuidToCodeMap,
+    attachStockByStoreToRows,
 } = require('../lib/msExportStockByStore');
 const { createSupplierNameResolver } = require('../lib/datagonMsSupplierLabel');
 
@@ -2364,6 +2365,7 @@ function createMoyskladRouter(db, settings, config) {
 
             const [rows] = await db.query(q, p);
             const [count] = await db.query(qc, pc);
+            await attachStockByStoreToRows(db, rows);
             res.json({
                 data: rows,
                 total: count[0].total,

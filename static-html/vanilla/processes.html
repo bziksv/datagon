@@ -2286,7 +2286,14 @@
                 title: String(s.title || s.key || ""),
                 subtitle: s.subtitle ? String(s.subtitle) : "",
                 category: String(s.category || "internal"),
-                worker: Number(s.worker) === 2 ? 2 : Number(s.worker) === 3 ? 3 : 1,
+                worker:
+                  Number(s.worker) === 2
+                    ? 2
+                    : Number(s.worker) === 3
+                      ? 3
+                      : Number(s.worker) === 4
+                        ? 4
+                        : 1,
                 enabled: Boolean(s.enabled),
                 time: s.time != null ? String(s.time) : "—",
                 extras: Array.isArray(s.extras) ? s.extras : [],
@@ -2792,7 +2799,8 @@
           }
           var catLabel = AS_PROC_CATEGORY_LABELS[cat] || cat;
           var workerRaw = Number(sec.worker);
-          var workerN = workerRaw === 2 ? 2 : workerRaw === 3 ? 3 : 1;
+          var workerN =
+            workerRaw === 2 ? 2 : workerRaw === 3 ? 3 : workerRaw === 4 ? 4 : 1;
           var workerBadgeCls =
             workerN === 2
               ? "bg-success-subtle text-success border border-success-subtle"

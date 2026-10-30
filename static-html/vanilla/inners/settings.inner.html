@@ -666,6 +666,7 @@
                 <strong>Воркер 1</strong> (`parser-app`) — большинство задач (МС, маркеты, Huckster…).
                 <strong>Воркер 2</strong> (`parser-autosync-w2`) — банки / Точка / финансы Ozon·WB / Planfix / Bitcop.
                 <strong>Воркер 3</strong> (`parser-autosync-w3`) — перепарсинг результатов (товары).
+                <strong>Воркер 4</strong> (`parser-autosync-w4`) — наклейки и остатки → Webasyst (`stickers_cms`).
                 На карточке виден бейдж воркера. Ответ («принято» / ошибка) — на самой карточке. Ход — на
                 <a href="/processes.html">«Логи фоновых процессов»</a>. Кнопка <strong>«Лог»</strong> — журнал
                 <code>auto_sync_runs</code> за день (МСК).
@@ -700,6 +701,50 @@
                     и остаток, помечает отсутствующие в источнике как <code>is_active=0</code>. Прогресс
                     и статус — на <a href="/processes.html">«Логи фоновых процессов»</a> (раздел «Мои товары»).
                   </p>
+                  </div>
+                </div>
+
+                <div class="col-12 dg-as-task" data-as-task="stickers_cms" data-as-worker="4" data-as-category="cms" data-as-en-id="dg-set-auto_stickers_cms_en" data-as-time-id="dg-set-auto_stickers_cms_time">
+                  <div class="dg-as-task-card dg-as-cat-cms">
+                    <div class="dg-as-task-head">
+                      <span class="dg-as-cat-pill dg-as-cat-pill-dynamic"></span>
+                      <span class="dg-as-next-badge dg-as-next-badge-dynamic"></span>
+                      <span class="dg-as-worker-badge is-w4" title="Отдельный процесс parser-autosync-w4">Воркер 4</span>
+                    </div>
+                    <label class="form-label">Наклейки и остатки → Webasyst (МСК)</label>
+                    <div class="d-flex gap-2 align-items-center flex-wrap">
+                      <input type="checkbox" id="dg-set-auto_stickers_cms_en" />
+                      <span>Включить</span>
+                      <input type="time" class="form-control" id="dg-set-auto_stickers_cms_time" style="max-width:140px" />
+                      <button type="button" class="btn btn-outline-primary btn-sm" id="dg-set-auto_stickers_cms_run" data-dg-activity-label="Запустить выгрузку наклеек в Webasyst" data-dg-notify-start="Ставим в очередь синк наклеек → CMS…">
+                        Запустить сейчас
+                      </button>
+                      <button type="button" class="btn btn-outline-secondary btn-sm dg-set-as-log-btn" data-dg-notify-start="Открываем журнал запусков…" data-dg-tooltip="Журнал запусков этой задачи за выбранный день (МСК)">Лог</button>
+                    </div>
+                    <div class="row g-2 mt-2 align-items-end">
+                      <div class="col-md-4">
+                        <label class="form-label small mb-0" for="dg-set-auto_stickers_cms_site">Сайт (my_sites)</label>
+                        <input type="text" class="form-control form-control-sm" id="dg-set-auto_stickers_cms_site" placeholder="all или id" />
+                      </div>
+                      <div class="col-md-8">
+                        <label class="form-label small mb-0" for="dg-set-stickers_cms_webhook_token">Webhook token</label>
+                        <div class="input-group input-group-sm">
+                          <input type="text" class="form-control font-monospace" id="dg-set-stickers_cms_webhook_token" autocomplete="off" spellcheck="false" placeholder="токен для POST /api/hooks/stickers-cms-sync" />
+                          <button type="button" class="btn btn-outline-secondary" id="dg-set-stickers_cms_webhook_gen" data-dg-no-activity="1" title="Сгенерировать новый токен">Сгенерировать</button>
+                        </div>
+                      </div>
+                    </div>
+                    <p class="small text-muted mb-0 mt-1">
+                      Галки Datagon → Features <code>dg_sticker_*</code>; общий остаток МойСклад
+                      (<code>ms_export.stock</code>, не по складам) → поле остатка SKU на Webasyst
+                      (<code>count</code> / настройка сайта). Без связи с МС остаток CMS не трогаем.
+                      По умолчанию <strong>03:00</strong> МСК. <strong>Воркер 4</strong>
+                      (<code>parser-autosync-w4</code>). Не ждать ночи —
+                      <code>POST /api/hooks/stickers-cms-sync?token=…</code>
+                      (или заголовок <code>X-Datagon-Hook-Token</code>). После смены галки на
+                      <a href="/my-products.html">«Мои товары»</a> — точечный догон карточки (наклейки + остаток).
+                      Расписание — кнопкой «Сохранить расписание автосинхронизации» ниже.
+                    </p>
                   </div>
                 </div>
 

@@ -14,6 +14,17 @@ const {
     clearBitrixStorefrontCache,
 } = require('../lib/datagonCmsPriceWrite');
 const { openCmsDbConnection } = require('../lib/datagonCmsDb');
+const {
+    ensureMyProductStickerColumns,
+    ensureMyProductFieldLogTable,
+    enrichRowsWithStickersAndMs,
+    setMyProductStickers,
+    listMyProductFieldLog,
+    logMyProductFieldChange,
+    sqlStickerSortBucket,
+    STICKER_MANUAL_FIELDS,
+    as01,
+} = require('../lib/datagonMyProductStickers');
 let myProductsPerfReady = false;
 let myProductsSyncAuditReady = false;
 let myProductsPriceHoldReady = false;
@@ -622,6 +633,7 @@ function myProductsRouterFactory(db, settings) {
                 hold_until: 'mp.price_hold_until',
                 currency: 'mp.currency',
                 stock: 'mp.stock',
+                sticker_ms_stock: 'COALESCE(ms_link_src.stock, ms_link_sku.stock)',
                 status: 'mp.is_active',
                 updated: 'mp.updated_at'
             };
@@ -679,19 +691,25 @@ function myProductsRouterFactory(db, settings) {
             await ensureMyProductsPerfIndexes();
             await ensureMyProductsCmsProductIdColumn();
             await ensureMyProductsPriceHoldColumns();
+            await ensureMyProductStickerColumns(db);
+            await ensureMyProductFieldLogTable(db);
 
             const matchAuditSql = sqlMatchAuditJoinAndWhere(matchAuditFilter);
             const priceHoldSql = sqlPriceHoldWhere(price_hold);
+            const msJoins = sqlMyProductsMsExportJoins('mp');
+            const stickerBucket = sqlStickerSortBucket('mp');
             let q = `
                 SELECT 
-                    mp.*
+                    mp.*,
+                    COALESCE(ms_link_src.stock, ms_link_sku.stock) AS sticker_ms_stock_sql
                 FROM my_products mp
+                ${msJoins}
                 ${matchAuditSql.joinSql}
                 WHERE 1=1
                 ${matchAuditSql.whereSql}
                 ${priceHoldSql}
             `;
-            let qc = `SELECT COUNT(*) as total FROM my_products mp ${matchAuditSql.joinSql} WHERE 1=1${matchAuditSql.whereSql}${priceHoldSql}`;
+            let qc = `SELECT COUNT(*) as total FROM my_products mp ${msJoins} ${matchAuditSql.joinSql} WHERE 1=1${matchAuditSql.whereSql}${priceHoldSql}`;
             let p = [], pc = [];
 
             if (site_id && site_id !== 'all') { 
@@ -754,7 +772,8 @@ function myProductsRouterFactory(db, settings) {
                 qc += ` AND ${cond}`;
             }
             const qBase = q;
-            q += ` ORDER BY ${sortField} ${sortDirection}`;
+            // Наклейки: «Есть в наличии» (остаток МС) — в начале; снят/не поставляется — в конце.
+            q += ` ORDER BY ${stickerBucket} ASC, ${sortField} ${sortDirection}`;
             const qPaged = `${q} LIMIT ? OFFSET ?`;
             const pPaged = [...p, l, o];
             
@@ -825,7 +844,8 @@ function myProductsRouterFactory(db, settings) {
                     const dataRows = Array.isArray(rows) ? rows : [];
                     await Promise.all([
                         enrichWithMoyskladLinks(dataRows),
-                        enrichWithCompetitorPrices(dataRows)
+                        enrichWithCompetitorPrices(dataRows),
+                        enrichRowsWithStickersAndMs(db, dataRows),
                     ]);
                     gapRows = dataRows.filter((row) => rowMatchesGapFilter(row, gapCfg));
                     myProductsGapSetCache.set(gapSetKey, {
@@ -840,7 +860,8 @@ function myProductsRouterFactory(db, settings) {
                 const dataRows = Array.isArray(rows) ? rows : [];
                 await Promise.all([
                     enrichWithMoyskladLinks(dataRows),
-                    enrichWithCompetitorPrices(dataRows)
+                    enrichWithCompetitorPrices(dataRows),
+                    enrichRowsWithStickersAndMs(db, dataRows),
                 ]);
                 if (isCustomCompetitorSort) {
                     sortProductRows(dataRows, customCompetitorSort, sortDirection);
@@ -949,6 +970,14 @@ function myProductsRouterFactory(db, settings) {
         return false;
     }
 
+    function stickerSortBucket(r) {
+        if (as01(r.sticker_discontinued) || as01(r.sticker_not_supplied)) return 2;
+        const msStock = Number(r.sticker_ms_stock);
+        if (Number.isFinite(msStock) && msStock > 0) return 0;
+        if (as01(r.sticker_in_stock)) return 0;
+        return 1;
+    }
+
     function sortProductRows(rows, sortBy, sortDirection) {
         if (!Array.isArray(rows) || !rows.length) return;
         const dir = sortDirection === 'ASC' ? 1 : -1;
@@ -963,12 +992,19 @@ function myProductsRouterFactory(db, settings) {
             medkompleks_price: (r) => r.medkompleks_price === null || r.medkompleks_price === undefined ? Number.NEGATIVE_INFINITY : Number(r.medkompleks_price),
             currency: (r) => String(r.currency || ''),
             stock: (r) => Number(r.stock || 0),
+            sticker_ms_stock: (r) => {
+                const n = Number(r.sticker_ms_stock);
+                return Number.isFinite(n) ? n : Number.NEGATIVE_INFINITY;
+            },
             status: (r) => Number(r.is_active || 0),
             updated: (r) => (r.updated_at ? new Date(r.updated_at).getTime() : 0)
         };
         const getter = valueMap[field];
         if (!getter) return;
         rows.sort((a, b) => {
+            const ba = stickerSortBucket(a);
+            const bb = stickerSortBucket(b);
+            if (ba !== bb) return ba - bb;
             const av = getter(a);
             const bv = getter(b);
             if (typeof av === 'number' && typeof bv === 'number') {
@@ -2393,16 +2429,24 @@ function myProductsRouterFactory(db, settings) {
             const actorDisplayName = await resolveActorDisplayName(actorLogin);
             const note =
                 hold.days != null ? `hold;days=${hold.days}` : `hold;until=${hold.until.slice(0, 10)}`;
+            const oldUntil = product.price_hold_until || null;
             await db.query(
                 `UPDATE my_products
                  SET price_hold_until = ?, price_hold_by = ?, price_hold_note = ?, updated_at = NOW()
                  WHERE site_id = ? AND source_id = ?`,
                 [hold.until, actorDisplayName, note, siteIdNum, String(product.source_id || '')]
             );
+            await logMyProductFieldChange(db, product, 'price_hold_until', oldUntil, hold.until, {
+                action: 'set_hold',
+                source: 'ui',
+                login: actorLogin,
+                name: actorDisplayName,
+            });
             myProductsResponseCache.clear();
             myProductsGapSetCache.clear();
             const [[meta]] = await db.query(
-                `SELECT price, currency, price_hold_until, price_hold_by, price_hold_note, updated_at
+                `SELECT price, currency, price_hold_until, price_hold_by, price_hold_note,
+                        sticker_no_ru, sticker_discontinued, sticker_not_supplied, sticker_sale, updated_at
                  FROM my_products WHERE site_id = ? AND source_id = ? LIMIT 1`,
                 [siteIdNum, String(product.source_id || '')]
             );
@@ -2425,25 +2469,167 @@ function myProductsRouterFactory(db, settings) {
         }
         try {
             await ensureMyProductsPriceHoldColumns();
+            await ensureMyProductStickerColumns(db);
             const siteIdNum = Number(site_id);
             const product = await loadMyProductBySiteKey(siteIdNum, source_id, sku);
             if (!product) {
                 return res.status(404).json({ error: 'Товар не найден' });
             }
+            const actorLogin = resolveActorName(req);
+            const actorDisplayName = await resolveActorDisplayName(actorLogin);
+            const oldUntil = product.price_hold_until || null;
+            const hadSale = as01(product.sticker_sale);
             await db.query(
                 `UPDATE my_products
-                 SET price_hold_until = NULL, price_hold_by = NULL, price_hold_note = NULL, updated_at = NOW()
+                 SET price_hold_until = NULL, price_hold_by = NULL, price_hold_note = NULL,
+                     sticker_sale = 0, updated_at = NOW()
                  WHERE site_id = ? AND source_id = ?`,
                 [siteIdNum, String(product.source_id || '')]
             );
+            await logMyProductFieldChange(db, product, 'price_hold_until', oldUntil, null, {
+                action: 'clear_hold',
+                source: 'ui',
+                login: actorLogin,
+                name: actorDisplayName,
+            });
+            if (hadSale) {
+                await logMyProductFieldChange(db, product, 'sticker_sale', 1, 0, {
+                    action: 'auto_clear',
+                    source: 'price_hold_cleared',
+                    login: actorLogin,
+                    name: actorDisplayName,
+                });
+            }
             myProductsResponseCache.clear();
             myProductsGapSetCache.clear();
             return res.json({
                 success: true,
-                message: 'Заморозка снята — следующий синк с конкурента снова применится'
+                message: 'Заморозка снята — следующий синк с конкурента снова применится',
+                data: { sticker_sale: 0 }
             });
         } catch (e) {
             console.error('Error clear-price-hold:', e);
+            return res.status(500).json({ error: e.message });
+        }
+    });
+
+    router.post('/set-sticker', async (req, res) => {
+        const body = req.body || {};
+        const { site_id, sku, source_id } = body;
+        if (!site_id || (!sku && !source_id)) {
+            return res.status(400).json({ error: 'Не указан site_id и идентификатор товара (source_id/sku)' });
+        }
+        const patch = {};
+        for (const f of STICKER_MANUAL_FIELDS) {
+            if (Object.prototype.hasOwnProperty.call(body, f)) patch[f] = body[f];
+        }
+        if (!Object.keys(patch).length) {
+            return res.status(400).json({ error: 'Нет полей наклейки для изменения' });
+        }
+        try {
+            await ensureMyProductsPriceHoldColumns();
+            const siteIdNum = Number(site_id);
+            const product = await loadMyProductBySiteKey(siteIdNum, source_id, sku);
+            if (!product) {
+                return res.status(404).json({ error: 'Товар не найден' });
+            }
+            const actorLogin = resolveActorName(req);
+            const actorDisplayName = await resolveActorDisplayName(actorLogin);
+            const result = await setMyProductStickers(db, product, patch, {
+                action: 'update',
+                source: 'ui',
+                login: actorLogin,
+                name: actorDisplayName,
+            });
+            myProductsResponseCache.clear();
+            myProductsGapSetCache.clear();
+            const [[fresh]] = await db.query(
+                `SELECT id, site_id, source_id, cms_product_id, sku, price_hold_until,
+                        sticker_no_ru, sticker_discontinued, sticker_not_supplied, sticker_sale, updated_at
+                 FROM my_products WHERE id = ? LIMIT 1`,
+                [Number(product.id)]
+            );
+            const rows = [fresh || product];
+            await enrichRowsWithStickersAndMs(db, rows);
+            // Точечный догон Features только Webasyst (Альмамед). Bitrix-сайты — только флаг в Datagon.
+            const cmsPid = Number((rows[0] && rows[0].cms_product_id) || product.cms_product_id);
+            const siteNum = Number((rows[0] && rows[0].site_id) || product.site_id);
+            const [[siteRow]] = await db.query(
+                `SELECT id, name, cms_type FROM my_sites WHERE id = ? LIMIT 1`,
+                [siteNum]
+            );
+            const cmsType = String((siteRow && siteRow.cms_type) || '').toLowerCase();
+            let cms_sync = { queued: false, cms_type: cmsType || null };
+            if (cmsType !== 'webasyst') {
+                cms_sync = {
+                    queued: false,
+                    skipped: true,
+                    cms_type: cmsType || null,
+                    site_name: siteRow && siteRow.name ? String(siteRow.name) : null,
+                    reason:
+                        'Features dg_sticker_* пишутся только в Webasyst (Альмамед). На этом сайте галка сохранена в Datagon, на витрину не уходит.',
+                };
+            } else if (Number.isFinite(cmsPid) && cmsPid > 0 && Number.isFinite(siteNum) && siteNum > 0) {
+                cms_sync = { queued: true, cms_type: 'webasyst', cms_product_id: cmsPid };
+                setImmediate(() => {
+                    Promise.resolve()
+                        .then(() => {
+                            const { syncMyProductStickersToCms } = require('../lib/datagonMyProductStickersCmsSync');
+                            return syncMyProductStickersToCms(db, {
+                                siteId: siteNum,
+                                cmsProductIds: [cmsPid],
+                            });
+                        })
+                        .then((r) => {
+                            if (r && r.success === false) {
+                                console.warn('[set-sticker→cms]', r.message || r.errors);
+                            }
+                        })
+                        .catch((err) =>
+                            console.warn(
+                                '[set-sticker→cms]',
+                                err && err.message ? err.message : err
+                            )
+                        );
+                });
+            } else {
+                cms_sync = {
+                    queued: false,
+                    skipped: true,
+                    cms_type: cmsType || null,
+                    reason: 'Нет cms_product_id — догон Features пропущен',
+                };
+            }
+            return res.json({
+                success: true,
+                changed: result.changed,
+                data: rows[0],
+                cms_sync,
+            });
+        } catch (e) {
+            if (e && e.code === 'STICKER_SALE_REQUIRES_HOLD') {
+                return res.status(400).json({ error: e.message, code: e.code });
+            }
+            console.error('Error set-sticker:', e);
+            return res.status(500).json({ error: e.message });
+        }
+    });
+
+    router.get('/:id/log', async (req, res) => {
+        try {
+            const productId = Number(req.params.id);
+            if (!Number.isFinite(productId) || productId <= 0) {
+                return res.status(400).json({ error: 'Некорректный id' });
+            }
+            const out = await listMyProductFieldLog(db, {
+                product_id: productId,
+                field: req.query.field,
+                limit: req.query.limit,
+                offset: req.query.offset,
+            });
+            return res.json({ success: true, ...out });
+        } catch (e) {
+            console.error('Error my-products log:', e);
             return res.status(500).json({ error: e.message });
         }
     });
@@ -2471,6 +2657,7 @@ function myProductsRouterFactory(db, settings) {
         }
         try {
             await ensureMyProductsPriceHoldColumns();
+            await ensureMyProductStickerColumns(db);
             const ctx = await buildPriceSyncFilterContext(q);
             let ids = null;
             let total = 0;
@@ -2590,7 +2777,8 @@ function myProductsRouterFactory(db, settings) {
                         // eslint-disable-next-line no-await-in-loop
                         const [r] = await db.query(
                             `UPDATE my_products
-                             SET price_hold_until = NULL, price_hold_by = NULL, price_hold_note = NULL, updated_at = NOW()
+                             SET price_hold_until = NULL, price_hold_by = NULL, price_hold_note = NULL,
+                                 sticker_sale = 0, updated_at = NOW()
                              WHERE id IN (${ph})
                                AND price_hold_until IS NOT NULL AND price_hold_until > NOW()`,
                             part
@@ -2601,7 +2789,8 @@ function myProductsRouterFactory(db, settings) {
                     const [r] = await db.query(
                         `UPDATE my_products mp
                          ${ctx.joinSql}
-                         SET mp.price_hold_until = NULL, mp.price_hold_by = NULL, mp.price_hold_note = NULL, mp.updated_at = NOW()
+                         SET mp.price_hold_until = NULL, mp.price_hold_by = NULL, mp.price_hold_note = NULL,
+                             mp.sticker_sale = 0, mp.updated_at = NOW()
                          ${ctx.whereSql}
                            AND mp.price_hold_until IS NOT NULL AND mp.price_hold_until > NOW()`,
                         ctx.params
