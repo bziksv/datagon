@@ -236,9 +236,21 @@
     body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-flt-section__head {
       display: flex;
       flex-wrap: wrap;
-      align-items: baseline;
+      align-items: center;
+      justify-content: space-between;
       gap: 0.35rem 0.75rem;
       margin-bottom: 0.55rem;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-flt-section.is-collapsed > .dg-mp-flt-section__head {
+      margin-bottom: 0;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-flt-section__head-text {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 0.35rem 0.75rem;
+      min-width: 0;
+      flex: 1 1 auto;
     }
     body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-flt-section__title {
       font-size: 0.8rem;
@@ -1770,6 +1782,15 @@
                       <option value="none">Без действий</option>
                     </select>
                   </div>
+                  <div class="col-lg-2 col-md-4 col-sm-6" data-dg-mp-filter-field="currency">
+                    <label class="form-label" for="mp-f-currency">Валюта</label>
+                    <select class="form-select" id="mp-f-currency">
+                      <option value="all">Все</option>
+                      <option value="RUB">RUB</option>
+                      <option value="USD">USD</option>
+                      <option value="EUR">EUR</option>
+                    </select>
+                  </div>
                   <div class="col-lg-2 col-md-4 col-sm-6" data-dg-mp-filter-field="limit">
                     <label class="form-label" for="mp-f-limit">На странице</label>
                     <input type="number" class="form-control" id="mp-f-limit" min="1" value="100" />
@@ -1777,71 +1798,37 @@
                 </div>
               </section>
 
-              <section class="dg-mp-flt-section" data-dg-mp-filter-section="table">
-                <div class="dg-mp-flt-section__head">
-                  <span class="dg-mp-flt-section__title">Быстрый отбор по странице</span>
-                  <span class="dg-mp-flt-section__sub">Только уже загруженные строки · без запроса на сервер</span>
-                </div>
-                <div class="row g-2">
-                  <div class="col-lg-2 col-md-4 col-sm-6" data-dg-mp-filter-field="tf_id">
-                    <label class="form-label" for="mp-tf-source_id">ID / КОД</label>
-                    <input type="text" class="form-control" id="mp-tf-source_id" autocomplete="off" />
-                  </div>
-                  <div class="col-lg-2 col-md-4 col-sm-6" data-dg-mp-filter-field="tf_site">
-                    <label class="form-label" for="mp-tf-site_name">Сайт</label>
-                    <input type="text" class="form-control" id="mp-tf-site_name" autocomplete="off" />
-                  </div>
-                  <div class="col-lg-2 col-md-4 col-sm-6" data-dg-mp-filter-field="tf_sku">
-                    <label class="form-label" for="mp-tf-sku">SKU</label>
-                    <input type="text" class="form-control" id="mp-tf-sku" autocomplete="off" />
-                  </div>
-                  <div class="col-lg-4 col-md-8 col-sm-12" data-dg-mp-filter-field="tf_name">
-                    <label class="form-label" for="mp-tf-name">Название</label>
-                    <input type="text" class="form-control" id="mp-tf-name" autocomplete="off" />
-                  </div>
-                  <div class="col-lg-2 col-md-4 col-sm-6" data-dg-mp-filter-field="tf_currency">
-                    <label class="form-label" for="mp-tf-currency">Валюта</label>
-                    <select class="form-select" id="mp-tf-currency">
-                      <option value="all">Все</option>
-                      <option value="RUB">RUB</option>
-                      <option value="USD">USD</option>
-                      <option value="EUR">EUR</option>
-                    </select>
-                  </div>
-                </div>
-                <p class="text-muted small mb-0 mt-2" data-dg-mp-filter-field="table_hint">
-                  Остаток, статус и связь с МС — в блоке «Каталог» и кнопке «Применить».
-                </p>
-              </section>
-
               <section class="dg-mp-flt-section dg-mp-flt-section--hold" data-dg-mp-filter-section="hold">
                 <div class="dg-mp-flt-section__head">
-                  <span class="dg-mp-flt-section__title">Заморозка цены</span>
-                  <span class="dg-mp-flt-section__sub">Не перезаписывать цену синком с конкурентов</span>
+                  <div class="dg-mp-flt-section__head-text">
+                    <span class="dg-mp-flt-section__title">Заморозка цены</span>
+                    <span class="dg-mp-flt-section__sub">Не перезаписывать цену синком с конкурентов</span>
+                  </div>
+                  <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0" id="dg-mp-sec-hold-toggle" data-dg-no-activity="1">Свернуть</button>
                 </div>
-                <div class="row g-2 align-items-end">
-                  <div class="col-lg-3 col-md-4 col-sm-6" data-dg-mp-filter-field="price_hold">
-                    <label class="form-label" for="mp-f-price_hold">Фильтр заморозки</label>
-                    <select class="form-select" id="mp-f-price_hold" title="Фильтр по заморозке своей цены (синк с ДМ/МК). «Срок истёк» — размороженные по дате, можно снова заморозить.">
-                      <option value="all">Все</option>
-                      <option value="1">Только замороженные</option>
-                      <option value="expiring">Истекают ≤ 7 дн.</option>
-                      <option value="expired">Срок истёк (разморожены)</option>
-                      <option value="0">Без активной заморозки</option>
-                    </select>
-                  </div>
-                  <div class="col-lg-2 col-md-4 col-sm-6" data-dg-mp-filter-field="hold_days">
-                    <label class="form-label" for="mp-f-hold_days">Срок (для замка)</label>
-                    <select class="form-select" id="mp-f-hold_days" title="Общий срок для замка в строке, массовой заморозки и акции «Скидка»">
-                      <option value="30">30 дней</option>
-                      <option value="60">60 дней</option>
-                      <option value="90" selected>90 дней</option>
-                      <option value="180">180 дней</option>
-                    </select>
-                    <div class="form-text mb-0" id="mp-f-hold_days-until-hint">до —</div>
-                  </div>
-                  <div class="col-lg-7 col-md-12 d-flex flex-wrap gap-2 pb-1">
-                    <span class="d-inline-flex" data-dg-mp-filter-field="btn_hold_price_bulk">
+                <div id="dg-mp-sec-hold-body" class="dg-mp-flt-section__body">
+                  <div class="row g-2 align-items-end">
+                    <div class="col-lg-3 col-md-4 col-sm-6">
+                      <label class="form-label" for="mp-f-price_hold">Фильтр заморозки</label>
+                      <select class="form-select" id="mp-f-price_hold" title="Фильтр по заморозке своей цены (синк с ДМ/МК). «Срок истёк» — размороженные по дате, можно снова заморозить.">
+                        <option value="all">Все</option>
+                        <option value="1">Только замороженные</option>
+                        <option value="expiring">Истекают ≤ 7 дн.</option>
+                        <option value="expired">Срок истёк (разморожены)</option>
+                        <option value="0">Без активной заморозки</option>
+                      </select>
+                    </div>
+                    <div class="col-lg-2 col-md-4 col-sm-6">
+                      <label class="form-label" for="mp-f-hold_days">Срок (для замка)</label>
+                      <select class="form-select" id="mp-f-hold_days" title="Общий срок для замка в строке, массовой заморозки и акции «Скидка»">
+                        <option value="30">30 дней</option>
+                        <option value="60">60 дней</option>
+                        <option value="90" selected>90 дней</option>
+                        <option value="180">180 дней</option>
+                      </select>
+                      <div class="form-text mb-0" id="mp-f-hold_days-until-hint">до —</div>
+                    </div>
+                    <div class="col-lg-7 col-md-12 d-flex flex-wrap gap-2 pb-1">
                       <button
                         type="button"
                         class="btn btn-sm btn-outline-warning"
@@ -1850,8 +1837,6 @@
                         data-dg-notify-start="Считаем выборку для заморозки цен…"
                         data-dg-activity-label="Массовая заморозка цен"
                       ><i class="pe-7s-lock me-1"></i>Заморозить по фильтрам</button>
-                    </span>
-                    <span class="d-inline-flex" data-dg-mp-filter-field="btn_clear_hold_bulk">
                       <button
                         type="button"
                         class="btn btn-sm btn-outline-secondary"
@@ -1860,81 +1845,82 @@
                         data-dg-notify-start="Считаем выборку для снятия заморозки…"
                         data-dg-activity-label="Снятие заморозки цен"
                       ><i class="pe-7s-unlock me-1"></i>Снять заморозку по фильтрам</button>
-                    </span>
+                    </div>
                   </div>
                 </div>
               </section>
 
               <section class="dg-mp-flt-section dg-mp-flt-section--accent" data-dg-mp-filter-section="parsing">
                 <div class="dg-mp-flt-section__head">
-                  <span class="dg-mp-flt-section__title">Цены и конкуренты</span>
-                  <span class="dg-mp-flt-section__sub">Расхождение Δ, курсы, синк цены с ДМ/МК</span>
+                  <div class="dg-mp-flt-section__head-text">
+                    <span class="dg-mp-flt-section__title">Цены и конкуренты</span>
+                    <span class="dg-mp-flt-section__sub">Δ с ДМ/МК и подтянуть цену с конкурента (не синк каталога с сайта)</span>
+                  </div>
+                  <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0" id="dg-mp-sec-parsing-toggle" data-dg-no-activity="1">Свернуть</button>
                 </div>
-                <div class="row g-2">
-                  <div class="col-md-auto d-flex align-items-center" data-dg-mp-filter-field="gap_enabled">
-                    <label class="form-check mb-0">
-                      <input class="form-check-input me-1" type="checkbox" id="mp-f-gap_enabled" />
-                      Включить фильтр расхождения Δ
-                    </label>
+                <div id="dg-mp-sec-parsing-body" class="dg-mp-flt-section__body">
+                  <div class="row g-2">
+                    <div class="col-md-auto d-flex align-items-center">
+                      <label class="form-check mb-0">
+                        <input class="form-check-input me-1" type="checkbox" id="mp-f-gap_enabled" />
+                        Включить фильтр расхождения Δ
+                      </label>
+                    </div>
+                    <div class="col-md-auto d-flex align-items-center">
+                      <label class="form-check mb-0">
+                        <input class="form-check-input me-1" type="checkbox" id="mp-f-gap_exclude_zero" checked />
+                        Не показывать Δ 0%
+                      </label>
+                    </div>
                   </div>
-                  <div class="col-md-auto d-flex align-items-center" data-dg-mp-filter-field="gap_exclude_zero">
-                    <label class="form-check mb-0">
-                      <input class="form-check-input me-1" type="checkbox" id="mp-f-gap_exclude_zero" checked />
-                      Не показывать Δ 0%
-                    </label>
+                  <div class="row g-2 mt-1 align-items-end">
+                    <div class="col-lg-3 col-md-4">
+                      <label class="form-label" for="mp-f-gap_competitor">Конкурент</label>
+                      <select class="form-select" id="mp-f-gap_competitor">
+                        <option value="all">Любой (ДМ/МК)</option>
+                        <option value="dealmed">Деалмед</option>
+                        <option value="medkompleks">Медкомплекс</option>
+                      </select>
+                    </div>
+                    <div class="col-lg-2 col-md-4 col-6">
+                      <label class="form-label" for="mp-f-gap_min_pct">Δ % от</label>
+                      <input type="number" step="0.01" class="form-control" id="mp-f-gap_min_pct" value="-100" />
+                    </div>
+                    <div class="col-lg-2 col-md-4 col-6">
+                      <label class="form-label" for="mp-f-gap_max_pct">Δ % до</label>
+                      <input type="number" step="0.01" class="form-control" id="mp-f-gap_max_pct" value="-2" />
+                    </div>
+                    <div class="col-lg-1 col-md-12 d-flex justify-content-lg-center align-items-center pb-2">
+                      <span class="small text-muted fw-semibold">или</span>
+                    </div>
+                    <div class="col-lg-2 col-md-4 col-6">
+                      <label class="form-label" for="mp-f-gap_min_pct_2">Δ % от</label>
+                      <input type="number" step="0.01" class="form-control" id="mp-f-gap_min_pct_2" value="2" title="Второй диапазон (ИЛИ). Пусто = не используется." />
+                    </div>
+                    <div class="col-lg-2 col-md-4 col-6">
+                      <label class="form-label" for="mp-f-gap_max_pct_2">Δ % до</label>
+                      <input type="number" step="0.01" class="form-control" id="mp-f-gap_max_pct_2" value="100" title="Второй диапазон (ИЛИ). Пусто = не используется." />
+                    </div>
                   </div>
-                </div>
-                <div class="row g-2 mt-1 align-items-end">
-                  <div class="col-lg-3 col-md-4" data-dg-mp-filter-field="gap_competitor">
-                    <label class="form-label" for="mp-f-gap_competitor">Конкурент</label>
-                    <select class="form-select" id="mp-f-gap_competitor">
-                      <option value="all">Любой (ДМ/МК)</option>
-                      <option value="dealmed">Деалмед</option>
-                      <option value="medkompleks">Медкомплекс</option>
-                    </select>
-                  </div>
-                  <div class="col-lg-2 col-md-4 col-6" data-dg-mp-filter-field="gap_min_pct">
-                    <label class="form-label" for="mp-f-gap_min_pct">Δ % от</label>
-                    <input type="number" step="0.01" class="form-control" id="mp-f-gap_min_pct" value="-100" />
-                  </div>
-                  <div class="col-lg-2 col-md-4 col-6" data-dg-mp-filter-field="gap_max_pct">
-                    <label class="form-label" for="mp-f-gap_max_pct">Δ % до</label>
-                    <input type="number" step="0.01" class="form-control" id="mp-f-gap_max_pct" value="-2" />
-                  </div>
-                  <div class="col-lg-1 col-md-12 d-flex justify-content-lg-center align-items-center pb-2" data-dg-mp-filter-field="gap_or_label">
-                    <span class="small text-muted fw-semibold">или</span>
-                  </div>
-                  <div class="col-lg-2 col-md-4 col-6" data-dg-mp-filter-field="gap_min_pct_2">
-                    <label class="form-label" for="mp-f-gap_min_pct_2">Δ % от</label>
-                    <input type="number" step="0.01" class="form-control" id="mp-f-gap_min_pct_2" value="2" title="Второй диапазон (ИЛИ). Пусто = не используется." />
-                  </div>
-                  <div class="col-lg-2 col-md-4 col-6" data-dg-mp-filter-field="gap_max_pct_2">
-                    <label class="form-label" for="mp-f-gap_max_pct_2">Δ % до</label>
-                    <input type="number" step="0.01" class="form-control" id="mp-f-gap_max_pct_2" value="100" title="Второй диапазон (ИЛИ). Пусто = не используется." />
-                  </div>
-                </div>
-                <div class="row g-2 mt-1 align-items-end">
-                  <div class="col-lg-2 col-md-3 col-6" data-dg-mp-filter-field="usd_to_rub">
-                    <label class="form-label" for="mp-f-usd_to_rub">USD→RUB</label>
-                    <input type="number" step="0.01" class="form-control" id="mp-f-usd_to_rub" />
-                  </div>
-                  <div class="col-lg-2 col-md-3 col-6" data-dg-mp-filter-field="eur_to_rub">
-                    <label class="form-label" for="mp-f-eur_to_rub">EUR→RUB</label>
-                    <input type="number" step="0.01" class="form-control" id="mp-f-eur_to_rub" />
-                  </div>
-                  <div class="col-lg-2 col-md-3 col-6" data-dg-mp-filter-field="comp_min">
-                    <label class="form-label" for="mp-f-comp_min">Синх. % мин</label>
-                    <input type="text" class="form-control" id="mp-f-comp_min" value="0.1" />
-                  </div>
-                  <div class="col-lg-2 col-md-3 col-6" data-dg-mp-filter-field="comp_max">
-                    <label class="form-label" for="mp-f-comp_max">Синх. % макс</label>
-                    <input type="text" class="form-control" id="mp-f-comp_max" value="0.99" />
-                  </div>
-                  <div class="col-lg-4 col-md-12 d-flex flex-wrap gap-2 pb-1">
-                    <span class="d-inline-flex" data-dg-mp-filter-field="btn_fx">
+                  <div class="row g-2 mt-1 align-items-end">
+                    <div class="col-lg-2 col-md-3 col-6">
+                      <label class="form-label" for="mp-f-usd_to_rub">USD→RUB</label>
+                      <input type="number" step="0.01" class="form-control" id="mp-f-usd_to_rub" />
+                    </div>
+                    <div class="col-lg-2 col-md-3 col-6">
+                      <label class="form-label" for="mp-f-eur_to_rub">EUR→RUB</label>
+                      <input type="number" step="0.01" class="form-control" id="mp-f-eur_to_rub" />
+                    </div>
+                    <div class="col-lg-2 col-md-3 col-6">
+                      <label class="form-label" for="mp-f-comp_min">Синх. % мин</label>
+                      <input type="text" class="form-control" id="mp-f-comp_min" value="0.1" />
+                    </div>
+                    <div class="col-lg-2 col-md-3 col-6">
+                      <label class="form-label" for="mp-f-comp_max">Синх. % макс</label>
+                      <input type="text" class="form-control" id="mp-f-comp_max" value="0.99" />
+                    </div>
+                    <div class="col-lg-4 col-md-12 d-flex flex-wrap gap-2 pb-1">
                       <button type="button" class="btn btn-sm btn-outline-secondary" id="mp-btn-fx" title="Принудительно обновить валютные курсы" data-dg-notify-start="Обновляем валютные курсы…"><i class="pe-7s-refresh-2 me-1"></i>Обновить курс</button>
-                    </span>
-                    <span class="d-inline-flex" data-dg-mp-filter-field="btn_sync_price_bulk">
                       <button
                         type="button"
                         class="btn btn-sm btn-outline-success"
@@ -1943,8 +1929,6 @@
                         data-dg-notify-start="Синхронизируем цены с конкурента по фильтрам…"
                         data-dg-activity-label="Массовая синхронизация цены с конкурента"
                       ><i class="pe-7s-cash me-1"></i>Синх. цены по фильтрам</button>
-                    </span>
-                    <span class="d-inline-flex" data-dg-mp-filter-field="btn_sync_price_bulk_stop">
                       <button
                         type="button"
                         class="btn btn-sm btn-outline-danger d-none"
@@ -1952,7 +1936,7 @@
                         title="Остановить фоновую синхронизацию цен"
                         data-dg-notify-start="Останавливаем синхронизацию цен…"
                       >Стоп синх. цен</button>
-                    </span>
+                    </div>
                   </div>
                 </div>
               </section>
@@ -1993,22 +1977,21 @@
 
               <section class="dg-mp-flt-section" data-dg-mp-filter-section="actions">
                 <div class="dg-mp-flt-section__head">
-                  <span class="dg-mp-flt-section__title">Синхронизация каталога</span>
-                  <span class="dg-mp-flt-section__sub">Обновление товаров с сайтов и кэш МС</span>
+                  <div class="dg-mp-flt-section__head-text">
+                    <span class="dg-mp-flt-section__title">Синхронизация каталога</span>
+                    <span class="dg-mp-flt-section__sub">Товары с сайтов (CMS) и кэш МС — не цены конкурентов</span>
+                  </div>
+                  <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0" id="dg-mp-sec-actions-toggle" data-dg-no-activity="1">Свернуть</button>
                 </div>
-                <div class="d-flex flex-wrap gap-2">
-                  <span class="d-inline-flex" data-dg-mp-filter-field="btn_syncall">
+                <div id="dg-mp-sec-actions-body" class="dg-mp-flt-section__body">
+                  <div class="d-flex flex-wrap gap-2">
                     <button type="button" class="btn btn-sm btn-outline-primary" id="mp-btn-syncall" title="Запустить синхронизацию товаров по всем сайтам" data-dg-notify-start="Запускаем синхронизацию по всем сайтам…"><i class="pe-7s-repeat me-1"></i>Синхронизировать все</button>
-                  </span>
-                  <span class="d-inline-flex" id="mp-btn-sync-site-wrap" data-dg-mp-filter-field="btn_sync_site" title="Сначала выберите конкретный сайт (не «Все сайты»)">
-                    <button type="button" class="btn btn-sm btn-outline-primary" id="mp-btn-sync-site" disabled data-dg-notify-start="Запускаем синхронизацию выбранного сайта…"><i class="pe-7s-repeat me-1"></i>Синхронизировать выбранный сайт</button>
-                  </span>
-                  <span class="d-inline-flex" data-dg-mp-filter-field="btn_rebuild">
+                    <span class="d-inline-flex" id="mp-btn-sync-site-wrap" title="Сначала выберите конкретный сайт (не «Все сайты»)">
+                      <button type="button" class="btn btn-sm btn-outline-primary" id="mp-btn-sync-site" disabled data-dg-notify-start="Запускаем синхронизацию выбранного сайта…"><i class="pe-7s-repeat me-1"></i>Синхронизировать выбранный сайт</button>
+                    </span>
                     <button type="button" class="btn btn-sm btn-outline-warning" id="mp-btn-rebuild" title="Перестроить кэш связей с МойСклад" data-dg-notify-start="Перестраиваем кэш связей…"><i class="pe-7s-refresh me-1"></i>Перестроить кэш</button>
-                  </span>
-                  <span class="d-inline-flex" data-dg-mp-filter-field="btn_copy">
                     <button type="button" class="btn btn-sm btn-outline-dark" id="mp-btn-copy" title="Скопировать ссылку на текущую страницу с фильтрами"><i class="pe-7s-link me-1"></i>Скопировать ссылку</button>
-                  </span>
+                  </div>
                 </div>
               </section>
 
@@ -3086,6 +3069,7 @@
           comp_sync_rand_max: document.getElementById("mp-f-comp_max").value.trim(),
           stock_min: document.getElementById("mp-f-stock_min").value.trim(),
           stock_max: document.getElementById("mp-f-stock_max").value.trim(),
+          currency: document.getElementById("mp-f-currency").value,
           limit: lim,
           offset: offset,
         };
@@ -3163,16 +3147,6 @@
         return s.slice(0, 10);
       }
 
-      function collectTableFilters() {
-        return {
-          source_id: document.getElementById("mp-tf-source_id").value,
-          site_name: document.getElementById("mp-tf-site_name").value,
-          sku: document.getElementById("mp-tf-sku").value,
-          name: document.getElementById("mp-tf-name").value,
-          currency: document.getElementById("mp-tf-currency").value,
-        };
-      }
-
       function collectMyProductsFilterFormFull() {
         return {
           smart: document.getElementById("mp-f-smart").value,
@@ -3200,12 +3174,8 @@
           comp_max: document.getElementById("mp-f-comp_max").value,
           stock_min: document.getElementById("mp-f-stock_min").value,
           stock_max: document.getElementById("mp-f-stock_max").value,
+          currency: document.getElementById("mp-f-currency").value,
           limit: document.getElementById("mp-f-limit").value,
-          tf_source_id: document.getElementById("mp-tf-source_id").value,
-          tf_site_name: document.getElementById("mp-tf-site_name").value,
-          tf_sku: document.getElementById("mp-tf-sku").value,
-          tf_name: document.getElementById("mp-tf-name").value,
-          tf_currency: document.getElementById("mp-tf-currency").value,
         };
       }
 
@@ -3299,33 +3269,16 @@
           document.getElementById("mp-f-stock_min").value = String(prefs.stock_min);
         if (miss("stock_max") && prefs.stock_max != null)
           document.getElementById("mp-f-stock_max").value = String(prefs.stock_max);
+        if (miss("currency")) {
+          var curPref =
+            prefs.currency != null
+              ? String(prefs.currency)
+              : prefs.tf_currency != null
+                ? String(prefs.tf_currency)
+                : "";
+          if (curPref) document.getElementById("mp-f-currency").value = curPref;
+        }
         if (miss("limit") && prefs.limit != null) document.getElementById("mp-f-limit").value = String(prefs.limit);
-        if (prefs.tf_source_id != null) document.getElementById("mp-tf-source_id").value = String(prefs.tf_source_id);
-        if (prefs.tf_site_name != null) document.getElementById("mp-tf-site_name").value = String(prefs.tf_site_name);
-        if (prefs.tf_sku != null) document.getElementById("mp-tf-sku").value = String(prefs.tf_sku);
-        if (prefs.tf_name != null) document.getElementById("mp-tf-name").value = String(prefs.tf_name);
-        if (prefs.tf_currency != null) document.getElementById("mp-tf-currency").value = String(prefs.tf_currency);
-      }
-
-      function filterRows(rows, tf) {
-        return (rows || []).filter(function (r) {
-          var siteName = String(siteNameById[String(r.site_id)] || "");
-          if (tf.source_id) {
-            var needle = String(tf.source_id).trim();
-            var sid = String(r.source_id || "");
-            var cpid = String(r.cms_product_id || "");
-            if (sid.indexOf(needle) === -1 && cpid.indexOf(needle) === -1) return false;
-          }
-          if (tf.site_name && siteName.toLowerCase().indexOf(String(tf.site_name).trim().toLowerCase()) === -1)
-            return false;
-          if (tf.sku && String(r.sku || "").toLowerCase().indexOf(String(tf.sku).trim().toLowerCase()) === -1)
-            return false;
-          if (tf.name && String(r.name || "").toLowerCase().indexOf(String(tf.name).trim().toLowerCase()) === -1)
-            return false;
-          if (tf.currency !== "all" && String(r.currency || "").toUpperCase() !== String(tf.currency).toUpperCase())
-            return false;
-          return true;
-        });
       }
 
       function fmt(n) {
@@ -4582,9 +4535,8 @@
           renderRows([]);
           return;
         }
-        var filtered = filterRows(lastRows, collectTableFilters());
-        updateHint(filtered.length);
-        renderRows(filtered);
+        updateHint((lastRows || []).length);
+        renderRows(lastRows || []);
       }
 
       function aggregateStats(rows) {
@@ -4608,6 +4560,7 @@
           ms_linked: f.ms_linked,
           stock_min: f.stock_min,
           stock_max: f.stock_max,
+          currency: f.currency,
         });
       }
 
@@ -4682,10 +4635,25 @@
       }
 
       async function loadSites() {
-        var res = await fetch("/api/my-sites", { credentials: "same-origin" });
-        var rows = await res.json().catch(function () {
-          return [];
+        // Под правом my-products (менеджерам не нужен доступ к странице «Мои сайты»).
+        var res = await fetch("/api/my-products/sites", { credentials: "same-origin" });
+        var j = await res.json().catch(function () {
+          return null;
         });
+        var rows = [];
+        if (res.ok && j && Array.isArray(j.items)) {
+          rows = j.items;
+        } else if (res.ok && Array.isArray(j)) {
+          rows = j;
+        } else {
+          // fallback для старых сборок / админов с доступом к my-sites
+          var res2 = await fetch("/api/my-sites", { credentials: "same-origin" });
+          var j2 = await res2.json().catch(function () {
+            return [];
+          });
+          if (res2.ok && Array.isArray(j2)) rows = j2;
+          else if (res2.ok && j2 && Array.isArray(j2.items)) rows = j2.items;
+        }
         siteNameById = {};
         siteById = {};
         var sel = document.getElementById("f-site");
@@ -4694,16 +4662,15 @@
         optAll.value = "all";
         optAll.textContent = "Все сайты";
         sel.appendChild(optAll);
-        if (Array.isArray(rows)) {
-          rows.forEach(function (s) {
-            siteNameById[String(s.id)] = s.name || "#" + s.id;
-            siteById[String(s.id)] = s;
-            var o = document.createElement("option");
-            o.value = String(s.id);
-            o.textContent = s.name || "#" + s.id;
-            sel.appendChild(o);
-          });
-        }
+        rows.forEach(function (s) {
+          if (!s || s.id == null) return;
+          siteNameById[String(s.id)] = s.name || "#" + s.id;
+          siteById[String(s.id)] = s;
+          var o = document.createElement("option");
+          o.value = String(s.id);
+          o.textContent = s.name || "#" + s.id;
+          sel.appendChild(o);
+        });
         updateSubtitle();
         updateSyncSiteButton();
       }
@@ -4731,6 +4698,7 @@
           "comp_sync_rand_max",
           "stock_min",
           "stock_max",
+          "currency",
         ];
         keys.forEach(function (k) {
           var v = params.get(k);
@@ -4740,6 +4708,7 @@
           if (k === "source_enabled")
             document.getElementById("mp-f-source_enabled").value = v;
           if (k === "ms_linked") document.getElementById("f-ms").value = v;
+          if (k === "currency") document.getElementById("mp-f-currency").value = v;
           if (k === "sort_by") document.getElementById("mp-f-sort-by").value = v;
           if (k === "sort_dir") document.getElementById("mp-f-sort-dir").value = v;
           if (k === "search") {
@@ -5746,11 +5715,7 @@
         document.getElementById("mp-f-status").value = "all";
         document.getElementById("mp-f-source_enabled").value = "all";
         document.getElementById("f-ms").value = "all";
-        document.getElementById("mp-tf-source_id").value = "";
-        document.getElementById("mp-tf-site_name").value = "";
-        document.getElementById("mp-tf-sku").value = "";
-        document.getElementById("mp-tf-name").value = "";
-        document.getElementById("mp-tf-currency").value = "all";
+        document.getElementById("mp-f-currency").value = "all";
         document.getElementById("mp-f-stock_min").value = "";
         document.getElementById("mp-f-stock_max").value = "";
         document.getElementById("mp-f-limit").value = String(initialLimit);
@@ -5812,20 +5777,6 @@
           horiz.addEventListener("scroll", onScrollMpFloatingHeader, { passive: true });
         }
       })();
-
-      [
-        "mp-tf-source_id",
-        "mp-tf-site_name",
-        "mp-tf-sku",
-        "mp-tf-name",
-        "mp-tf-currency",
-      ].forEach(function (id) {
-        var el = document.getElementById(id);
-        if (el) {
-          el.addEventListener("input", applyTableFilterAndRender);
-          el.addEventListener("change", applyTableFilterAndRender);
-        }
-      });
 
       document.getElementById("mp-f-smart").addEventListener("keydown", function (e) {
         if (e.key === "Enter") {
@@ -6053,15 +6004,11 @@
 
       (function mpFilterFieldVisibility() {
         var V1_PREFIX = "datagon_my_products_filter_blocks_v1:";
+        // Шестерёнка — только поля «Каталога» и сортировки. Заморозка / Δ / синк каталога
+        // сворачиваются своими кнопками в секции (не через «Поля фильтров»).
         var V1_BLOCK_FIELDS = {
           core: ["smart", "site", "status", "ms_link"],
-          table: ["tf_id", "tf_site", "tf_sku", "tf_name", "tf_currency", "table_hint"],
-          stock_sort: ["stock_min", "stock_max", "source_enabled", "limit", "match_audit", "price_hold", "hold_days", "sort_by", "sort_dir"],
-          gap: ["gap_enabled", "gap_exclude_zero", "gap_competitor", "gap_min_pct", "gap_max_pct", "gap_or_label", "gap_min_pct_2", "gap_max_pct_2", "usd_to_rub", "eur_to_rub"],
-          comp_sync: ["comp_min", "comp_max"],
-          sync_bar: ["btn_syncall", "btn_sync_site", "btn_rebuild", "btn_copy"],
-          hold_bar: ["price_hold", "hold_days", "btn_hold_price_bulk", "btn_clear_hold_bulk"],
-          parsing_bar: ["btn_fx", "btn_sync_price_bulk", "btn_sync_price_bulk_stop", "comp_min", "comp_max"],
+          stock_sort: ["stock_min", "stock_max", "source_enabled", "currency", "limit", "match_audit", "sort_by", "sort_dir"],
         };
         var FIELD_GROUPS = [
           {
@@ -6076,50 +6023,8 @@
               { key: "stock_max", title: "Остаток до", hint: "" },
               { key: "source_enabled", title: "На сайте (вкл/выкл)", hint: "" },
               { key: "match_audit", title: "Статус сопоставления", hint: "" },
+              { key: "currency", title: "Валюта", hint: "RUB / USD / EUR" },
               { key: "limit", title: "На странице", hint: "" },
-            ],
-          },
-          {
-            title: "Быстрый отбор по странице",
-            subtitle: "Клиентский отбор",
-            items: [
-              { key: "tf_id", title: "ID / КОД", hint: "Для Webasyst — id карточки товара (shop_product), не id модификации SKU" },
-              { key: "tf_site", title: "Сайт", hint: "" },
-              { key: "tf_sku", title: "SKU", hint: "" },
-              { key: "tf_name", title: "Название", hint: "" },
-              { key: "tf_currency", title: "Валюта", hint: "" },
-              { key: "table_hint", title: "Подсказка блока", hint: "Текст под полями" },
-            ],
-          },
-          {
-            title: "Заморозка цены",
-            subtitle: "Hold и массовые кнопки",
-            items: [
-              { key: "price_hold", title: "Фильтр заморозки", hint: "Фильтр списка" },
-              { key: "hold_days", title: "Срок заморозки", hint: "30/60/90/180 для замка и bulk" },
-              { key: "btn_hold_price_bulk", title: "Заморозить по фильтрам", hint: "Hold без CMS" },
-              { key: "btn_clear_hold_bulk", title: "Снять заморозку по фильтрам", hint: "" },
-            ],
-          },
-          {
-            title: "Цены и конкуренты",
-            subtitle: "Δ, курсы, синк цены",
-            items: [
-              { key: "gap_enabled", title: "Вкл. фильтр Δ", hint: "Чекбокс" },
-              { key: "gap_exclude_zero", title: "Скрыть Δ 0%", hint: "Чекбокс" },
-              { key: "gap_competitor", title: "Конкурент (Δ)", hint: "" },
-              { key: "gap_min_pct", title: "Δ % от", hint: "" },
-              { key: "gap_max_pct", title: "Δ % до", hint: "" },
-              { key: "gap_or_label", title: "Δ или", hint: "Второй диапазон (ИЛИ)" },
-              { key: "gap_min_pct_2", title: "Δ % от (или)", hint: "Второй диапазон; пусто = выкл." },
-              { key: "gap_max_pct_2", title: "Δ % до (или)", hint: "Второй диапазон; пусто = выкл." },
-              { key: "usd_to_rub", title: "USD → RUB", hint: "Ручной курс" },
-              { key: "eur_to_rub", title: "EUR → RUB", hint: "Ручной курс" },
-              { key: "comp_min", title: "Синх. % мин", hint: "" },
-              { key: "comp_max", title: "Синх. % макс", hint: "" },
-              { key: "btn_fx", title: "Обновить курс", hint: "" },
-              { key: "btn_sync_price_bulk", title: "Синх. цены по фильтрам", hint: "Массово с конкурента (фон)" },
-              { key: "btn_sync_price_bulk_stop", title: "Стоп синх. цен", hint: "Остановка фона" },
             ],
           },
           {
@@ -6130,20 +6035,10 @@
               { key: "sort_dir", title: "Направление", hint: "" },
             ],
           },
-          {
-            title: "Синхронизация каталога",
-            subtitle: "Сайты и кэш МС",
-            items: [
-              { key: "btn_syncall", title: "Синхронизировать все", hint: "" },
-              { key: "btn_sync_site", title: "Синхронизировать сайт", hint: "" },
-              { key: "btn_rebuild", title: "Перестроить кэш", hint: "" },
-              { key: "btn_copy", title: "Скопировать ссылку", hint: "" },
-            ],
-          },
         ];
         if (window.DatagonFilterFieldsVisibility && window.DatagonFilterFieldsVisibility.init) {
           window.DatagonFilterFieldsVisibility.init({
-            storageKeyPrefix: "datagon_my_products_filter_fields_v3",
+            storageKeyPrefix: "datagon_my_products_filter_fields_v4",
             attr: "data-dg-mp-filter-field",
             fieldGroups: FIELD_GROUPS,
             togglesRootId: "dg-mp-filter-blocks-toggles",
@@ -6182,6 +6077,39 @@
           } catch (e) {}
           mpRefreshFloatingAfterLayout();
         });
+      })();
+
+      (function mpSectionCollapse() {
+        function bind(secKey, toggleId, bodyId, storageKey) {
+          var btn = document.getElementById(toggleId);
+          var body = document.getElementById(bodyId);
+          var sec = body && body.closest ? body.closest(".dg-mp-flt-section") : null;
+          if (!btn || !body) return;
+          function apply() {
+            var c = false;
+            try {
+              c = localStorage.getItem(storageKey) === "1";
+            } catch (e) {}
+            body.style.display = c ? "none" : "";
+            btn.textContent = c ? "Развернуть" : "Свернуть";
+            if (sec) {
+              if (c) sec.classList.add("is-collapsed");
+              else sec.classList.remove("is-collapsed");
+            }
+          }
+          apply();
+          btn.addEventListener("click", function () {
+            var hidden = body.style.display === "none";
+            try {
+              localStorage.setItem(storageKey, hidden ? "0" : "1");
+            } catch (e2) {}
+            apply();
+            mpRefreshFloatingAfterLayout();
+          });
+        }
+        bind("hold", "dg-mp-sec-hold-toggle", "dg-mp-sec-hold-body", "datagon_my_products_sec_hold_collapsed_v1");
+        bind("parsing", "dg-mp-sec-parsing-toggle", "dg-mp-sec-parsing-body", "datagon_my_products_sec_parsing_collapsed_v1");
+        bind("actions", "dg-mp-sec-actions-toggle", "dg-mp-sec-actions-body", "datagon_my_products_sec_actions_collapsed_v1");
       })();
 
       // «Свернуть/Развернуть» для card-body «Таблица товаров» — по эталону moysklad.

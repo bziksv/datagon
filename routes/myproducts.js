@@ -61,6 +61,7 @@ function buildMyProductsGapSetKey(parts) {
         r2max !== null &&
         r2max !== '' &&
         Number.isFinite(Number(r2max));
+    const currencyNorm = String(p.currency || 'all').trim().toUpperCase() || 'ALL';
     return JSON.stringify({
         site_id: p.site_id || 'all',
         status: p.status ?? 'all',
@@ -68,6 +69,7 @@ function buildMyProductsGapSetKey(parts) {
         search: String(p.search || ''),
         stock_min: stockMin,
         stock_max: stockMax,
+        currency: currencyNorm === 'ALL' ? 'all' : currencyNorm,
         ms_linked: p.ms_linked != null ? p.ms_linked : 'all',
         match_audit: String(p.match_audit || 'all').toLowerCase(),
         price_hold: String(p.price_hold || 'all').toLowerCase(),
@@ -598,6 +600,33 @@ function myProductsRouterFactory(db, settings) {
         });
     });
 
+    /**
+     * Справочник сайтов для фильтра «Сайт» на /my-products.html.
+     * Под правом страницы my-products (не требует доступ к /my-sites).
+     * Без db_pass и прочих секретов.
+     */
+    router.get('/sites', async (req, res) => {
+        try {
+            const [rows] = await db.query(
+                `SELECT id, name, domain, cms_type
+                 FROM my_sites
+                 ORDER BY name ASC, id ASC`
+            );
+            return res.json({
+                success: true,
+                items: (rows || []).map((r) => ({
+                    id: Number(r.id),
+                    name: r.name != null ? String(r.name) : '',
+                    domain: r.domain != null ? String(r.domain) : '',
+                    cms_type: r.cms_type != null ? String(r.cms_type) : '',
+                })),
+            });
+        } catch (e) {
+            console.error('Error my-products/sites:', e);
+            return res.status(500).json({ error: e.message });
+        }
+    });
+
     // 1. Список товаров (с поиском и фильтрами)
     router.get('/', async (req, res) => {
         try {
@@ -610,6 +639,7 @@ function myProductsRouterFactory(db, settings) {
                 offset,
                 stock_min,
                 stock_max,
+                currency = 'all',
                 ms_linked = 'all',
                 sort_by = 'id',
                 sort_dir = 'desc',
@@ -625,6 +655,7 @@ function myProductsRouterFactory(db, settings) {
                 usd_to_rub,
                 eur_to_rub
             } = req.query;
+            const currencyNorm = String(currency || 'all').trim().toUpperCase();
             const parseFlexible = (v, fallback) => {
                 if (v === undefined || v === null || v === '') return fallback;
                 const n = Number(String(v).replace(',', '.'));
@@ -667,6 +698,7 @@ function myProductsRouterFactory(db, settings) {
                 search: String(search || ''),
                 stock_min: Number.isFinite(Number(stock_min)) ? Number(stock_min) : null,
                 stock_max: Number.isFinite(Number(stock_max)) ? Number(stock_max) : null,
+                currency: !currencyNorm || currencyNorm === 'ALL' ? 'all' : currencyNorm,
                 limit: l,
                 offset: o,
                 ms_linked,
@@ -735,7 +767,13 @@ function myProductsRouterFactory(db, settings) {
                 p.push(source_enabled);
                 pc.push(source_enabled);
             }
-            
+            if (currencyNorm && currencyNorm !== 'ALL') {
+                q += ' AND UPPER(TRIM(COALESCE(mp.currency, \'\'))) = ?';
+                qc += ' AND UPPER(TRIM(COALESCE(mp.currency, \'\'))) = ?';
+                p.push(currencyNorm);
+                pc.push(currencyNorm);
+            }
+
             if (search) {
                 const rawTokens = String(search).trim().split(/\s+/).filter(Boolean).slice(0, 8);
                 const tokens = rawTokens.length ? rawTokens : [String(search).trim()];
@@ -1278,8 +1316,10 @@ function myProductsRouterFactory(db, settings) {
     // 2. Статистика
     router.get('/stats', async (req, res) => {
         try {
-            const { site_id, status, source_enabled, ms_linked = 'all' } = req.query || {};
-            const cacheKey = JSON.stringify({ site_id, status, source_enabled, ms_linked });
+            const { site_id, status, source_enabled, ms_linked = 'all', currency = 'all' } = req.query || {};
+            const currencyNorm = String(currency || 'all').trim().toUpperCase();
+            const currencyKey = !currencyNorm || currencyNorm === 'ALL' ? 'all' : currencyNorm;
+            const cacheKey = JSON.stringify({ site_id, status, source_enabled, ms_linked, currency: currencyKey });
             const now = Date.now();
             const cached = myProductsStatsCache.get(cacheKey);
             if (cached && cached.exp > now) {
@@ -1310,6 +1350,10 @@ function myProductsRouterFactory(db, settings) {
             if (source_enabled !== undefined && source_enabled !== 'all') {
                 q += ' AND COALESCE(mp.source_enabled, 1) = ?';
                 p.push(source_enabled);
+            }
+            if (currencyKey !== 'all') {
+                q += ' AND UPPER(TRIM(COALESCE(mp.currency, \'\'))) = ?';
+                p.push(currencyKey);
             }
             if (ms_linked === '1') {
                 q += ` AND ${sqlMyProductsLinkedPredicate()}`;
@@ -1667,6 +1711,7 @@ function myProductsRouterFactory(db, settings) {
         const search = q.search;
         const stock_min = q.stock_min;
         const stock_max = q.stock_max;
+        const currencyNorm = String(q.currency || 'all').trim().toUpperCase();
         const ms_linked = q.ms_linked != null ? q.ms_linked : 'all';
         const gap_filter_enabled = q.gap_filter_enabled != null ? q.gap_filter_enabled : '0';
         const gap_exclude_zero = q.gap_exclude_zero != null ? q.gap_exclude_zero : '1';
@@ -1749,6 +1794,10 @@ function myProductsRouterFactory(db, settings) {
             whereSql += ' AND COALESCE(mp.stock, 0) <= ?';
             params.push(stockMaxNum);
         }
+        if (currencyNorm && currencyNorm !== 'ALL') {
+            whereSql += ' AND UPPER(TRIM(COALESCE(mp.currency, \'\'))) = ?';
+            params.push(currencyNorm);
+        }
         if (ms_linked === '1') {
             whereSql += ` AND EXISTS (SELECT 1 FROM ms_export ms WHERE ${sqlMsExportMatchesProduct('ms', 'mp')} LIMIT 1)`;
         } else if (ms_linked === '0') {
@@ -1760,6 +1809,7 @@ function myProductsRouterFactory(db, settings) {
             status: status ?? 'all',
             source_enabled: source_enabled ?? 'all',
             search: String(search || ''),
+            currency: !currencyNorm || currencyNorm === 'ALL' ? 'all' : currencyNorm,
             ms_linked,
             match_audit: matchAuditFilter,
             price_hold: priceHoldFilter,
@@ -1780,6 +1830,7 @@ function myProductsRouterFactory(db, settings) {
             isGapFilterEnabled,
             stock_min: Number.isFinite(stockMinNum) ? stockMinNum : null,
             stock_max: Number.isFinite(stockMaxNum) ? stockMaxNum : null,
+            currency: applied_filters.currency,
             gapCfg,
             usdRate,
             eurRate
@@ -1812,6 +1863,7 @@ function myProductsRouterFactory(db, settings) {
             search: af.search,
             stock_min: ctx.stock_min,
             stock_max: ctx.stock_max,
+            currency: af.currency || ctx.currency || 'all',
             ms_linked: af.ms_linked,
             match_audit: af.match_audit,
             price_hold: af.price_hold || 'all',

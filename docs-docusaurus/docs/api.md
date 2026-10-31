@@ -452,7 +452,7 @@ Query:
 Подключение к CMS MySQL (F-SQL-02): host только из allowlist (`DATAGON_CMS_DB_HOSTS` + дефолтные прод-IP в `lib/datagonCmsDb.js`); `db_pass` at-rest AES-GCM (`enc:v1:…`, тот же `DATAGON_VAULT_KEY`, что WORK vault); list/detail маскируют пароль (`db_pass=""`, `db_pass_set` / `db_pass_mask`); PUT с пустым паролем не затирает. Миграция legacy: `node scripts/migrate-cms-db-pass-encrypt.mjs`. Локально (`npm run dev:local`): **`DATAGON_CMS_DB_OVERRIDE_<siteId>=host:user:pass:database`** (для Альмамед site `2` → `127.0.0.1:almamed:localdev:almamed_su_db`) — plaintext override без vault и без правки `my_sites` в общей БД; нужен, чтобы `set-sticker` / `stickers_cms` писали в локальный Webasyst, а не в прод CMS.
 
 ### GET `/api/my-sites`
-Список подключенных сайтов-источников (без plaintext `db_pass`). В каждой строке **`ms_stock_store_uuids`**: массив UUID складов МойСклад (пусто = при экспорте остатков писать общий `ms_export.stock`). Также **`price_margin`** (`source`, `tiers`): маржа при экспорте цен в `stickers_cms` — источник пока `buy_price`, тиры `%` `lt_1000` (≤1000) / `from_1000_lt_5000` / `from_5000_lt_50000` / `gte_50000`; формула `sale = round(buy / (1 − pct/100))` до целых ₽ (только при остатке > 0).
+Список подключенных сайтов-источников (без plaintext `db_pass`). В каждой строке **`ms_stock_store_uuids`**: массив UUID складов МойСклад (пусто = при экспорте остатков писать общий `ms_export.stock`). Также **`price_margin`** (`source`, `tiers`): маржа при экспорте цен в `stickers_cms` — база **«Закупочная цена»** карточки МС (`buyPrice` из `ms_entity_details`), тиры `%` `lt_1000` (≤1000) / `from_1000_lt_5000` / `from_5000_lt_50000` / `gte_50000`; формула `sale = round(buy / (1 − pct/100))` до целых ₽ (только при остатке > 0).
 
 ### GET `/api/my-sites/ms-stores`
 Справочник складов для привязки к сайту: `{ success, stores: [{ uuid, name }] }` из `ms_export_stock_by_store` (+ имена из заказов МС). Нужен полный синк МойСклад.
@@ -578,6 +578,8 @@ Query (основные):
 - `source_enabled` — `all` | `0` | `1` (учёт на стороне источника)
 - `ms_linked` — `all` | `1` | `0` (есть / нет совпадения с `ms_export` по коду МойСклад: `cms_product_id` (или `source_id`, если карточки нет), либо `sku`; сравнение после `UPPER(TRIM(...))`)
 - `search` — поиск по полям товара (несколько слов через пробел)
+- `stock_min` / `stock_max` — остаток на сайте (`my_products.stock`)
+- `currency` — `all` | `RUB` | `USD` | `EUR` (серверный отбор по `my_products.currency`, регистр не важен)
 - `sort_by`, `sort_dir` — сортировка (`id`, `site`, `sku`, `name`, `price`, …)
 - `limit`, `offset` — пагинация
 - фильтр разрыва с конкурентом: `gap_filter_enabled`, `gap_exclude_zero`, `gap_competitor`, `gap_min_pct`, `gap_max_pct`, опционально второй диапазон **ИЛИ** `gap_min_pct_2` / `gap_max_pct_2` (оба заданы → совпадение с любым из двух диапазонов), `usd_to_rub`, `eur_to_rub`
@@ -594,6 +596,7 @@ Query:
 - `status` — `all` | `0` | `1`
 - `source_enabled` — `all` | `0` | `1`
 - `ms_linked` — `all` | `1` | `0` (как у списка товаров)
+- `currency` — `all` | `RUB` | `USD` | `EUR` (как у списка)
 
 Поля в каждой строке ответа:
 - `total` — активные записи (`is_active = 1`)
@@ -602,6 +605,9 @@ Query:
 - `linked` — среди активных: есть строка в `ms_export`, где `code` совпадает с `UPPER(TRIM(COALESCE(NULLIF(cms_product_id,''), source_id)))` или с непустым `UPPER(TRIM(sku))`
 
 Кэш ответа: **15 с** по полному набору query-параметров (снижает параллельную нагрузку на БД при открытии «Мои сайты» и «Мои товары»). Значения считаются на сервере; при необходимости мгновенно актуальных цифр подождите TTL или обновите страницу позже.
+
+### GET `/api/my-products/sites`
+Справочник сайтов для фильтра «Сайт» на `/my-products.html`. Право страницы **`my-products`** (`view`/`full`) — **не** требует доступ к `/my-sites`. Ответ: `{ success, items: [{ id, name, domain, cms_type }] }` (без `db_pass` и прочих секретов).
 
 ### GET `/api/my-products/fx-rates`
 Курсы USD/EUR к рублю для UI. Query: `force=1` — принудительно подтянуть с ЦБ (иначе используется кэш на сервере).
@@ -645,10 +651,10 @@ Body:
 Подтянуть цену с конкурента в источник (логика в `routes/myproducts.js`). В теле: **`confirm: true`** (обяз., F-MP-01), `site_id`, `sku`, опционально `source_id`, `random_min_pct` / `random_max_pct`. Берётся **минимальная** цена среди Dealmed/Медкомплекс (в RUB), минус случайный % из диапазона; запись в CMS + аудит `comp_sync_*` в `my_products`. Заголовок `x-auth-username` / сессия попадает в аудит. Если у товара активна заморозка (`price_hold_until > NOW()`) → **`409 PRICE_HOLD_ACTIVE`**. Если у сайта заданы склады и сумма остатка по ним &gt; 0 → **`409 OWN_MS_STOCK_BLOCK`** (без привязки складов блок не действует).
 
 ### POST `/api/my-products/sync-price-from-competitor-bulk`
-Массовая синхронизация цены с конкурента по **тем же API-фильтрам**, что у `GET /api/my-products` (сайт, статус, поиск, остаток, связь с МС, `match_audit`, фильтр Δ и курсы). Клиентские поля таблицы (`tf_*`) **не** участвуют.
+Массовая синхронизация цены с конкурента по **тем же API-фильтрам**, что у `GET /api/my-products` (сайт, статус, поиск, остаток, валюта, связь с МС, `match_audit`, фильтр Δ и курсы).
 
 Параметры (query и/или JSON body):
-- фильтры списка: `site_id`, `status`, `source_enabled`, `search`, `stock_min`, `stock_max`, `ms_linked`, `match_audit`, `gap_filter_enabled`, `gap_exclude_zero`, `gap_competitor`, `gap_min_pct`, `gap_max_pct`, `gap_min_pct_2`, `gap_max_pct_2`, `usd_to_rub`, `eur_to_rub`;
+- фильтры списка: `site_id`, `status`, `source_enabled`, `search`, `stock_min`, `stock_max`, `currency`, `ms_linked`, `match_audit`, `gap_filter_enabled`, `gap_exclude_zero`, `gap_competitor`, `gap_min_pct`, `gap_max_pct`, `gap_min_pct_2`, `gap_max_pct_2`, `usd_to_rub`, `eur_to_rub`;
 - `random_min_pct` / `random_max_pct` (по умолчанию `0.1` / `0.99`);
 - `dry_run=1` — быстрый `COUNT(*)` по SQL (`estimate_exact: false`). При включённом Δ в `note` поясняется, что точный отбор будет в фоне перед записью (чтобы не блокировать кнопку в UI).
 - `confirm=1` — старт **фоновой** задачи. Ответ сразу `{ started: true, status }`. Повторный старт при активной задаче → `409 ALREADY_RUNNING`. Жёсткий потолок рабочей выборки: **50 000** (без Δ — по SQL COUNT; с Δ — по числу после отбора Δ).
