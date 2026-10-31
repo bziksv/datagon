@@ -2860,7 +2860,7 @@
         {
           key: "sticker_sale",
           label: "Скидка",
-          hint: "только при заморозке цены",
+          hint: "акционная цена + срок → на сайт; приоритет над заморозкой и маржой",
           manual: true,
         },
       ];
@@ -2871,6 +2871,8 @@
         sticker_discontinued: "Снят с производства/аналог по запросу",
         sticker_not_supplied: "Не поставляется, предлагаем аналог",
         sticker_sale: "Скидка",
+        sale_price: "Акционная цена",
+        sale_until: "Срок акции",
         price_hold: "Заморозка цены",
         price_hold_until: "Срок заморозки",
       };
@@ -4056,6 +4058,18 @@
             );
             myTd.appendChild(sb);
           }
+          if (Number(r.sticker_sale_active) === 1) {
+            var saleB = document.createElement("div");
+            saleB.className = "small fw-semibold text-danger mt-1";
+            var su = r.sale_until_effective || r.sale_until || r.price_hold_until;
+            saleB.textContent =
+              "акция до " + formatHoldUntilShort(su);
+            saleB.setAttribute(
+              "data-dg-tooltip",
+              "Скидка в приоритете: эта цена уходит на сайт, парсинг не переписывает"
+            );
+            myTd.appendChild(saleB);
+          }
 
           tr.appendChild(tdText(r.cms_product_id || r.source_id || "—"));
           tr.appendChild(tdText(siteLabel));
@@ -4220,22 +4234,30 @@
                 : "Нет связи с МойСклад — авто-наклейка недоступна";
           }
         } else {
-          if (def.key === "sticker_sale" && !isRowPriceHoldActive(row) && !chk.checked) {
-            chk.title = "Сначала заморозьте цену — иначе «Скидку» поставить нельзя";
+          if (def.key === "sticker_sale") {
+            var saleUntil =
+              row.sale_until_effective || row.sale_until || (chk.checked ? row.price_hold_until : null);
+            var salePrice =
+              row.sale_price_effective != null
+                ? row.sale_price_effective
+                : row.sale_price != null
+                  ? Number(row.sale_price)
+                  : null;
+            chk.title = chk.checked
+              ? "Акция до " +
+                formatHoldUntilShort(saleUntil) +
+                (salePrice != null ? " · " + formatMoney(salePrice) : "") +
+                " (клик снять)"
+              : def.hint || def.label;
           } else {
             chk.title = def.hint || def.label;
           }
           chk.setAttribute("data-dg-notify-start", "Сохраняем «" + def.label + "»…");
           chk.addEventListener("change", function () {
             var on = chk.checked ? 1 : 0;
-            if (def.key === "sticker_sale" && on && !isRowPriceHoldActive(row)) {
+            if (def.key === "sticker_sale" && on) {
               chk.checked = false;
-              if (window.DatagonNotify && window.DatagonNotify.toast) {
-                window.DatagonNotify.toast({
-                  type: "warning",
-                  message: "Скидка только при активной заморозке цены",
-                });
-              }
+              openSaleStickerModal(row);
               return;
             }
             var body = {
@@ -4274,6 +4296,10 @@
               if (d.sticker_ru_url != null) row.sticker_ru_url = d.sticker_ru_url;
               if (d.sticker_ms_stock != null) row.sticker_ms_stock = d.sticker_ms_stock;
               if (d.price_hold_until != null) row.price_hold_until = d.price_hold_until;
+              if (d.sale_price != null) row.sale_price = d.sale_price;
+              if (d.sale_until != null) row.sale_until = d.sale_until;
+              if (d.sale_until_effective != null) row.sale_until_effective = d.sale_until_effective;
+              if (d.sale_price_effective != null) row.sale_price_effective = d.sale_price_effective;
               renderRows(lastRows || []);
               var sync = j && j.cms_sync;
               if (window.DatagonNotify && window.DatagonNotify.toast) {
@@ -5012,6 +5038,95 @@
             resolve({ ok: true, alt: true });
           });
         }
+      }
+
+      function openSaleStickerModal(row) {
+        if (myProductsRowActionBusy) return;
+        var days = getHoldDays();
+        var preset =
+          row.sale_price != null && Number.isFinite(Number(row.sale_price))
+            ? Number(row.sale_price)
+            : row.price;
+        openMpConfirm({
+          title: "Скидка — акционная цена",
+          text:
+            "Укажите цену акции и срок (" +
+            days +
+            " дн. из селекта «Срок заморозки»). Цена сразу уйдёт на сайт; синк с конкурента и маржа от закупки не перепишут её до конца срока. Если есть и заморозка — акция в приоритете.",
+          meta: "SKU: " + (row.sku || row.source_id || "—"),
+          showPrice: true,
+          price: preset,
+          okText: "Поставить скидку",
+          okClass: "btn-danger",
+        }).then(function (res) {
+          if (!res || !res.ok) return;
+          var p = Number(String(res.price != null ? res.price : preset).replace(",", "."));
+          if (!Number.isFinite(p) || p < 0) {
+            notifyMp("danger", "Некорректная акционная цена");
+            return;
+          }
+          return postSetSale(row, p, days);
+        });
+      }
+
+      function postSetSale(row, price, days) {
+        if (myProductsRowActionBusy) return Promise.resolve();
+        myProductsRowActionBusy = true;
+        refreshMyProductsHeavyButtons();
+        var run = function () {
+          return fetch("/api/my-products/set-sale", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              confirm: true,
+              site_id: Number(row.site_id),
+              sku: row.sku,
+              source_id: row.source_id || undefined,
+              price: price,
+              hold_days: days,
+            }),
+          }).then(function (res) {
+            return res.json().then(function (j) {
+              if (!res.ok || j.success === false) {
+                throw new Error((j && (j.error || j.message)) || "set-sale failed");
+              }
+              return j;
+            });
+          });
+        };
+        var p =
+          window.DatagonNotify && window.DatagonNotify.busyRun
+            ? window.DatagonNotify.busyRun(null, run)
+            : run();
+        return p
+          .then(function (j) {
+            var d = (j && j.data) || {};
+            row.price = d.price != null ? d.price : price;
+            row.sticker_sale = 1;
+            row.sticker_sale_active = d.sticker_sale_active != null ? d.sticker_sale_active : 1;
+            row.sale_price = d.sale_price != null ? d.sale_price : price;
+            row.sale_until = d.sale_until || null;
+            row.sale_until_effective = d.sale_until_effective || d.sale_until || null;
+            row.sale_price_effective =
+              d.sale_price_effective != null ? d.sale_price_effective : row.sale_price;
+            renderRows(lastRows || []);
+            notifyMp(
+              "success",
+              "Скидка до " +
+                formatHoldUntilShort(row.sale_until) +
+                " · " +
+                formatMoney(price) +
+                " на сайт"
+            );
+          })
+          .catch(function (e) {
+            notifyMp("danger", e.message || "Ошибка установки скидки");
+          })
+          .finally(function () {
+            myProductsRowActionBusy = false;
+            refreshMyProductsHeavyButtons();
+          });
       }
 
       function onPriceHoldClick(row) {

@@ -23,6 +23,7 @@ const {
     logMyProductFieldChange,
     sqlStickerSortBucket,
     STICKER_MANUAL_FIELDS,
+    isSaleActive,
     as01,
 } = require('../lib/datagonMyProductStickers');
 const {
@@ -2222,7 +2223,7 @@ function myProductsRouterFactory(db, settings) {
                         continue;
                     }
 
-                    if (isPriceHoldActive(product)) {
+                    if (isSaleActive(product) || isPriceHoldActive(product)) {
                         priceSyncJob.skipped_hold += 1;
                         continue;
                     }
@@ -2506,11 +2507,10 @@ function myProductsRouterFactory(db, settings) {
             const actorLogin = resolveActorName(req);
             const actorDisplayName = await resolveActorDisplayName(actorLogin);
             const oldUntil = product.price_hold_until || null;
-            const hadSale = as01(product.sticker_sale);
             await db.query(
                 `UPDATE my_products
                  SET price_hold_until = NULL, price_hold_by = NULL, price_hold_note = NULL,
-                     sticker_sale = 0, updated_at = NOW()
+                     updated_at = NOW()
                  WHERE site_id = ? AND source_id = ?`,
                 [siteIdNum, String(product.source_id || '')]
             );
@@ -2520,23 +2520,154 @@ function myProductsRouterFactory(db, settings) {
                 login: actorLogin,
                 name: actorDisplayName,
             });
-            if (hadSale) {
-                await logMyProductFieldChange(db, product, 'sticker_sale', 1, 0, {
-                    action: 'auto_clear',
-                    source: 'price_hold_cleared',
-                    login: actorLogin,
-                    name: actorDisplayName,
-                });
-            }
             myProductsResponseCache.clear();
             myProductsGapSetCache.clear();
             return res.json({
                 success: true,
-                message: 'Заморозка снята — следующий синк с конкурента снова применится',
-                data: { sticker_sale: 0 }
+                message:
+                    'Заморозка снята. Акция «Скидка» (если есть) не тронута — она живёт своим сроком.',
+                data: {
+                    sticker_sale: as01(product.sticker_sale),
+                    sale_price: product.sale_price != null ? Number(product.sale_price) : null,
+                    sale_until: product.sale_until || null,
+                },
             });
         } catch (e) {
             console.error('Error clear-price-hold:', e);
+            return res.status(500).json({ error: e.message });
+        }
+    });
+
+    /**
+     * Акционная «Скидка»: цена + срок → CMS, sticker_sale=1.
+     * Приоритет над маржой от закупки и над обычной заморозкой при выгрузке.
+     * Body: confirm, site_id, source_id|sku, price, hold_days|hold_until (срок акции).
+     */
+    router.post('/set-sale', async (req, res) => {
+        const body = req.body || {};
+        if (body.confirm !== true && body.confirm !== 1 && body.confirm !== '1') {
+            return res.status(400).json({
+                error: 'Нужно confirm: true',
+                code: 'CONFIRM_REQUIRED',
+            });
+        }
+        const { site_id, sku, source_id, price } = body;
+        if (!site_id || (!sku && !source_id)) {
+            return res.status(400).json({
+                error: 'Не указан site_id и идентификатор товара (source_id/sku)',
+            });
+        }
+        const priceNum = Number(String(price).replace(',', '.'));
+        if (!Number.isFinite(priceNum) || priceNum < 0) {
+            return res.status(400).json({ error: 'Некорректная акционная цена' });
+        }
+        const untilRes = resolvePriceHoldUntil(body);
+        if (untilRes.error) {
+            return res.status(400).json({ error: untilRes.error });
+        }
+        try {
+            await ensureMyProductStickerColumns(db);
+            await ensureMyProductsPriceHoldColumns();
+            const siteIdNum = Number(site_id);
+            const product = await loadMyProductBySiteKey(siteIdNum, source_id, sku);
+            if (!product) {
+                return res.status(404).json({ error: 'Товар не найден' });
+            }
+            const [sites] = await db.query('SELECT * FROM my_sites WHERE id = ?', [siteIdNum]);
+            if (!sites.length) {
+                return res.status(404).json({ error: 'Сайт не найден' });
+            }
+            const s = sites[0];
+            const conn = await openCmsDbConnection(s, { connectTimeout: 10000 });
+            try {
+                await applyPriceToCms(conn, s, product, priceNum);
+            } finally {
+                await conn.end();
+            }
+            const actorLogin = resolveActorName(req);
+            const actorDisplayName = await resolveActorDisplayName(actorLogin);
+            const note =
+                untilRes.days != null
+                    ? `sale;days=${untilRes.days}`
+                    : `sale;until=${untilRes.until.slice(0, 10)}`;
+            const oldSale = as01(product.sticker_sale);
+            const oldPrice = product.sale_price != null ? product.sale_price : product.price;
+            const oldUntil = product.sale_until || null;
+            await db.query(
+                `UPDATE my_products
+                 SET price = ?, sticker_sale = 1, sale_price = ?, sale_until = ?,
+                     price_hold_note = COALESCE(price_hold_note, ?), updated_at = NOW()
+                 WHERE site_id = ? AND source_id = ?`,
+                [
+                    priceNum,
+                    priceNum,
+                    untilRes.until,
+                    note,
+                    siteIdNum,
+                    String(product.source_id || ''),
+                ]
+            );
+            await logMyProductFieldChange(db, product, 'sticker_sale', oldSale, 1, {
+                action: 'set_sale',
+                source: 'ui',
+                login: actorLogin,
+                name: actorDisplayName,
+            });
+            await logMyProductFieldChange(db, product, 'sale_price', oldPrice, priceNum, {
+                action: 'set_sale',
+                source: 'ui',
+                login: actorLogin,
+                name: actorDisplayName,
+            });
+            await logMyProductFieldChange(db, product, 'sale_until', oldUntil, untilRes.until, {
+                action: 'set_sale',
+                source: 'ui',
+                login: actorLogin,
+                name: actorDisplayName,
+            });
+            myProductsResponseCache.clear();
+            myProductsGapSetCache.clear();
+            const [[fresh]] = await db.query(
+                `SELECT id, site_id, source_id, cms_product_id, sku, price, currency,
+                        sticker_sale, sale_price, sale_until,
+                        price_hold_until, price_hold_by, price_hold_note, updated_at
+                 FROM my_products WHERE id = ? LIMIT 1`,
+                [Number(product.id)]
+            );
+            const rows = [fresh || product];
+            await enrichRowsWithStickersAndMs(db, rows);
+            const cmsPid = Number((rows[0] && rows[0].cms_product_id) || product.cms_product_id);
+            const cmsType = String((s && s.cms_type) || '').toLowerCase();
+            let cms_sync = { queued: false, cms_type: cmsType || null };
+            if (cmsType === 'webasyst' && Number.isFinite(cmsPid) && cmsPid > 0) {
+                cms_sync = { queued: true, cms_type: 'webasyst', cms_product_id: cmsPid };
+                setImmediate(() => {
+                    Promise.resolve()
+                        .then(() => {
+                            const {
+                                syncMyProductStickersToCms,
+                            } = require('../lib/datagonMyProductStickersCmsSync');
+                            return syncMyProductStickersToCms(db, {
+                                siteId: siteIdNum,
+                                cmsProductIds: [cmsPid],
+                            });
+                        })
+                        .catch((err) =>
+                            console.warn(
+                                '[set-sale→cms]',
+                                err && err.message ? err.message : err
+                            )
+                        );
+                });
+            }
+            return res.json({
+                success: true,
+                message: 'Акционная цена записана в CMS, наклейка «Скидка» до ' + untilRes.until,
+                data: rows[0],
+                cms_sync,
+            });
+        } catch (e) {
+            console.error('Error set-sale:', e);
             return res.status(500).json({ error: e.message });
         }
     });
@@ -2572,7 +2703,8 @@ function myProductsRouterFactory(db, settings) {
             myProductsResponseCache.clear();
             myProductsGapSetCache.clear();
             const [[fresh]] = await db.query(
-                `SELECT id, site_id, source_id, cms_product_id, sku, price_hold_until,
+                `SELECT id, site_id, source_id, cms_product_id, sku, price, currency,
+                        price_hold_until, sale_price, sale_until,
                         sticker_no_ru, sticker_discontinued, sticker_not_supplied, sticker_sale, updated_at
                  FROM my_products WHERE id = ? LIMIT 1`,
                 [Number(product.id)]
@@ -2635,7 +2767,11 @@ function myProductsRouterFactory(db, settings) {
                 cms_sync,
             });
         } catch (e) {
-            if (e && e.code === 'STICKER_SALE_REQUIRES_HOLD') {
+            if (
+                e &&
+                (e.code === 'STICKER_SALE_REQUIRES_HOLD' ||
+                    e.code === 'STICKER_SALE_REQUIRES_PRICE')
+            ) {
                 return res.status(400).json({ error: e.message, code: e.code });
             }
             console.error('Error set-sticker:', e);
@@ -2853,7 +2989,7 @@ function myProductsRouterFactory(db, settings) {
                         const [r] = await db.query(
                             `UPDATE my_products
                              SET price_hold_until = NULL, price_hold_by = NULL, price_hold_note = NULL,
-                                 sticker_sale = 0, updated_at = NOW()
+                                 updated_at = NOW()
                              WHERE id IN (${ph})
                                AND price_hold_until IS NOT NULL AND price_hold_until > NOW()`,
                             part
@@ -2865,7 +3001,7 @@ function myProductsRouterFactory(db, settings) {
                         `UPDATE my_products mp
                          ${ctx.joinSql}
                          SET mp.price_hold_until = NULL, mp.price_hold_by = NULL, mp.price_hold_note = NULL,
-                             mp.sticker_sale = 0, mp.updated_at = NOW()
+                             mp.updated_at = NOW()
                          ${ctx.whereSql}
                            AND mp.price_hold_until IS NOT NULL AND mp.price_hold_until > NOW()`,
                         ctx.params
@@ -2928,6 +3064,18 @@ function myProductsRouterFactory(db, settings) {
             const product = await loadMyProductBySiteKey(siteIdNum, source_id, sku);
             if (!product) {
                 return res.status(404).json({ error: 'Товар не найден' });
+            }
+            if (isSaleActive(product)) {
+                return res.status(409).json({
+                    success: false,
+                    error:
+                        'Акция «Скидка» активна — синк с конкурента отключён до ' +
+                        String(product.sale_until || product.price_hold_until || '').slice(0, 10),
+                    code: 'SALE_ACTIVE',
+                    sale_until: product.sale_until || null,
+                    sale_price:
+                        product.sale_price != null ? Number(product.sale_price) : null,
+                });
             }
             if (isPriceHoldActive(product)) {
                 return res.status(409).json({
