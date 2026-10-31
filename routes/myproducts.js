@@ -20,9 +20,12 @@ const {
     enrichRowsWithStickersAndMs,
     setMyProductStickers,
     listMyProductFieldLog,
+    listMyProductFieldLogGlobal,
+    listMyProductFieldLogActors,
     logMyProductFieldChange,
     sqlStickerSortBucket,
     STICKER_MANUAL_FIELDS,
+    FIELD_LABELS,
     isSaleActive,
     as01,
 } = require('../lib/datagonMyProductStickers');
@@ -2645,15 +2648,29 @@ function myProductsRouterFactory(db, settings) {
             const oldSale = as01(product.sticker_sale);
             const oldPrice = product.sale_price != null ? product.sale_price : product.price;
             const oldUntil = product.sale_until || null;
+            const priceBeforeRaw = Number(product.price);
+            const priceBefore =
+                Number.isFinite(priceBeforeRaw) && priceBeforeRaw >= 0 ? priceBeforeRaw : null;
+            const restoreOnEnd =
+                body.restore_on_end === false ||
+                body.restore_on_end === 0 ||
+                body.restore_on_end === '0' ||
+                body.restore_on_end === 'keep'
+                    ? 0
+                    : 1;
+            await ensureMyProductStickerColumns(db);
             await db.query(
                 `UPDATE my_products
                  SET price = ?, sticker_sale = 1, sale_price = ?, sale_until = ?,
+                     sale_price_before = ?, sale_restore_on_end = ?, sale_restore_done = 0,
                      price_hold_note = COALESCE(price_hold_note, ?), updated_at = NOW()
                  WHERE site_id = ? AND source_id = ?`,
                 [
                     priceNum,
                     priceNum,
                     untilRes.until,
+                    priceBefore,
+                    restoreOnEnd,
                     note,
                     siteIdNum,
                     String(product.source_id || ''),
@@ -2679,9 +2696,24 @@ function myProductsRouterFactory(db, settings) {
             });
             myProductsResponseCache.clear();
             myProductsGapSetCache.clear();
+            await logMyProductFieldChange(db, product, 'sale_restore_on_end', null, restoreOnEnd, {
+                action: 'set_sale',
+                source: 'ui',
+                login: actorLogin,
+                name: actorDisplayName,
+            });
+            if (priceBefore != null) {
+                await logMyProductFieldChange(db, product, 'sale_price_before', null, priceBefore, {
+                    action: 'set_sale',
+                    source: 'ui',
+                    login: actorLogin,
+                    name: actorDisplayName,
+                });
+            }
             const [[fresh]] = await db.query(
                 `SELECT id, site_id, source_id, cms_product_id, sku, price, currency,
                         sticker_sale, sale_price, sale_until,
+                        sale_price_before, sale_restore_on_end, sale_restore_done,
                         price_hold_until, price_hold_by, price_hold_note, updated_at
                  FROM my_products WHERE id = ? LIMIT 1`,
                 [Number(product.id)]
@@ -2874,6 +2906,41 @@ function myProductsRouterFactory(db, settings) {
             });
         } catch (e) {
             console.error('Error buy-vs-competitor-alerts refresh:', e);
+            return res.status(500).json({ success: false, error: e.message });
+        }
+    });
+
+    /** Справочник авторов правок в dg_my_products_log (для селекта журнала). */
+    router.get('/log/actors', async (req, res) => {
+        try {
+            const actors = await listMyProductFieldLogActors(db);
+            return res.json({ success: true, actors, field_labels: FIELD_LABELS });
+        } catch (e) {
+            console.error('Error my-products log actors:', e);
+            return res.status(500).json({ success: false, error: e.message });
+        }
+    });
+
+    /**
+     * Глобальный журнал правок (наклейки / скидка / заморозка).
+     * Query: actor, field, site_id, date_from, date_to, search, limit, offset.
+     * Должен быть выше GET /:id/log.
+     */
+    router.get('/log', async (req, res) => {
+        try {
+            const out = await listMyProductFieldLogGlobal(db, {
+                actor: req.query.actor,
+                field: req.query.field,
+                site_id: req.query.site_id,
+                date_from: req.query.date_from,
+                date_to: req.query.date_to,
+                search: req.query.search,
+                limit: req.query.limit,
+                offset: req.query.offset,
+            });
+            return res.json({ success: true, ...out });
+        } catch (e) {
+            console.error('Error my-products log global:', e);
             return res.status(500).json({ success: false, error: e.message });
         }
     });

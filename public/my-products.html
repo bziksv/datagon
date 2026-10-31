@@ -1971,26 +1971,7 @@
                   <div class="col-lg-8 col-md-6 d-flex flex-wrap gap-2 align-items-center pb-1">
                     <button type="button" class="btn btn-sm btn-primary" id="btn-apply" data-dg-tooltip="Применить фильтры и обновить данные. Сохраняет выбранные значения для следующего визита." data-dg-notify-start="Применяем фильтры и обновляем данные…"><i class="pe-7s-search me-1"></i>Применить</button>
                     <button type="button" class="btn btn-sm btn-outline-secondary" id="mp-filter-default" data-dg-tooltip="Сбросить фильтры к значениям по умолчанию и очистить сохранённые настройки." data-dg-notify-start="Сбрасываем фильтры и применяем…"><i class="pe-7s-refresh me-1"></i>По умолчанию</button>
-                  </div>
-                </div>
-              </section>
-
-              <section class="dg-mp-flt-section" data-dg-mp-filter-section="actions">
-                <div class="dg-mp-flt-section__head">
-                  <div class="dg-mp-flt-section__head-text">
-                    <span class="dg-mp-flt-section__title">Синхронизация каталога</span>
-                    <span class="dg-mp-flt-section__sub">Товары с сайтов (CMS) и кэш МС — не цены конкурентов</span>
-                  </div>
-                  <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0" id="dg-mp-sec-actions-toggle" data-dg-no-activity="1">Свернуть</button>
-                </div>
-                <div id="dg-mp-sec-actions-body" class="dg-mp-flt-section__body">
-                  <div class="d-flex flex-wrap gap-2">
-                    <button type="button" class="btn btn-sm btn-outline-primary" id="mp-btn-syncall" title="Запустить синхронизацию товаров по всем сайтам" data-dg-notify-start="Запускаем синхронизацию по всем сайтам…"><i class="pe-7s-repeat me-1"></i>Синхронизировать все</button>
-                    <span class="d-inline-flex" id="mp-btn-sync-site-wrap" title="Сначала выберите конкретный сайт (не «Все сайты»)">
-                      <button type="button" class="btn btn-sm btn-outline-primary" id="mp-btn-sync-site" disabled data-dg-notify-start="Запускаем синхронизацию выбранного сайта…"><i class="pe-7s-repeat me-1"></i>Синхронизировать выбранный сайт</button>
-                    </span>
-                    <button type="button" class="btn btn-sm btn-outline-warning" id="mp-btn-rebuild" title="Перестроить кэш связей с МойСклад" data-dg-notify-start="Перестраиваем кэш связей…"><i class="pe-7s-refresh me-1"></i>Перестроить кэш</button>
-                    <button type="button" class="btn btn-sm btn-outline-dark" id="mp-btn-copy" title="Скопировать ссылку на текущую страницу с фильтрами"><i class="pe-7s-link me-1"></i>Скопировать ссылку</button>
+                    <button type="button" class="btn btn-sm btn-outline-dark" id="mp-btn-copy" title="Скопировать ссылку на текущую страницу с фильтрами" data-dg-no-activity="1"><i class="pe-7s-link me-1"></i>Скопировать ссылку</button>
                   </div>
                 </div>
               </section>
@@ -2141,6 +2122,107 @@
             </div>
           </div>
 
+          <div class="main-card mb-3 card" id="dg-mp-history-card">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+              <div class="d-flex align-items-center min-w-0">
+                <i class="header-icon pe-7s-notebook icon-gradient bg-tempting-azure me-2 flex-shrink-0"></i>
+                <div class="min-w-0">
+                  <span class="fw-semibold">Журнал изменений</span>
+                  <span class="text-muted small ms-2" id="dg-mp-history-summary">наклейки, скидка, заморозка</span>
+                </div>
+              </div>
+              <div class="d-flex align-items-center gap-2 flex-shrink-0">
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-secondary"
+                  id="dg-mp-history-refresh"
+                  data-dg-notify-start="Обновляем журнал изменений…"
+                  title="Перечитать журнал с применёнными фильтрами"
+                >↻ Обновить</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mp-history-toggle" data-dg-no-activity="1">Свернуть</button>
+              </div>
+            </div>
+            <div class="card-body" id="dg-mp-history-body">
+              <div class="row g-2 align-items-end mb-3">
+                <div class="col-lg-3 col-md-4 col-sm-6">
+                  <label class="form-label" for="dg-mp-h-actor">Сотрудник</label>
+                  <select class="form-select form-select-sm" id="dg-mp-h-actor" title="Кто менял поля в таблице товаров">
+                    <option value="">Все сотрудники</option>
+                  </select>
+                </div>
+                <div class="col-lg-2 col-md-4 col-sm-6">
+                  <label class="form-label" for="dg-mp-h-field">Поле</label>
+                  <select class="form-select form-select-sm" id="dg-mp-h-field">
+                    <option value="">Любое</option>
+                    <option value="sticker_sale">Скидка</option>
+                    <option value="sale_price">Акционная цена</option>
+                    <option value="sale_until">Срок акции</option>
+                    <option value="price_hold_until">Срок заморозки</option>
+                    <option value="sticker_no_ru">Нет РУ</option>
+                    <option value="sticker_discontinued">Снят / аналог</option>
+                    <option value="sticker_not_supplied">Не поставляется</option>
+                  </select>
+                </div>
+                <div class="col-lg-2 col-md-4 col-sm-6">
+                  <label class="form-label" for="dg-mp-h-site">Сайт</label>
+                  <select class="form-select form-select-sm" id="dg-mp-h-site">
+                    <option value="all">Все сайты</option>
+                  </select>
+                </div>
+                <div class="col-lg-2 col-md-4 col-sm-6">
+                  <label class="form-label" for="dg-mp-h-search">SKU / название</label>
+                  <input type="search" class="form-control form-control-sm" id="dg-mp-h-search" placeholder="часть артикула…" autocomplete="off" />
+                </div>
+                <div class="col-lg-1 col-md-4 col-6">
+                  <label class="form-label" for="dg-mp-h-from">С</label>
+                  <input type="date" class="form-control form-control-sm" id="dg-mp-h-from" />
+                </div>
+                <div class="col-lg-1 col-md-4 col-6">
+                  <label class="form-label" for="dg-mp-h-to">По</label>
+                  <input type="date" class="form-control form-control-sm" id="dg-mp-h-to" />
+                </div>
+                <div class="col-lg-1 col-md-4 col-sm-6 d-flex flex-wrap gap-1 pb-1">
+                  <button type="button" class="btn btn-sm btn-primary" id="dg-mp-h-apply" data-dg-notify-start="Применяем фильтры журнала…">Применить</button>
+                </div>
+              </div>
+              <p class="text-muted small mb-2" id="dg-mp-history-hint">Выберите сотрудника или период и нажмите «Применить».</p>
+              <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0" id="dg-mp-history-table">
+                  <thead>
+                    <tr>
+                      <th>Когда</th>
+                      <th>Кто</th>
+                      <th>Сайт</th>
+                      <th>SKU</th>
+                      <th>Товар</th>
+                      <th>Поле</th>
+                      <th>Было → стало</th>
+                      <th>Действие</th>
+                    </tr>
+                  </thead>
+                  <tbody id="dg-mp-history-tbody">
+                    <tr><td colspan="8" class="text-muted text-center py-3">Журнал ещё не загружен</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="mt-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div class="d-flex align-items-center gap-2">
+                  <label class="form-label mb-0 small text-muted" for="dg-mp-h-limit">На странице</label>
+                  <select class="form-select form-select-sm" id="dg-mp-h-limit" style="width: auto">
+                    <option value="50">50</option>
+                    <option value="100" selected>100</option>
+                    <option value="200">200</option>
+                  </select>
+                  <span class="text-muted small" id="dg-mp-history-page-hint"></span>
+                </div>
+                <div class="btn-group" role="group">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mp-h-prev" disabled>Назад</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mp-h-next" disabled>Вперёд</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div id="dg-mp-confirm-overlay" class="dg-mp-confirm-overlay" style="display: none" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="dg-mp-confirm-title">
             <div class="dg-mp-confirm-backdrop" data-mp-confirm-dismiss="1"></div>
             <div class="card shadow dg-mp-confirm-panel">
@@ -2152,6 +2234,20 @@
                 <div id="dg-mp-confirm-price-wrap" class="mb-2 d-none">
                   <label class="form-label" for="dg-mp-confirm-price">Цена</label>
                   <input type="number" step="0.01" min="0" class="form-control" id="dg-mp-confirm-price" />
+                </div>
+                <div id="dg-mp-confirm-restore-wrap" class="mb-2 d-none">
+                  <div class="form-label mb-1">После окончания срока</div>
+                  <div class="form-check">
+                    <input class="form-check-input" type="radio" name="dg-mp-confirm-restore" id="dg-mp-confirm-restore-yes" value="1" checked />
+                    <label class="form-check-label" for="dg-mp-confirm-restore-yes">Вернуть цену, которая была до скидки</label>
+                  </div>
+                  <div class="form-check">
+                    <input class="form-check-input" type="radio" name="dg-mp-confirm-restore" id="dg-mp-confirm-restore-no" value="0" />
+                    <label class="form-check-label" for="dg-mp-confirm-restore-no">Оставить скидочную цену</label>
+                  </div>
+                  <p class="small text-muted mb-0 mt-2" id="dg-mp-confirm-restore-hint">
+                    Выбор сработает, если у товара нет остатка МС (маржа) и нет цены конкурента для синка — иначе после срока цена уйдёт туда сама.
+                  </p>
                 </div>
                 <p class="small text-muted mb-0" id="dg-mp-confirm-meta"></p>
               </div>
@@ -2384,16 +2480,8 @@
           myProductsRowActionBusy ||
           myProductsBulkPriceBusy;
         var fx = document.getElementById("mp-btn-fx");
-        var syncAll = document.getElementById("mp-btn-syncall");
-        var rebuild = document.getElementById("mp-btn-rebuild");
-        var syncSite = document.getElementById("mp-btn-sync-site");
         var syncPriceBulk = document.getElementById("mp-btn-sync-price-bulk");
-        var sidEl = document.getElementById("f-site");
-        var sid = sidEl ? String(sidEl.value || "") : "";
         if (fx) fx.disabled = !!busy;
-        if (syncAll) syncAll.disabled = !!busy;
-        if (rebuild) rebuild.disabled = !!busy;
-        if (syncSite) syncSite.disabled = !!busy || !sid || sid === "all";
         if (syncPriceBulk) syncPriceBulk.disabled = !!busy;
         var holdBulk = document.getElementById("mp-btn-hold-price-bulk");
         var clearHoldBulk = document.getElementById("mp-btn-clear-hold-bulk");
@@ -4630,10 +4718,6 @@
         }
       }
 
-      function updateSyncSiteButton() {
-        refreshMyProductsHeavyButtons();
-      }
-
       async function loadSites() {
         // Под правом my-products (менеджерам не нужен доступ к странице «Мои сайты»).
         var res = await fetch("/api/my-products/sites", { credentials: "same-origin" });
@@ -4672,7 +4756,6 @@
           sel.appendChild(o);
         });
         updateSubtitle();
-        updateSyncSiteButton();
       }
 
       function parseUrlToForm() {
@@ -4955,6 +5038,9 @@
         var meta = document.getElementById("dg-mp-confirm-meta");
         var priceWrap = document.getElementById("dg-mp-confirm-price-wrap");
         var priceInp = document.getElementById("dg-mp-confirm-price");
+        var restoreWrap = document.getElementById("dg-mp-confirm-restore-wrap");
+        var restoreYes = document.getElementById("dg-mp-confirm-restore-yes");
+        var restoreNo = document.getElementById("dg-mp-confirm-restore-no");
         var okBtn = document.getElementById("dg-mp-confirm-ok");
         var altBtn = document.getElementById("dg-mp-confirm-alt");
         if (!ov || !title || !text || !okBtn) return Promise.reject(new Error("confirm UI missing"));
@@ -4970,6 +5056,16 @@
                 : "";
           } else {
             priceWrap.classList.add("d-none");
+          }
+        }
+        if (restoreWrap) {
+          if (o.showRestoreChoice) {
+            restoreWrap.classList.remove("d-none");
+            var wantRestore = o.restoreOnEnd !== false && o.restoreOnEnd !== 0 && o.restoreOnEnd !== "0";
+            if (restoreYes) restoreYes.checked = !!wantRestore;
+            if (restoreNo) restoreNo.checked = !wantRestore;
+          } else {
+            restoreWrap.classList.add("d-none");
           }
         }
         okBtn.className = "btn btn-sm " + (o.okClass || "btn-warning");
@@ -5018,9 +5114,14 @@
             if (!st || !st._resolve) return;
             var priceInp = document.getElementById("dg-mp-confirm-price");
             var priceVal = priceInp ? priceInp.value : null;
+            var restoreYes = document.getElementById("dg-mp-confirm-restore-yes");
+            var restoreOnEnd = !(restoreYes && restoreYes.checked === false);
+            if (st.showRestoreChoice) {
+              restoreOnEnd = !!(restoreYes && restoreYes.checked);
+            }
             var resolve = st._resolve;
             closeMpConfirm();
-            resolve({ ok: true, price: priceVal });
+            resolve({ ok: true, price: priceVal, restore_on_end: restoreOnEnd ? 1 : 0 });
           });
         }
         var altBtn = document.getElementById("dg-mp-confirm-alt");
@@ -5043,6 +5144,10 @@
           row.sale_price != null && Number.isFinite(Number(row.sale_price))
             ? Number(row.sale_price)
             : row.price;
+        var beforeLabel =
+          row.price != null && Number.isFinite(Number(row.price))
+            ? formatMoney(row.price)
+            : "—";
         openMpConfirm({
           title: "Скидка — акционная цена",
           text:
@@ -5051,9 +5156,17 @@
             " дн. → до " +
             untilLabel +
             " (из селекта «Срок заморозки»). Цена сразу уйдёт на сайт; синк с конкурента и маржа от закупки не перепишут её до конца срока. Если есть и заморозка — акция в приоритете.",
-          meta: "SKU: " + (row.sku || row.source_id || "—") + " · до " + untilLabel,
+          meta:
+            "SKU: " +
+            (row.sku || row.source_id || "—") +
+            " · до " +
+            untilLabel +
+            " · сейчас: " +
+            beforeLabel,
           showPrice: true,
           price: preset,
+          showRestoreChoice: true,
+          restoreOnEnd: true,
           okText: "Поставить скидку",
           okClass: "btn-danger",
         }).then(function (res) {
@@ -5063,11 +5176,11 @@
             notifyMp("danger", "Некорректная акционная цена");
             return;
           }
-          return postSetSale(row, p, days);
+          return postSetSale(row, p, days, res.restore_on_end !== 0);
         });
       }
 
-      function postSetSale(row, price, days) {
+      function postSetSale(row, price, days, restoreOnEnd) {
         if (myProductsRowActionBusy) return Promise.resolve();
         myProductsRowActionBusy = true;
         refreshMyProductsHeavyButtons();
@@ -5083,6 +5196,7 @@
               source_id: row.source_id || undefined,
               price: price,
               hold_days: days,
+              restore_on_end: restoreOnEnd === false ? 0 : 1,
             }),
           }).then(function (res) {
             return res.json().then(function (j) {
@@ -5108,6 +5222,11 @@
             row.sale_until_effective = d.sale_until_effective || d.sale_until || null;
             row.sale_price_effective =
               d.sale_price_effective != null ? d.sale_price_effective : row.sale_price;
+            row.sale_price_before =
+              d.sale_price_before != null ? d.sale_price_before : row.sale_price_before;
+            row.sale_restore_on_end =
+              d.sale_restore_on_end != null ? d.sale_restore_on_end : restoreOnEnd === false ? 0 : 1;
+            row.sale_restore_done = d.sale_restore_done != null ? d.sale_restore_done : 0;
             if (!row.sale_until) {
               throw new Error("Сервер не вернул срок акции (sale_until)");
             }
@@ -5118,7 +5237,10 @@
                 formatHoldUntilShort(row.sale_until) +
                 " · " +
                 formatMoney(price) +
-                " на сайт"
+                " на сайт" +
+                (Number(row.sale_restore_on_end) === 1
+                  ? " · после срока вернём прежнюю цену"
+                  : " · после срока оставим скидочную")
             );
           })
           .catch(function (e) {
@@ -5648,7 +5770,6 @@
         }
         apiSearch = parsed.search || "";
         updateSubtitle();
-        updateSyncSiteButton();
       }
 
       function applySmartSearchFromInput() {
@@ -5749,7 +5870,6 @@
           );
         } catch (e3) {}
         updateSubtitle();
-        updateSyncSiteButton();
         updateSortHeaders();
         load();
       });
@@ -5788,7 +5908,6 @@
 
       document.getElementById("f-site").addEventListener("change", function () {
         updateSubtitle();
-        updateSyncSiteButton();
       });
 
       document.getElementById("mp-btn-fx").addEventListener("click", function () {
@@ -5810,20 +5929,13 @@
             refreshMyProductsHeavyButtons();
           });
       });
-      document.getElementById("mp-btn-syncall").addEventListener("click", function () {
-        post("/api/sync-all-start");
-      });
-      document.getElementById("mp-btn-sync-site").addEventListener("click", function () {
-        var sid = document.getElementById("f-site").value;
-        if (!sid || sid === "all") return;
-        post("/api/sync-site-start", { site_id: Number(sid) });
-      });
-      document.getElementById("mp-btn-rebuild").addEventListener("click", function () {
-        post("/api/ms/rebuild-links-cache");
-      });
-      document.getElementById("mp-btn-copy").addEventListener("click", function () {
-        navigator.clipboard.writeText(window.location.href).catch(function () {});
-      });
+      var copyLinkBtn = document.getElementById("mp-btn-copy");
+      if (copyLinkBtn) {
+        copyLinkBtn.addEventListener("click", function () {
+          navigator.clipboard.writeText(window.location.href).catch(function () {});
+          notifyMp("success", "Ссылка скопирована");
+        });
+      }
       var bulkSyncPriceBtn = document.getElementById("mp-btn-sync-price-bulk");
       if (bulkSyncPriceBtn) {
         bulkSyncPriceBtn.addEventListener("click", function () {
@@ -6109,7 +6221,6 @@
         }
         bind("hold", "dg-mp-sec-hold-toggle", "dg-mp-sec-hold-body", "datagon_my_products_sec_hold_collapsed_v1");
         bind("parsing", "dg-mp-sec-parsing-toggle", "dg-mp-sec-parsing-body", "datagon_my_products_sec_parsing_collapsed_v1");
-        bind("actions", "dg-mp-sec-actions-toggle", "dg-mp-sec-actions-body", "datagon_my_products_sec_actions_collapsed_v1");
       })();
 
       // «Свернуть/Развернуть» для card-body «Таблица товаров» — по эталону moysklad.
@@ -7273,6 +7384,346 @@
         copy(primary, mirror);
       })();
 
+      (function mpHistoryJournal() {
+        var STORAGE_COLLAPSE = "datagon_my_products_history_collapsed_v1";
+        var state = {
+          offset: 0,
+          total: 0,
+          loading: false,
+          fieldLabels: {},
+          actorsLoaded: false,
+        };
+
+        function $(id) {
+          return document.getElementById(id);
+        }
+
+        function fmtHistoryWhen(v) {
+          if (!v) return "—";
+          if (typeof formatRuDateTime === "function") return formatRuDateTime(v);
+          var d = new Date(v);
+          if (isNaN(d.getTime())) return String(v);
+          return d.toLocaleString("ru-RU");
+        }
+
+        function fieldLabel(key) {
+          var k = String(key || "");
+          if (state.fieldLabels && state.fieldLabels[k]) return state.fieldLabels[k];
+          if (MP_FIELD_LOG_LABELS && MP_FIELD_LOG_LABELS[k]) return MP_FIELD_LOG_LABELS[k];
+          return k || "—";
+        }
+
+        function formatDiff(oldV, newV) {
+          var o =
+            oldV == null || oldV === ""
+              ? '<span class="text-muted">—</span>'
+              : '<span class="dg-mp-log-old">' + escHtml(String(oldV)) + "</span>";
+          var n =
+            newV == null || newV === ""
+              ? '<span class="text-muted">—</span>'
+              : '<span class="dg-mp-log-new">' + escHtml(String(newV)) + "</span>";
+          return o + ' <span class="dg-mp-log-arrow">→</span> ' + n;
+        }
+
+        function getLimit() {
+          var n = Number(($("dg-mp-h-limit") && $("dg-mp-h-limit").value) || 100);
+          if (n === 50 || n === 100 || n === 200) return n;
+          return 100;
+        }
+
+        function collectFilters() {
+          return {
+            actor: ($("dg-mp-h-actor") && $("dg-mp-h-actor").value) || "",
+            field: ($("dg-mp-h-field") && $("dg-mp-h-field").value) || "",
+            site_id: ($("dg-mp-h-site") && $("dg-mp-h-site").value) || "all",
+            search: ($("dg-mp-h-search") && $("dg-mp-h-search").value.trim()) || "",
+            date_from: ($("dg-mp-h-from") && $("dg-mp-h-from").value) || "",
+            date_to: ($("dg-mp-h-to") && $("dg-mp-h-to").value) || "",
+            limit: getLimit(),
+            offset: state.offset,
+          };
+        }
+
+        function fillHistorySites() {
+          var sel = $("dg-mp-h-site");
+          if (!sel) return;
+          var cur = sel.value || "all";
+          sel.innerHTML = "";
+          var optAll = document.createElement("option");
+          optAll.value = "all";
+          optAll.textContent = "Все сайты";
+          sel.appendChild(optAll);
+          Object.keys(siteNameById || {}).forEach(function (id) {
+            var o = document.createElement("option");
+            o.value = id;
+            o.textContent = siteNameById[id] || "#" + id;
+            sel.appendChild(o);
+          });
+          if ([].some.call(sel.options, function (o) { return o.value === cur; })) sel.value = cur;
+        }
+
+        function fillActors(actors) {
+          var sel = $("dg-mp-h-actor");
+          if (!sel) return;
+          var cur = sel.value || "";
+          sel.innerHTML = "";
+          var optAll = document.createElement("option");
+          optAll.value = "";
+          optAll.textContent = "Все сотрудники";
+          sel.appendChild(optAll);
+          (actors || []).forEach(function (a) {
+            if (!a || !a.key) return;
+            var o = document.createElement("option");
+            o.value = a.key;
+            var label = a.name || a.login || a.key;
+            if (a.changes_count) label += " (" + a.changes_count + ")";
+            o.textContent = label;
+            sel.appendChild(o);
+          });
+          if (cur && [].some.call(sel.options, function (o) { return o.value === cur; })) {
+            sel.value = cur;
+          }
+        }
+
+        function updatePager() {
+          var lim = getLimit();
+          var pages = Math.max(1, Math.ceil((state.total || 0) / lim) || 1);
+          var page = Math.floor((state.offset || 0) / lim) + 1;
+          var shown = Math.min(lim, Math.max(0, state.total - state.offset));
+          var hint = $("dg-mp-history-page-hint");
+          if (hint) {
+            hint.textContent =
+              "Найдено: " +
+              (Number.isFinite(state.total) ? state.total : 0) +
+              "; страница " +
+              page +
+              "/" +
+              pages +
+              "; показано: " +
+              shown;
+          }
+          var sum = $("dg-mp-history-summary");
+          if (sum) {
+            sum.textContent =
+              state.total > 0
+                ? "найдено " + state.total
+                : "наклейки, скидка, заморозка";
+          }
+          var prev = $("dg-mp-h-prev");
+          var next = $("dg-mp-h-next");
+          if (prev) prev.disabled = state.loading || page <= 1;
+          if (next) next.disabled = state.loading || page >= pages;
+        }
+
+        function renderRows(rows) {
+          var tbody = $("dg-mp-history-tbody");
+          if (!tbody) return;
+          if (!rows || !rows.length) {
+            tbody.innerHTML =
+              '<tr><td colspan="8" class="text-muted text-center py-3">Нет записей по выбранным фильтрам</td></tr>';
+            return;
+          }
+          tbody.innerHTML = rows
+            .map(function (r) {
+              var who = escHtml(r.changed_by_name || r.changed_by_login || "—");
+              var site = escHtml(r.site_name || (r.site_id != null ? "#" + r.site_id : "—"));
+              var sku = escHtml(r.sku || r.source_id || "—");
+              var name = escHtml(r.product_name || "—");
+              var fld = escHtml(fieldLabel(r.field));
+              var act = escHtml(r.action || "update");
+              return (
+                "<tr>" +
+                "<td class=\"text-nowrap small\">" +
+                escHtml(fmtHistoryWhen(r.changed_at)) +
+                "</td>" +
+                "<td class=\"small\">" +
+                who +
+                "</td>" +
+                "<td class=\"small\">" +
+                site +
+                "</td>" +
+                "<td class=\"small font-monospace\">" +
+                sku +
+                "</td>" +
+                '<td class="small" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' +
+                name +
+                '">' +
+                name +
+                "</td>" +
+                "<td class=\"small\">" +
+                fld +
+                "</td>" +
+                "<td class=\"small\">" +
+                formatDiff(r.old_value, r.new_value) +
+                "</td>" +
+                "<td class=\"small text-muted\">" +
+                act +
+                "</td>" +
+                "</tr>"
+              );
+            })
+            .join("");
+        }
+
+        function loadHistory() {
+          if (state.loading) return Promise.resolve();
+          state.loading = true;
+          updatePager();
+          var hint = $("dg-mp-history-hint");
+          if (hint) hint.textContent = "Загрузка…";
+          var f = collectFilters();
+          var qs = new URLSearchParams();
+          if (f.actor) qs.set("actor", f.actor);
+          if (f.field) qs.set("field", f.field);
+          if (f.site_id && f.site_id !== "all") qs.set("site_id", f.site_id);
+          if (f.search) qs.set("search", f.search);
+          if (f.date_from) qs.set("date_from", f.date_from);
+          if (f.date_to) qs.set("date_to", f.date_to);
+          qs.set("limit", String(f.limit));
+          qs.set("offset", String(f.offset));
+          return fetch("/api/my-products/log?" + qs.toString(), { credentials: "same-origin" })
+            .then(function (r) {
+              return r.json().then(function (j) {
+                return { ok: r.ok, j: j };
+              });
+            })
+            .then(function (x) {
+              if (!x.ok || !x.j || x.j.success === false) {
+                throw new Error((x.j && (x.j.error || x.j.message)) || "Ошибка журнала");
+              }
+              if (x.j.field_labels) state.fieldLabels = x.j.field_labels;
+              state.total = Number(x.j.total || 0);
+              renderRows(x.j.rows || []);
+              if (hint) {
+                var parts = [];
+                if (f.actor) parts.push("сотрудник: " + f.actor);
+                if (f.field) parts.push("поле: " + fieldLabel(f.field));
+                if (f.site_id && f.site_id !== "all")
+                  parts.push("сайт: " + (siteNameById[f.site_id] || f.site_id));
+                if (f.date_from || f.date_to)
+                  parts.push(
+                    "период: " +
+                      (f.date_from || "…") +
+                      " — " +
+                      (f.date_to || "…")
+                  );
+                hint.textContent = parts.length
+                  ? "Фильтры: " + parts.join("; ")
+                  : "Показаны последние изменения (все сотрудники).";
+              }
+            })
+            .catch(function (e) {
+              state.total = 0;
+              renderRows([]);
+              if (hint) hint.textContent = "Ошибка: " + (e && e.message ? e.message : e);
+              notifyMp("danger", e && e.message ? e.message : "Не удалось загрузить журнал");
+            })
+            .finally(function () {
+              state.loading = false;
+              updatePager();
+            });
+        }
+
+        function loadActors() {
+          return fetch("/api/my-products/log/actors", { credentials: "same-origin" })
+            .then(function (r) {
+              return r.json();
+            })
+            .then(function (j) {
+              if (j && j.field_labels) state.fieldLabels = j.field_labels;
+              fillActors((j && j.actors) || []);
+              state.actorsLoaded = true;
+            })
+            .catch(function () {
+              fillActors([]);
+            });
+        }
+
+        function bindCollapse() {
+          var btn = $("dg-mp-history-toggle");
+          var body = $("dg-mp-history-body");
+          if (!btn || !body) return;
+          function apply() {
+            var c = false;
+            try {
+              c = localStorage.getItem(STORAGE_COLLAPSE) === "1";
+            } catch (e) {}
+            body.style.display = c ? "none" : "";
+            btn.textContent = c ? "Развернуть" : "Свернуть";
+          }
+          apply();
+          btn.addEventListener("click", function () {
+            var hidden = body.style.display === "none";
+            try {
+              localStorage.setItem(STORAGE_COLLAPSE, hidden ? "0" : "1");
+            } catch (e2) {}
+            apply();
+          });
+        }
+
+        function bind() {
+          bindCollapse();
+          var applyBtn = $("dg-mp-h-apply");
+          if (applyBtn) {
+            applyBtn.addEventListener("click", function () {
+              state.offset = 0;
+              loadHistory();
+            });
+          }
+          var refreshBtn = $("dg-mp-history-refresh");
+          if (refreshBtn) {
+            refreshBtn.addEventListener("click", function () {
+              loadActors().finally(function () {
+                loadHistory();
+              });
+            });
+          }
+          var prev = $("dg-mp-h-prev");
+          var next = $("dg-mp-h-next");
+          if (prev) {
+            prev.addEventListener("click", function () {
+              state.offset = Math.max(0, state.offset - getLimit());
+              loadHistory();
+            });
+          }
+          if (next) {
+            next.addEventListener("click", function () {
+              state.offset = state.offset + getLimit();
+              loadHistory();
+            });
+          }
+          var lim = $("dg-mp-h-limit");
+          if (lim) {
+            lim.addEventListener("change", function () {
+              state.offset = 0;
+              loadHistory();
+            });
+          }
+          var search = $("dg-mp-h-search");
+          if (search) {
+            search.addEventListener("keydown", function (e) {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                state.offset = 0;
+                loadHistory();
+              }
+            });
+          }
+        }
+
+        window.DatagonMyProductsHistory = {
+          fillSites: fillHistorySites,
+          loadActors: loadActors,
+          load: loadHistory,
+          refreshSitesAndActors: function () {
+            fillHistorySites();
+            return loadActors();
+          },
+        };
+
+        bind();
+      })();
+
       (async function init() {
         updateMpStickyTopVar();
         try {
@@ -7282,14 +7733,20 @@
         }
         initColumnResizeHandles();
         await loadSites();
+        if (window.DatagonMyProductsHistory && window.DatagonMyProductsHistory.refreshSitesAndActors) {
+          await window.DatagonMyProductsHistory.refreshSitesAndActors();
+        }
         parseUrlToForm();
         mergeMyProductsPrefsFromStorage();
         syncHeaderSearchMirrorFromPrimary();
         updateSubtitle();
-        updateSyncSiteButton();
         updateSortHeaders();
         loadBuyVsCompSnapshot();
         await load();
+        if (window.DatagonMyProductsHistory && window.DatagonMyProductsHistory.load) {
+          // Первая загрузка журнала — последние 100 без обязательного сотрудника.
+          window.DatagonMyProductsHistory.load();
+        }
         mpRefreshFloatingAfterLayout();
       })();
     })();

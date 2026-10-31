@@ -633,13 +633,19 @@ Body:
 Ручные наклейки строки `my_products`. Body: `site_id`, `source_id` или `sku`, и одно/несколько из: `sticker_no_ru`, `sticker_discontinued`, `sticker_not_supplied`, `sticker_sale` (`0` — снять; `1` через этот метод **нельзя** — `400 STICKER_SALE_REQUIRES_PRICE`, используйте `POST /set-sale`). Авто-наклейки **Есть РУ** / **Есть в наличии** — на чтении списка. Изменения → `dg_my_products_log`.
 
 ### POST `/api/my-products/set-sale`
-Акция **«Скидка»**: акционная цена + срок → CMS и `my_products` (`sticker_sale=1`, `sale_price`, `sale_until`, `price`). Body: **`confirm: true`**, `site_id`, `source_id`|`sku`, `price`, `hold_days` (`30|60|90|180`) или `hold_until`. Приоритет при выгрузке `stickers_cms` и блоке синка с конкурента. Срок акции **независим** от `price_hold_until`. На Webasyst (Альмамед) при догоне Features: boolean `dg_sticker_sale` + varchar `dg_sticker_sale_until` = дата **дд-мм-гггг** (создаётся автоматически, если нет).
+Акция **«Скидка»**: акционная цена + срок → CMS и `my_products` (`sticker_sale=1`, `sale_price`, `sale_until`, `price`). Body: **`confirm: true`**, `site_id`, `source_id`|`sku`, `price`, `hold_days` (`30|60|90|180`) или `hold_until`, опционально **`restore_on_end`** (`1` default / `0` = оставить скидочную после срока). При постановке сохраняется `sale_price_before` (цена до акции). По истечении: наклейка снимается; при `restore_on_end=1` цена в Datagon/CMS откатывается на `sale_price_before` (если после этого не сработает маржа по остатку МС или синк с конкурента). Приоритет при выгрузке `stickers_cms` и блоке синка с конкурента. Срок акции **независим** от `price_hold_until`. На Webasyst (Альмамед) при догоне Features: boolean `dg_sticker_sale` + varchar `dg_sticker_sale_until` = дата **дд-мм-гггг**.
 
 ### GET `/api/my-products/buy-vs-competitor-alerts`
 Быстрое чтение **снапшота** позиций, где **закупка МС** выше **минимума ДМ/МК** (RUB) более чем на `threshold_pct` % (по умолчанию **1**). Снапшот в таблицах `dg_my_product_buy_vs_comp_*`; полный пересчёт — после автосинка `stickers_cms` или `POST …/refresh` (не при каждом открытии UI). Query: `site_id`, `limit` (≤500). Ответ: `from_snapshot`, `total`, `rebuilt_at`, `source`, `threshold_pct`, `truncated`, `items[]` (`sku`, `name`, `source_url`, `buy_rub`, `competitor_rub`, `competitor_source`, `competitor_url`, `match_id`, `competitor_sku` / `competitor_name`, `pack_qty` / `pack_basis`, `competitor_price_list`, `confirmed_by` / `confirmed_at`, `ms_uuid` / `ms_type` / `ms_link_code`, `over_pct`, остатки…). Цена конкурента в снапшоте — **сопоставимая** (с учётом упаковки на `product_matches`). UI: `/my-products.html` — карточка + модалка; колонка **«Сопоставление»** — кто/когда подтвердил, правка упаковки (`PATCH /api/matches/:id/pack`) и **«Разорвать»** (`POST /api/matches/unlink`); колонка **«МС»** — полная карточка (`GET /api/ms/detail/:uuid`, как на `/moysklad.html`); полный пересчёт Δ % — только по **«Обновить»**.
 
 ### POST `/api/my-products/buy-vs-competitor-alerts/refresh`
 Пересчёт снапшота (тяжёлый) и сразу ответ как у GET. Body/query: `site_id` (`all` = все сайты), `limit`. Ответ: поля GET + `rebuilt: true`, `rebuild_duration_sec`.
+
+### GET `/api/my-products/log/actors`
+Справочник авторов правок из `dg_my_products_log` для селекта на `/my-products.html`. Ответ: `{ success, actors: [{ key, login, name, changes_count, last_at }], field_labels }`.
+
+### GET `/api/my-products/log`
+Глобальный журнал правок наклеек / скидки / заморозки (все товары). Query: `actor` (login или имя), `field`, `site_id`, `date_from` / `date_to` (`YYYY-MM-DD`), `search` (SKU / название), `limit` (≤200, default 100), `offset`. Ответ: `{ success, rows, total, limit, offset, field_labels, applied }` — в строках также `site_name`, `product_name`, `old_value` → `new_value`, `changed_at`, `changed_by_*`.
 
 ### GET `/api/my-products/:id/log`
 Журнал изменений наклеек и заморозки по `my_products.id`. Query: `field`, `limit`, `offset`. Ответ: `{ success, rows, total, field_labels }`.
