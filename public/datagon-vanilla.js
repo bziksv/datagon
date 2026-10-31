@@ -136,7 +136,9 @@
       );
     }
     function busyRun(btn, fn) {
-      if (!btn || !fn) return Promise.resolve();
+      if (!fn) return Promise.resolve();
+      // btn может быть null (действие без кнопки) — всё равно выполняем fn.
+      if (!btn) return Promise.resolve().then(fn);
       var hadDisabled = btn.disabled;
       var prevHtml = btn.innerHTML;
       var prevBusy = btn.getAttribute("aria-busy");

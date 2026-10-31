@@ -1832,12 +1832,13 @@
                   </div>
                   <div class="col-lg-2 col-md-4 col-sm-6" data-dg-mp-filter-field="hold_days">
                     <label class="form-label" for="mp-f-hold_days">Срок (для замка)</label>
-                    <select class="form-select" id="mp-f-hold_days" title="Общий срок для замка в строке и массовой заморозки по фильтрам">
+                    <select class="form-select" id="mp-f-hold_days" title="Общий срок для замка в строке, массовой заморозки и акции «Скидка»">
                       <option value="30">30 дней</option>
                       <option value="60">60 дней</option>
                       <option value="90" selected>90 дней</option>
                       <option value="180">180 дней</option>
                     </select>
+                    <div class="form-text mb-0" id="mp-f-hold_days-until-hint">до —</div>
                   </div>
                   <div class="col-lg-7 col-md-12 d-flex flex-wrap gap-2 pb-1">
                     <span class="d-inline-flex" data-dg-mp-filter-field="btn_hold_price_bulk">
@@ -3097,10 +3098,35 @@
         return 90;
       }
 
+      /** Дата окончания срока (дней от сейчас) для подписи в UI. */
+      function holdUntilDateFromDays(days) {
+        var n = Number(days);
+        if (!(n === 30 || n === 60 || n === 90 || n === 180)) n = 90;
+        var d = new Date(Date.now() + n * 86400000);
+        var y = d.getFullYear();
+        var m = d.getMonth() + 1;
+        var day = d.getDate();
+        var ymd =
+          y +
+          "-" +
+          (m < 10 ? "0" + m : m) +
+          "-" +
+          (day < 10 ? "0" + day : day);
+        return formatHoldUntilShort(ymd);
+      }
+
+      function syncHoldDaysUntilHint() {
+        var hint = document.getElementById("mp-f-hold_days-until-hint");
+        if (!hint) return;
+        var days = getHoldDays();
+        hint.textContent = "до " + holdUntilDateFromDays(days) + " (" + days + " дн.)";
+      }
+
       function persistHoldDays() {
         try {
           localStorage.setItem(HOLD_DAYS_KEY, String(getHoldDays()));
         } catch (e) {}
+        syncHoldDaysUntilHint();
       }
 
       function isRowPriceHoldActive(r) {
@@ -5043,6 +5069,7 @@
       function openSaleStickerModal(row) {
         if (myProductsRowActionBusy) return;
         var days = getHoldDays();
+        var untilLabel = holdUntilDateFromDays(days);
         var preset =
           row.sale_price != null && Number.isFinite(Number(row.sale_price))
             ? Number(row.sale_price)
@@ -5050,10 +5077,12 @@
         openMpConfirm({
           title: "Скидка — акционная цена",
           text:
-            "Укажите цену акции и срок (" +
+            "Укажите цену акции. Срок: " +
             days +
-            " дн. из селекта «Срок заморозки»). Цена сразу уйдёт на сайт; синк с конкурента и маржа от закупки не перепишут её до конца срока. Если есть и заморозка — акция в приоритете.",
-          meta: "SKU: " + (row.sku || row.source_id || "—"),
+            " дн. → до " +
+            untilLabel +
+            " (из селекта «Срок заморозки»). Цена сразу уйдёт на сайт; синк с конкурента и маржа от закупки не перепишут её до конца срока. Если есть и заморозка — акция в приоритете.",
+          meta: "SKU: " + (row.sku || row.source_id || "—") + " · до " + untilLabel,
           showPrice: true,
           price: preset,
           okText: "Поставить скидку",
@@ -5095,21 +5124,24 @@
             });
           });
         };
-        var p =
-          window.DatagonNotify && window.DatagonNotify.busyRun
-            ? window.DatagonNotify.busyRun(null, run)
-            : run();
-        return p
+        // Не передаём null в busyRun как «кнопку» — старый busyRun глотал вызов.
+        return run()
           .then(function (j) {
-            var d = (j && j.data) || {};
+            if (!j || !j.data) {
+              throw new Error("Пустой ответ set-sale");
+            }
+            var d = j.data || {};
             row.price = d.price != null ? d.price : price;
             row.sticker_sale = 1;
             row.sticker_sale_active = d.sticker_sale_active != null ? d.sticker_sale_active : 1;
             row.sale_price = d.sale_price != null ? d.sale_price : price;
-            row.sale_until = d.sale_until || null;
+            row.sale_until = d.sale_until || d.sale_until_effective || null;
             row.sale_until_effective = d.sale_until_effective || d.sale_until || null;
             row.sale_price_effective =
               d.sale_price_effective != null ? d.sale_price_effective : row.sale_price;
+            if (!row.sale_until) {
+              throw new Error("Сервер не вернул срок акции (sale_until)");
+            }
             renderRows(lastRows || []);
             notifyMp(
               "success",
@@ -5885,6 +5917,7 @@
         el.addEventListener("change", function () {
           persistHoldDays();
         });
+        syncHoldDaysUntilHint();
       })();
       // Если вкладку перезагрузили во время фоновой задачи — подхватить прогресс.
       fetchBulkSyncPriceStatus()
