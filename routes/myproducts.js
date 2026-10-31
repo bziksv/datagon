@@ -2734,6 +2734,9 @@ function myProductsRouterFactory(db, settings) {
                             return syncMyProductStickersToCms(db, {
                                 siteId: siteIdNum,
                                 cmsProductIds: [cmsPid],
+                                // Цена акции уже в applyPriceToCms по одному SKU;
+                                // полный прогон перетирал бы соседние артикулы карточки.
+                                featuresOnly: true,
                             });
                         })
                         .catch((err) =>
@@ -2822,6 +2825,7 @@ function myProductsRouterFactory(db, settings) {
                             return syncMyProductStickersToCms(db, {
                                 siteId: siteNum,
                                 cmsProductIds: [cmsPid],
+                                featuresOnly: true,
                             });
                         })
                         .then((r) => {
