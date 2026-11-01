@@ -19,12 +19,24 @@ const router = express.Router();
 const BASE_URL = 'https://api.moysklad.ru/api/remap/1.2';
 /** Таймаут HTTP к api.moysklad.ru на тяжёлых страницах (каталог/остатки). 30 с на ночном пике давал массовые failed. */
 const MS_HTTP_TIMEOUT_MS = 120000;
+/**
+ * Сколько раз повторить одну и ту же страницу при обрыве сокета, прежде чем уменьшить limit.
+ * `read ETIMEDOUT` / `aborted` приходят раньше axios-таймаута 120 с: шлюз МС или NAT рвёт
+ * соединение, пока тяжёлая страница с expand ещё собирается (~45–100 с, без тела ответа).
+ */
+const MS_HTTP_SAME_PAGE_TRIES = 2;
 const MS_DETAIL_EXPAND_PRODUCT =
     'attributes,supplier,images,country,uom,salePrices,buyPrice,minPrice,barcodes,countryOfOrigin';
 const MS_DETAIL_EXPAND_BUNDLE =
     'attributes,supplier,images,country,uom,salePrices,buyPrice,minPrice,components,components.assortment,countryOfOrigin';
 /** МойСклад: expand вложенных полей в списке `entity/bundle` при limit > 100 часто не раскрывается (остаётся meta без rows). */
 const MS_BUNDLE_LIST_PAGE_LIMIT = 100;
+/**
+ * Список `entity/product` с тем же expand (включая images) при limit=1000 ночью часто не отдаёт
+ * первый байт за ~60–90 с → `read ETIMEDOUT`, и весь синк падает на этапе 2, не дойдя до остатков.
+ * 100 строк на страницу — тот же предел, что у комплектов.
+ */
+const MS_PRODUCT_LIST_PAGE_LIMIT = 100;
 const MS_ATTRS = [
     'Автоматизация цены',
     'Складская позиция',
@@ -1086,20 +1098,70 @@ function buildExportFilters(query, whereSql, whereParams) {
     return { sql, params };
 }
 
+function isTransientMsHttpError(err) {
+    const code = String(err && err.code ? err.code : '');
+    const msg = String(err && err.message ? err.message : '');
+    const status = Number(err && err.response && err.response.status);
+    if (status === 429 || status === 502 || status === 503 || status === 504) return true;
+    if (
+        code === 'ETIMEDOUT' ||
+        code === 'ECONNABORTED' ||
+        code === 'ECONNRESET' ||
+        code === 'EAI_AGAIN' ||
+        code === 'EPIPE' ||
+        code === 'ENOTFOUND' ||
+        code === 'ECONNREFUSED' ||
+        code === 'ERR_NETWORK'
+    ) {
+        return true;
+    }
+    return /ETIMEDOUT|ECONNRESET|ECONNABORTED|socket hang up|aborted|timeout of \d+ms exceeded|ENOTFOUND/i.test(msg);
+}
+
 async function fetchPaged(url, headers, params = {}) {
     const out = [];
     let offset = 0;
-    const limit = Math.max(100, Math.min(parseInt(params.pageLimit, 10) || 1000, 5000));
+    let limit = Math.max(100, Math.min(parseInt(params.pageLimit, 10) || 1000, 5000));
+    const minLimit = Math.min(100, limit);
     const delayMs = Math.max(0, parseInt(params.delayMs, 10) || 0);
     let knownTotal = 0;
     const { onProgress, pageLimit, delayMs: _delayMs, ...queryParams } = params || {};
     while (true) {
         ensureNotCancelled();
-        const resp = await axios.get(url, {
-            headers,
-            params: { ...queryParams, limit, offset },
-            timeout: MS_HTTP_TIMEOUT_MS,
-        });
+        let resp = null;
+        let sameLimitTries = 0;
+        for (;;) {
+            try {
+                resp = await axios.get(url, {
+                    headers,
+                    params: { ...queryParams, limit, offset },
+                    timeout: MS_HTTP_TIMEOUT_MS,
+                });
+                break;
+            } catch (e) {
+                if (!isTransientMsHttpError(e)) throw e;
+                sameLimitTries += 1;
+                const why = e && e.message ? e.message : String(e);
+                if (sameLimitTries < MS_HTTP_SAME_PAGE_TRIES) {
+                    const waitMs = 2000 * sameLimitTries;
+                    jobState.message = `Повтор страницы МС (offset ${offset}, limit ${limit}): ${why}`;
+                    addLog(`МС offset=${offset} limit=${limit}: ${why}. Повтор через ${waitMs / 1000} с`);
+                    await new Promise((resolve) => setTimeout(resolve, waitMs));
+                    ensureNotCancelled();
+                    continue;
+                }
+                if (limit > minLimit) {
+                    const next = Math.max(minLimit, Math.floor(limit / 2));
+                    jobState.message = `МС не отдал страницу limit=${limit}, дальше по ${next}`;
+                    addLog(`МС offset=${offset} limit=${limit}: ${why}. Дальше страницами по ${next}`);
+                    limit = next;
+                    sameLimitTries = 0;
+                    ensureNotCancelled();
+                    continue;
+                }
+                throw e;
+            }
+        }
         const rows = resp.data?.rows || [];
         const metaSize = Number(resp.data?.meta?.size || 0);
         if (metaSize > 0) knownTotal = metaSize;
@@ -1113,7 +1175,7 @@ async function fetchPaged(url, headers, params = {}) {
                 limit
             });
         }
-        offset += limit;
+        offset += rows.length;
         if (delayMs > 0) {
             await new Promise((resolve) => setTimeout(resolve, delayMs));
         }
@@ -1212,9 +1274,13 @@ async function syncMsExport(db, config, settings = {}) {
 
     addLog('Этап 2/6: загрузка товаров');
     jobState.message = 'Загрузка товаров...';
+    const productListPageLimit = Math.min(
+        Math.max(100, Math.min(parseInt(settings.ms_sync_page_limit, 10) || 1000, 5000)),
+        MS_PRODUCT_LIST_PAGE_LIMIT
+    );
     const products = await fetchAllWithArchivedStatuses(`${BASE_URL}/entity/product`, headers, {
         expand: MS_DETAIL_EXPAND_PRODUCT,
-        pageLimit: settings.ms_sync_page_limit,
+        pageLimit: productListPageLimit,
         delayMs: settings.ms_sync_delay_ms,
         onPhaseProgress: ({ phase, loaded, total }) => {
             const phaseLabel = phase === 'archived' ? 'архивные' : 'активные';
@@ -1224,7 +1290,7 @@ async function syncMsExport(db, config, settings = {}) {
         }
     });
     jobState.message = `Загрузка товаров: ${products.length}`;
-    addLog(`Товары загружены: ${products.length}`);
+    addLog(`Товары загружены: ${products.length} (страница списка: limit=${productListPageLimit} — expand карточки в МС)`);
 
     addLog('Этап 3/6: загрузка комплектов');
     jobState.message = 'Загрузка комплектов...';
