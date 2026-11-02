@@ -58,6 +58,8 @@ TLS к `enter.tochka.com` — через CA Минцифры (`certs/russian-tru
 
 Хранение: `app_settings.finance_tbank_credentials`. Синк (только чтение): `GET /api/v1/bank-accounts` (если 404 — v2/v3) и `GET /api/v1/statement` на `https://business.tbank.ru/openapi`. Счета и проводки в `dg_finance_accounts` / `dg_finance_tx` с `bank='tbank'`. Организация в фильтрах — `tb:{inn}`.
 
+На карточке — **сальдо выписки** (`balances.balanceEnd`): свои деньги на счёте. Поле `balance.otb` из списка счетов — это доступно к списанию **вместе с неиспользованным овердрафтом**, его в остаток не кладём.
+
 Часть методов банка живёт на secured-openapi (mTLS). Без сертификата в журнале будет ошибка T‑API — это ограничение банка, не UI.
 
 ## Что делает синк

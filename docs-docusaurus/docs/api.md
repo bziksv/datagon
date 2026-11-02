@@ -2533,7 +2533,7 @@ Preflight матча «Менеджер по продажам» ↔ Planfix `/us
 
 **Райффайзен:** `app_settings.finance_raiffeisen_credentials`. Refresh обменивается на access/id token через `sso.rbo.raiffeisen.ru`; новый refresh сохраняется. Счета и проводки в тех же таблицах с `bank='raiffeisen'`.
 
-**Т‑Банк:** `app_settings.finance_tbank_credentials`. Bearer из кабинета Т‑Бизнес → Интеграции → T‑API. Клиент `lib/datagonTbankClient.js`: `GET /api/v1/bank-accounts` (fallback v2/v3) и `GET /api/v1/statement` (`https://business.tbank.ru/openapi`). Токен **не** в `GET /api/settings`. Счета и проводки с `bank='tbank'`, `customer_code` вида `tb:{inn}`. Банк может требовать белый список IP (и для части методов — mTLS).
+**Т‑Банк:** `app_settings.finance_tbank_credentials`. Bearer из кабинета Т‑Бизнес → Интеграции → T‑API. Клиент `lib/datagonTbankClient.js`: `GET /api/v1/bank-accounts` (fallback v2/v3) и `GET /api/v1/statement` (`https://business.tbank.ru/openapi`). На карточке остаток — сальдо выписки `balanceEnd` (свои средства). `balance.otb` включает неиспользованный овердрафт и в `available` не пишется. Токен **не** в `GET /api/settings`. Счета и проводки с `bank='tbank'`, `customer_code` вида `tb:{inn}`. Банк может требовать белый список IP (и для части методов — mTLS).
 
 «Обновить все» / автосинк `finance_tochka` тянет включённые ключи всех трёх банков (cash не синкается). Если в прогоне есть **хотя бы одна** ошибка API/ключа — `success: false`, в `auto_sync_runs` статус **failed** (красный стикер), в `message` сводка **и** хвост `ОШИБКИ N: …` (не маскируется зелёным «Завершено» при живых остальных банках).
 

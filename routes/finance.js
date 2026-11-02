@@ -1509,7 +1509,7 @@ async function syncOneTbankCredential(db, appSettings, cred, opts) {
         const accountOrgLabel = shortOrgLabelFromName(acc.org_name) || String(cred.label || 'Т‑Банк').slice(0, 120);
         syncJob.message = 'Т‑Банк · ' + accountOrgLabel + ': ' + (acc.account_number || acc.account_id);
         onProgress({ message: syncJob.message, account_id: acc.account_id, credential_id: cred.id });
-        let balance = acc.available != null ? acc.available : acc.balance;
+        let balance = null;
         let txs = [];
         if (!skipTx) {
             try {
@@ -1543,6 +1543,21 @@ async function syncOneTbankCredential(db, appSettings, cred, opts) {
                 errors.push({ code: acc.account_id, error: e.message || String(e) });
             }
         }
+        if (balance == null) {
+            try {
+                const book = await tbank.fetchBookBalance(cred.token, acc.account_number || acc.account_id);
+                if (book != null) balance = book;
+            } catch (e) {
+                errors.push({ code: acc.account_id, error: e.message || String(e) });
+            }
+        }
+        if (balance == null) {
+            const [prev] = await db.query(
+                'SELECT balance, available FROM dg_finance_accounts WHERE bank = ? AND account_id = ? LIMIT 1',
+                ['tbank', acc.account_id]
+            );
+            if (prev && prev[0] && prev[0].balance != null) balance = Number(prev[0].balance);
+        }
         const displayName =
             (accountOrgLabel ? accountOrgLabel + ' · ' : '') + (acc.account_sub_type_label || 'Счёт');
         await upsertFinanceAccount(db, 'tbank', {
@@ -1557,7 +1572,7 @@ async function syncOneTbankCredential(db, appSettings, cred, opts) {
             credential_id: cred.id,
             org_label: accountOrgLabel,
             balance,
-            available: acc.available != null ? acc.available : balance,
+            available: balance,
             blocked: acc.blocked,
         });
         accountsOk += 1;
