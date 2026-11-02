@@ -3653,8 +3653,26 @@
       ordersSub = "Итого по выбранному фильтру";
     }
 
+    var bonusMain = bonus;
     var bonusSub = "";
-    if (fk.unshipped_count > 0 && fk.unshipped_bonus > 0) {
+    if (fk.bonus_payable != null) {
+      bonusMain = fk.bonus_payable;
+      var accrued = fk.bonus_accrued != null ? fk.bonus_accrued : bonus;
+      var waitRub = Number(fk.unshipped_bonus) || 0;
+      var waitN = Number(fk.unshipped_count) || 0;
+      bonusSub =
+        "к выплате (отгруженные, с прошлых месяцев тоже)" +
+        "<br>начислено всего <strong>" +
+        esc(money(accrued)) +
+        "</strong>" +
+        (waitRub > 0.004
+          ? '<br><span class="text-warning">ждёт отгрузки <strong>' +
+            esc(money(waitRub)) +
+            "</strong>" +
+            (waitN ? " · " + esc(String(waitN)) + " зак." : "") +
+            "</span>"
+          : "");
+    } else if (fk.unshipped_count > 0 && fk.unshipped_bonus > 0) {
       bonusSub =
         "Отгружено: <strong>" +
         esc(moneyInt(fk.bonus_past_paid || 0)) +
@@ -3716,7 +3734,7 @@
         ? '<span class="dg-msl-tot-tag is-green">% МП. ' + esc(num(p.pct_mp, 0)) + "%</span>"
         : "") +
       '</div><div class="dg-msl-tot-val">' +
-      esc(moneyInt(bonus)) +
+      esc(fk.bonus_payable != null ? money(bonusMain) : moneyInt(bonusMain)) +
       "</div></div>" +
       '<div class="dg-msl-tot-sub">' +
       bonusSub +
