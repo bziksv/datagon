@@ -122,6 +122,10 @@ module.exports = (db, settings) => {
         return v ? v.slice(0, 255) : null;
     }
 
+    function activeRoleFromBody(body) {
+        return String((body && body.cms_db_active) || '').toLowerCase() === 'mirror' ? 'mirror' : 'primary';
+    }
+
     /** host === undefined — ключей зеркала нет, оставить как в БД. */
     function mirrorFieldsFromBody(body, existing) {
         const prev = existing || {};
@@ -448,6 +452,12 @@ module.exports = (db, settings) => {
                 validateIncomingSiteIdents(req.body || {});
                 assertCmsDbHostAllowed(db_host);
                 var mirrorSpec = mirrorFieldsFromBody(req.body, null);
+                var activeRole = activeRoleFromBody(req.body);
+                if (activeRole === 'mirror' && !mirrorSpec.host) {
+                    const err = new Error('Чтобы зеркало было рабочим, заполните его хост');
+                    err.code = 'CMS_HOST_DENIED';
+                    throw err;
+                }
             } catch (ve) {
                 const code = ve && ve.code;
                 if (code === 'BAD_SQL_IDENT' || code === 'CMS_HOST_DENIED') {
@@ -464,14 +474,14 @@ module.exports = (db, settings) => {
                         db_user,
                         db_pass,
                         db_name,
+                        cms_db_active: activeRole,
                         db_host_mirror: mirrorSpec.host,
                         db_name_mirror: mirrorSpec.name,
                         db_user_mirror: mirrorSpec.user,
                         db_pass_mirror: mirrorSpec.passForConnect,
                     },
                     {
-                        connectTimeout: mirrorSpec.host ? 4000 : 8000,
-                        mirrorConnectTimeout: 12000,
+                        connectTimeout: 12000,
                     }
                 );
                 if (safeCms === 'webasyst') {
@@ -496,7 +506,7 @@ module.exports = (db, settings) => {
             const storedPass = prepareCmsDbPassForStore(db_pass, '');
             const cmsMeta = conn ? cmsConnectionMeta(conn) : null;
             const [result] = await db.query(
-                `INSERT INTO my_sites (name, domain, cms_type, db_host, db_host_mirror, db_name_mirror, db_user_mirror, db_pass_mirror, db_name, db_user, db_pass, table_products, field_name, field_sku, field_code, field_price, field_currency, field_stock, wa_table_skus, wa_field_sku_val, wa_field_price_val, wa_field_stock_val, ms_stock_store_uuids, price_margin_json) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+                `INSERT INTO my_sites (name, domain, cms_type, db_host, db_host_mirror, db_name_mirror, db_user_mirror, db_pass_mirror, cms_db_active, db_name, db_user, db_pass, table_products, field_name, field_sku, field_code, field_price, field_currency, field_stock, wa_table_skus, wa_field_sku_val, wa_field_price_val, wa_field_stock_val, ms_stock_store_uuids, price_margin_json) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
                 [
                     name,
                     domain,
@@ -506,6 +516,7 @@ module.exports = (db, settings) => {
                     mirrorSpec.name,
                     mirrorSpec.user,
                     mirrorSpec.passStored,
+                    activeRole,
                     db_name,
                     db_user,
                     storedPass,
@@ -584,6 +595,7 @@ module.exports = (db, settings) => {
                 }
                 return res.status(400).json({ error: ve.message || 'Недопустимые имена таблиц/полей', code: 'BAD_SQL_IDENT' });
             }
+            const activeRole = activeRoleFromBody(req.body);
             const [existingRows] = await db.query(
                 'SELECT db_pass, db_host_mirror, db_name_mirror, db_user_mirror, db_pass_mirror, ms_stock_store_uuids, price_margin_json FROM my_sites WHERE id = ? LIMIT 1',
                 [id]
@@ -593,6 +605,12 @@ module.exports = (db, settings) => {
             const existingMsStores = existing.ms_stock_store_uuids || null;
             const existingPriceMargin = existing.price_margin_json || null;
             const mirrorSpec = mirrorFieldsFromBody(req.body, existing);
+            if (activeRole === 'mirror' && !mirrorSpec.host) {
+                return res.status(400).json({
+                    error: 'Чтобы зеркало было рабочим, заполните его хост',
+                    code: 'CMS_HOST_DENIED',
+                });
+            }
             const storedPass = prepareCmsDbPassForStore(db_pass, existingPass);
             let conn = null;
             let connectError = '';
@@ -605,14 +623,14 @@ module.exports = (db, settings) => {
                         db_user,
                         db_pass: storedPass,
                         db_name,
+                        cms_db_active: activeRole,
                         db_host_mirror: mirrorSpec.host,
                         db_name_mirror: mirrorSpec.name,
                         db_user_mirror: mirrorSpec.user,
                         db_pass_mirror: mirrorSpec.passForConnect,
                     },
                     {
-                        connectTimeout: mirrorSpec.host ? 4000 : 8000,
-                        mirrorConnectTimeout: 12000,
+                        connectTimeout: 12000,
                         appDb: db,
                     }
                 );
@@ -639,7 +657,7 @@ module.exports = (db, settings) => {
             const msStoresToWrite = hasMsStoresKey ? storedMsStores : existingMsStores;
             const priceMarginToWrite = hasMarginKey ? storedPriceMargin : existingPriceMargin;
             await db.query(
-                `UPDATE my_sites SET name=?, domain=?, cms_type=?, db_host=?, db_host_mirror=?, db_name_mirror=?, db_user_mirror=?, db_pass_mirror=?, db_name=?, db_user=?, db_pass=?, table_products=?, field_name=?, field_sku=?, field_code=?, field_price=?, field_currency=?, field_stock=?, wa_table_skus=?, wa_field_sku_val=?, wa_field_price_val=?, wa_field_stock_val=?, ms_stock_store_uuids=?, price_margin_json=? WHERE id=?`,
+                `UPDATE my_sites SET name=?, domain=?, cms_type=?, db_host=?, db_host_mirror=?, db_name_mirror=?, db_user_mirror=?, db_pass_mirror=?, cms_db_active=?, db_name=?, db_user=?, db_pass=?, table_products=?, field_name=?, field_sku=?, field_code=?, field_price=?, field_currency=?, field_stock=?, wa_table_skus=?, wa_field_sku_val=?, wa_field_price_val=?, wa_field_stock_val=?, ms_stock_store_uuids=?, price_margin_json=? WHERE id=?`,
                 [
                     name,
                     domain,
@@ -649,6 +667,7 @@ module.exports = (db, settings) => {
                     mirrorSpec.name,
                     mirrorSpec.user,
                     mirrorSpec.passStored,
+                    activeRole,
                     db_name,
                     db_user,
                     storedPass,
@@ -674,6 +693,7 @@ module.exports = (db, settings) => {
                 db_host_mirror: mirrorSpec.host,
                 db_name_mirror: mirrorSpec.name,
                 db_user_mirror: mirrorSpec.user,
+                cms_db_active: activeRole,
                 connect_error: connectError || null,
                 cms_db_last_role: cmsMeta ? cmsMeta.role : null,
                 cms_db_last_host: cmsMeta ? cmsMeta.host : null,

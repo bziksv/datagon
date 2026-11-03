@@ -13,6 +13,7 @@
         db_name_mirror: "",
         db_user_mirror: "",
         db_pass_mirror: "",
+        cms_db_active: "primary",
         table_products: "b_catalog_product",
         field_name: "NAME",
         field_sku: "ARTICLE",
@@ -257,6 +258,7 @@
           db_name_mirror: document.getElementById("ms-db_name_mirror").value.trim(),
           db_user_mirror: document.getElementById("ms-db_user_mirror").value.trim(),
           db_pass_mirror: document.getElementById("ms-db_pass_mirror").value,
+          cms_db_active: (document.querySelector('input[name="ms-cms-db-active"]:checked') || {}).value || "primary",
           wa_table_skus: document.getElementById("ms-wa_table_skus").value.trim() || DEFAULT_FORM.wa_table_skus,
           wa_field_sku_val: document.getElementById("ms-wa_field_sku_val").value.trim() || DEFAULT_FORM.wa_field_sku_val,
           wa_field_price_val: document.getElementById("ms-wa_field_price_val").value.trim() || DEFAULT_FORM.wa_field_price_val,
@@ -307,6 +309,18 @@
         document.getElementById("ms-wa_field_stock_val").value = DEFAULT_FORM.wa_field_stock_val;
         renderMsStoresPicker([]);
         fillPriceMargin(DEFAULT_FORM.price_margin);
+        setActiveConn("primary");
+      }
+
+      function setActiveConn(role) {
+        var useMirror = role === "mirror";
+        var primary = document.getElementById("ms-cms-db-active-primary");
+        var mirror = document.getElementById("ms-cms-db-active-mirror");
+        if (primary) primary.checked = !useMirror;
+        if (mirror) mirror.checked = useMirror;
+        document.querySelectorAll(".dg-msites-conn-box").forEach(function (box) {
+          box.classList.toggle("is-active", box.getAttribute("data-cms-role") === (useMirror ? "mirror" : "primary"));
+        });
       }
 
       function fillFormFromSite(s) {
@@ -330,6 +344,7 @@
         mirrorPassEl.placeholder = s.db_pass_mirror_set
           ? "сохранён: " + (s.db_pass_mirror_mask || "••••") + " — пусто = не менять"
           : "как у основного";
+        setActiveConn(s.cms_db_active === "mirror" ? "mirror" : "primary");
         document.getElementById("ms-table_products-bx").value = s.table_products || DEFAULT_FORM.table_products;
         document.getElementById("ms-table_products-wa").value = s.table_products || DEFAULT_FORM.table_products;
         document.getElementById("ms-field_name").value = s.field_name || DEFAULT_FORM.field_name;
@@ -698,30 +713,23 @@
           tdName.appendChild(sub);
           var link = document.createElement("div");
           link.className = "small mt-1";
-          var role = String(s.cms_db_last_role || "");
-          var lastHost = String(s.cms_db_last_host || "");
-          if (role === "mirror" && lastHost) {
-            var badge = document.createElement("span");
-            badge.className = "badge bg-warning text-dark";
-            badge.textContent = "зеркало";
-            link.appendChild(badge);
-            link.appendChild(document.createTextNode(" " + lastHost + mirrorCredTail(s)));
-          } else if (role === "primary" && lastHost) {
-            var badgeOk = document.createElement("span");
-            badgeOk.className = "badge bg-light text-muted border";
-            badgeOk.textContent = "основной";
-            link.appendChild(badgeOk);
-            link.appendChild(document.createTextNode(" " + lastHost));
-            if (s.db_host_mirror) {
-              var cfg = document.createElement("div");
-              cfg.className = "small text-muted";
-              cfg.textContent = "зеркало: " + mirrorCredLine(s);
-              link.appendChild(cfg);
-            }
-          } else if (s.db_host_mirror) {
-            link.className = "small mt-1 text-muted";
-            link.textContent = "зеркало: " + mirrorCredLine(s);
+          var activeRole = s.cms_db_active === "mirror" && s.db_host_mirror ? "mirror" : "primary";
+          var activeHost = activeRole === "mirror" ? s.db_host_mirror : s.db_host;
+          if (activeHost) {
+            var work = document.createElement("span");
+            work.className = activeRole === "mirror" ? "badge bg-warning text-dark" : "badge bg-success";
+            work.textContent = activeRole === "mirror" ? "рабочее: зеркало" : "рабочее: основное";
+            link.appendChild(work);
+            link.appendChild(document.createTextNode(" " + activeHost + (activeRole === "mirror" ? mirrorCredTail(s) : "")));
           }
+          var spare = document.createElement("div");
+          spare.className = "small text-muted";
+          if (activeRole === "mirror") {
+            spare.textContent = "основное в запасе: " + (s.db_host || "");
+          } else if (s.db_host_mirror) {
+            spare.textContent = "зеркало в запасе: " + mirrorCredLine(s);
+          }
+          if (spare.textContent) link.appendChild(spare);
           if (s.cms_db_last_error) {
             var err = document.createElement("div");
             err.className = "small text-danger";
@@ -1066,6 +1074,11 @@
       }
 
       document.getElementById("ms-cms_type").addEventListener("change", toggleCmsRows);
+      document.querySelectorAll('input[name="ms-cms-db-active"]').forEach(function (el) {
+        el.addEventListener("change", function () {
+          setActiveConn(el.value);
+        });
+      });
 
       function expandAddFormCard() {
         var body = document.getElementById("dg-msites-add-body");

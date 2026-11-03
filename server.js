@@ -1212,12 +1212,13 @@ function startGlobalSyncBackground(targetSiteId = null) {
                 const via = cmsMeta.role === 'mirror' ? 'зеркало' : 'основной';
                 connectNotes.push(`${site.name}: ${via} ${cmsMeta.host}`);
                 console.log(`[SYNC] Site ${site.name}: ${via} ${cmsMeta.host}`);
-                await db.query('UPDATE my_products SET is_active = 0 WHERE site_id = ?', [site.id]);
 
                 let offset = 0;
+                let deactivated = false;
                 const batchSize = appSettings.sync_batch_size || 500;
                 const delay = appSettings.sync_delay_ms || 2000;
 
+                try {
                 while (true) {
                     let query = '';
                     let rows;
@@ -1232,6 +1233,10 @@ function startGlobalSyncBackground(targetSiteId = null) {
                         [rows] = await conn.query(query, [batchSize, offset]);
                     }
                     if (rows.length === 0) break;
+                    if (!deactivated) {
+                        await db.query('UPDATE my_products SET is_active = 0 WHERE site_id = ?', [site.id]);
+                        deactivated = true;
+                    }
 
                     const values = rows.map((r) => {
                         const sourceUrl = buildSourceUrl(site.domain, r.url_key, site.cms_type);
@@ -1247,8 +1252,6 @@ function startGlobalSyncBackground(targetSiteId = null) {
 
                     if (delay > 0) await new Promise(r => setTimeout(r, delay));
                 }
-                await conn.end();
-
                 if (String(site.cms_type || '').toLowerCase() === 'webasyst') {
                     try {
                         const {
@@ -1269,9 +1272,20 @@ function startGlobalSyncBackground(targetSiteId = null) {
 
                 // Удаление неактивных (опционально, сейчас просто помечены)
                 // await db.query('DELETE FROM my_products WHERE site_id = ? AND is_active = 0', [site.id]);
+                } catch (e) {
+                    const line = `${site.name}: ошибка чтения (${e && e.message ? e.message : e})`;
+                    connectNotes.push(line);
+                    console.error(`[SYNC] Read error ${site.name}:`, e.message);
+                } finally {
+                    try {
+                        await conn.end();
+                    } catch (_) {}
+                }
             }
             
-            const failedConnects = connectNotes.filter((line) => line.includes('нет связи'));
+            const failedConnects = connectNotes.filter(
+                (line) => line.includes('нет связи') || line.includes('ошибка чтения')
+            );
             syncState.message = connectNotes.length
                 ? (failedConnects.length ? 'Часть сайтов без связи. ' : 'Готово. ') + connectNotes.join('; ')
                 : 'Готово!';

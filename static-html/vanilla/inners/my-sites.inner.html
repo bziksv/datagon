@@ -43,8 +43,14 @@
                       </select>
                     </div>
                   </div>
-                  <div class="dg-msites-conn-box mt-3">
-                    <div class="dg-msites-conn-title">Основное подключение</div>
+                  <div class="dg-msites-conn-box is-active mt-3" data-cms-role="primary">
+                    <div class="dg-msites-conn-title d-flex justify-content-between align-items-center gap-2">
+                      <span>Основное подключение</span>
+                      <label class="mb-0 small fw-normal">
+                        <input type="radio" name="ms-cms-db-active" id="ms-cms-db-active-primary" value="primary" checked />
+                        сейчас этот
+                      </label>
+                    </div>
                     <div class="row g-2">
                       <div class="col-md-3">
                         <label class="form-label" for="ms-db_host">Хост БД *</label>
@@ -64,13 +70,17 @@
                       </div>
                     </div>
                   </div>
-                  <div class="dg-msites-conn-box dg-msites-conn-box--mirror mt-3">
-                    <div class="dg-msites-conn-title">Зеркало</div>
+                  <div class="dg-msites-conn-box dg-msites-conn-box--mirror mt-3" data-cms-role="mirror">
+                    <div class="dg-msites-conn-title d-flex justify-content-between align-items-center gap-2">
+                      <span>Зеркало</span>
+                      <label class="mb-0 small fw-normal">
+                        <input type="radio" name="ms-cms-db-active" id="ms-cms-db-active-mirror" value="mirror" />
+                        сейчас этот
+                      </label>
+                    </div>
                     <div class="form-text mb-2">
-                      Необязательно. Свой хост, своя база и свой пользователь.
-                      Пустые имя, пользователь и пароль берутся с основного.
-                      Если основной не открывается, чтение и запись идут сюда.
-                      Каталог не выключается, пока ни один хост не ответил.
+                      Запасное подключение. Синк и запись идут только в блок с отметкой «сейчас этот».
+                      Пустые имя, пользователь и пароль зеркала берутся с основного.
                     </div>
                     <div class="row g-2">
                       <div class="col-md-3">
