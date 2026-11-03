@@ -642,6 +642,13 @@
     display: flex;
     flex-direction: column;
   }
+  body.datagon-vanilla-body[data-dg-active-nav="manager-sales"] .dg-msl-confirm-overlay .dg-msl-confirm-panel.dg-msl-bonus-orders-panel {
+    width: min(1120px, calc(100vw - 2.5rem));
+    max-width: none;
+    max-height: min(92vh, 720px);
+    display: flex;
+    flex-direction: column;
+  }
   .dg-msl-plans-panel .card-body {
     overflow: auto;
     min-height: 0;
@@ -897,6 +904,66 @@
     line-height: 1.2;
     letter-spacing: -0.01em;
     white-space: nowrap;
+  }
+  .dg-msl-bonus-open {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .dg-msl-tot-cell.is-accent-bonus:hover {
+    background: #eef8f1;
+  }
+  .dg-msl-bonus-open .dg-msl-tot-sub {
+    text-decoration: underline;
+    text-decoration-color: transparent;
+    text-underline-offset: 0.15rem;
+  }
+  .dg-msl-bonus-open:hover .dg-msl-tot-sub {
+    text-decoration-color: #94a3b8;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="manager-sales"] .dg-msl-bonus-orders-panel .card-header {
+    text-transform: uppercase;
+    letter-spacing: 0.01em;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="manager-sales"] .dg-msl-bonus-orders-panel .card-body {
+    overflow: auto;
+  }
+  .dg-msl-bonus-orders-table {
+    font-size: 0.82rem;
+  }
+  .dg-msl-bonus-orders-table th,
+  .dg-msl-bonus-orders-table td {
+    vertical-align: middle;
+    white-space: nowrap;
+    user-select: text;
+    -webkit-user-select: text;
+  }
+  .dg-msl-bonus-orders-sum {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1rem;
+    font-size: 0.875rem;
+  }
+  .dg-msl-bonus-orders-sum .chip {
+    background: #f0f3f8;
+    border-radius: 0.35rem;
+    padding: 0.25rem 0.55rem;
+  }
+  .dg-msl-bonus-orders-sum .chip.warn {
+    background: #fff3cd;
+  }
+  .dg-msl-bonus-orders-sum .chip.ok {
+    background: #d1e7dd;
   }
   .dg-msl-tot-cell.is-accent-bonus .dg-msl-tot-val {
     color: #146c43;
@@ -2337,6 +2404,39 @@
             </div>
           </div>
 
+          <div id="dg-msl-bonus-orders-overlay" class="dg-msl-confirm-overlay" style="display: none" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="dg-msl-bonus-orders-title">
+            <div class="dg-msl-confirm-backdrop" id="dg-msl-bonus-orders-backdrop" data-dg-no-activity="1"></div>
+            <div class="dg-msl-confirm-panel card shadow-lg border-0 dg-msl-bonus-orders-panel">
+              <div class="card-header d-flex justify-content-between align-items-center py-2 gap-2">
+                <div class="fw-semibold" id="dg-msl-bonus-orders-title">Премия из продаж — заказы</div>
+                <button type="button" class="btn-close" id="dg-msl-bonus-orders-x" aria-label="Закрыть" data-dg-no-activity="1"></button>
+              </div>
+              <div class="card-body">
+                <p class="small text-muted mb-2" id="dg-msl-bonus-orders-meta"></p>
+                <div class="dg-msl-bonus-orders-sum mb-3" id="dg-msl-bonus-orders-sum"></div>
+                <div class="table-responsive">
+                  <table class="table table-sm table-bordered mb-0 dg-msl-bonus-orders-table">
+                    <thead>
+                      <tr>
+                        <th>Счёт</th>
+                        <th>Организация</th>
+                        <th>Статус</th>
+                        <th>Оплата</th>
+                        <th>Отгрузка</th>
+                        <th>Diff</th>
+                        <th>Премия</th>
+                      </tr>
+                    </thead>
+                    <tbody id="dg-msl-bonus-orders-tbody"></tbody>
+                  </table>
+                </div>
+              </div>
+              <div class="card-footer d-flex justify-content-end bg-white border-top-0">
+                <button type="button" class="btn btn-outline-secondary" id="dg-msl-bonus-orders-close" data-dg-no-activity="1">Закрыть</button>
+              </div>
+            </div>
+          </div>
+
           <div id="dg-msl-confirm-overlay" class="dg-msl-confirm-overlay" style="display: none" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="dg-msl-confirm-title">
             <div class="dg-msl-confirm-backdrop" id="dg-msl-confirm-backdrop"></div>
             <div class="dg-msl-confirm-panel card shadow-lg border-0">
@@ -3018,6 +3118,13 @@
     return f && f.formatMoney ? f.formatMoney(v) : String(v);
   }
 
+  function fmtYmdUi(v) {
+    if (!v) return "—";
+    var f = fmt();
+    if (f && f.formatDate) return f.formatDate(v);
+    return String(v);
+  }
+
   function moneyInt(v) {
     if (v == null || v === "") return "—";
     var n = Number(v);
@@ -3671,7 +3778,8 @@
             "</strong>" +
             (waitN ? " · " + esc(String(waitN)) + " зак." : "") +
             "</span>"
-          : "");
+          : "") +
+        '<br><span class="text-muted">клик — заказы</span>';
     } else if (fk.unshipped_count > 0 && fk.unshipped_bonus > 0) {
       bonusSub =
         "Отгружено: <strong>" +
@@ -3729,16 +3837,21 @@
       "</div></div>" +
       '<div class="dg-msl-tot-sub">После вычета НДС, налога 16% и доставки</div></div>' +
       '<div class="dg-msl-tot-cell is-accent-bonus">' +
-      '<div><div class="dg-msl-tot-head"><span class="dg-msl-tot-title">Премия</span>' +
+      (fk.bonus_payable != null
+        ? '<button type="button" class="dg-msl-bonus-open" data-msl-bonus-orders="1" data-dg-notify-start="Загружаем заказы премии…" title="Заказы: отгрузка и резерв">'
+        : "<div>") +
+      '<div class="dg-msl-tot-head"><span class="dg-msl-tot-title">Премия</span>' +
       (p && p.pct_mp != null
         ? '<span class="dg-msl-tot-tag is-green">% МП. ' + esc(num(p.pct_mp, 0)) + "%</span>"
         : "") +
       '</div><div class="dg-msl-tot-val">' +
       esc(fk.bonus_payable != null ? money(bonusMain) : moneyInt(bonusMain)) +
-      "</div></div>" +
+      "</div>" +
       '<div class="dg-msl-tot-sub">' +
       bonusSub +
-      "</div></div>" +
+      "</div>" +
+      (fk.bonus_payable != null ? "</button>" : "</div>") +
+      "</div>" +
       "</div>";
 
     // 2. Полоса выполнения плана и шкалы ступеней % МП.
@@ -7167,8 +7280,165 @@
       loadMslLog();
     });
   }
+  function showBonusOrders(show) {
+    var ov = el("dg-msl-bonus-orders-overlay");
+    if (!ov) return;
+    ov.style.display = show ? "flex" : "none";
+    ov.setAttribute("aria-hidden", show ? "false" : "true");
+  }
+
+  function closeBonusOrders() {
+    showBonusOrders(false);
+  }
+
+  function monthTitleRu(year, month) {
+    var n = Number(month);
+    var name = MONTH_NAMES[n] || "";
+    if (name) name = name.charAt(0).toUpperCase() + name.slice(1);
+    return (name + " " + (year || "")).trim();
+  }
+
+  function openBonusOrdersModal() {
+    var mid = state.manager_user_id;
+    if (!mid || String(mid) === "all") {
+      toast("warning", "Выберите одного менеджера — список заказов открывается по человеку.");
+      return;
+    }
+    if (!state.month || String(state.month) === "all") {
+      toast("warning", "Выберите месяц.");
+      return;
+    }
+    var title = el("dg-msl-bonus-orders-title");
+    var meta = el("dg-msl-bonus-orders-meta");
+    var sum = el("dg-msl-bonus-orders-sum");
+    var tb = el("dg-msl-bonus-orders-tbody");
+    var who = managerLabelById(mid);
+    if (title) {
+      title.textContent = "Премия из продаж · " + who + " · " + monthTitleRu(state.year, state.month);
+    }
+    if (meta) meta.textContent = "Загрузка…";
+    if (sum) sum.innerHTML = "";
+    if (tb) tb.innerHTML = '<tr><td colspan="7" class="text-muted">Загрузка…</td></tr>';
+    showBonusOrders(true);
+    var q =
+      "/api/manager-sales/bonus-orders?year=" +
+      encodeURIComponent(state.year) +
+      "&month=" +
+      encodeURIComponent(state.month) +
+      "&manager_user_id=" +
+      encodeURIComponent(mid);
+    fetch(q, { credentials: "same-origin" })
+      .then(json)
+      .then(function (j) {
+        var s = j.summary || {};
+        var orders = j.orders || [];
+        var name = (j.manager && j.manager.full_name) || who;
+        if (title) {
+          title.textContent =
+            "Премия из продаж · " + name + " · " + monthTitleRu(j.year || state.year, j.month || state.month);
+        }
+        if (meta) {
+          meta.textContent =
+            "Менеджер по продажам" +
+            (s.pct_mp != null ? " · " + s.pct_mp + "% МП." : "") +
+            " · к выплате — только отгруженные; клик по счёту открывает заказ";
+        }
+        if (sum) {
+          sum.innerHTML =
+            '<span class="chip ok">к выплате ' +
+            esc(money(s.bonus_payable)) +
+            "</span>" +
+            '<span class="chip">начислено ' +
+            esc(money(s.bonus_accrued)) +
+            "</span>" +
+            (Number(s.bonus_unshipped) > 0.004
+              ? '<span class="chip warn">ждёт отгрузки ' +
+                esc(money(s.bonus_unshipped)) +
+                (s.unshipped_count ? " · " + esc(String(s.unshipped_count)) + " зак." : "") +
+                "</span>"
+              : "");
+        }
+        if (!tb) return;
+        if (!orders.length) {
+          tb.innerHTML = '<tr><td colspan="7" class="text-muted">Нет оплаченных заказов за этот месяц</td></tr>';
+          return;
+        }
+        var sorted = orders.slice().sort(function (a, b) {
+          var rank = { waiting: 0, shipped: 1, refund: 2 };
+          var ra = rank[a.bucket] != null ? rank[a.bucket] : 9;
+          var rb = rank[b.bucket] != null ? rank[b.bucket] : 9;
+          if (ra !== rb) return ra - rb;
+          return String(a.paid_at || "").localeCompare(String(b.paid_at || ""));
+        });
+        tb.innerHTML = sorted
+          .map(function (o) {
+            var badge =
+              o.bucket === "shipped"
+                ? '<span class="badge bg-success">к выплате</span>'
+                : o.bucket === "waiting"
+                  ? o.shipped_at || o.shipped_effective
+                    ? '<span class="badge bg-warning text-dark">отгрузка позже</span>'
+                    : '<span class="badge bg-warning text-dark">ждёт</span>'
+                  : '<span class="badge bg-secondary">возврат</span>';
+            var inv = esc(o.our_invoice_no || "—");
+            var href = safeHref(o.order_url);
+            if (href) {
+              inv = '<a href="' + esc(href) + '" target="_blank" rel="noopener">' + inv + "</a>";
+            }
+            var shipTxt = fmtYmdUi(o.shipped_effective || o.shipped_at);
+            if (o.bucket === "waiting" && !(o.shipped_at || o.shipped_effective)) shipTxt = "—";
+            else if (o.shipped_fallback) shipTxt += ' <span class="text-muted">(≈ оплата)</span>';
+            var stExtra = o.status && o.bucket !== "shipped" ? " · " + esc(o.status) : "";
+            return (
+              "<tr" +
+              (o.bucket === "waiting" ? ' class="table-warning"' : "") +
+              "><td>" +
+              inv +
+              (o.handed ? ' <span class="badge bg-info text-dark">передан</span>' : "") +
+              (o.paid_prior ? ' <span class="badge bg-secondary">оплата ранее</span>' : "") +
+              "</td><td>" +
+              esc(o.invoice_org || "—") +
+              "</td><td>" +
+              badge +
+              stExtra +
+              "</td><td>" +
+              esc(fmtYmdUi(o.paid_at)) +
+              "</td><td>" +
+              shipTxt +
+              "</td><td>" +
+              esc(money(o.diff)) +
+              "</td><td>" +
+              esc(money(o.bonus_share)) +
+              "</td></tr>"
+            );
+          })
+          .join("");
+      })
+      .catch(function (e) {
+        if (meta) meta.textContent = (e && e.message) || "Ошибка";
+        if (tb) {
+          tb.innerHTML =
+            '<tr><td colspan="7" class="text-danger">' + esc((e && e.message) || "Ошибка") + "</td></tr>";
+        }
+        toast("danger", (e && e.message) || "Не удалось загрузить заказы");
+      });
+  }
+
+  var bonusHost = el("dg-msl-totals");
+  if (bonusHost) {
+    bonusHost.addEventListener("click", function (ev) {
+      var btn = ev.target && ev.target.closest ? ev.target.closest("[data-msl-bonus-orders]") : null;
+      if (!btn) return;
+      openBonusOrdersModal();
+    });
+  }
+  ["dg-msl-bonus-orders-x", "dg-msl-bonus-orders-close", "dg-msl-bonus-orders-backdrop"].forEach(function (id) {
+    if (el(id)) el(id).addEventListener("click", closeBonusOrders);
+  });
+
   document.addEventListener("keydown", function (ev) {
     if (ev.key === "Escape") {
+      closeBonusOrders();
       closePickManager();
       closeHandOver();
       closeSuppUrl();

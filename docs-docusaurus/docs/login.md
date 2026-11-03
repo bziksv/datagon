@@ -14,7 +14,7 @@ description: /login.html и /no-access.html — сессия, редирект t
 
 1. Query **`?then=/path.html`** — желаемый URL после входа (сохраняется и уходит в `POST /api/auth/login` как `then`).
 2. При уже валидной сессии страница сразу зовёт `GET /api/auth/me?then=…` и делает `location.replace` на `redirect_after_login`.
-3. Успешный логин: `localStorage` (`authToken`, `currentUser`, `page_modes`…), затем `POST /api/auth/sync-session-cookie` (httpOnly `dg_session`), редирект на `redirect_after_login`.
+3. Успешный логин: `localStorage` (`authToken`, `currentUser`, `page_modes`…), затем `POST /api/auth/sync-session-cookie` (httpOnly `dg_session`), редирект на `redirect_after_login`. Лимит сессий общий для сайта; вход на локалке (`npm run dev:local`) его не занимает и сам от входа на сайте не сбрасывается.
 4. Ошибки (неверный пароль, архивный пользователь → 403) — inline `.dg-login-error` (не toast).
 5. Ссылки на юридические страницы `/legal/*` в подвале; cookie-баннер для неавторизованных — см. [deploy](/docs/deploy/).
 

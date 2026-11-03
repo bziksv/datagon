@@ -319,6 +319,13 @@
     return f && f.formatMoney ? f.formatMoney(v) : String(v);
   }
 
+  function fmtYmdUi(v) {
+    if (!v) return "—";
+    var f = fmt();
+    if (f && f.formatDate) return f.formatDate(v);
+    return String(v);
+  }
+
   function moneyInt(v) {
     if (v == null || v === "") return "—";
     var n = Number(v);
@@ -972,7 +979,8 @@
             "</strong>" +
             (waitN ? " · " + esc(String(waitN)) + " зак." : "") +
             "</span>"
-          : "");
+          : "") +
+        '<br><span class="text-muted">клик — заказы</span>';
     } else if (fk.unshipped_count > 0 && fk.unshipped_bonus > 0) {
       bonusSub =
         "Отгружено: <strong>" +
@@ -1030,16 +1038,21 @@
       "</div></div>" +
       '<div class="dg-msl-tot-sub">После вычета НДС, налога 16% и доставки</div></div>' +
       '<div class="dg-msl-tot-cell is-accent-bonus">' +
-      '<div><div class="dg-msl-tot-head"><span class="dg-msl-tot-title">Премия</span>' +
+      (fk.bonus_payable != null
+        ? '<button type="button" class="dg-msl-bonus-open" data-msl-bonus-orders="1" data-dg-notify-start="Загружаем заказы премии…" title="Заказы: отгрузка и резерв">'
+        : "<div>") +
+      '<div class="dg-msl-tot-head"><span class="dg-msl-tot-title">Премия</span>' +
       (p && p.pct_mp != null
         ? '<span class="dg-msl-tot-tag is-green">% МП. ' + esc(num(p.pct_mp, 0)) + "%</span>"
         : "") +
       '</div><div class="dg-msl-tot-val">' +
       esc(fk.bonus_payable != null ? money(bonusMain) : moneyInt(bonusMain)) +
-      "</div></div>" +
+      "</div>" +
       '<div class="dg-msl-tot-sub">' +
       bonusSub +
-      "</div></div>" +
+      "</div>" +
+      (fk.bonus_payable != null ? "</button>" : "</div>") +
+      "</div>" +
       "</div>";
 
     // 2. Полоса выполнения плана и шкалы ступеней % МП.
@@ -4468,8 +4481,165 @@
       loadMslLog();
     });
   }
+  function showBonusOrders(show) {
+    var ov = el("dg-msl-bonus-orders-overlay");
+    if (!ov) return;
+    ov.style.display = show ? "flex" : "none";
+    ov.setAttribute("aria-hidden", show ? "false" : "true");
+  }
+
+  function closeBonusOrders() {
+    showBonusOrders(false);
+  }
+
+  function monthTitleRu(year, month) {
+    var n = Number(month);
+    var name = MONTH_NAMES[n] || "";
+    if (name) name = name.charAt(0).toUpperCase() + name.slice(1);
+    return (name + " " + (year || "")).trim();
+  }
+
+  function openBonusOrdersModal() {
+    var mid = state.manager_user_id;
+    if (!mid || String(mid) === "all") {
+      toast("warning", "Выберите одного менеджера — список заказов открывается по человеку.");
+      return;
+    }
+    if (!state.month || String(state.month) === "all") {
+      toast("warning", "Выберите месяц.");
+      return;
+    }
+    var title = el("dg-msl-bonus-orders-title");
+    var meta = el("dg-msl-bonus-orders-meta");
+    var sum = el("dg-msl-bonus-orders-sum");
+    var tb = el("dg-msl-bonus-orders-tbody");
+    var who = managerLabelById(mid);
+    if (title) {
+      title.textContent = "Премия из продаж · " + who + " · " + monthTitleRu(state.year, state.month);
+    }
+    if (meta) meta.textContent = "Загрузка…";
+    if (sum) sum.innerHTML = "";
+    if (tb) tb.innerHTML = '<tr><td colspan="7" class="text-muted">Загрузка…</td></tr>';
+    showBonusOrders(true);
+    var q =
+      "/api/manager-sales/bonus-orders?year=" +
+      encodeURIComponent(state.year) +
+      "&month=" +
+      encodeURIComponent(state.month) +
+      "&manager_user_id=" +
+      encodeURIComponent(mid);
+    fetch(q, { credentials: "same-origin" })
+      .then(json)
+      .then(function (j) {
+        var s = j.summary || {};
+        var orders = j.orders || [];
+        var name = (j.manager && j.manager.full_name) || who;
+        if (title) {
+          title.textContent =
+            "Премия из продаж · " + name + " · " + monthTitleRu(j.year || state.year, j.month || state.month);
+        }
+        if (meta) {
+          meta.textContent =
+            "Менеджер по продажам" +
+            (s.pct_mp != null ? " · " + s.pct_mp + "% МП." : "") +
+            " · к выплате — только отгруженные; клик по счёту открывает заказ";
+        }
+        if (sum) {
+          sum.innerHTML =
+            '<span class="chip ok">к выплате ' +
+            esc(money(s.bonus_payable)) +
+            "</span>" +
+            '<span class="chip">начислено ' +
+            esc(money(s.bonus_accrued)) +
+            "</span>" +
+            (Number(s.bonus_unshipped) > 0.004
+              ? '<span class="chip warn">ждёт отгрузки ' +
+                esc(money(s.bonus_unshipped)) +
+                (s.unshipped_count ? " · " + esc(String(s.unshipped_count)) + " зак." : "") +
+                "</span>"
+              : "");
+        }
+        if (!tb) return;
+        if (!orders.length) {
+          tb.innerHTML = '<tr><td colspan="7" class="text-muted">Нет оплаченных заказов за этот месяц</td></tr>';
+          return;
+        }
+        var sorted = orders.slice().sort(function (a, b) {
+          var rank = { waiting: 0, shipped: 1, refund: 2 };
+          var ra = rank[a.bucket] != null ? rank[a.bucket] : 9;
+          var rb = rank[b.bucket] != null ? rank[b.bucket] : 9;
+          if (ra !== rb) return ra - rb;
+          return String(a.paid_at || "").localeCompare(String(b.paid_at || ""));
+        });
+        tb.innerHTML = sorted
+          .map(function (o) {
+            var badge =
+              o.bucket === "shipped"
+                ? '<span class="badge bg-success">к выплате</span>'
+                : o.bucket === "waiting"
+                  ? o.shipped_at || o.shipped_effective
+                    ? '<span class="badge bg-warning text-dark">отгрузка позже</span>'
+                    : '<span class="badge bg-warning text-dark">ждёт</span>'
+                  : '<span class="badge bg-secondary">возврат</span>';
+            var inv = esc(o.our_invoice_no || "—");
+            var href = safeHref(o.order_url);
+            if (href) {
+              inv = '<a href="' + esc(href) + '" target="_blank" rel="noopener">' + inv + "</a>";
+            }
+            var shipTxt = fmtYmdUi(o.shipped_effective || o.shipped_at);
+            if (o.bucket === "waiting" && !(o.shipped_at || o.shipped_effective)) shipTxt = "—";
+            else if (o.shipped_fallback) shipTxt += ' <span class="text-muted">(≈ оплата)</span>';
+            var stExtra = o.status && o.bucket !== "shipped" ? " · " + esc(o.status) : "";
+            return (
+              "<tr" +
+              (o.bucket === "waiting" ? ' class="table-warning"' : "") +
+              "><td>" +
+              inv +
+              (o.handed ? ' <span class="badge bg-info text-dark">передан</span>' : "") +
+              (o.paid_prior ? ' <span class="badge bg-secondary">оплата ранее</span>' : "") +
+              "</td><td>" +
+              esc(o.invoice_org || "—") +
+              "</td><td>" +
+              badge +
+              stExtra +
+              "</td><td>" +
+              esc(fmtYmdUi(o.paid_at)) +
+              "</td><td>" +
+              shipTxt +
+              "</td><td>" +
+              esc(money(o.diff)) +
+              "</td><td>" +
+              esc(money(o.bonus_share)) +
+              "</td></tr>"
+            );
+          })
+          .join("");
+      })
+      .catch(function (e) {
+        if (meta) meta.textContent = (e && e.message) || "Ошибка";
+        if (tb) {
+          tb.innerHTML =
+            '<tr><td colspan="7" class="text-danger">' + esc((e && e.message) || "Ошибка") + "</td></tr>";
+        }
+        toast("danger", (e && e.message) || "Не удалось загрузить заказы");
+      });
+  }
+
+  var bonusHost = el("dg-msl-totals");
+  if (bonusHost) {
+    bonusHost.addEventListener("click", function (ev) {
+      var btn = ev.target && ev.target.closest ? ev.target.closest("[data-msl-bonus-orders]") : null;
+      if (!btn) return;
+      openBonusOrdersModal();
+    });
+  }
+  ["dg-msl-bonus-orders-x", "dg-msl-bonus-orders-close", "dg-msl-bonus-orders-backdrop"].forEach(function (id) {
+    if (el(id)) el(id).addEventListener("click", closeBonusOrders);
+  });
+
   document.addEventListener("keydown", function (ev) {
     if (ev.key === "Escape") {
+      closeBonusOrders();
       closePickManager();
       closeHandOver();
       closeSuppUrl();

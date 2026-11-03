@@ -115,7 +115,7 @@ Body:
 { "username": "admin", "password": "...", "then": "/dashboard.html" }
 ```
 
-`then` опционален. В ответе — `auth_token`, `page_modes`, **`redirect_after_login`** (безопасный путь; при полностью закрытой матрице — `/no-access.html`). Cookie сессии `dg_session`: `httpOnly` + `SameSite=Lax` + **`Secure`** за TLS (`X-Forwarded-Proto` / `req.secure`, либо `DATAGON_COOKIE_SECURE=1|0`). Rate-limit: **5** неудачных попыток на IP+username за **15** мин → **429** `LOGIN_RATE_LIMIT`. Лимит параллельных сессий (`auth_session_user_limit`, по умолчанию 1) применяется **и к admin** (F-AUTH-07): лишние старые revoke при новом логине. Неизвестный `/api/*` без записи в `API_PREFIX_RULES` → **403** `API_UNMATCHED`; отсутствие ключа в `page_modes` → **`hidden`** (не `full`). HTML-лист вне `PAGE_DEFS` (напр. `/ref/*.html`) для не-admin → redirect **`/no-access.html`** (F-ACL-04); `login` / `legal` / admin — без изменений. **`/docs/*`** — только **admin** (F-PUB-05); **`/doc-screenshots/*`** и **`/architectui-react-pro`** требуют сессию (F-PUB-02). Express **`trust proxy`** по умолчанию 1 (F-DEP-07).
+`then` опционален. В ответе — `auth_token`, `page_modes`, **`redirect_after_login`** (безопасный путь; при полностью закрытой матрице — `/no-access.html`). Cookie сессии `dg_session`: `httpOnly` + `SameSite=Lax` + **`Secure`** за TLS (`X-Forwarded-Proto` / `req.secure`, либо `DATAGON_COOKIE_SECURE=1|0`). Rate-limit: **5** неудачных попыток на IP+username за **15** мин → **429** `LOGIN_RATE_LIMIT`. Лимит параллельных сессий (`auth_session_user_limit`, по умолчанию 1) применяется **и к admin** (F-AUTH-07): лишние старые revoke при новом логине. Сессия локального процесса (`DATAGON_AUTO_SYNC_SCHEDULER=off`, колонка `auth_sessions.is_dev=1`) в этот лимит не входит и продом не отзывается. Неизвестный `/api/*` без записи в `API_PREFIX_RULES` → **403** `API_UNMATCHED`; отсутствие ключа в `page_modes` → **`hidden`** (не `full`). HTML-лист вне `PAGE_DEFS` (напр. `/ref/*.html`) для не-admin → redirect **`/no-access.html`** (F-ACL-04); `login` / `legal` / admin — без изменений. **`/docs/*`** — только **admin** (F-PUB-05); **`/doc-screenshots/*`** и **`/architectui-react-pro`** требуют сессию (F-PUB-02). Express **`trust proxy`** по умолчанию 1 (F-DEP-07).
 
 ### POST `/api/login`
 Legacy-алиас входа (тот же обработчик, что и выше).
@@ -2307,6 +2307,10 @@ Query: `year`, `month` (1–12; без параметра — все месяц�
 - `plan_ladder`: визуальная шкала ступеней `% МП.` (`steps[]`, `completion_pct`, `next_step` с расчётом остатка до следующей ступени в рублях и средних чеках, а также мгновенного прироста премии `bonus_gain_on_current_diff` и прогнозной премии `projected_total_bonus`);
 - `ops_benchmarks`: сравнительные показатели менеджера из Операционного листа (`apps_per_sale` — отношение продаж к заявкам*, `avg_check` — средний чек, `company_pct` — % от оборота с вычетом зарплат, `profit_pct` — общий % прибыли за месяц, `turnover` — оборот) с местом в рейтинге среди активных менеджеров (`rank`, `peers_count`), средним по отделу (`team_avg`), значением лидера (`leader_value`, а для ролей с `can_pick_manager` также `leader_name`), средним самого менеджера за год (`own_year_avg`, `vs_year_avg_delta`) и динамикой к прошлому месяцу/году (`mom_delta`, `yoy_delta`);
 - `recommendations`: массив персональных рекомендаций и точек роста (`id`, `tone`, `badge`, `title`, `text`).
+
+### GET `/api/manager-sales/bonus-orders`
+
+Query: `year`, `month` (1–12), `manager_user_id` (один id, не `all`). Доступ — как у карточки аналитики (`can_view_analytics` на этого менеджера). Ответ: `{ success, year, month, manager: { id, full_name }, summary: { bonus_accrued, bonus_payable, bonus_unshipped, unshipped_count, pct_mp }, orders[] }`. Строки те же, что модалка графика: `bucket` `shipped` | `waiting` | `refund`, `paid_prior`, `handed`, `bonus_share`, `order_url`. Источник — `fetchManagerBonusOrderDetails`.
 
 ### GET `/api/manager-sales/plans`
 

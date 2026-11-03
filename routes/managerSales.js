@@ -28,6 +28,7 @@ const {
     splitNonEmptyLines,
 } = require('../lib/managerSalesCalc');
 const { buildManagerSalesInsights } = require('../lib/managerSalesInsights');
+const { fetchManagerBonusOrderDetails } = require('../lib/managerSalesMonthBonus');
 
 const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 500;
@@ -2190,6 +2191,50 @@ module.exports = function managerSalesRouterFactory(db) {
             });
         } catch (e) {
             res.status(500).json({ error: e.message || 'Ошибка индивидуального плана' });
+        }
+    });
+
+    /** Расшифровка премии месяца: те же заказы, что модалка «Премия из продаж» на графике. */
+    router.get('/bonus-orders', async (req, res) => {
+        try {
+            const q = req.query || {};
+            const year = Number(q.year);
+            const month = Number(q.month);
+            const managerId = Number(q.manager_user_id);
+            if (!Number.isFinite(year) || year < MIN_YEAR || year > MAX_YEAR || !Number.isFinite(month) || month < 1 || month > 12) {
+                return res.status(400).json({ error: 'Нужны year и month' });
+            }
+            if (!Number.isFinite(managerId) || managerId < 1) {
+                return res.status(400).json({ error: 'Выберите одного менеджера' });
+            }
+            if (!canViewAnalytics(req, managerId)) {
+                return res.status(403).json({ error: 'Нет доступа к аналитике этого менеджера' });
+            }
+            const details = await fetchManagerBonusOrderDetails(db, managerId, year, month);
+            const [users] = await db.query(
+                'SELECT full_name, username FROM users WHERE id = ? LIMIT 1',
+                [managerId]
+            );
+            const u = users && users[0];
+            res.json({
+                success: true,
+                year,
+                month,
+                manager: {
+                    id: managerId,
+                    full_name: u ? String(u.full_name || u.username || '') : '',
+                },
+                summary: {
+                    bonus_accrued: details.bonus,
+                    bonus_payable: details.bonus_payable,
+                    bonus_unshipped: details.bonus_unshipped,
+                    unshipped_count: details.unshipped_count,
+                    pct_mp: details.pct_mp,
+                },
+                orders: details.orders || [],
+            });
+        } catch (e) {
+            res.status(500).json({ error: e.message || 'Ошибка расшифровки премии' });
         }
     });
 

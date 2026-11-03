@@ -79,7 +79,18 @@ module.exports = (db, appSettings = {}) => {
             SET is_archived = 0
             WHERE username = 'admin' AND COALESCE(is_archived, 0) = 1
         `);
+        const [devCols] = await db.query("SHOW COLUMNS FROM auth_sessions LIKE 'is_dev'");
+        if (!devCols.length) {
+            await db.query(
+                'ALTER TABLE auth_sessions ADD COLUMN is_dev TINYINT(1) NOT NULL DEFAULT 0 AFTER revoked'
+            );
+        }
         authSchemaReady = true;
+    }
+
+    /** Локальный `npm run dev:local` (scheduler off) делит БД с продом, но не слот сессии. */
+    function isDevSessionProcess() {
+        return String(process.env.DATAGON_AUTO_SYNC_SCHEDULER || '').trim().toLowerCase() === 'off';
     }
 
     function getSessionPolicy() {
@@ -844,6 +855,8 @@ module.exports = (db, appSettings = {}) => {
             const { ttlDays, userLimit } = getSessionPolicy();
 
             // F-AUTH-07: лимит активных сессий и для admin (раньше обходили).
+            // Локалка и прод — разные слоты: вход на 127.0.0.1 не гасит сессию p.datagon.ru.
+            const devSession = isDevSessionProcess() ? 1 : 0;
             {
                 const [activeSessions] = await db.query(`
                     SELECT id
@@ -851,8 +864,9 @@ module.exports = (db, appSettings = {}) => {
                     WHERE user_id = ?
                       AND revoked = 0
                       AND expires_at > NOW()
+                      AND COALESCE(is_dev, 0) = ?
                     ORDER BY created_at DESC, id DESC
-                `, [user.id]);
+                `, [user.id, devSession]);
                 if (activeSessions.length >= userLimit) {
                     const idsToRevoke = activeSessions.slice(userLimit - 1).map((s) => s.id).filter(Boolean);
                     if (idsToRevoke.length) {
@@ -869,8 +883,8 @@ module.exports = (db, appSettings = {}) => {
             const token = newSessionToken();
             const tokenHash = sha256(token);
             await db.query(
-                'INSERT INTO auth_sessions (user_id, token_hash, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL ? DAY))',
-                [user.id, tokenHash, ttlDays]
+                'INSERT INTO auth_sessions (user_id, token_hash, expires_at, is_dev) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL ? DAY), ?)',
+                [user.id, tokenHash, ttlDays, devSession]
             );
             clearLoginFailures(req, username);
             await recordDatagonActivity(db, {
