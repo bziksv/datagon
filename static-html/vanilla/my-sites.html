@@ -60,6 +60,19 @@
     .dg-msites-stores-box .form-check {
       margin-bottom: 0.25rem;
     }
+    .dg-msites-conn-box {
+      border: 1px solid #e6e9ee;
+      border-radius: 0.5rem;
+      background: #fff;
+      padding: 0.85rem 1rem 1rem;
+    }
+    .dg-msites-conn-box--mirror {
+      background: #f7f8fa;
+    }
+    .dg-msites-conn-title {
+      font-weight: 600;
+      margin-bottom: 0.35rem;
+    }
   </style>
 
   <style>
@@ -1015,22 +1028,52 @@
                       </select>
                     </div>
                   </div>
-                  <div class="row g-2 mt-1">
-                    <div class="col-md-3">
-                      <label class="form-label" for="ms-db_host">Хост БД *</label>
-                      <input type="text" class="form-control" id="ms-db_host" autocomplete="off" />
+                  <div class="dg-msites-conn-box mt-3">
+                    <div class="dg-msites-conn-title">Основное подключение</div>
+                    <div class="row g-2">
+                      <div class="col-md-3">
+                        <label class="form-label" for="ms-db_host">Хост БД *</label>
+                        <input type="text" class="form-control" id="ms-db_host" autocomplete="off" />
+                      </div>
+                      <div class="col-md-3">
+                        <label class="form-label" for="ms-db_name">Имя БД *</label>
+                        <input type="text" class="form-control" id="ms-db_name" autocomplete="off" />
+                      </div>
+                      <div class="col-md-3">
+                        <label class="form-label" for="ms-db_user">Пользователь *</label>
+                        <input type="text" class="form-control" id="ms-db_user" autocomplete="off" />
+                      </div>
+                      <div class="col-md-3">
+                        <label class="form-label" for="ms-db_pass">Пароль *</label>
+                        <input type="password" class="form-control" id="ms-db_pass" autocomplete="current-password" />
+                      </div>
                     </div>
-                    <div class="col-md-3">
-                      <label class="form-label" for="ms-db_name">Имя БД *</label>
-                      <input type="text" class="form-control" id="ms-db_name" autocomplete="off" />
+                  </div>
+                  <div class="dg-msites-conn-box dg-msites-conn-box--mirror mt-3">
+                    <div class="dg-msites-conn-title">Зеркало</div>
+                    <div class="form-text mb-2">
+                      Необязательно. Свой хост, своя база и свой пользователь.
+                      Пустые имя, пользователь и пароль берутся с основного.
+                      Если основной не открывается, чтение и запись идут сюда.
+                      Каталог не выключается, пока ни один хост не ответил.
                     </div>
-                    <div class="col-md-3">
-                      <label class="form-label" for="ms-db_user">Пользователь *</label>
-                      <input type="text" class="form-control" id="ms-db_user" autocomplete="off" />
-                    </div>
-                    <div class="col-md-3">
-                      <label class="form-label" for="ms-db_pass">Пароль *</label>
-                      <input type="password" class="form-control" id="ms-db_pass" autocomplete="current-password" />
+                    <div class="row g-2">
+                      <div class="col-md-3">
+                        <label class="form-label" for="ms-db_host_mirror">Хост</label>
+                        <input type="text" class="form-control" id="ms-db_host_mirror" autocomplete="off" placeholder="пусто — зеркала нет" />
+                      </div>
+                      <div class="col-md-3">
+                        <label class="form-label" for="ms-db_name_mirror">Имя БД</label>
+                        <input type="text" class="form-control" id="ms-db_name_mirror" autocomplete="off" placeholder="как у основного" />
+                      </div>
+                      <div class="col-md-3">
+                        <label class="form-label" for="ms-db_user_mirror">Пользователь</label>
+                        <input type="text" class="form-control" id="ms-db_user_mirror" autocomplete="off" placeholder="как у основного" />
+                      </div>
+                      <div class="col-md-3">
+                        <label class="form-label" for="ms-db_pass_mirror">Пароль</label>
+                        <input type="password" class="form-control" id="ms-db_pass_mirror" autocomplete="new-password" placeholder="как у основного" />
+                      </div>
                     </div>
                   </div>
                   <div class="row g-2 mt-1" id="ms-fields-webasyst" style="display:none">
@@ -1412,6 +1455,10 @@
         db_name: "",
         db_user: "",
         db_pass: "",
+        db_host_mirror: "",
+        db_name_mirror: "",
+        db_user_mirror: "",
+        db_pass_mirror: "",
         table_products: "b_catalog_product",
         field_name: "NAME",
         field_sku: "ARTICLE",
@@ -1652,6 +1699,10 @@
           db_name: document.getElementById("ms-db_name").value.trim(),
           db_user: document.getElementById("ms-db_user").value.trim(),
           db_pass: document.getElementById("ms-db_pass").value,
+          db_host_mirror: document.getElementById("ms-db_host_mirror").value.trim(),
+          db_name_mirror: document.getElementById("ms-db_name_mirror").value.trim(),
+          db_user_mirror: document.getElementById("ms-db_user_mirror").value.trim(),
+          db_pass_mirror: document.getElementById("ms-db_pass_mirror").value,
           wa_table_skus: document.getElementById("ms-wa_table_skus").value.trim() || DEFAULT_FORM.wa_table_skus,
           wa_field_sku_val: document.getElementById("ms-wa_field_sku_val").value.trim() || DEFAULT_FORM.wa_field_sku_val,
           wa_field_price_val: document.getElementById("ms-wa_field_price_val").value.trim() || DEFAULT_FORM.wa_field_price_val,
@@ -1682,6 +1733,12 @@
       function applyDefaultsToInputs() {
         document.getElementById("ms-cms_type").value = DEFAULT_FORM.cms_type;
         document.getElementById("ms-db_host").value = DEFAULT_FORM.db_host;
+        document.getElementById("ms-db_host_mirror").value = DEFAULT_FORM.db_host_mirror;
+        document.getElementById("ms-db_name_mirror").value = DEFAULT_FORM.db_name_mirror;
+        document.getElementById("ms-db_user_mirror").value = DEFAULT_FORM.db_user_mirror;
+        var mirrorPass = document.getElementById("ms-db_pass_mirror");
+        mirrorPass.value = "";
+        mirrorPass.placeholder = "как у основного";
         document.getElementById("ms-table_products-bx").value = DEFAULT_FORM.table_products;
         document.getElementById("ms-table_products-wa").value = DEFAULT_FORM.table_products;
         document.getElementById("ms-field_name").value = DEFAULT_FORM.field_name;
@@ -1706,11 +1763,19 @@
         document.getElementById("ms-db_host").value = s.db_host || "";
         document.getElementById("ms-db_name").value = s.db_name || "";
         document.getElementById("ms-db_user").value = s.db_user || "";
+        document.getElementById("ms-db_host_mirror").value = s.db_host_mirror || "";
+        document.getElementById("ms-db_name_mirror").value = s.db_name_mirror || "";
+        document.getElementById("ms-db_user_mirror").value = s.db_user_mirror || "";
         var passEl = document.getElementById("ms-db_pass");
         passEl.value = "";
         passEl.placeholder = s.db_pass_set
           ? "сохранён: " + (s.db_pass_mask || "••••") + " — пусто = не менять"
           : "Пароль CMS";
+        var mirrorPassEl = document.getElementById("ms-db_pass_mirror");
+        mirrorPassEl.value = "";
+        mirrorPassEl.placeholder = s.db_pass_mirror_set
+          ? "сохранён: " + (s.db_pass_mirror_mask || "••••") + " — пусто = не менять"
+          : "как у основного";
         document.getElementById("ms-table_products-bx").value = s.table_products || DEFAULT_FORM.table_products;
         document.getElementById("ms-table_products-wa").value = s.table_products || DEFAULT_FORM.table_products;
         document.getElementById("ms-field_name").value = s.field_name || DEFAULT_FORM.field_name;
@@ -2037,6 +2102,20 @@
         };
       }
 
+      function mirrorCredLine(s) {
+        var bits = [s.db_host_mirror];
+        if (s.db_name_mirror) bits.push(s.db_name_mirror);
+        if (s.db_user_mirror) bits.push(s.db_user_mirror);
+        return bits.join(" · ");
+      }
+
+      function mirrorCredTail(s) {
+        var bits = [];
+        if (s.db_name_mirror) bits.push(s.db_name_mirror);
+        if (s.db_user_mirror) bits.push(s.db_user_mirror);
+        return bits.length ? " · " + bits.join(" · ") : "";
+      }
+
       function renderTable() {
         var tbody = document.getElementById("ms-tbody");
         var filtered = getSortedSites(getFilteredSites());
@@ -2063,6 +2142,39 @@
           sub.className = "small text-muted";
           sub.textContent = "CMS: " + (s.cms_type || "bitrix");
           tdName.appendChild(sub);
+          var link = document.createElement("div");
+          link.className = "small mt-1";
+          var role = String(s.cms_db_last_role || "");
+          var lastHost = String(s.cms_db_last_host || "");
+          if (role === "mirror" && lastHost) {
+            var badge = document.createElement("span");
+            badge.className = "badge bg-warning text-dark";
+            badge.textContent = "зеркало";
+            link.appendChild(badge);
+            link.appendChild(document.createTextNode(" " + lastHost + mirrorCredTail(s)));
+          } else if (role === "primary" && lastHost) {
+            var badgeOk = document.createElement("span");
+            badgeOk.className = "badge bg-light text-muted border";
+            badgeOk.textContent = "основной";
+            link.appendChild(badgeOk);
+            link.appendChild(document.createTextNode(" " + lastHost));
+            if (s.db_host_mirror) {
+              var cfg = document.createElement("div");
+              cfg.className = "small text-muted";
+              cfg.textContent = "зеркало: " + mirrorCredLine(s);
+              link.appendChild(cfg);
+            }
+          } else if (s.db_host_mirror) {
+            link.className = "small mt-1 text-muted";
+            link.textContent = "зеркало: " + mirrorCredLine(s);
+          }
+          if (s.cms_db_last_error) {
+            var err = document.createElement("div");
+            err.className = "small text-danger";
+            err.textContent = String(s.cms_db_last_error).slice(0, 180);
+            link.appendChild(err);
+          }
+          if (link.childNodes.length) tdName.appendChild(link);
           var tdDom = document.createElement("td");
           tdDom.textContent = s.domain || "";
           var tdSt = document.createElement("td");

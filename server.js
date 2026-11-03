@@ -14,7 +14,7 @@ const {
     normalizeAutoSyncWorkerId,
 } = require('./lib/datagonAutoSyncRegistry');
 const { attachBitrixUrlKeys } = require('./lib/datagonBitrixProductUrl');
-const { openCmsDbConnection } = require('./lib/datagonCmsDb');
+const { openCmsDbConnection, cmsConnectionMeta, ensureMySitesMirrorColumns } = require('./lib/datagonCmsDb');
 
 const app = express();
 const PORT = config.port || 3000;
@@ -1134,9 +1134,11 @@ function startGlobalSyncBackground(targetSiteId = null) {
         syncState.message = 'Запуск...';
         console.log('[GLOBAL SYNC] STARTED');
         
+        const connectNotes = [];
         try {
             if (!db) throw new Error('DB not connected');
             await ensureSourceEnabledColumn();
+            await ensureMySitesMirrorColumns(db);
             await ensureCmsProductIdColumn();
             await ensureSourceIdentityIndexes();
             const hasTargetSite = Number.isFinite(Number(targetSiteId)) && Number(targetSiteId) > 0;
@@ -1197,16 +1199,20 @@ function startGlobalSyncBackground(targetSiteId = null) {
                     }
                 }
                 
-                // Сброс
-                await db.query('UPDATE my_products SET is_active = 0 WHERE site_id = ?', [site.id]);
-                
                 let conn;
                 try {
-                    conn = await openCmsDbConnection(site, { connectTimeout: 10000 });
+                    conn = await openCmsDbConnection(site, { connectTimeout: 10000, appDb: db });
                 } catch (e) {
+                    const line = `${site.name}: нет связи (${e && e.message ? e.message : e})`;
+                    connectNotes.push(line);
                     console.error(`[SYNC] Connect error ${site.name}:`, e.message);
                     continue;
                 }
+                const cmsMeta = cmsConnectionMeta(conn);
+                const via = cmsMeta.role === 'mirror' ? 'зеркало' : 'основной';
+                connectNotes.push(`${site.name}: ${via} ${cmsMeta.host}`);
+                console.log(`[SYNC] Site ${site.name}: ${via} ${cmsMeta.host}`);
+                await db.query('UPDATE my_products SET is_active = 0 WHERE site_id = ?', [site.id]);
 
                 let offset = 0;
                 const batchSize = appSettings.sync_batch_size || 500;
@@ -1265,11 +1271,16 @@ function startGlobalSyncBackground(targetSiteId = null) {
                 // await db.query('DELETE FROM my_products WHERE site_id = ? AND is_active = 0', [site.id]);
             }
             
-            syncState.message = 'Готово!';
+            const failedConnects = connectNotes.filter((line) => line.includes('нет связи'));
+            syncState.message = connectNotes.length
+                ? (failedConnects.length ? 'Часть сайтов без связи. ' : 'Готово. ') + connectNotes.join('; ')
+                : 'Готово!';
+            syncState.connectFailed = failedConnects.length;
             syncState.active = false;
-            console.log('[GLOBAL SYNC] FINISHED. Total:', totalProcessed);
+            console.log('[GLOBAL SYNC] FINISHED. Total:', totalProcessed, syncState.message);
         } catch (e) {
             syncState.message = 'Ошибка: ' + e.message;
+            syncState.connectFailed = 1;
             syncState.active = false;
             console.error('[GLOBAL SYNC] ERROR:', e);
         }
@@ -2424,7 +2435,13 @@ async function processAutoSyncQueue() {
                 await startAutoSyncRun('myproducts', triggerType);
                 if (!syncState.active) startGlobalSyncBackground();
                 const done = await waitUntil(() => !syncState.active, 12 * 60 * 60 * 1000, 1000);
-                await finishAutoSyncRun('myproducts', done ? 'completed' : 'failed', done ? 'Завершено' : 'Таймаут ожидания');
+                const note = String(syncState.message || '').trim();
+                const connectFailed = Number(syncState.connectFailed || 0) > 0;
+                await finishAutoSyncRun(
+                    'myproducts',
+                    done && !connectFailed ? 'completed' : 'failed',
+                    !done ? 'Таймаут ожидания' : note || 'Завершено'
+                );
                 console.log('[AUTO SYNC] Queue done: myproducts');
             } else if (task === 'stickers_cms') {
                 console.log('[AUTO SYNC] Queue start: stickers_cms');

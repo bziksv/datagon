@@ -888,7 +888,7 @@ function networkPricesRouterFactory(db, appSettings) {
                 if (site) {
                     let cmsConn = null;
                     try {
-                        cmsConn = await openSiteConnection(site);
+                        cmsConn = await openSiteConnection(site, { appDb: db });
                         const liveMap = await fetchLiveCmsPrices(cmsConn, site, withContent);
                         liveRows = applyLiveCmsPricesToRows(withContent, liveMap);
                     } finally {
@@ -1334,7 +1334,7 @@ function networkPricesRouterFactory(db, appSettings) {
                 return res.status(404).json({ success: false, error: 'Целевой сайт не найден' });
             }
             const site = sites[0];
-            conn = await openSiteConnection(site);
+            conn = await openSiteConnection(site, { appDb: db });
             const cmsResult = await deactivateProductInCms(conn, site, {
                 source_id: prod.source_id,
                 cms_product_id: prod.cms_product_id,
@@ -1429,7 +1429,7 @@ function networkPricesRouterFactory(db, appSettings) {
                 return res.status(404).json({ success: false, error: 'Целевой сайт не найден' });
             }
             const site = sites[0];
-            conn = await openSiteConnection(site);
+            conn = await openSiteConnection(site, { appDb: db });
             const cmsResult = await activateProductInCms(conn, site, {
                 source_id: prod.source_id,
                 cms_product_id: prod.cms_product_id,
@@ -1569,7 +1569,7 @@ function networkPricesRouterFactory(db, appSettings) {
         }
         const site = sites[0];
         let conn = null;
-        conn = await openSiteConnection(site);
+        conn = await openSiteConnection(site, { appDb: db });
         let liveMap = new Map();
         try {
             liveMap = await fetchLiveCmsPrices(conn, site, pairs);
@@ -1926,7 +1926,7 @@ networkPricesRouterFactory.triggerNetworkPricesSyncFromSettings = async function
         let conn = null;
         let siteWritten = 0;
         try {
-            conn = await openConn(site);
+            conn = await openConn(site, { appDb: db });
             let liveMap = new Map();
             try {
                 liveMap = await fetchLiveCmsPrices(conn, site, pairs || []);

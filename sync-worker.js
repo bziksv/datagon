@@ -63,7 +63,7 @@ async function runSync(siteId) {
         `);
 
         // Подключение к удаленной БД (донор)
-        dbRemote = await openCmsDbConnection(site, { connectTimeout: 10000 });
+        dbRemote = await openCmsDbConnection(site, { connectTimeout: 10000, appDb: dbLocal });
         console.log(`[Sync] Подключено к удаленной БД.`);
 
         // 1. Сброс всех товаров этого сайта в is_active = 0

@@ -11,6 +11,9 @@ const {
 const {
     assertCmsDbHostAllowed,
     openCmsDbConnection,
+    cmsConnectionMeta,
+    ensureMySitesMirrorColumns,
+    rememberCmsDbConnect,
     prepareCmsDbPassForStore,
     maskCmsDbPassFields,
     ensureMySitesDbPassColumn,
@@ -101,6 +104,54 @@ module.exports = (db, settings) => {
     }
 
     let priceMarginColReady = false;
+    async function ensureMirrorCols() {
+        await ensureMySitesMirrorColumns(db);
+    }
+
+    function mirrorHostFromBody(body) {
+        if (!body || !Object.prototype.hasOwnProperty.call(body, 'db_host_mirror')) return undefined;
+        const h = String(body.db_host_mirror == null ? '' : body.db_host_mirror).trim();
+        if (!h) return null;
+        assertCmsDbHostAllowed(h);
+        return h;
+    }
+
+    function optionalMirrorText(body, key) {
+        if (!body || !Object.prototype.hasOwnProperty.call(body, key)) return undefined;
+        const v = String(body[key] == null ? '' : body[key]).trim();
+        return v ? v.slice(0, 255) : null;
+    }
+
+    /** host === undefined — ключей зеркала нет, оставить как в БД. */
+    function mirrorFieldsFromBody(body, existing) {
+        const prev = existing || {};
+        const host = mirrorHostFromBody(body);
+        if (host === undefined) {
+            return {
+                host: prev.db_host_mirror || null,
+                name: prev.db_name_mirror || null,
+                user: prev.db_user_mirror || null,
+                passStored: prev.db_pass_mirror || null,
+                passForConnect: prev.db_pass_mirror || '',
+            };
+        }
+        if (!host) {
+            return { host: null, name: null, user: null, passStored: null, passForConnect: '' };
+        }
+        const nameIn = optionalMirrorText(body, 'db_name_mirror');
+        const userIn = optionalMirrorText(body, 'db_user_mirror');
+        const passIn = body && body.db_pass_mirror;
+        const passStored = prepareCmsDbPassForStore(passIn, prev.db_pass_mirror || '') || null;
+        const passForConnect = !isBlankSecretInput(passIn) ? String(passIn) : prev.db_pass_mirror || '';
+        return {
+            host,
+            name: nameIn === undefined ? prev.db_name_mirror || null : nameIn,
+            user: userIn === undefined ? prev.db_user_mirror || null : userIn,
+            passStored,
+            passForConnect,
+        };
+    }
+
     async function ensurePriceMarginCol() {
         if (priceMarginColReady) return;
         const [rows] = await db.query(`
@@ -362,6 +413,7 @@ module.exports = (db, settings) => {
             await ensureDbPassCol();
             await ensureMsStockStoresCol();
             await ensurePriceMarginCol();
+            await ensureMirrorCols();
             const [rows] = await db.query('SELECT * FROM my_sites ORDER BY id DESC');
             return res.json((rows || []).map(decorateMySiteRow));
         } catch (e) {
@@ -373,6 +425,7 @@ module.exports = (db, settings) => {
         await ensureDbPassCol();
         await ensureMsStockStoresCol();
         await ensurePriceMarginCol();
+        await ensureMirrorCols();
         const { name, domain, cms_type, db_host, db_name, db_user, db_pass, table_products, field_name, field_sku, field_code, field_price, field_currency, field_stock, wa_table_skus, wa_field_sku_val, wa_field_price_val, wa_field_stock_val, ms_stock_store_uuids } = req.body;
         const storedMsStores = serializeSiteMsStockStoreUuids(ms_stock_store_uuids);
         const storedPriceMargin = serializeSitePriceMarginConfig(
@@ -394,6 +447,7 @@ module.exports = (db, settings) => {
             try {
                 validateIncomingSiteIdents(req.body || {});
                 assertCmsDbHostAllowed(db_host);
+                var mirrorSpec = mirrorFieldsFromBody(req.body, null);
             } catch (ve) {
                 const code = ve && ve.code;
                 if (code === 'BAD_SQL_IDENT' || code === 'CMS_HOST_DENIED') {
@@ -402,7 +456,16 @@ module.exports = (db, settings) => {
                 return res.status(400).json({ error: ve.message || 'Недопустимые имена таблиц/полей', code: 'BAD_SQL_IDENT' });
             }
             const conn = await openCmsDbConnection(
-                { db_host, db_user, db_pass, db_name },
+                {
+                    db_host,
+                    db_user,
+                    db_pass,
+                    db_name,
+                    db_host_mirror: mirrorSpec.host,
+                    db_name_mirror: mirrorSpec.name,
+                    db_user_mirror: mirrorSpec.user,
+                    db_pass_mirror: mirrorSpec.passForConnect,
+                },
                 { connectTimeout: 5000 }
             );
             if (safeCms === 'webasyst') {
@@ -421,13 +484,18 @@ module.exports = (db, settings) => {
             await conn.end();
             assertSqlIdent(effectiveTableProducts, 'table_products');
             const storedPass = prepareCmsDbPassForStore(db_pass, '');
+            const cmsMeta = cmsConnectionMeta(conn);
             const [result] = await db.query(
-                `INSERT INTO my_sites (name, domain, cms_type, db_host, db_name, db_user, db_pass, table_products, field_name, field_sku, field_code, field_price, field_currency, field_stock, wa_table_skus, wa_field_sku_val, wa_field_price_val, wa_field_stock_val, ms_stock_store_uuids, price_margin_json) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+                `INSERT INTO my_sites (name, domain, cms_type, db_host, db_host_mirror, db_name_mirror, db_user_mirror, db_pass_mirror, db_name, db_user, db_pass, table_products, field_name, field_sku, field_code, field_price, field_currency, field_stock, wa_table_skus, wa_field_sku_val, wa_field_price_val, wa_field_stock_val, ms_stock_store_uuids, price_margin_json) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
                 [
                     name,
                     domain,
                     safeCms,
                     db_host,
+                    mirrorSpec.host,
+                    mirrorSpec.name,
+                    mirrorSpec.user,
+                    mirrorSpec.passStored,
                     db_name,
                     db_user,
                     storedPass,
@@ -446,10 +514,15 @@ module.exports = (db, settings) => {
                     storedPriceMargin,
                 ]
             );
+            if (!(conn.dgCmsEndpoint && conn.dgCmsEndpoint.override)) {
+                await rememberCmsDbConnect(db, result.insertId, cmsMeta, '');
+            }
             const marginOut = parseSitePriceMarginConfig(storedPriceMargin);
             res.json({
                 success: true,
                 id: result.insertId,
+                cms_db_last_role: cmsMeta.role,
+                cms_db_last_host: cmsMeta.host,
                 auto_prepared: autoPrepared,
                 ms_stock_store_uuids: parseSiteMsStockStoreUuids(storedMsStores),
                 price_margin: marginOut,
@@ -466,6 +539,7 @@ module.exports = (db, settings) => {
         await ensureDbPassCol();
         await ensureMsStockStoresCol();
         await ensurePriceMarginCol();
+        await ensureMirrorCols();
         const { id } = req.params;
         const { name, domain, cms_type, db_host, db_name, db_user, db_pass, table_products, field_name, field_sku, field_code, field_price, field_currency, field_stock, wa_table_skus, wa_field_sku_val, wa_field_price_val, wa_field_stock_val, ms_stock_store_uuids } = req.body;
         const hasMsStoresKey = Object.prototype.hasOwnProperty.call(req.body || {}, 'ms_stock_store_uuids');
@@ -491,6 +565,7 @@ module.exports = (db, settings) => {
             try {
                 validateIncomingSiteIdents(req.body || {});
                 assertCmsDbHostAllowed(db_host);
+                mirrorHostFromBody(req.body);
             } catch (ve) {
                 const code = ve && ve.code;
                 if (code === 'BAD_SQL_IDENT' || code === 'CMS_HOST_DENIED') {
@@ -499,16 +574,29 @@ module.exports = (db, settings) => {
                 return res.status(400).json({ error: ve.message || 'Недопустимые имена таблиц/полей', code: 'BAD_SQL_IDENT' });
             }
             const [existingRows] = await db.query(
-                'SELECT db_pass, ms_stock_store_uuids, price_margin_json FROM my_sites WHERE id = ? LIMIT 1',
+                'SELECT db_pass, db_host_mirror, db_name_mirror, db_user_mirror, db_pass_mirror, ms_stock_store_uuids, price_margin_json FROM my_sites WHERE id = ? LIMIT 1',
                 [id]
             );
-            const existingPass = existingRows[0] ? existingRows[0].db_pass : '';
-            const existingMsStores = existingRows[0] ? existingRows[0].ms_stock_store_uuids : null;
-            const existingPriceMargin = existingRows[0] ? existingRows[0].price_margin_json : null;
+            const existing = existingRows[0] || {};
+            const existingPass = existing.db_pass || '';
+            const existingMsStores = existing.ms_stock_store_uuids || null;
+            const existingPriceMargin = existing.price_margin_json || null;
+            const mirrorSpec = mirrorFieldsFromBody(req.body, existing);
             const storedPass = prepareCmsDbPassForStore(db_pass, existingPass);
             const conn = await openCmsDbConnection(
-                { db_host, db_user, db_pass: storedPass, db_name },
-                { connectTimeout: 5000 }
+                {
+                    id,
+                    name,
+                    db_host,
+                    db_user,
+                    db_pass: storedPass,
+                    db_name,
+                    db_host_mirror: mirrorSpec.host,
+                    db_name_mirror: mirrorSpec.name,
+                    db_user_mirror: mirrorSpec.user,
+                    db_pass_mirror: mirrorSpec.passForConnect,
+                },
+                { connectTimeout: 5000, appDb: db }
             );
             if (safeCms === 'webasyst') {
                 await conn.query(`SELECT id FROM ${quoteSqlIdent(table_products)} LIMIT 1`);
@@ -523,17 +611,22 @@ module.exports = (db, settings) => {
                 effectiveFieldCurrency = autoPrepared.field_currency;
                 effectiveFieldStock = autoPrepared.field_stock;
             }
+            const cmsMeta = cmsConnectionMeta(conn);
             await conn.end();
             assertSqlIdent(effectiveTableProducts, 'table_products');
             const msStoresToWrite = hasMsStoresKey ? storedMsStores : existingMsStores;
             const priceMarginToWrite = hasMarginKey ? storedPriceMargin : existingPriceMargin;
             await db.query(
-                `UPDATE my_sites SET name=?, domain=?, cms_type=?, db_host=?, db_name=?, db_user=?, db_pass=?, table_products=?, field_name=?, field_sku=?, field_code=?, field_price=?, field_currency=?, field_stock=?, wa_table_skus=?, wa_field_sku_val=?, wa_field_price_val=?, wa_field_stock_val=?, ms_stock_store_uuids=?, price_margin_json=? WHERE id=?`,
+                `UPDATE my_sites SET name=?, domain=?, cms_type=?, db_host=?, db_host_mirror=?, db_name_mirror=?, db_user_mirror=?, db_pass_mirror=?, db_name=?, db_user=?, db_pass=?, table_products=?, field_name=?, field_sku=?, field_code=?, field_price=?, field_currency=?, field_stock=?, wa_table_skus=?, wa_field_sku_val=?, wa_field_price_val=?, wa_field_stock_val=?, ms_stock_store_uuids=?, price_margin_json=? WHERE id=?`,
                 [
                     name,
                     domain,
                     safeCms,
                     db_host,
+                    mirrorSpec.host,
+                    mirrorSpec.name,
+                    mirrorSpec.user,
+                    mirrorSpec.passStored,
                     db_name,
                     db_user,
                     storedPass,
@@ -556,6 +649,11 @@ module.exports = (db, settings) => {
             res.json({
                 success: true,
                 auto_prepared: autoPrepared,
+                db_host_mirror: mirrorSpec.host,
+                db_name_mirror: mirrorSpec.name,
+                db_user_mirror: mirrorSpec.user,
+                cms_db_last_role: cmsMeta.role,
+                cms_db_last_host: cmsMeta.host,
                 ms_stock_store_uuids: parseSiteMsStockStoreUuids(msStoresToWrite),
                 price_margin: parseSitePriceMarginConfig(priceMarginToWrite),
             });
@@ -579,7 +677,7 @@ module.exports = (db, settings) => {
         const limit = parseInt(req.body.limit) || 100;
         try {
             const qi = quotedSiteIdents(s);
-            const conn = await openCmsDbConnection(s, { connectTimeout: 10000 });
+            const conn = await openCmsDbConnection(s, { connectTimeout: 10000, appDb: db });
             let query = '';
             if (s.cms_type === 'webasyst') {
                 query = `SELECT sk.id as source_id, p.id as cms_product_id, p.name, sk.${qi.wa_field_sku_val} as sku, sk.${qi.wa_field_price_val} as price, p.currency, sk.${qi.wa_field_stock_val} as stock, p.url as url_key FROM ${qi.table_products} p JOIN ${qi.wa_table_skus} sk ON p.id = sk.product_id ORDER BY sk.id DESC LIMIT ?`;
@@ -606,7 +704,7 @@ module.exports = (db, settings) => {
             const qi = quotedSiteIdents(s);
             await ensureSourceEnabledColumn();
             await ensureSourceIdentityIndexes();
-            conn = await openCmsDbConnection(s, { connectTimeout: 10000 });
+            conn = await openCmsDbConnection(s, { connectTimeout: 10000, appDb: db });
 
             let sourceTotal = 0;
             let sourceActive = 0;
@@ -696,15 +794,15 @@ module.exports = (db, settings) => {
             await ensureCmsProductIdColumn();
             await ensureSourceIdentityIndexes();
             if (init === 'true') {
+                const conn = await openCmsDbConnection(s, { connectTimeout: 10000, appDb: db });
                 await db.query('UPDATE my_products SET is_active = 0 WHERE site_id = ?', [s.id]);
-                const conn = await openCmsDbConnection(s, { connectTimeout: 10000 });
                 let countQ = s.cms_type === 'webasyst' ? `SELECT COUNT(*) as total FROM ${qi.table_products} p JOIN ${qi.wa_table_skus} sk ON p.id = sk.product_id` : `SELECT COUNT(*) as total FROM ${qi.table_products}`;
                 const [countRes] = await conn.query(countQ);
                 await conn.end();
                 return res.json({ success: true, init: true, total: countRes[0].total });
             }
 
-            const conn = await openCmsDbConnection(s, { connectTimeout: 10000 });
+            const conn = await openCmsDbConnection(s, { connectTimeout: 10000, appDb: db });
             let query = '';
             let rows;
             if (s.cms_type === 'webasyst') {
@@ -768,17 +866,14 @@ module.exports = (db, settings) => {
                     continue;
                 }
 
-                // 1. Инициализация (сброс is_active=0)
-                await db.query('UPDATE my_products SET is_active = 0 WHERE site_id = ?', [site.id]);
-                
-                // 2. Подключение к БД донора
                 let conn;
                 try {
-                    conn = await openCmsDbConnection(site, { connectTimeout: 10000 });
+                    conn = await openCmsDbConnection(site, { connectTimeout: 10000, appDb: db });
                 } catch (e) {
                     console.error(`[GLOBAL SYNC] Failed to connect to ${site.name}: ${e.message}`);
-                    continue; // Пропускаем этот сайт и идем дальше
+                    continue;
                 }
+                await db.query('UPDATE my_products SET is_active = 0 WHERE site_id = ?', [site.id]);
 
                 let offset = 0;
                 let hasMore = true;
