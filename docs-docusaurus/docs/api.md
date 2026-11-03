@@ -645,10 +645,10 @@ Body:
 Справочник авторов правок из `dg_my_products_log` для селекта на `/my-products.html`. Ответ: `{ success, actors: [{ key, login, name, changes_count, last_at }], field_labels }`.
 
 ### GET `/api/my-products/log`
-Глобальный журнал правок наклеек / скидки / заморозки (все товары). Query: `actor` (login или имя), `field`, `site_id`, `date_from` / `date_to` (`YYYY-MM-DD`), `search` (SKU / название), `limit` (≤200, default 100), `offset`. Ответ: `{ success, rows, total, limit, offset, field_labels, applied }` — в строках также `site_name`, `product_name`, `old_value` → `new_value`, `changed_at`, `changed_by_*`.
+Глобальный журнал правок наклеек / скидки / заморозки (все товары). Query: `actor` (login или имя), `field`, `site_id`, `date_from` / `date_to` (`YYYY-MM-DD`), `search` (SKU / название), `limit` (≤200, default 100), `offset`. Ответ: `{ success, rows, total, limit, offset, field_labels, applied }` — в строках также `site_name`, `product_name`, `old_value` → `new_value`, `changed_at`, `changed_by_*`. `field=sticker_sale` отдаёт всю пачку акции: `sale_price`, `sale_until`, `sale_price_before`, `sale_restore_on_end`, `sale_restore_done` и строку `price` только с действием `set_sale` / `sale_restore`.
 
 ### GET `/api/my-products/:id/log`
-Журнал изменений наклеек и заморозки по `my_products.id`. Query: `field`, `limit`, `offset`. Ответ: `{ success, rows, total, field_labels }`.
+Журнал изменений наклеек и заморозки по `my_products.id`. Query: `field`, `limit`, `offset`. Ответ: `{ success, rows, total, field_labels }`. `field=sticker_sale` — та же пачка, что у глобального журнала (акционная цена, срок, цена до скидки, откат и цена с `set_sale` / `sale_restore`).
 
 ### POST `/api/my-products/set-price-hold-bulk` / `clear-price-hold-bulk`
 Массовая заморозка / снятие по **тем же фильтрам**, что у list / sync-price-bulk (включая `price_hold`, Δ). `dry_run=1` или `confirm=1`. Для set — ещё `hold_days` / `hold_until`. Ответ: `total`, `already_held`, `free`, `would_hold` / `held` или `would_clear` / `cleared`, `duration_sec`, `applied_filters`. Потолок выборки — **50 000**. CMS не трогает. При clear также снимает `sticker_sale`.
