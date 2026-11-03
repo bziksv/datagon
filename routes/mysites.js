@@ -455,36 +455,46 @@ module.exports = (db, settings) => {
                 }
                 return res.status(400).json({ error: ve.message || 'Недопустимые имена таблиц/полей', code: 'BAD_SQL_IDENT' });
             }
-            const conn = await openCmsDbConnection(
-                {
-                    db_host,
-                    db_user,
-                    db_pass,
-                    db_name,
-                    db_host_mirror: mirrorSpec.host,
-                    db_name_mirror: mirrorSpec.name,
-                    db_user_mirror: mirrorSpec.user,
-                    db_pass_mirror: mirrorSpec.passForConnect,
-                },
-                { connectTimeout: 5000 }
-            );
-            if (safeCms === 'webasyst') {
-                await conn.query(`SELECT id FROM ${quoteSqlIdent(table_products)} LIMIT 1`);
-                await conn.query(`SELECT id FROM ${quoteSqlIdent(safeWaTable)} LIMIT 1`);
-            } else {
-                autoPrepared = await prepareBitrixView(conn, table_products || 'b_catalog_product');
-                effectiveTableProducts = autoPrepared.table_products;
-                effectiveFieldName = autoPrepared.field_name;
-                effectiveFieldSku = autoPrepared.field_sku;
-                effectiveFieldCode = autoPrepared.field_code;
-                effectiveFieldPrice = autoPrepared.field_price;
-                effectiveFieldCurrency = autoPrepared.field_currency;
-                effectiveFieldStock = autoPrepared.field_stock;
+            let conn = null;
+            let connectError = '';
+            try {
+                conn = await openCmsDbConnection(
+                    {
+                        db_host,
+                        db_user,
+                        db_pass,
+                        db_name,
+                        db_host_mirror: mirrorSpec.host,
+                        db_name_mirror: mirrorSpec.name,
+                        db_user_mirror: mirrorSpec.user,
+                        db_pass_mirror: mirrorSpec.passForConnect,
+                    },
+                    {
+                        connectTimeout: mirrorSpec.host ? 4000 : 8000,
+                        mirrorConnectTimeout: 12000,
+                    }
+                );
+                if (safeCms === 'webasyst') {
+                    await conn.query(`SELECT id FROM ${quoteSqlIdent(table_products)} LIMIT 1`);
+                    await conn.query(`SELECT id FROM ${quoteSqlIdent(safeWaTable)} LIMIT 1`);
+                } else {
+                    autoPrepared = await prepareBitrixView(conn, table_products || 'b_catalog_product');
+                    effectiveTableProducts = autoPrepared.table_products;
+                    effectiveFieldName = autoPrepared.field_name;
+                    effectiveFieldSku = autoPrepared.field_sku;
+                    effectiveFieldCode = autoPrepared.field_code;
+                    effectiveFieldPrice = autoPrepared.field_price;
+                    effectiveFieldCurrency = autoPrepared.field_currency;
+                    effectiveFieldStock = autoPrepared.field_stock;
+                }
+            } catch (ce) {
+                if (ce && (ce.code === 'BAD_SQL_IDENT' || ce.code === 'CMS_HOST_DENIED')) throw ce;
+                connectError = ce && ce.message ? ce.message : String(ce);
             }
-            await conn.end();
+            if (conn) await conn.end();
             assertSqlIdent(effectiveTableProducts, 'table_products');
             const storedPass = prepareCmsDbPassForStore(db_pass, '');
-            const cmsMeta = cmsConnectionMeta(conn);
+            const cmsMeta = conn ? cmsConnectionMeta(conn) : null;
             const [result] = await db.query(
                 `INSERT INTO my_sites (name, domain, cms_type, db_host, db_host_mirror, db_name_mirror, db_user_mirror, db_pass_mirror, db_name, db_user, db_pass, table_products, field_name, field_sku, field_code, field_price, field_currency, field_stock, wa_table_skus, wa_field_sku_val, wa_field_price_val, wa_field_stock_val, ms_stock_store_uuids, price_margin_json) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
                 [
@@ -514,15 +524,16 @@ module.exports = (db, settings) => {
                     storedPriceMargin,
                 ]
             );
-            if (!(conn.dgCmsEndpoint && conn.dgCmsEndpoint.override)) {
+            if (conn && !(conn.dgCmsEndpoint && conn.dgCmsEndpoint.override)) {
                 await rememberCmsDbConnect(db, result.insertId, cmsMeta, '');
             }
             const marginOut = parseSitePriceMarginConfig(storedPriceMargin);
             res.json({
                 success: true,
                 id: result.insertId,
-                cms_db_last_role: cmsMeta.role,
-                cms_db_last_host: cmsMeta.host,
+                connect_error: connectError || null,
+                cms_db_last_role: cmsMeta ? cmsMeta.role : null,
+                cms_db_last_host: cmsMeta ? cmsMeta.host : null,
                 auto_prepared: autoPrepared,
                 ms_stock_store_uuids: parseSiteMsStockStoreUuids(storedMsStores),
                 price_margin: marginOut,
@@ -583,36 +594,47 @@ module.exports = (db, settings) => {
             const existingPriceMargin = existing.price_margin_json || null;
             const mirrorSpec = mirrorFieldsFromBody(req.body, existing);
             const storedPass = prepareCmsDbPassForStore(db_pass, existingPass);
-            const conn = await openCmsDbConnection(
-                {
-                    id,
-                    name,
-                    db_host,
-                    db_user,
-                    db_pass: storedPass,
-                    db_name,
-                    db_host_mirror: mirrorSpec.host,
-                    db_name_mirror: mirrorSpec.name,
-                    db_user_mirror: mirrorSpec.user,
-                    db_pass_mirror: mirrorSpec.passForConnect,
-                },
-                { connectTimeout: 5000, appDb: db }
-            );
-            if (safeCms === 'webasyst') {
-                await conn.query(`SELECT id FROM ${quoteSqlIdent(table_products)} LIMIT 1`);
-                await conn.query(`SELECT id FROM ${quoteSqlIdent(safeWaTable)} LIMIT 1`);
-            } else {
-                autoPrepared = await prepareBitrixView(conn, table_products || 'b_catalog_product');
-                effectiveTableProducts = autoPrepared.table_products;
-                effectiveFieldName = autoPrepared.field_name;
-                effectiveFieldSku = autoPrepared.field_sku;
-                effectiveFieldCode = autoPrepared.field_code;
-                effectiveFieldPrice = autoPrepared.field_price;
-                effectiveFieldCurrency = autoPrepared.field_currency;
-                effectiveFieldStock = autoPrepared.field_stock;
+            let conn = null;
+            let connectError = '';
+            try {
+                conn = await openCmsDbConnection(
+                    {
+                        id,
+                        name,
+                        db_host,
+                        db_user,
+                        db_pass: storedPass,
+                        db_name,
+                        db_host_mirror: mirrorSpec.host,
+                        db_name_mirror: mirrorSpec.name,
+                        db_user_mirror: mirrorSpec.user,
+                        db_pass_mirror: mirrorSpec.passForConnect,
+                    },
+                    {
+                        connectTimeout: mirrorSpec.host ? 4000 : 8000,
+                        mirrorConnectTimeout: 12000,
+                        appDb: db,
+                    }
+                );
+                if (safeCms === 'webasyst') {
+                    await conn.query(`SELECT id FROM ${quoteSqlIdent(table_products)} LIMIT 1`);
+                    await conn.query(`SELECT id FROM ${quoteSqlIdent(safeWaTable)} LIMIT 1`);
+                } else {
+                    autoPrepared = await prepareBitrixView(conn, table_products || 'b_catalog_product');
+                    effectiveTableProducts = autoPrepared.table_products;
+                    effectiveFieldName = autoPrepared.field_name;
+                    effectiveFieldSku = autoPrepared.field_sku;
+                    effectiveFieldCode = autoPrepared.field_code;
+                    effectiveFieldPrice = autoPrepared.field_price;
+                    effectiveFieldCurrency = autoPrepared.field_currency;
+                    effectiveFieldStock = autoPrepared.field_stock;
+                }
+            } catch (ce) {
+                if (ce && (ce.code === 'BAD_SQL_IDENT' || ce.code === 'CMS_HOST_DENIED')) throw ce;
+                connectError = ce && ce.message ? ce.message : String(ce);
             }
-            const cmsMeta = cmsConnectionMeta(conn);
-            await conn.end();
+            const cmsMeta = conn ? cmsConnectionMeta(conn) : null;
+            if (conn) await conn.end();
             assertSqlIdent(effectiveTableProducts, 'table_products');
             const msStoresToWrite = hasMsStoresKey ? storedMsStores : existingMsStores;
             const priceMarginToWrite = hasMarginKey ? storedPriceMargin : existingPriceMargin;
@@ -652,8 +674,9 @@ module.exports = (db, settings) => {
                 db_host_mirror: mirrorSpec.host,
                 db_name_mirror: mirrorSpec.name,
                 db_user_mirror: mirrorSpec.user,
-                cms_db_last_role: cmsMeta.role,
-                cms_db_last_host: cmsMeta.host,
+                connect_error: connectError || null,
+                cms_db_last_role: cmsMeta ? cmsMeta.role : null,
+                cms_db_last_host: cmsMeta ? cmsMeta.host : null,
                 ms_stock_store_uuids: parseSiteMsStockStoreUuids(msStoresToWrite),
                 price_margin: parseSitePriceMarginConfig(priceMarginToWrite),
             });

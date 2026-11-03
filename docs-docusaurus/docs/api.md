@@ -461,7 +461,7 @@ Query:
 Добавить источник и проверить подключение к внешней БД (host allowlist + encrypt pass). Body: опционально блок зеркала **`db_host_mirror`**, **`db_name_mirror`**, **`db_user_mirror`**, **`db_pass_mirror`** (хост пустой — зеркала нет; пустые имя, пользователь и пароль — как у основного; оба хоста из allowlist `DATAGON_CMS_DB_HOSTS`). Опционально **`ms_stock_store_uuids`** (массив UUID или JSON-строка) — склады, чьи остатки **суммируются** при `stickers_cms` / выгрузке count в Webasyst. Опционально **`price_margin`**: `{ "source": "buy_price", "tiers": { "lt_1000": 20, … } }` → колонка `price_margin_json`.
 
 ### PUT `/api/my-sites/:id`
-Изменить настройки источника (пустой `db_pass` = keep). То же зеркало: пустой **`db_host_mirror`** снимает хост, базу, пользователя и пароль зеркала; пустой **`db_pass_mirror`** при заданном хосте не меняет сохранённый пароль. **`ms_stock_store_uuids`** и **`price_margin`**.
+Изменить настройки источника (пустой `db_pass` = keep). То же зеркало: пустой **`db_host_mirror`** снимает хост, базу, пользователя и пароль зеркала; пустой **`db_pass_mirror`** при заданном хосте не меняет сохранённый пароль. Настройки пишутся и когда основной хост не отвечает: при таймауте проверяется зеркало. Если не открылся ни один хост, ответ всё равно `success: true` и поле **`connect_error`**. **`ms_stock_store_uuids`** и **`price_margin`**.
 
 ### DELETE `/api/my-sites/:id`
 Удалить источник.

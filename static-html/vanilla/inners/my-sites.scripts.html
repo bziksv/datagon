@@ -1084,6 +1084,9 @@
         saveSite(body, id || null)
           .then(function (x) {
             if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Не удалось сохранить подключение");
+            if (x.j.connect_error) {
+              alert("Сохранено. Сейчас база не открылась: " + x.j.connect_error);
+            }
             clearFormNew();
             loadMySites();
             loadSiteStats();
