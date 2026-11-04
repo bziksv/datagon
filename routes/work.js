@@ -757,6 +757,7 @@ async function syncEntityAssignees(db, ent, entityId, legacyUserIds, headLegacyI
     }
 }
 
+/** Сопоставление сотрудников SEO с users. Только импорт `npm run import:work-prime`. */
 async function matchStaffToUsers(db) {
     const [users] = await db.query(
         `SELECT id, username, full_name FROM users WHERE COALESCE(is_archived, 0) = 0`
@@ -923,23 +924,6 @@ module.exports = (db) => {
                     datagon_user_id: r.datagon_user_id ? Number(r.datagon_user_id) : null,
                 })),
             });
-        } catch (e) {
-            next(e);
-        }
-    });
-
-    router.post('/seo-staff/rematch', async (req, res, next) => {
-        try {
-            const scope = await resolveWorkActorScope(db, actorOf(req));
-            if (!scope.unscoped) {
-                return res.status(403).json({
-                    success: false,
-                    error: 'Сопоставление сотрудников — только администратор',
-                    code: 'FORBIDDEN',
-                });
-            }
-            const stats = await matchStaffToUsers(db);
-            res.json({ success: true, ...stats });
         } catch (e) {
             next(e);
         }
@@ -1123,7 +1107,7 @@ module.exports = (db) => {
                     secrets_masked: true,
                 },
                 summary,
-                // scope 'all' только у unscoped admin: карточка выплат и rematch.
+                // scope 'all' только у unscoped admin: карточка выплат.
                 // ПМ с seeAll видит все строки, scope 'self' — без этих кнопок.
                 // «Добавить» отдельно: can_create при режиме страницы full.
                 scope: scope.unscoped ? 'all' : 'self',

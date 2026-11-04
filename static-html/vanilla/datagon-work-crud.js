@@ -875,15 +875,11 @@
     });
   }
 
-  /** Выплаты и rematch — только unscoped admin (scope all). «Добавить» — при can_create (режим full). */
+  /** Выплаты — только unscoped admin (scope all). «Добавить» — при can_create (режим full). */
   function applyScopeUi(scope, canCreate) {
     var selfOnly = scope === "self";
     var add = $("dg-work-add");
     if (add) add.classList.toggle("d-none", canCreate === false);
-    var rematch = $("dg-work-rematch");
-    if (rematch) {
-      rematch.classList.toggle("d-none", selfOnly || entitySlug !== "seo-staff");
-    }
     var payout = $("dg-work-payout-card");
     if (payout) {
       if (selfOnly || entitySlug !== "seo-projects") {
@@ -1027,27 +1023,6 @@
         state.editId = null;
         var card = $("dg-work-form-body");
         if (card) card.style.display = "none";
-      });
-    }
-    var rematch = $("dg-work-rematch");
-    if (rematch) {
-      rematch.addEventListener("click", function () {
-        var run = function () {
-          return api("/seo-staff/rematch", { method: "POST" }).then(function (j) {
-            toast(
-              "success",
-              "Сопоставлено: " + (j.matched || 0) + "; неоднозначных: " + (j.ambiguous || 0)
-            );
-            return load();
-          });
-        };
-        if (window.DatagonNotify && window.DatagonNotify.busyRun) {
-          window.DatagonNotify.busyRun(rematch, run).catch(function (e) {
-            toast("danger", e.message);
-          });
-        } else run().catch(function (e) {
-          toast("danger", e.message);
-        });
       });
     }
     document.addEventListener("click", function (e) {
@@ -1433,10 +1408,6 @@
     .then(function () {
       fillSpecialistSelect();
       bind();
-      if (entitySlug !== "seo-staff") {
-        var rematch = $("dg-work-rematch");
-        if (rematch) rematch.classList.add("d-none");
-      }
       return load();
     })
     .catch(function (e) {
