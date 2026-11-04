@@ -1396,23 +1396,29 @@ async function buildListWhere(db, q, req) {
     return { year, month, managerId, whereSql: where.join(' AND '), params };
 }
 
-async function nextRowNo(db, managerUserId, year, month) {
+async function nextRowNo(db, managerUserId, year, month, exceptId) {
     const m = Math.round(Number(month) || 0);
+    const ex = Number(exceptId) || 0;
+    // Архив не занимает номер: «последняя» — то, что видно в месяце.
+    // Нет оплат в месяце → 1.
     const [rows] =
         m >= 1 && m <= 12
             ? await db.query(
                   `SELECT COALESCE(MAX(row_no), 0) + 1 AS n
                      FROM dg_manager_sales_rows
-                    WHERE manager_user_id = ? AND year = ? AND MONTH(paid_at) = ?`,
-                  [managerUserId, year, m]
+                    WHERE manager_user_id = ? AND year = ? AND MONTH(paid_at) = ?
+                      AND archived_at IS NULL AND id <> ?`,
+                  [managerUserId, year, m, ex]
               )
             : await db.query(
                   `SELECT COALESCE(MAX(row_no), 0) + 1 AS n
                      FROM dg_manager_sales_rows
-                    WHERE manager_user_id = ? AND year = ? AND paid_at IS NULL`,
-                  [managerUserId, year]
+                    WHERE manager_user_id = ? AND year = ? AND paid_at IS NULL
+                      AND archived_at IS NULL AND id <> ?`,
+                  [managerUserId, year, ex]
               );
-    return Number(rows && rows[0] && rows[0].n) || 1;
+    const n = Number(rows && rows[0] && rows[0].n);
+    return Number.isFinite(n) && n > 0 ? n : 1;
 }
 
 async function rowNoTaken(db, managerUserId, year, month, rowNo, exceptId, invoiceNo) {
@@ -2408,15 +2414,16 @@ module.exports = function managerSalesRouterFactory(db) {
             if (!managerUserId) {
                 return res.status(400).json({ error: 'Не указан менеджер' });
             }
-            const monthHint = Math.round(Number(body.month) || 0);
-            const rowNo = await nextRowNo(db, managerUserId, year, monthHint);
             const row = applyBodyToRow(body, {
                 year,
                 manager_user_id: managerUserId,
-                row_no: rowNo,
+                row_no: 0,
                 has_contract: '',
                 invoice_org: '',
             });
+            // Без даты строка ещё не в месяце — номер среди черновиков.
+            // С датой сразу — следующий после последней оплаты этого месяца (или 1).
+            row.row_no = await nextRowNo(db, managerUserId, year, paidMonth(row.paid_at));
             const [ins] = await db.query(INSERT_SQL, rowToInsertParams(row, actorId(req)));
             try {
                 await persistMonthPct(db, managerUserId, year, paidMonth(row.paid_at));
@@ -2483,16 +2490,9 @@ module.exports = function managerSalesRouterFactory(db) {
                 Number(next.year) !== Number(existing.year) ||
                 newMid !== Number(existing.manager_user_id)
             ) {
-                const taken = await rowNoTaken(
-                    db,
-                    newMid,
-                    next.year,
-                    newMonth,
-                    next.row_no,
-                    id,
-                    next.our_invoice_no
-                );
-                if (taken) next.row_no = await nextRowNo(db, newMid, next.year, newMonth);
+                // Месяц оплаты сменился: не оставлять старый №.
+                // В пустом месяце — 1, иначе на один больше последней оплаты.
+                next.row_no = await nextRowNo(db, newMid, next.year, newMonth, id);
             }
             const creditMid = creditManagerId(existing);
             const plans = await loadPlans(db);
