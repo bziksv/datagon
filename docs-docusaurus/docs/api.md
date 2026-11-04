@@ -2602,7 +2602,7 @@ Activity `finance_credential` на upsert/delete/toggle/clear (без секре
 - `sync_script` — `lib/datagonOzonFinanceSyncRevision.js`
 - Таблица: `dg_mp_ozon_cashflow_period`; автосинк `ozon_finance` (воркер 2)
 
-Дополнительно **`wb_finance`**: долг WB = баланс + на проводке. `for_withdraw` входит в `on_balance` и не дублируется в `on_wire`: open inflight с той же суммой скрыта из `inflight[]`, пока `for_withdraw` её покрывает (rev 1.2.1).
+Дополнительно **`wb_finance`**: долг WB = баланс + на проводке. `for_withdraw` входит в `on_balance` и не дублируется в `on_wire`: open inflight с той же суммой скрыта из `inflight[]`, пока `for_withdraw` её покрывает (rev 1.2.1). Новая проводка по дельте — только уменьшение `for_withdraw`, не падение `current` (rev 1.2.2).
 
 - `on_balance`, `for_withdraw`, `on_wire`, `owed_total`, `inflight[]` (`open`, уже ушедшие из кабинета)
 - `sync_script` — `lib/datagonWbFinanceSyncRevision.js`
