@@ -20,6 +20,7 @@ const {
     isVaultKeyConfigured,
 } = require('../lib/datagonVaultCrypto');
 const { recordDatagonActivity } = require('../lib/datagonActivity');
+const { getActorPageMode } = require('../lib/datagonPageRegistry');
 
 function actorOf(req) {
     return req.datagonActor || req.user || {};
@@ -420,6 +421,12 @@ function isProjectManagerSpecialty(actor) {
 
 function workScopeSeesAll(scope) {
     return !!(scope && (scope.unscoped || scope.seeAll));
+}
+
+/** Кнопка «Добавить» и POST: режим страницы full (в т.ч. admin). Архив и выплаты — отдельно, только unscoped. */
+function actorCanCreateWork(actor, ent) {
+    if (!ent || !ent.pageKey) return false;
+    return getActorPageMode(actor, ent.pageKey) === 'full';
 }
 
 async function resolveWorkActorScope(db, actor) {
@@ -1116,9 +1123,11 @@ module.exports = (db) => {
                     secrets_masked: true,
                 },
                 summary,
-                // UI chrome (Добавить / выплаты): только unscoped admin → 'all'.
-                // ПМ с seeAll видит все строки, но scope остаётся 'self' (без admin-кнопок).
+                // scope 'all' только у unscoped admin: карточка выплат и rematch.
+                // ПМ с seeAll видит все строки, scope 'self' — без этих кнопок.
+                // «Добавить» отдельно: can_create при режиме страницы full.
                 scope: scope.unscoped ? 'all' : 'self',
+                can_create: actorCanCreateWork(actorOf(req), ent),
                 see_all: workScopeSeesAll(scope),
                 rows: pageRows,
                 total,
@@ -1239,11 +1248,10 @@ module.exports = (db) => {
         try {
             const ent = getWorkEntity(req.params.slug);
             if (!ent) return res.status(404).json({ success: false, error: 'unknown entity' });
-            const scope = await resolveWorkActorScope(db, actorOf(req));
-            if (!scope.unscoped) {
+            if (!actorCanCreateWork(actorOf(req), ent)) {
                 return res.status(403).json({
                     success: false,
-                    error: 'Создание записей WORK — только для администратора',
+                    error: 'Создание записей — только в режиме редактирования',
                     code: 'FORBIDDEN',
                 });
             }

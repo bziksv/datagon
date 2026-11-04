@@ -862,23 +862,24 @@
       state.rows = j.rows || [];
       state.total = j.total || 0;
       state.scope = j.scope || "all";
+      state.canCreate = j.can_create !== false;
       if (j.sort) {
         state.sortBy = j.sort;
         state.sortDir = j.dir === "desc" ? "desc" : "asc";
       }
       var h = $("dg-work-page-title");
       if (h && j.entity) h.textContent = j.entity.title || h.textContent;
-      applyScopeUi(state.scope);
+      applyScopeUi(state.scope, state.canCreate);
       renderSummary(j.summary);
       renderTable();
     });
   }
 
-  /** Как в WORK: не-admin — без «Добавить» / выплат; rematch только на seo-staff + admin. */
-  function applyScopeUi(scope) {
+  /** Выплаты и rematch — только unscoped admin (scope all). «Добавить» — при can_create (режим full). */
+  function applyScopeUi(scope, canCreate) {
     var selfOnly = scope === "self";
     var add = $("dg-work-add");
-    if (add) add.classList.toggle("d-none", selfOnly);
+    if (add) add.classList.toggle("d-none", canCreate === false);
     var rematch = $("dg-work-rematch");
     if (rematch) {
       rematch.classList.toggle("d-none", selfOnly || entitySlug !== "seo-staff");
