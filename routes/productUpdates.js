@@ -54,10 +54,10 @@ function pageMode(req) {
     if (actor.username === 'admin') return 'full';
     const pm = actor.page_modes || {};
     const raw = pm[PAGE_KEY];
-    if (raw === 'view' || raw === 'hidden' || raw === 'full') return raw;
+    if (raw === 'view' || raw === 'partial' || raw === 'hidden' || raw === 'full') return raw;
     // back-compat: пока в матрице нет ключа — наследуем «Новые товары»
     const parent = pm['exports-new-products'];
-    if (parent === 'view' || parent === 'full') return parent;
+    if (parent === 'view' || parent === 'partial' || parent === 'full') return parent;
     return 'hidden';
 }
 
@@ -67,7 +67,7 @@ function canWrite(req) {
 
 function canRead(req) {
     const m = pageMode(req);
-    return m === 'full' || m === 'view';
+    return m === 'full' || m === 'partial' || m === 'view';
 }
 
 function actorId(req) {

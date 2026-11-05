@@ -506,7 +506,7 @@ function shapeIssuesPayloadForActor(actor, payload) {
         });
     }
 
-    const commercialRedacted = mode === 'view';
+    const commercialRedacted = mode === 'view' || mode === 'partial';
     if (commercialRedacted) {
         rows = redactMarketplaceCommercialRows(rows);
         const keepIdx = [];

@@ -87,7 +87,7 @@ function pageMode(req) {
     const actor = req.datagonActor || {};
     if (actor.username === 'admin') return 'full';
     const raw = actor.page_modes && actor.page_modes['ops-sheet'];
-    return raw === 'view' || raw === 'hidden' || raw === 'full' ? raw : 'hidden';
+    return raw === 'view' || raw === 'partial' || raw === 'hidden' || raw === 'full' ? raw : 'hidden';
 }
 
 function canWrite(req) {

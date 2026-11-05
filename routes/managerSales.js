@@ -134,7 +134,7 @@ function pageMode(req) {
     if (actor.username === 'admin') return 'full';
     const raw = actor.page_modes && actor.page_modes['manager-sales'];
     // F-OPS-05: нет ключа в матрице → hidden (не full).
-    return raw === 'view' || raw === 'hidden' || raw === 'full' ? raw : 'hidden';
+    return raw === 'view' || raw === 'partial' || raw === 'hidden' || raw === 'full' ? raw : 'hidden';
 }
 
 function canWrite(req) {

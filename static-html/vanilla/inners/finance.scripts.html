@@ -94,6 +94,7 @@
 
   var state = {
     canWrite: false,
+    partialMovement: false,
     credentials: [],
     raiffeisenCredentials: [],
     tbankCredentials: [],
@@ -1277,6 +1278,7 @@
   }
 
   function loadMonthlyAnalytics() {
+    if (state.partialMovement) return Promise.resolve();
     var seq = ++analyticsLoadSeq;
     var scope = el("dg-fin-analytics-scope");
     var org = normalizeOrgs(state.applied.org);
@@ -1438,6 +1440,7 @@
   }
 
   function loadCounterparties() {
+    if (state.partialMovement) return Promise.resolve();
     var seq = ++cpLoadSeq;
     var limit = readCpLimit();
     var org = normalizeOrgs(state.applied.org);
@@ -3564,6 +3567,21 @@
       .then(function (j) {
         if (!j || !j.success) throw new Error((j && j.error) || "config");
         state.canWrite = !!j.can_write;
+        state.partialMovement = !!(j.partial && j.partial.movement_only);
+        if (state.partialMovement) {
+          [
+            "dg-fin-balances-card",
+            "dg-fin-analytics-card",
+            "dg-fin-cp-card",
+            "dg-fin-cash-card",
+            "dg-fin-plans-card",
+          ].forEach(function (id) {
+            var node = el(id);
+            if (node) node.classList.add("d-none");
+          });
+          var syncDays = document.querySelector('[data-dg-fin-filter-field="sync_days"]');
+          if (syncDays) syncDays.classList.add("d-none");
+        }
         state.credentials = Array.isArray(j.credentials) ? j.credentials : [];
         state.raiffeisenCredentials = Array.isArray(j.raiffeisen_credentials) ? j.raiffeisen_credentials : [];
         state.tbankCredentials = Array.isArray(j.tbank_credentials) ? j.tbank_credentials : [];
@@ -4582,6 +4600,7 @@
       .join("");
   }
   function loadCashLists() {
+    if (state.partialMovement) return Promise.resolve();
     return Promise.all([
       fetch("/api/finance/cash/tx", { credentials: "same-origin" }).then(function (r) {
         return r.json();
@@ -6338,6 +6357,7 @@
     renderPlansList();
   }
   function loadPlans() {
+    if (state.partialMovement) return Promise.resolve();
     var q = new URLSearchParams();
     applyAnalyticsPeriodQuery(q, true);
     appendOrgQuery(q, state.applied.org);

@@ -147,11 +147,34 @@ async function ensureFinanceTables(db) {
     return tablesReady;
 }
 
+const {
+    financePartialRule,
+    clampCustomerCodes,
+    filterOrgAliases,
+    cashRowInAllowlist,
+} = require('../lib/datagonPagePartial');
+
 function pageMode(req) {
     const actor = req.datagonActor || {};
     if (actor.username === 'admin') return 'full';
     const pm = (actor.page_modes || {}).finance;
-    return pm === 'full' || pm === 'view' ? pm : 'hidden';
+    return pm === 'full' || pm === 'partial' || pm === 'view' ? pm : 'hidden';
+}
+
+/** null — без ограничения. Иначе коды юрлиц, которые partial может видеть. */
+function financePartialAllow(req) {
+    const rule = financePartialRule(req.datagonActor, pageMode(req));
+    return rule ? rule.customer_codes.slice() : null;
+}
+
+function rejectFinancePartialBlock(req, res) {
+    if (pageMode(req) !== 'partial') return false;
+    res.status(403).json({
+        success: false,
+        error: 'Частичный доступ: этот блок закрыт',
+        code: 'PAGE_PARTIAL',
+    });
+    return true;
 }
 
 function requireFinanceAccess(req, res, write) {
@@ -192,7 +215,7 @@ function redactFinanceDetailRow(row) {
 
 function withFinanceTxViewRedaction(req, payload) {
     if (!payload || typeof payload !== 'object') return payload;
-    if (pageMode(req) === 'full') {
+    if (pageMode(req) === 'full' || pageMode(req) === 'partial') {
         return Object.assign({}, payload, { detail_hidden: false });
     }
     const rows = Array.isArray(payload.rows) ? payload.rows.map(redactFinanceDetailRow) : payload.rows;
@@ -1860,7 +1883,18 @@ function factory(db, appSettings) {
         if (!requireFinanceAccess(req, res, false)) return;
         try {
             const mode = pageMode(req);
-            res.json(await financeConfigPayload(db, appSettings, mode === 'full'));
+            const payload = await financeConfigPayload(db, appSettings, mode === 'full');
+            const allow = financePartialAllow(req);
+            if (allow) {
+                payload.credentials = [];
+                payload.raiffeisen_credentials = [];
+                payload.tbank_credentials = [];
+                payload.jwt_mask = '';
+                payload.jwt_len = 0;
+                payload.can_write = false;
+                payload.partial = { movement_only: true, customer_codes: allow };
+            }
+            res.json(payload);
         } catch (e) {
             res.status(500).json({ success: false, error: e.message || String(e) });
         }
@@ -2323,18 +2357,31 @@ function factory(db, appSettings) {
                     sync_script: finYm.getYmFinanceSyncMeta(),
                 };
             }
+            const allow = financePartialAllow(req);
+            let accountRows = rows || [];
+            let aliasesOut = org_aliases;
+            if (allow) {
+                const allowSet = new Set(allow.map((c) => String(c).toLowerCase()));
+                accountRows = accountRows.filter((a) =>
+                    allowSet.has(String(a.customer_code || '').toLowerCase())
+                );
+                aliasesOut = filterOrgAliases(org_aliases, allow);
+            }
             res.json({
                 success: true,
-                accounts: rows || [],
+                accounts: accountRows,
                 account_sub_types: subtypes,
-                org_aliases,
-                deposit_estimate,
-                ms_inventory,
-                ms_prepaid_orders,
-                ozon_finance,
-                wb_finance,
-                ym_finance,
+                org_aliases: aliasesOut,
+                deposit_estimate: allow ? null : deposit_estimate,
+                ms_inventory: allow ? null : ms_inventory,
+                ms_prepaid_orders: allow ? null : ms_prepaid_orders,
+                ozon_finance: allow ? null : ozon_finance,
+                wb_finance: allow ? null : wb_finance,
+                ym_finance: allow ? null : ym_finance,
                 can_write: pageMode(req) === 'full',
+                partial: allow
+                    ? { movement_only: true, customer_codes: allow }
+                    : null,
                 api_note:
                     'Банк — в шапке организации (Точка / Райффайзен / Т‑Банк). Фонд: галка при редактировании названия (карандаш) или клик по бейджу типа. «На депозитах» — оценка из выписки (открытия − возвраты тела), всегда в карточках и в «Всего». «Товар (МС)» — оценка склада (остаток × себестоимость, только Товар со складской «Да»), привязана к Альмамед; официальный снимок — конец месяца. «В пути / недопринято» — оплаченные ЗП (purchaseorder), отдельно от товарного остатка. «Ozon / WB / Я.М · к выплате» — долг МП (не входят в «Всего доступно»). Я.М — предстоящие по закрытым неделям из united-netting (rev.2), не полный «Баланс на сегодня» кабинета.',
             });
@@ -2662,6 +2709,7 @@ function factory(db, appSettings) {
 
     router.get('/cash/summary', async (req, res) => {
         if (!requireFinanceAccess(req, res, false)) return;
+        if (rejectFinancePartialBlock(req, res)) return;
         try {
             await ensureFinanceTables(db);
             const win = analyticsDateWindow(req);
@@ -2685,6 +2733,7 @@ function factory(db, appSettings) {
 
     router.get('/cash/templates', async (req, res) => {
         if (!requireFinanceAccess(req, res, false)) return;
+        if (rejectFinancePartialBlock(req, res)) return;
         try {
             await ensureFinanceTables(db);
             const [rows] = await db.query(
@@ -2932,6 +2981,7 @@ function factory(db, appSettings) {
 
     router.get('/cash/tx', async (req, res) => {
         if (!requireFinanceAccess(req, res, false)) return;
+        if (rejectFinancePartialBlock(req, res)) return;
         try {
             await ensureFinanceTables(db);
             const dateFrom = parseYmd(req.query.date_from) || '2000-01-01';
@@ -3077,6 +3127,7 @@ function factory(db, appSettings) {
 
     router.get('/plans/categories', async (req, res) => {
         if (!requireFinanceAccess(req, res, false)) return;
+        if (rejectFinancePartialBlock(req, res)) return;
         try {
             await ensureFinanceTables(db);
             const activeOnly =
@@ -3169,6 +3220,7 @@ function factory(db, appSettings) {
 
     router.get('/plans/items', async (req, res) => {
         if (!requireFinanceAccess(req, res, false)) return;
+        if (rejectFinancePartialBlock(req, res)) return;
         try {
             await ensureFinanceTables(db);
             const activeOnly =
@@ -3520,6 +3572,7 @@ function factory(db, appSettings) {
 
     router.get('/plans/matrix', async (req, res) => {
         if (!requireFinanceAccess(req, res, false)) return;
+        if (rejectFinancePartialBlock(req, res)) return;
         try {
             await ensureFinanceTables(db);
             const win = analyticsDateWindow(req);
@@ -3548,7 +3601,8 @@ function factory(db, appSettings) {
             ).slice(0, 12);
             const direction = String(req.query.direction || '').trim().toLowerCase();
             const accountId = String(req.query.account_id || '').trim();
-            const customerCodes = parseCustomerCodes(req.query);
+            const partialAllow = financePartialAllow(req);
+            const customerCodes = clampCustomerCodes(parseCustomerCodes(req.query), partialAllow);
             const dateFrom = String(req.query.date_from || '').trim();
             const dateTo = String(req.query.date_to || '').trim();
             // months / date_* → одно окно; иначе cash templates разворачивались с 2000-01-01
@@ -3588,6 +3642,9 @@ function factory(db, appSettings) {
                     direction,
                     chartOnly: false,
                 });
+                if (partialAllow) {
+                    cashRows = cashRows.filter((row) => cashRowInAllowlist(row, partialAllow));
+                }
             }
 
             if (source === 'cash') {
@@ -3626,7 +3683,8 @@ function factory(db, appSettings) {
                 where.push('t.account_id = ?');
                 params.push(accountId);
             }
-            sqlCustomerCodeIn('a', customerCodes, where, params);
+            if (partialAllow && !customerCodes.length) where.push('1=0');
+            else sqlCustomerCodeIn('a', customerCodes, where, params);
             if (direction === 'in' || direction === 'out') {
                 where.push('t.direction = ?');
                 params.push(direction);
@@ -3873,6 +3931,7 @@ function factory(db, appSettings) {
     /** Помесячная аналитика входящих/исходящих из снимка dg_finance_tx. */
     router.get('/analytics/monthly', async (req, res) => {
         if (!requireFinanceAccess(req, res, false)) return;
+        if (rejectFinancePartialBlock(req, res)) return;
         try {
             await ensureFinanceTables(db);
             const win = analyticsDateWindow(req);
@@ -4279,6 +4338,7 @@ function factory(db, appSettings) {
     /** Топ контрагентов по входящим / исходящим (снимок dg_finance_tx). */
     router.get('/analytics/counterparties', async (req, res) => {
         if (!requireFinanceAccess(req, res, false)) return;
+        if (rejectFinancePartialBlock(req, res)) return;
         try {
             await ensureFinanceTables(db);
             const limit = Math.max(3, Math.min(20, parseInt(String(req.query.limit || '8'), 10) || 8));

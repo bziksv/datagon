@@ -16,7 +16,7 @@ description: Подменю Маркетплейсы — Ozon, WB, Я.Марке
 
 На странице: справка «как устроено», ссылки на Ozon/WB/Я.М., бейджи состояния ключей (`GET /api/exports/marketplaces/status`), форма ключей в БД (`POST /config`) — только **admin** или **full** к разделу «Настройки». Env (`OZON_*`, `WB_*`, `YM_*`) имеет приоритет над `app_settings`.
 
-Дочерние shop-экраны и API снапшотов идут под префиксом `/api/exports/marketplaces`, но **режим доступа** у листа HTML — свой ключ (`exports-marketplaces-ozon` и т.д.). Если родитель `exports-marketplaces` = `hidden`, дочерние тоже скрыты, **кроме** явного `view`/`full` у дочернего ключа (`isHtmlLeafAccessHidden`).
+Дочерние shop-экраны и API снапшотов идут под префиксом `/api/exports/marketplaces`, но **режим доступа** у листа HTML — свой ключ (`exports-marketplaces-ozon` и т.д.). Если родитель `exports-marketplaces` = `hidden`, дочерние тоже скрыты, **кроме** явного `view`/`partial`/`full` у дочернего ключа (`isHtmlLeafAccessHidden`).
 
 ## Экраны подменю
 

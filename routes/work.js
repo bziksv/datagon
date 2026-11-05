@@ -854,7 +854,7 @@ module.exports = (db) => {
             .filter((e) => {
                 if (isAdmin) return true;
                 const mode = modes[e.pageKey];
-                return mode === 'view' || mode === 'full';
+                return mode === 'view' || mode === 'partial' || mode === 'full';
             })
             .map((e) => ({
                 slug: e.slug,
@@ -878,7 +878,7 @@ module.exports = (db) => {
             const actor = actorOf(req);
             const scope = await resolveWorkActorScope(db, actor);
             const staffMode = actor.page_modes && actor.page_modes['work-seo-staff'];
-            if (!scope.unscoped && staffMode !== 'view' && staffMode !== 'full') {
+            if (!scope.unscoped && staffMode !== 'view' && staffMode !== 'partial' && staffMode !== 'full') {
                 return res.status(403).json({
                     success: false,
                     error: 'Список пользователей WORK — только admin или «Сотрудники SEO»',

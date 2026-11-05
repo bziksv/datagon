@@ -146,9 +146,9 @@ Body:
 - `DELETE /api/specialties/:id` — удалить (нельзя удалить `is_system` и специальность с привязанными пользователями).
 - `GET /api/specialties/pages` — каталог разделов панели (ключ, заголовок, html-файл) для матрицы.
 - `GET /api/specialties/:id/access` — текущие режимы по разделам.
-- `PUT /api/specialties/:id/access` — сохранить режимы; body: `{ "modes": { "dashboard": "full", "results": "view", ... } }`.
+- `PUT /api/specialties/:id/access` — сохранить режимы; body: `{ "modes": { "dashboard": "full", "results": "view", "my-products": "partial", ... } }`. Значения: `hidden`, `view`, `partial`, `full`.
 
-Записи к не-GET API (кроме путей без привязки к разделу в реестре) для не-admin проверяются по режиму раздела: при `hidden` — 403, при `view` — разрешены только GET/HEAD/OPTIONS.
+Записи к не-GET API (кроме путей без привязки к разделу в реестре) для не-admin проверяются по режиму раздела: при `hidden` — 403, при `view` и `partial` — разрешены только GET/HEAD/OPTIONS (`partial` отвечает `PAGE_PARTIAL`: раздел открыт, изменения закрыты, пока для группы и страницы не заданы исключения).
 Новые страницы из `PAGE_DEFS` автоматически досинхронизируются в `specialty_page_modes` для всех существующих специальностей при старте сервера; для «Полный доступ» ставится `full`, для остальных групп — `hidden` до явного выбора администратора. Запись с `matrixOnly: true` (например **`exports-new-products-stats`** — вкладка «Статистика контент-отдела», **`exports-new-products-standing`** — «Постоянные задачи», **`exports-new-products-updates`** — «Обновление товаров») появляется в матрице настроек доступа, но не меняет HTML-лист родительского экрана.
 
 ## Settings
@@ -2653,7 +2653,7 @@ Query: `search`, **`inn`** / `counterparty_inn` (только цифры; под
 
 В строках банка: `customer_code`, `org_label`, **`org`** — **полное** имя организации (alias `full`, иначе `org_label`), **`org_short`** — короткое. **`chart_excluded`** / **`chart_exclude_reason`**, **`chart_tag`**: `founder` | `dividend` | `""`, **`founder_capital`** / **`dividend_payout`**. В строках cash: `source=cash`, `cash_kind=once|recurring`, `bank=cash`, `tx_id` вида `cash:o:{id}` / `cash:t:{templateId}:{ym}`, `include_chart`, `amount_fix` / `amount_premium` (для recurring), `scope`. Умный поиск матчит оба alias.
 
-Ответ дополнительно: `include_internal`, `founder_capital`, `dividend`, `source`, `sort_by`, `sort_dir`, **`detail_hidden`**. При `finance=view` поля `purpose` / `counterparty` / `counterparty_inn` / `document_number` обнуляются, `account_number` маскируется (F-FIN-02); суммы и даты остаются.
+Ответ дополнительно: `include_internal`, `founder_capital`, `dividend`, `source`, `sort_by`, `sort_dir`, **`detail_hidden`**. При `finance=view` поля `purpose` / `counterparty` / `counterparty_inn` / `document_number` обнуляются, `account_number` маскируется (F-FIN-02); суммы и даты остаются. При `finance=partial` реквизиты проводки **не** маскируются, но `customer_code` режется allowlist из `lib/datagonPagePartial.js` (пустой фильтр = весь allowlist, чужой код отбрасывается; наличные `scope=all` не подмешиваются). `GET /config` отдаёт `partial.movement_only` и пустые credentials; `GET /accounts` — только счета allowlist. `GET` analytics / cash / plans для `partial` → `403 PAGE_PARTIAL`.
 
 ### GET `/api/finance/cash/summary`
 

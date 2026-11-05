@@ -18,15 +18,24 @@
     var orig = window.fetch;
     window.fetch = function (input, init) {
       try {
-        if (document.body && document.body.getAttribute("data-dg-page-access") === "view") {
+        var pageAccess =
+          document.body && document.body.getAttribute("data-dg-page-access");
+        if (pageAccess === "view" || pageAccess === "partial") {
           var method = "GET";
           if (init && init.method) method = String(init.method);
           else if (typeof Request !== "undefined" && input && input instanceof Request)
             method = String(input.method || "GET");
           var m = method.toUpperCase();
           if (m !== "GET" && m !== "HEAD" && m !== "OPTIONS") {
+            var limited =
+              pageAccess === "partial"
+                ? {
+                    error: "Частичный доступ: это действие для раздела ещё не открыто",
+                    code: "PAGE_PARTIAL",
+                  }
+                : { error: "Режим только просмотра", code: "PAGE_VIEW_ONLY" };
             return Promise.resolve(
-              new Response(JSON.stringify({ error: "Режим только просмотра", code: "PAGE_VIEW_ONLY" }), {
+              new Response(JSON.stringify(limited), {
                 status: 403,
                 headers: { "Content-Type": "application/json" },
               })
@@ -973,7 +982,7 @@
       nk === "exports-photoshoot" ||
       nk === "exports-marketplaces-reglament";
     var parentMode = pm["exports-marketplaces"];
-    if (mpChild && (pm[nk] === "full" || pm[nk] === "view")) return String(pm[nk]);
+    if (mpChild && (pm[nk] === "full" || pm[nk] === "partial" || pm[nk] === "view")) return String(pm[nk]);
     if (parentMode === "hidden" && (nk === "exports-marketplaces" || mpChild)) return "hidden";
     if (mpChild) {
       var own = pm[nk];
@@ -1084,16 +1093,21 @@
     if (b) b.remove();
   }
 
-  function ensureViewOnlyBanner() {
-    if (document.getElementById("dg-view-only-banner")) return;
-    var bar = document.createElement("div");
-    bar.id = "dg-view-only-banner";
-    bar.className = "alert alert-warning border-0 rounded-0 text-center mb-0 py-2";
-    bar.setAttribute("role", "status");
-    bar.textContent =
-      "Режим только просмотра: запуск действий и сохранение изменений отключены. Данные можно только просматривать.";
-    var mainInner = document.querySelector(".app-main__inner");
-    if (mainInner) mainInner.insertBefore(bar, mainInner.firstChild);
+  function ensureLimitedAccessBanner(mode) {
+    var text =
+      mode === "partial"
+        ? "Частичный доступ: раздел открыт, изменения пока закрыты."
+        : "Режим только просмотра: запуск действий и сохранение изменений отключены. Данные можно только просматривать.";
+    var bar = document.getElementById("dg-view-only-banner");
+    if (!bar) {
+      bar = document.createElement("div");
+      bar.id = "dg-view-only-banner";
+      bar.className = "alert alert-warning border-0 rounded-0 text-center mb-0 py-2";
+      bar.setAttribute("role", "status");
+      var mainInner = document.querySelector(".app-main__inner");
+      if (mainInner) mainInner.insertBefore(bar, mainInner.firstChild);
+    }
+    bar.textContent = text;
   }
 
   function applyViewOnlyShell() {
@@ -1123,7 +1137,8 @@
       return;
     }
     var pm = readStoredPageModes();
-    if (!pm || datagonEffectivePageMode(pm, navKey) !== "view") {
+    var accessMode = pm ? datagonEffectivePageMode(pm, navKey) : "";
+    if (accessMode !== "view" && accessMode !== "partial") {
       try {
         document.body.removeAttribute("data-dg-page-access");
       } catch (eD) {}
@@ -1131,9 +1146,9 @@
       return;
     }
     try {
-      document.body.setAttribute("data-dg-page-access", "view");
+      document.body.setAttribute("data-dg-page-access", accessMode);
     } catch (eE) {}
-    ensureViewOnlyBanner();
+    ensureLimitedAccessBanner(accessMode);
   }
 
   window.addEventListener("datagon-profile-loaded", function () {

@@ -3386,7 +3386,7 @@
   </div>
 
   <script src="/datagon-legal.js"></script>
-  <script src="/datagon-vanilla.js?v=20261009-dates"></script>
+  <script src="/datagon-vanilla.js?v=20261105-page-partial"></script>
   <script>
 (function () {
   "use strict";
@@ -8100,7 +8100,7 @@
       var raw = window.localStorage.getItem("datagonPageModesV1");
       var pm = raw ? JSON.parse(raw) : {};
       var m = pm && pm["exports-new-products-stats"];
-      if (m === "full" || m === "view" || m === "hidden") return m;
+      if (m === "full" || m === "partial" || m === "view" || m === "hidden") return m;
     } catch (_) {}
     return "hidden";
   }
@@ -8116,7 +8116,7 @@
       var raw = window.localStorage.getItem("datagonPageModesV1");
       var pm = raw ? JSON.parse(raw) : {};
       var m = pm && pm["exports-new-products-standing"];
-      if (m === "full" || m === "view" || m === "hidden") return m;
+      if (m === "full" || m === "partial" || m === "view" || m === "hidden") return m;
     } catch (_) {}
     return "hidden";
   }
@@ -8132,7 +8132,7 @@
       var raw = window.localStorage.getItem("datagonPageModesV1");
       var pm = raw ? JSON.parse(raw) : {};
       var m = pm && pm["exports-new-products-crm-notify"];
-      if (m === "full" || m === "view" || m === "hidden") return m;
+      if (m === "full" || m === "partial" || m === "view" || m === "hidden") return m;
     } catch (_) {}
     return "hidden";
   }
@@ -8148,10 +8148,10 @@
       var raw = window.localStorage.getItem("datagonPageModesV1");
       var pm = raw ? JSON.parse(raw) : {};
       var m = pm && pm["exports-new-products-updates"];
-      if (m === "full" || m === "view" || m === "hidden") return m;
+      if (m === "full" || m === "partial" || m === "view" || m === "hidden") return m;
       // back-compat: если матрица ещё без ключа — наследуем доступ родителя «Новые товары»
       var parent = pm && pm["exports-new-products"];
-      if (parent === "full" || parent === "view") return parent;
+      if (parent === "full" || parent === "partial" || parent === "view") return parent;
     } catch (_) {}
     return "hidden";
   }
@@ -8161,10 +8161,10 @@
     state.standingAccess = resolveStandingAccessMode();
     state.updatesAccess = resolveUpdatesAccessMode();
     state.crmNotifyAccess = resolveCrmNotifyAccessMode();
-    var showStats = state.statsAccess === "full" || state.statsAccess === "view";
-    var showStanding = state.standingAccess === "full" || state.standingAccess === "view";
-    var showUpdates = state.updatesAccess === "full" || state.updatesAccess === "view";
-    var showCrm = state.crmNotifyAccess === "full" || state.crmNotifyAccess === "view";
+    var showStats = state.statsAccess === "full" || state.statsAccess === "partial" || state.statsAccess === "view";
+    var showStanding = state.standingAccess === "full" || state.standingAccess === "partial" || state.standingAccess === "view";
+    var showUpdates = state.updatesAccess === "full" || state.updatesAccess === "partial" || state.updatesAccess === "view";
+    var showCrm = state.crmNotifyAccess === "full" || state.crmNotifyAccess === "partial" || state.crmNotifyAccess === "view";
     var tabStats = el("dg-np-tab-stats");
     if (tabStats) {
       tabStats.classList.toggle("d-none", !showStats);

@@ -1352,6 +1352,7 @@
                 Специальности задают, какие разделы панели видны в меню и с каким режимом открываются:
                 <strong>Скрытый</strong> — нет в меню, прямой вход по ссылке недоступен;
                 <strong>Просмотр</strong> — раздел открыт, без изменений и запусков;
+                <strong>Частично</strong> — раздел открыт, изменения закрыты, пока для этой группы и раздела не заданы отдельные исключения;
                 <strong>Полный</strong> — как обычно. Список разделов подтягивается из каталога приложения автоматически.
               </p>
               <div class="row g-2 align-items-end mb-3">
@@ -3502,7 +3503,7 @@
   </div>
 
   <script src="/datagon-legal.js"></script>
-  <script src="/datagon-vanilla.js?v=20261009-dates"></script>
+  <script src="/datagon-vanilla.js?v=20261105-page-partial"></script>
     <script>
     (function () {
       // Удержание позиции скролла при асинхронных fetch-ах, которые
@@ -5528,6 +5529,7 @@
               [
                 { v: "hidden", t: "Скрытый" },
                 { v: "view", t: "Просмотр" },
+                { v: "partial", t: "Частично" },
                 { v: "full", t: "Полный" },
               ].forEach(function (opt) {
                 var o = document.createElement("option");
@@ -5536,7 +5538,8 @@
                 sel.appendChild(o);
               });
               var cur = modes[p.key] || "hidden";
-              sel.value = cur === "view" || cur === "full" || cur === "hidden" ? cur : "hidden";
+              sel.value =
+                cur === "view" || cur === "partial" || cur === "full" || cur === "hidden" ? cur : "hidden";
               td2.appendChild(sel);
               tr.appendChild(td1);
               tr.appendChild(td2);

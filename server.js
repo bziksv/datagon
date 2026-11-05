@@ -3994,8 +3994,14 @@ initDB().then(async () => {
             res.status(403);
             return res.json({ error: 'Нет доступа к разделу', code: 'PAGE_HIDDEN' });
         }
-        if (mode === 'view' && !isHttpReadMethod(req.method)) {
+        if (mode !== 'full' && !isHttpReadMethod(req.method)) {
             res.status(403);
+            if (mode === 'partial') {
+                return res.json({
+                    error: 'Частичный доступ: это действие для раздела ещё не открыто',
+                    code: 'PAGE_PARTIAL',
+                });
+            }
             return res.json({ error: 'Режим только просмотра', code: 'PAGE_VIEW_ONLY' });
         }
         return next();
@@ -4482,7 +4488,7 @@ initDB().then(async () => {
                 actor.username === 'admin'
                     ? 'full'
                     : getApiPageModeForActor(actor, 'processes');
-            if (procMode === 'view') {
+            if (procMode === 'view' || procMode === 'partial') {
                 const shortMsg = (m, n) => {
                     const s = String(m || '').trim();
                     if (!s) return '';

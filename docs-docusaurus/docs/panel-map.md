@@ -108,8 +108,8 @@ description: Все пункты бокового меню Datagon — URL, кл
 
 ## Доступ
 
-- Матрица: [Настройки](/docs/settings/) → специальности → режимы `hidden` / `view` / `full` по ключам выше.
-- Дочерние маркетплейсы: если родитель `exports-marketplaces` = `hidden`, явный `view`/`full` у дочерней страницы всё равно открывает её (см. `isHtmlLeafAccessHidden` в `lib/datagonPageRegistry.js`).
+- Матрица: [Настройки](/docs/settings/) → специальности → режимы `hidden` / `view` / `partial` / `full` по ключам выше. `partial` — раздел виден, запись закрыта (`PAGE_PARTIAL`), пока для группы не заданы исключения.
+- Дочерние маркетплейсы: если родитель `exports-marketplaces` = `hidden`, явный `view`/`partial`/`full` у дочерней страницы всё равно открывает её (см. `isHtmlLeafAccessHidden` в `lib/datagonPageRegistry.js`).
 - Карточка товара: HTML dual `purchase` \| `product`; API `/api/product` → ключ **`purchase`** — [Карточка товара](/docs/product/).
 - API: `API_PREFIX_RULES` — обычно тот же ключ, что HTML; исключения: shop МП → `exports-marketplaces`, `/api/product` → `purchase`, `work-schedule` API = max с `work-schedule-settings`.
 - Вход / редирект / пустая матрица: [Вход и нет доступа](/docs/login/). Каталог URL: [sections](/docs/sections/).
