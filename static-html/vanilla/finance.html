@@ -2950,6 +2950,11 @@
                 <h5 class="card-title" id="dg-fin-cash-month-title">Правка месяца</h5>
                 <p class="small text-muted" id="dg-fin-cash-month-sub"></p>
                 <div class="row g-2">
+                  <div class="col-12">
+                    <label class="form-label" for="dg-fin-cash-month-date">Дата</label>
+                    <input type="date" class="form-control form-control-sm" id="dg-fin-cash-month-date" />
+                    <div class="form-text">Только эта выплата. День шаблона у других месяцев не меняется.</div>
+                  </div>
                   <div class="col-6">
                     <label class="form-label" for="dg-fin-cash-month-fix">Фикс</label>
                     <input type="text" class="form-control form-control-sm" id="dg-fin-cash-month-fix" inputmode="decimal" />
@@ -8116,6 +8121,10 @@
     var overlay = el("dg-fin-cash-month-overlay");
     var sub = el("dg-fin-cash-month-sub");
     if (sub) sub.textContent = (row.purpose || "Шаблон") + " · " + String(row.ym || "");
+    if (el("dg-fin-cash-month-date")) {
+      var ymd = String(row.booked_date || row.booked_at || "").slice(0, 10);
+      el("dg-fin-cash-month-date").value = /^\d{4}-\d{2}-\d{2}$/.test(ymd) ? ymd : "";
+    }
     if (el("dg-fin-cash-month-fix")) el("dg-fin-cash-month-fix").value = row.amount_fix != null ? String(row.amount_fix) : "";
     if (el("dg-fin-cash-month-prem")) {
       el("dg-fin-cash-month-prem").value =
@@ -8138,6 +8147,11 @@
     var premRaw = el("dg-fin-cash-month-prem") && el("dg-fin-cash-month-prem").value;
     var premEmpty = String(premRaw || "").trim() === "";
     var prem = premEmpty ? null : parseCashMoney(premRaw);
+    var dateRaw = String((el("dg-fin-cash-month-date") && el("dg-fin-cash-month-date").value) || "").trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateRaw)) {
+      toast("warning", "Укажите дату");
+      return Promise.resolve();
+    }
     var body = {
       amount_fix: fix,
       amount_premium: prem,
@@ -8145,6 +8159,7 @@
       include_chart: !!(el("dg-fin-cash-month-chart") && el("dg-fin-cash-month-chart").checked),
       skipped: !!(el("dg-fin-cash-month-skip") && el("dg-fin-cash-month-skip").checked),
       clear_premium: premEmpty,
+      booked_date: dateRaw,
     };
     var btn = el("dg-fin-cash-month-ok");
     var run = function () {

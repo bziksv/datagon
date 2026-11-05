@@ -2934,6 +2934,7 @@ function factory(db, appSettings) {
             let includeChart = prev ? prev.include_chart : null;
             let skipped = prev ? Number(prev.skipped) || 0 : 0;
             let reviewConfirmed = prev ? Number(prev.review_confirmed) || 0 : 0;
+            let bookedDate = prev ? finCash.ymdFromDbDate(prev.booked_date) || null : null;
             if (Object.prototype.hasOwnProperty.call(body, 'amount_fix')) {
                 amountFix = finCash.parseMoney(body.amount_fix);
             }
@@ -2960,20 +2961,32 @@ function factory(db, appSettings) {
                         ? 1
                         : 0;
             }
+            if (Object.prototype.hasOwnProperty.call(body, 'booked_date')) {
+                const raw = body.booked_date;
+                if (raw == null || String(raw).trim() === '') {
+                    bookedDate = null;
+                } else {
+                    bookedDate = parseYmd(raw);
+                    if (!bookedDate) {
+                        return res.status(400).json({ success: false, error: 'Некорректная дата' });
+                    }
+                }
+            }
             await db.query(
                 `INSERT INTO dg_finance_cash_overrides
-                    (template_id, ym, amount_fix, amount_premium, purpose, include_chart, skipped, review_confirmed)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    (template_id, ym, amount_fix, amount_premium, purpose, include_chart, skipped, review_confirmed, booked_date)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                  ON DUPLICATE KEY UPDATE
                     amount_fix = VALUES(amount_fix),
                     amount_premium = VALUES(amount_premium),
                     purpose = VALUES(purpose),
                     include_chart = VALUES(include_chart),
                     skipped = VALUES(skipped),
-                    review_confirmed = VALUES(review_confirmed)`,
-                [id, ym, amountFix, amountPremium, purpose, includeChart, skipped, reviewConfirmed]
+                    review_confirmed = VALUES(review_confirmed),
+                    booked_date = VALUES(booked_date)`,
+                [id, ym, amountFix, amountPremium, purpose, includeChart, skipped, reviewConfirmed, bookedDate]
             );
-            res.json({ success: true, template_id: id, ym, review_confirmed: reviewConfirmed });
+            res.json({ success: true, template_id: id, ym, review_confirmed: reviewConfirmed, booked_date: bookedDate });
         } catch (e) {
             res.status(500).json({ success: false, error: e.message || String(e) });
         }
