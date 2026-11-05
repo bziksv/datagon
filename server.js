@@ -12,6 +12,7 @@ const {
     getAutoSyncTaskWorker,
     getAutoSyncTaskKeys,
     normalizeAutoSyncWorkerId,
+    financeTochkaSlotTimes,
 } = require('./lib/datagonAutoSyncRegistry');
 const { attachBitrixUrlKeys } = require('./lib/datagonBitrixProductUrl');
 const { openCmsDbConnection, cmsConnectionMeta, ensureMySitesMirrorColumns } = require('./lib/datagonCmsDb');
@@ -168,6 +169,7 @@ let appSettings = {
     auto_sync_results_reparse_products_weekdays: '4',
     auto_sync_finance_tochka_enabled: 0,
     auto_sync_finance_tochka_time: '07:00',
+    auto_sync_finance_tochka_hours: '',
     auto_sync_finance_tochka_days: 30,
     auto_sync_finance_tochka_weekdays: '',
     auto_sync_ozon_finance_enabled: 1,
@@ -572,6 +574,7 @@ async function initDB() {
             ['auto_sync_results_reparse_products_weekdays','4'],
             ['auto_sync_finance_tochka_enabled','0'],
             ['auto_sync_finance_tochka_time','07:00'],
+            ['auto_sync_finance_tochka_hours',''],
             ['auto_sync_finance_tochka_days','30'],
             ['auto_sync_finance_tochka_weekdays',''],
             ['auto_sync_ozon_finance_enabled','1'],
@@ -3796,6 +3799,10 @@ function startAutoSyncScheduler() {
                     type: 'finance_tochka',
                     enabled: Number(appSettings.auto_sync_finance_tochka_enabled || 0) === 1,
                     time: String(appSettings.auto_sync_finance_tochka_time || '07:00').slice(0, 5),
+                    times: financeTochkaSlotTimes(
+                        appSettings.auto_sync_finance_tochka_hours,
+                        appSettings.auto_sync_finance_tochka_time
+                    ),
                     weekdays: parseAutoSyncWeekdaysMon17(appSettings.auto_sync_finance_tochka_weekdays)
                 },
                 {
@@ -3841,8 +3848,9 @@ function startAutoSyncScheduler() {
                     if (minsOfDay % iv !== 0) continue;
                     runKey = `${now.date} ${now.time}`;
                 } else {
-                    if (now.time !== t.time) continue;
-                    runKey = `${now.date} ${t.time}`;
+                    const slots = Array.isArray(t.times) && t.times.length ? t.times : [t.time];
+                    if (slots.indexOf(now.time) < 0) continue;
+                    runKey = `${now.date} ${now.time}`;
                 }
                 const last = autoSyncLastRunByTask.get(t.type);
                 if (last === runKey) continue;

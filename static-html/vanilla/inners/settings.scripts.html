@@ -149,6 +149,7 @@
         auto_sync_results_reparse_products_weekdays: "4",
         auto_sync_finance_tochka_enabled: 0,
         auto_sync_finance_tochka_time: "07:00",
+        auto_sync_finance_tochka_hours: "",
         auto_sync_finance_tochka_days: 30,
         auto_sync_finance_tochka_weekdays: "",
         auto_sync_ozon_finance_enabled: 1,
@@ -433,6 +434,7 @@
         var wdCsv = wdPrefix ? collectAutoSyncWeekdayCsv(wdPrefix) : "";
         var timeStr;
         var timeMin;
+        var slotMins;
         var nextMeta;
         if (mode === "interval") {
           var intervalId = taskEl.getAttribute("data-as-interval-id");
@@ -443,11 +445,21 @@
           timeMin = iv;
           nextMeta = computeAutoSyncNextIntervalMeta(en, iv, wdCsv);
         } else {
-          var timeId = taskEl.getAttribute("data-as-time-id");
-          var timeEl = timeId ? document.getElementById(timeId) : null;
-          timeStr = readAutoSyncTaskTimeStr(taskEl, timeEl);
-          timeMin = timeStrToMinutes(timeStr);
-          nextMeta = computeAutoSyncNextRunMeta(en, timeStr, wdCsv);
+          var hoursPrefix = taskEl.getAttribute("data-as-hours-prefix");
+          if (hoursPrefix) {
+            var slots = collectFinanceHourSlots(hoursPrefix);
+            if (!slots.length) slots = ["07:00"];
+            timeStr = slots.join(", ");
+            timeMin = timeStrToMinutes(slots[0]);
+            slotMins = slots.map(timeStrToMinutes);
+            nextMeta = computeAutoSyncNextRunMetaMulti(en, slots, wdCsv);
+          } else {
+            var timeId = taskEl.getAttribute("data-as-time-id");
+            var timeEl = timeId ? document.getElementById(timeId) : null;
+            timeStr = readAutoSyncTaskTimeStr(taskEl, timeEl);
+            timeMin = timeStrToMinutes(timeStr);
+            nextMeta = computeAutoSyncNextRunMeta(en, timeStr, wdCsv);
+          }
         }
         var workerAttr = Number(taskEl.getAttribute("data-as-worker") || 1);
         var workerN =
@@ -461,6 +473,7 @@
           enabled: en,
           timeStr: timeStr,
           timeMin: timeMin,
+          slotMins: slotMins || [timeMin],
           weekdaysCsv: wdCsv,
           nextMeta: nextMeta,
           worker: workerN,
@@ -518,7 +531,15 @@
             if (wa !== wb) continue;
             if (!weekdaysSetsOverlap(a.weekdaysCsv, b.weekdaysCsv)) continue;
             if (a.scheduleMode === "interval" || b.scheduleMode === "interval") continue;
-            var diff = Math.abs(a.timeMin - b.timeMin);
+            var minsA = a.slotMins && a.slotMins.length ? a.slotMins : [a.timeMin];
+            var minsB = b.slotMins && b.slotMins.length ? b.slotMins : [b.timeMin];
+            var diff = AS_TIME_CLASH_MAX_DIFF_MIN + 1;
+            minsA.forEach(function (ma) {
+              minsB.forEach(function (mb) {
+                var d = Math.abs(ma - mb);
+                if (d < diff) diff = d;
+              });
+            });
             if (diff > AS_TIME_CLASH_MAX_DIFF_MIN) continue;
             var crossMs =
               (a.category === "import_ms" && b.category === "export_ms") ||
@@ -910,6 +931,50 @@
       function timeStrToMinutes(t) {
         var p = String(t || "00:00").slice(0, 5).split(":");
         return (parseInt(p[0], 10) || 0) * 60 + (parseInt(p[1], 10) || 0);
+      }
+
+      function computeAutoSyncNextRunMetaMulti(enabled, timeStrs, weekdaysCsv) {
+        if (!enabled) return { sortKey: Number.MAX_SAFE_INTEGER, label: "выкл." };
+        var best = null;
+        (timeStrs || []).forEach(function (ts) {
+          var meta = computeAutoSyncNextRunMeta(true, ts, weekdaysCsv);
+          if (!best || meta.sortKey < best.sortKey) best = meta;
+        });
+        return best || { sortKey: Number.MAX_SAFE_INTEGER, label: "—" };
+      }
+
+      function collectFinanceHourSlots(prefix) {
+        var slots = [];
+        for (var h = 6; h <= 22; h++) {
+          var el = document.getElementById(prefix + "_" + h);
+          if (el && el.checked) slots.push((h < 10 ? "0" : "") + h + ":00");
+        }
+        return slots;
+      }
+
+      function collectFinanceHoursCsv() {
+        return collectFinanceHourSlots("dg-set-auto_finance_tochka_hh")
+          .map(function (s) { return String(parseInt(s, 10)); })
+          .join(",");
+      }
+
+      function applyFinanceHourChecks(csv, fallbackTime) {
+        var set = Object.create(null);
+        String(csv || "")
+          .split(/[,;\s]+/)
+          .forEach(function (p) {
+            var n = parseInt(String(p).trim(), 10);
+            if (n >= 6 && n <= 22) set[n] = true;
+          });
+        if (!Object.keys(set).length) {
+          var hh = parseInt(String(fallbackTime || "07:00").slice(0, 2), 10);
+          if (hh >= 6 && hh <= 22) set[hh] = true;
+          else set[7] = true;
+        }
+        for (var h = 6; h <= 22; h++) {
+          var el = document.getElementById("dg-set-auto_finance_tochka_hh_" + h);
+          if (el) el.checked = !!set[h];
+        }
       }
 
       function computeAutoSyncNextRunMeta(enabled, timeStr, weekdaysCsv) {
@@ -1410,7 +1475,10 @@
         );
         var financeTochkaEn = document.getElementById("dg-set-auto_finance_tochka_en");
         if (financeTochkaEn) financeTochkaEn.checked = Number(merged.auto_sync_finance_tochka_enabled) === 1;
-        set("dg-set-auto_finance_tochka_time", merged.auto_sync_finance_tochka_time || "07:00");
+        applyFinanceHourChecks(
+          merged.auto_sync_finance_tochka_hours,
+          merged.auto_sync_finance_tochka_time || "07:00"
+        );
         set("dg-set-auto_finance_tochka_days", merged.auto_sync_finance_tochka_days != null ? String(merged.auto_sync_finance_tochka_days) : "30");
         applyAutoSyncWeekdayChecks("dg-set-auto_finance_tochka_wd", merged.auto_sync_finance_tochka_weekdays);
         var ozonFinEn = document.getElementById("dg-set-auto_ozon_finance_en");
@@ -2779,7 +2847,11 @@
           auto_sync_finance_tochka_enabled: document.getElementById("dg-set-auto_finance_tochka_en")
             ? document.getElementById("dg-set-auto_finance_tochka_en").checked
             : false,
-          auto_sync_finance_tochka_time: getStr("dg-set-auto_finance_tochka_time") || "07:00",
+          auto_sync_finance_tochka_hours: collectFinanceHoursCsv() || "7",
+          auto_sync_finance_tochka_time: (function () {
+            var slots = collectFinanceHourSlots("dg-set-auto_finance_tochka_hh");
+            return slots.length ? slots[0] : "07:00";
+          })(),
           auto_sync_finance_tochka_days: getStr("dg-set-auto_finance_tochka_days") || "30",
           auto_sync_finance_tochka_weekdays: collectAutoSyncWeekdayCsv("dg-set-auto_finance_tochka_wd"),
           auto_sync_ozon_finance_enabled: document.getElementById("dg-set-auto_ozon_finance_en")
@@ -2942,6 +3014,7 @@
             "auto_sync_results_reparse_products_weekdays",
             "auto_sync_finance_tochka_enabled",
             "auto_sync_finance_tochka_time",
+            "auto_sync_finance_tochka_hours",
             "auto_sync_finance_tochka_days",
             "auto_sync_finance_tochka_weekdays",
             "auto_sync_ozon_finance_enabled",
@@ -3038,7 +3111,7 @@
         results_reparse_products: "Результаты: перепарсинг товаров",
         price_comp_sync: "Цены с конкурента (ДМ/МК)",
         network_prices: "Цены сети",
-        finance_tochka: "Финансы: Точка",
+        finance_tochka: "Финансы: банки",
         ozon_finance: "Финансы: Ozon",
         wb_finance: "Финансы: WB",
         ops_planfix: "Операционный лист: Planfix",

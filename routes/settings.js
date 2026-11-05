@@ -219,7 +219,7 @@ module.exports = (db, appSettings) => {
             auto_sync_price_comp_stock_min, auto_sync_price_comp_stock_max, auto_sync_price_comp_site_id,
             auto_sync_network_prices_enabled, auto_sync_network_prices_time, auto_sync_network_prices_weekdays,
             auto_sync_results_reparse_products_enabled, auto_sync_results_reparse_products_time, auto_sync_results_reparse_products_weekdays,
-            auto_sync_finance_tochka_enabled, auto_sync_finance_tochka_time, auto_sync_finance_tochka_days, auto_sync_finance_tochka_weekdays,
+            auto_sync_finance_tochka_enabled, auto_sync_finance_tochka_time, auto_sync_finance_tochka_hours, auto_sync_finance_tochka_days, auto_sync_finance_tochka_weekdays,
             auto_sync_ozon_finance_enabled, auto_sync_ozon_finance_time, auto_sync_ozon_finance_weekdays,
             auto_sync_wb_finance_enabled, auto_sync_wb_finance_time, auto_sync_wb_finance_weekdays,
             auto_sync_ym_finance_enabled, auto_sync_ym_finance_time, auto_sync_ym_finance_weekdays,
@@ -386,6 +386,13 @@ module.exports = (db, appSettings) => {
             }
             if (auto_sync_finance_tochka_time !== undefined) {
                 queries.push(['auto_sync_finance_tochka_time', auto_sync_finance_tochka_time || '07:00']);
+            }
+            if (auto_sync_finance_tochka_hours !== undefined) {
+                const { normalizeFinanceHoursCsv } = require('../lib/datagonAutoSyncRegistry');
+                queries.push([
+                    'auto_sync_finance_tochka_hours',
+                    normalizeFinanceHoursCsv(auto_sync_finance_tochka_hours),
+                ]);
             }
             if (auto_sync_finance_tochka_days !== undefined) {
                 const d = Math.max(1, Math.min(365, parseInt(String(auto_sync_finance_tochka_days), 10) || 30));
@@ -870,6 +877,10 @@ module.exports = (db, appSettings) => {
             }
             if(auto_sync_finance_tochka_time !== undefined) {
                 appSettings.auto_sync_finance_tochka_time = auto_sync_finance_tochka_time || '07:00';
+            }
+            if(auto_sync_finance_tochka_hours !== undefined) {
+                const { normalizeFinanceHoursCsv } = require('../lib/datagonAutoSyncRegistry');
+                appSettings.auto_sync_finance_tochka_hours = normalizeFinanceHoursCsv(auto_sync_finance_tochka_hours);
             }
             if(auto_sync_finance_tochka_days !== undefined) {
                 appSettings.auto_sync_finance_tochka_days = Math.max(
