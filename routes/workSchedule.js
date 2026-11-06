@@ -402,6 +402,13 @@ function buildClockSpansForCell(L) {
     return spans;
 }
 
+/** Ручная премия: manual — целиком; manual_days — доля отработанных дней, не выше суммы. */
+function manualPremiumAmount(amount, source, workedDays, normDays) {
+    const n = Math.round((Number(amount) || 0) * 100) / 100;
+    if (source === 'manual_days') return calc.prorateByWorkedDays(n, workedDays, normDays);
+    return n;
+}
+
 async function recalcPayroll(db, employeeId, periodYm) {
     const emp = await getEmployeeById(db, employeeId);
     if (!emp) return null;
@@ -478,7 +485,7 @@ async function recalcPayroll(db, employeeId, periodYm) {
             : null;
     const premium =
         premiumManual != null && Number.isFinite(premiumManual)
-            ? Math.round(premiumManual * 100) / 100
+            ? manualPremiumAmount(premiumManual, premiumSource, worked, normDays)
             : premiumFromRule;
     const vacationPay = 0;
     const total =
@@ -625,7 +632,7 @@ async function syncSalesPremiums(db, req, opts) {
                 : null;
         const src = prevRow.premium_source || null;
         const same = prev != null && Math.abs(prev - next) < 0.005 && src === 'sales';
-        const isManual = src === 'manual';
+        const isManual = src === 'manual' || src === 'manual_days';
         // auto: не трогаем ручные и legacy (есть сумма без source=sales)
         const blockedAuto = mode === 'auto' && (isManual || (prev != null && src !== 'sales'));
         // auto: не писать «0» всем без продаж — иначе журнал забит пустыми автопремиями
@@ -2316,7 +2323,7 @@ function createWorkScheduleRouter(db) {
             const baseAccrued = livePay.base;
             const premiumAccrued =
                 premiumManual != null && Number.isFinite(premiumManual)
-                    ? premiumManual
+                    ? manualPremiumAmount(premiumManual, premiumSource, days, normDays)
                     : premiumFromRule;
             const senDisabled = Number(e.seniority_pay_disabled) === 1;
             const senParams = calc.resolveSeniorityParams(e, e);
@@ -2525,7 +2532,8 @@ function createWorkScheduleRouter(db) {
             [employeeId, periodYm]
         );
         const oldVal = prev[0] && prev[0].premium_manual != null ? String(prev[0].premium_manual) : null;
-        const premiumSource = clear ? null : 'manual';
+        const premiumMode = String(b.premium_mode || 'full') === 'days' ? 'days' : 'full';
+        const premiumSource = clear ? null : premiumMode === 'days' ? 'manual_days' : 'manual';
         await db.query(
             `INSERT INTO ws_payroll_entry
              (employee_id, period_ym, base_salary, premium, premium_manual, premium_source, seniority_bonus,

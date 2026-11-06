@@ -2025,6 +2025,16 @@
                   <label class="form-label" for="dg-ws-prem-amount">Сумма премии, ₽</label>
                   <input type="text" class="form-control" id="dg-ws-prem-amount" inputmode="decimal" placeholder="например 15000" />
                 </div>
+                <div class="d-flex gap-3 mb-2">
+                  <div class="form-check mb-0">
+                    <input class="form-check-input" type="radio" name="dg-ws-prem-mode" id="dg-ws-prem-mode-full" value="full" checked />
+                    <label class="form-check-label" for="dg-ws-prem-mode-full">Целиком</label>
+                  </div>
+                  <div class="form-check mb-0">
+                    <input class="form-check-input" type="radio" name="dg-ws-prem-mode" id="dg-ws-prem-mode-days" value="days" />
+                    <label class="form-check-label" for="dg-ws-prem-mode-days">По дням</label>
+                  </div>
+                </div>
                 <p class="small text-muted mb-0">Пустое поле + «По правилу» снимает ручной ввод — снова считается из настроек отдела/сотрудника.</p>
               </div>
               <div class="card-footer d-flex justify-content-end gap-2 flex-wrap bg-white border-top-0">
@@ -3648,8 +3658,10 @@
               : salesAcc > 0 && Math.abs(salesAcc - salesPay) > 0.004
                 ? "к выплате · всего " + money(salesAcc)
                 : "к выплате (отгруж.)"
-            : premSrc === "manual" || premManual
-              ? "ручная" + (premFull > 0 ? " · правило " + money(premFull) : "")
+            : premSrc === "manual_days"
+              ? "по дням · полная " + money(e.premium_manual)
+              : premSrc === "manual" || premManual
+                ? "целиком"
               : premFull > 0
                 ? "полная " + money(premFull)
                 : "клик — ввести";
@@ -4151,6 +4163,11 @@
         inp.select();
       }, 50);
     }
+    var modeDays = String(emp.premium_source || "") === "manual_days";
+    var modeFull = document.getElementById("dg-ws-prem-mode-full");
+    var modeDaysEl = document.getElementById("dg-ws-prem-mode-days");
+    if (modeFull) modeFull.checked = !modeDays;
+    if (modeDaysEl) modeDaysEl.checked = modeDays;
     showPremOverlay(true);
   }
 
@@ -4158,10 +4175,12 @@
     if (!state.editPremium) return;
     var inp = document.getElementById("dg-ws-prem-amount");
     var raw = inp ? String(inp.value || "").trim() : "";
+    var modeEl = document.querySelector('input[name="dg-ws-prem-mode"]:checked');
     var body = {
       employee_id: state.editPremium.empId,
       period_ym: state.editPremium.month,
       premium_manual: clear || !raw ? null : raw.replace(/\s/g, "").replace(",", "."),
+      premium_mode: modeEl && modeEl.value === "days" ? "days" : "full",
     };
     var btn = document.getElementById(clear ? "dg-ws-prem-clear" : "dg-ws-prem-save");
     var run = function () {
