@@ -19,6 +19,8 @@
     empSort: { key: "name", dir: "asc" },
     empSearch: "",
     pendingEmpSearch: "",
+    empTab: "active",
+    firePending: null,
   };
 
   var LINK_MENU_MAX = 80;
@@ -729,12 +731,16 @@
     switch (key) {
       case "name":
         return String(e.full_name || e.username || "").toLowerCase();
+      case "official":
+        return Number(e.official_employment) === 1 ? 1 : 0;
       case "org":
         return String(e.organization_name || orgName(e.organization_id) || "").toLowerCase();
       case "dept":
         return String(e.department_name || deptName(e.department_id) || "").toLowerCase();
       case "hire":
         return dateOnlyYmd(e.hire_date) || "";
+      case "fire":
+        return dateOnlyYmd(e.fire_date) || "";
       case "seniority": {
         var sm = seniorityMonthsFromHire(e.hire_date);
         return sm == null ? -1 : sm;
@@ -891,18 +897,26 @@
     syncEmpSearchDirty();
     var oid = Number(state.empFilterOrgId) || 0;
     var q = state.empSearch || "";
+    var firedTab = state.empTab === "fired";
+    var fireTh = document.getElementById("dg-ws-set-emp-th-fire");
+    if (fireTh) fireTh.classList.toggle("d-none", !firedTab);
     var list = sortEmpList(
       (state.employees || []).filter(function (e) {
+        var fired = !!dateOnlyYmd(e.fire_date);
+        if (firedTab ? !fired : fired) return false;
         if (oid && Number(e.organization_id) !== oid) return false;
         return empMatchesSearch(e, q);
       })
     );
     if (!list.length) {
-      var emptyHint = oid
-        ? "Нет сотрудников в выбранной организации фильтра"
-        : "Нет сотрудников — «Привязать пользователя»";
+      var emptyHint = firedTab
+        ? "Нет уволенных"
+        : oid
+          ? "Нет сотрудников в выбранной организации фильтра"
+          : "Нет сотрудников — «Привязать пользователя»";
       if (q) emptyHint = "Ничего не найдено по запросу «" + q + "»";
-      tb.innerHTML = '<tr><td colspan="16" class="text-muted p-3">' + emptyHint + "</td></tr>";
+      tb.innerHTML =
+        '<tr><td colspan="' + (firedTab ? "18" : "17") + '" class="text-muted p-3">' + emptyHint + "</td></tr>";
       return;
     }
     tb.innerHTML = list
@@ -926,6 +940,14 @@
         var crmCell = crm
           ? '<span title="CRM user id ' + Number(e.crm_user_id) + '">' + crm + "</span>"
           : '<span class="text-muted">—</span>';
+        var officialOn = Number(e.official_employment) === 1;
+        var officialCell = officialOn
+          ? '<span class="dg-ws-official-mark" title="Оф" aria-label="Оф">' +
+            '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">' +
+            '<circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="1.4"/>' +
+            '<path d="M4.6 8.2 6.8 10.3 11.4 5.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>' +
+            "</svg></span>"
+          : '<span class="text-muted">—</span>';
         var payHourly = String(e.pay_type || "salary") === "hourly";
         var payLbl = payHourly
           ? '<span class="badge bg-info text-dark">по часам</span>'
@@ -934,13 +956,17 @@
         return (
           "<tr><td>" +
           (e.full_name || e.username || "") +
+          '</td><td class="text-center">' +
+          officialCell +
           "</td><td>" +
           (e.organization_name || orgName(e.organization_id)) +
           "</td><td>" +
           (e.department_name || deptName(e.department_id)) +
           "</td><td>" +
           fmtDate(e.hire_date) +
-          "</td><td>" +
+          "</td>" +
+          (firedTab ? "<td>" + fmtDate(e.fire_date) + "</td>" : "") +
+          "<td>" +
           fmtSeniority(e.hire_date) +
           "</td><td>" +
           fmtSeniorityBonus(e) +
@@ -982,6 +1008,7 @@
       emp: "dg-ws-set-emp-overlay",
       "emp-add": "dg-ws-set-emp-add-overlay",
       "org-del": "dg-ws-set-org-del-overlay",
+      fire: "dg-ws-set-fire-overlay",
       "salary-hist": "dg-ws-set-salary-hist-overlay",
     };
     var el = document.getElementById(map[kind] || "");
@@ -1639,6 +1666,12 @@
     );
     var noSen = document.getElementById("dg-ws-set-emp-no-seniority");
     if (noSen) noSen.checked = Number(e.seniority_pay_disabled) === 1;
+    var officialCb = document.getElementById("dg-ws-set-emp-official");
+    if (officialCb) officialCb.checked = Number(e.official_employment) === 1;
+    var fireInp = document.getElementById("dg-ws-set-emp-fire");
+    if (fireInp) fireInp.value = toDateInput(e.fire_date);
+    var restoreBtn = document.getElementById("dg-ws-set-emp-restore");
+    if (restoreBtn) restoreBtn.classList.toggle("d-none", !dateOnlyYmd(e.fire_date));
     var openOverlay = function () {
       fillBitcopSelect(e.bitcop_employee_id);
       fillCrmSelect(e.crm_user_id);
@@ -1652,7 +1685,66 @@
       .catch(openOverlay);
   }
 
-  function saveEmp() {
+  function setEmpTab(tab) {
+    state.empTab = tab === "fired" ? "fired" : "active";
+    var activeBtn = document.getElementById("dg-ws-set-emp-tab-active");
+    var firedBtn = document.getElementById("dg-ws-set-emp-tab-fired");
+    if (activeBtn) activeBtn.classList.toggle("active", state.empTab !== "fired");
+    if (firedBtn) firedBtn.classList.toggle("active", state.empTab === "fired");
+    renderEmps();
+  }
+
+  function openFireConfirm(mode) {
+    var id = Number(document.getElementById("dg-ws-set-emp-id").value);
+    var e = state.employees.find(function (x) {
+      return Number(x.id) === Number(id);
+    });
+    if (!e) return;
+    var name = e.full_name || e.username || "";
+    var title = document.getElementById("dg-ws-set-fire-title");
+    var text = document.getElementById("dg-ws-set-fire-text");
+    var ok = document.getElementById("dg-ws-set-fire-ok");
+    if (mode === "restore") {
+      state.firePending = { id: id, fireDate: null, tab: "active", okText: "Вернул" };
+      if (title) title.textContent = "Вернуть";
+      if (text) text.textContent = name;
+      if (ok) {
+        ok.textContent = "Вернуть";
+        ok.classList.remove("btn-danger");
+        ok.classList.add("btn-primary");
+        ok.setAttribute("data-dg-notify-start", "Возврат…");
+      }
+      showOverlay("fire", true);
+      return;
+    }
+    var raw = document.getElementById("dg-ws-set-emp-fire");
+    var ymd = dateOnlyYmd(raw && raw.value);
+    if (!ymd) {
+      toast("warning", "Укажите дату");
+      return;
+    }
+    var hire = dateOnlyYmd(document.getElementById("dg-ws-set-emp-edit-hire").value);
+    if (hire && ymd < hire) {
+      toast("warning", "Дата раньше приёма");
+      return;
+    }
+    state.firePending = { id: id, fireDate: ymd, tab: "fired", okText: "Уволен" };
+    if (title) title.textContent = "Уволить";
+    if (text) text.textContent = name + " с " + fmtDate(ymd);
+    if (ok) {
+      ok.textContent = "Уволить";
+      ok.classList.add("btn-danger");
+      ok.classList.remove("btn-primary");
+      ok.setAttribute("data-dg-notify-start", "Увольнение…");
+    }
+    showOverlay("fire", true);
+  }
+
+  function saveEmp(opts) {
+    var extra =
+      opts && typeof opts === "object" && Object.prototype.hasOwnProperty.call(opts, "fireDate")
+        ? opts
+        : null;
     var id = Number(document.getElementById("dg-ws-set-emp-id").value);
     var e = state.employees.find(function (x) {
       return Number(x.id) === Number(id);
@@ -1666,6 +1758,7 @@
     var bitcopSel = document.getElementById("dg-ws-set-emp-bitcop");
     var crmSel = document.getElementById("dg-ws-set-emp-crm");
     var noSen = document.getElementById("dg-ws-set-emp-no-seniority");
+    var officialCb = document.getElementById("dg-ws-set-emp-official");
     var paySel = document.getElementById("dg-ws-set-emp-pay-type");
     var compFrom = document.getElementById("dg-ws-set-emp-comp-from");
     var body = {
@@ -1673,11 +1766,11 @@
       department_id: Number(document.getElementById("dg-ws-set-emp-edit-dept").value) || e.department_id,
       position: e.position,
       hire_date: hire,
-      fire_date: e.fire_date,
+      fire_date: extra ? extra.fireDate : e.fire_date,
       pay_type: paySel && paySel.value === "hourly" ? "hourly" : "salary",
       salary: Number(String(document.getElementById("dg-ws-set-emp-salary").value).replace(/\s/g, "")) || 0,
       grade: e.grade,
-      official_employment: e.official_employment,
+      official_employment: !!(officialCb && officialCb.checked),
       personal_schedule_type: document.getElementById("dg-ws-set-emp-sched").value || null,
       personal_work_hours_per_day: document.getElementById("dg-ws-set-emp-norm").value.trim(),
       personal_sick_leave_rate: document.getElementById("dg-ws-set-emp-sick").value.trim(),
@@ -1693,15 +1786,20 @@
       seniority_pay_disabled: !!(noSen && noSen.checked),
       comp_from: (compFrom && compFrom.value) || undefined,
     };
-    var btn = document.getElementById("dg-ws-set-emp-save");
+    var btn = extra
+      ? document.getElementById("dg-ws-set-fire-ok")
+      : document.getElementById("dg-ws-set-emp-save");
     var run = function () {
       return api("/employees/" + id, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       }).then(function () {
+        showOverlay("fire", false);
         showOverlay("emp", false);
-        toast("success", "Сотрудник сохранён");
+        if (extra && extra.tab) setEmpTab(extra.tab);
+        toast("success", extra && extra.okText ? extra.okText : "Сотрудник сохранён");
+        state.firePending = null;
         return loadAll();
       });
     };
@@ -2047,6 +2145,22 @@
     if (deptSave) deptSave.addEventListener("click", saveDept);
     var empSave = document.getElementById("dg-ws-set-emp-save");
     if (empSave) empSave.addEventListener("click", saveEmp);
+    var empFire = document.getElementById("dg-ws-set-emp-fire-btn");
+    if (empFire) empFire.addEventListener("click", function () { openFireConfirm("fire"); });
+    var empRestore = document.getElementById("dg-ws-set-emp-restore");
+    if (empRestore) empRestore.addEventListener("click", function () { openFireConfirm("restore"); });
+    var fireOk = document.getElementById("dg-ws-set-fire-ok");
+    if (fireOk) {
+      fireOk.addEventListener("click", function () {
+        if (!state.firePending) return;
+        saveEmp(state.firePending);
+      });
+    }
+    document.querySelectorAll("[data-dg-ws-set-emp-tab]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        setEmpTab(btn.getAttribute("data-dg-ws-set-emp-tab"));
+      });
+    });
     var deptAdd = document.getElementById("dg-ws-set-dept-add");
     if (deptAdd)
       deptAdd.addEventListener("click", function () {
@@ -2188,6 +2302,7 @@
       showOverlay("emp", false);
       showOverlay("emp-add", false);
       showOverlay("org-del", false);
+      showOverlay("fire", false);
       showOverlay("salary-hist", false);
     });
   }

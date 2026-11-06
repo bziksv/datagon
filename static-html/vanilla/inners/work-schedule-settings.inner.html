@@ -204,6 +204,14 @@
                 <button type="button" class="btn btn-sm btn-outline-primary" id="dg-ws-set-emp-add" data-dg-notify-start="Привязка…">Привязать пользователя</button>
               </div>
             </div>
+            <ul class="nav nav-tabs px-3 pt-2 mb-0" id="dg-ws-set-emp-tabs" role="tablist">
+              <li class="nav-item">
+                <button type="button" class="nav-link active" id="dg-ws-set-emp-tab-active" data-dg-ws-set-emp-tab="active">Работают</button>
+              </li>
+              <li class="nav-item">
+                <button type="button" class="nav-link" id="dg-ws-set-emp-tab-fired" data-dg-ws-set-emp-tab="fired">Уволенные</button>
+              </li>
+            </ul>
             <div class="card-body border-bottom py-2 px-3" id="dg-ws-set-emp-filters">
               <div class="d-flex flex-wrap align-items-end gap-2">
                 <div class="flex-grow-1" style="min-width: 220px; max-width: 420px">
@@ -229,9 +237,11 @@
                   <thead>
                     <tr id="dg-ws-set-emp-thead">
                       <th class="dg-ws-set-sortable" data-dg-ws-set-emp-sort="name" scope="col">ФИО</th>
+                      <th class="dg-ws-set-sortable text-center" data-dg-ws-set-emp-sort="official" scope="col">Оф</th>
                       <th class="dg-ws-set-sortable" data-dg-ws-set-emp-sort="org" scope="col">Организация</th>
                       <th class="dg-ws-set-sortable" data-dg-ws-set-emp-sort="dept" scope="col">Отдел</th>
                       <th class="dg-ws-set-sortable" data-dg-ws-set-emp-sort="hire" scope="col">Дата приёма</th>
+                      <th class="dg-ws-set-sortable d-none" data-dg-ws-set-emp-sort="fire" scope="col" id="dg-ws-set-emp-th-fire">С</th>
                       <th class="dg-ws-set-sortable" data-dg-ws-set-emp-sort="seniority" scope="col">Стаж</th>
                       <th class="dg-ws-set-sortable" data-dg-ws-set-emp-sort="seniority_bonus" scope="col">За стаж</th>
                       <th class="dg-ws-set-sortable" data-dg-ws-set-emp-sort="pay_type" scope="col">Оплата</th>
@@ -480,15 +490,29 @@
                   </div>
                   <div class="col-md-4 d-flex align-items-end">
                     <div class="form-check mb-2">
+                      <input class="form-check-input" type="checkbox" id="dg-ws-set-emp-official" />
+                      <label class="form-check-label" for="dg-ws-set-emp-official">Оф</label>
+                    </div>
+                  </div>
+                  <div class="col-md-4 d-flex align-items-end">
+                    <div class="form-check mb-2">
                       <input class="form-check-input" type="checkbox" id="dg-ws-set-emp-no-seniority" />
                       <label class="form-check-label" for="dg-ws-set-emp-no-seniority">Не выплачиваем за стаж</label>
                     </div>
                   </div>
                 </div>
               </div>
-              <div class="card-footer d-flex justify-content-end gap-2 bg-white border-top-0">
-                <button type="button" class="btn btn-outline-secondary" data-dg-ws-set-close="emp" data-dg-no-activity="1">Отмена</button>
-                <button type="button" class="btn btn-primary" id="dg-ws-set-emp-save" data-dg-notify-start="Сохраняем сотрудника…">Сохранить</button>
+              <div class="card-footer d-flex justify-content-between align-items-center gap-2 flex-wrap bg-white border-top-0">
+                <div class="d-flex align-items-center gap-2">
+                  <label class="form-label mb-0" for="dg-ws-set-emp-fire">С</label>
+                  <input type="date" class="form-control form-control-sm" id="dg-ws-set-emp-fire" style="width: 11rem" />
+                  <button type="button" class="btn btn-outline-danger" id="dg-ws-set-emp-fire-btn" data-dg-notify-start="Увольнение…">Уволить</button>
+                  <button type="button" class="btn btn-outline-secondary d-none" id="dg-ws-set-emp-restore" data-dg-notify-start="Возврат…">Вернуть</button>
+                </div>
+                <div class="d-flex gap-2">
+                  <button type="button" class="btn btn-outline-secondary" data-dg-ws-set-close="emp" data-dg-no-activity="1">Отмена</button>
+                  <button type="button" class="btn btn-primary" id="dg-ws-set-emp-save" data-dg-notify-start="Сохраняем сотрудника…">Сохранить</button>
+                </div>
               </div>
             </div>
           </div>
@@ -507,6 +531,23 @@
               <div class="card-footer d-flex justify-content-end gap-2 bg-white border-top-0">
                 <button type="button" class="btn btn-outline-secondary" data-dg-ws-set-close="org-del" data-dg-no-activity="1">Отмена</button>
                 <button type="button" class="btn btn-danger" id="dg-ws-set-org-del-ok" data-dg-notify-start="Удаляем организацию…">Удалить</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-ws-set-fire-overlay" class="dg-ws-set-overlay" style="display: none" aria-hidden="true" role="dialog" aria-modal="true">
+            <div class="dg-ws-set-overlay-backdrop" data-dg-ws-set-close="fire"></div>
+            <div class="dg-ws-set-overlay-panel card shadow-lg border-0">
+              <div class="card-header d-flex justify-content-between align-items-center">
+                <div class="fw-semibold" id="dg-ws-set-fire-title">Уволить</div>
+                <button type="button" class="btn-close" data-dg-ws-set-close="fire" aria-label="Закрыть" data-dg-no-activity="1"></button>
+              </div>
+              <div class="card-body">
+                <p class="mb-0" id="dg-ws-set-fire-text"></p>
+              </div>
+              <div class="card-footer d-flex justify-content-end gap-2 bg-white border-top-0">
+                <button type="button" class="btn btn-outline-secondary" data-dg-ws-set-close="fire" data-dg-no-activity="1">Отмена</button>
+                <button type="button" class="btn btn-danger" id="dg-ws-set-fire-ok" data-dg-notify-start="Увольнение…">Уволить</button>
               </div>
             </div>
           </div>

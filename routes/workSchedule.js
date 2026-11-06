@@ -2151,6 +2151,9 @@ function createWorkScheduleRouter(db) {
             esql += ' AND e.department_id=?';
             params.push(deptId);
         }
+        esql += ' AND (e.hire_date IS NULL OR e.hire_date <= ?)';
+        esql += ' AND (e.fire_date IS NULL OR e.fire_date >= ?)';
+        params.push(to, from);
         esql += ' ORDER BY d.name, u.full_name';
         const [emps] = await db.query(esql, params);
         const hasSalesDept = (emps || []).some((e) => isSalesDepartmentName(e.department_name));
@@ -3090,8 +3093,11 @@ function createWorkScheduleRouter(db) {
         const to = `${ym}-${String(dim).padStart(2, '0')}`;
         const [emps] = await db.query(
             `SELECT e.id, u.full_name FROM ws_employee e JOIN users u ON u.id=e.user_id
-             WHERE e.department_id=? ORDER BY u.full_name`,
-            [deptId]
+             WHERE e.department_id=?
+               AND (e.hire_date IS NULL OR e.hire_date <= ?)
+               AND (e.fire_date IS NULL OR e.fire_date >= ?)
+             ORDER BY u.full_name`,
+            [deptId, to, from]
         );
         const ids = emps.map((e) => e.id);
         let byEmp = {};
