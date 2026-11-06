@@ -4178,7 +4178,13 @@
           spEl.value = u.specialty_id != null ? String(u.specialty_id) : "";
           spEl.disabled = editUser.username === "admin";
         }
-        document.getElementById("dg-set-edit-card").style.display = "";
+        var card = document.getElementById("dg-set-edit-card");
+        if (card) {
+          card.style.display = "";
+          if (typeof card.scrollIntoView === "function") {
+            card.scrollIntoView({ block: "nearest", behavior: "smooth" });
+          }
+        }
       }
       function closeEditUser() {
         editUser = null;
