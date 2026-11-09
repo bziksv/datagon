@@ -827,10 +827,176 @@
     mirror.addEventListener("keydown", onKey);
   }
 
+  function showActionLog(kind, html) {
+    var box = el("dg-ps-action-log");
+    if (!box) return;
+    box.className = "alert mt-3 mb-0 alert-" + (kind || "info");
+    box.innerHTML = html;
+    box.classList.remove("d-none");
+  }
+
+  function fmtInt(n) {
+    if (window.DatagonFmt && window.DatagonFmt.formatInteger) return window.DatagonFmt.formatInteger(n);
+    return String(n == null ? 0 : n);
+  }
+
+  function filtersLine() {
+    var status = state.photoshoot_status
+      ? (STATUS_OPTS.filter(function (s) { return s.key === state.photoshoot_status; })[0] || {}).label || state.photoshoot_status
+      : "все";
+    var stock = state.has_stock === "0" ? "только без остатка" : state.has_stock === "all" ? "все" : "только с остатком";
+    var search = String(state.search || "").trim();
+    return (
+      "Статус съёмки: <b>" + esc(status) + "</b>; остаток: <b>" + esc(stock) + "</b>" +
+      (search ? "; поиск: <b>" + esc(search) + "</b>" : "")
+    );
+  }
+
+  function openBulkAdd() {
+    var overlay = el("dg-ps-bulk-overlay");
+    var ta = el("dg-ps-bulk-text");
+    if (!overlay) return;
+    overlay.style.display = "flex";
+    overlay.setAttribute("aria-hidden", "false");
+    if (ta) {
+      try { ta.focus(); } catch (_) {}
+    }
+  }
+
+  function closeBulkAdd() {
+    var overlay = el("dg-ps-bulk-overlay");
+    if (!overlay) return;
+    overlay.style.display = "none";
+    overlay.setAttribute("aria-hidden", "true");
+  }
+
+  function submitBulkAdd() {
+    var ta = el("dg-ps-bulk-text");
+    var text = ta ? String(ta.value || "") : "";
+    if (!String(text).trim()) {
+      toast("warning", "Вставьте строки вида код;артикул;название");
+      return;
+    }
+    var lineCount = text.split(/\r?\n/).filter(function (l) { return String(l || "").trim(); }).length;
+    var t0 = Date.now();
+    var tick = null;
+    showActionLog(
+      "warning",
+      "Массовое добавление…<br>" +
+        filtersLine() +
+        "<br>Строк во вводе (непустых): <b>" + fmtInt(lineCount) + "</b><br>" +
+        '<span id="dg-ps-bulk-tick">идёт, прошло 0 с…</span>'
+    );
+    tick = setInterval(function () {
+      var elTick = el("dg-ps-bulk-tick");
+      if (elTick) elTick.textContent = "идёт, прошло " + Math.round((Date.now() - t0) / 1000) + " с…";
+    }, 1000);
+
+    var run = function () {
+      return fetch("/api/exports/photoshoot/bulk", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: text }),
+      })
+        .then(function (r) {
+          return r.json().then(function (j) {
+            if (!r.ok || (j && j.success === false && j.created == null)) {
+              throw new Error((j && j.error) || "HTTP " + r.status);
+            }
+            return j;
+          });
+        })
+        .then(function (j) {
+          if (tick) clearInterval(tick);
+          var errs = Array.isArray(j.errors) ? j.errors : [];
+          var errHtml = "";
+          if (errs.length) {
+            errHtml =
+              '<br><ul class="mb-0 mt-2">' +
+              errs.slice(0, 20).map(function (e) {
+                return (
+                  "<li>стр. " + fmtInt(e.line || 0) +
+                  (e.code ? " («" + esc(e.code) + "»)" : "") +
+                  ": " + esc(e.error || "") + "</li>"
+                );
+              }).join("") +
+              "</ul>";
+          }
+          var kind = j.created > 0 ? (errs.length ? "warning" : "success") : "danger";
+          var hiddenNote = "";
+          if (j.created > 0 && state.has_stock === "1" && Number(j.no_stock) > 0 && Number(j.with_stock) === 0) {
+            state.has_stock = "all";
+            state.pending.has_stock = "all";
+            if (el("dg-ps-f-has-stock")) el("dg-ps-f-has-stock").value = "all";
+            hiddenNote = "<br>Остатка МС нет — фильтр переключён на «Все», чтобы строки были видны.";
+          } else if (j.created > 0 && state.has_stock === "1" && Number(j.no_stock) > 0) {
+            hiddenNote = "<br>Без остатка МС: <b>" + fmtInt(j.no_stock) + "</b> — при фильтре «Только с остатком» их не видно.";
+          }
+          showActionLog(
+            kind,
+            "Массовое добавление завершено<br>" +
+              filtersLine() +
+              "<br>К записи: <b>" + fmtInt(j.total != null ? j.total : 0) + "</b>" +
+              "; создано: <b>" + fmtInt(j.created || 0) + "</b>" +
+              "; с остатком: <b>" + fmtInt(j.with_stock || 0) + "</b>" +
+              "; без остатка: <b>" + fmtInt(j.no_stock || 0) + "</b>" +
+              "; ошибок/пропусков: <b>" + fmtInt(j.skipped != null ? j.skipped : errs.length) + "</b>" +
+              "; длительность: <b>" + fmtInt(j.duration_sec != null ? j.duration_sec : Math.round((Date.now() - t0) / 1000)) + " с</b>" +
+              hiddenNote +
+              errHtml
+          );
+          toast(
+            kind === "success" ? "success" : kind === "warning" ? "warning" : "danger",
+            "Добавлено: " + (j.created || 0) + (errs.length ? "; ошибок: " + errs.length : "")
+          );
+          if (j.created > 0) {
+            if (ta) ta.value = "";
+            closeBulkAdd();
+            state.offset = 0;
+            return load();
+          }
+        })
+        .catch(function (e) {
+          if (tick) clearInterval(tick);
+          showActionLog(
+            "danger",
+            "Ошибка массового добавления: " + esc(e.message || "unknown") +
+              "<br>" + filtersLine() +
+              "<br>Прошло " + Math.round((Date.now() - t0) / 1000) + " с"
+          );
+          toast("danger", e.message || "Ошибка");
+        });
+    };
+    var btn = el("dg-ps-bulk-submit");
+    if (window.DatagonNotify && window.DatagonNotify.busyRun && btn) {
+      window.DatagonNotify.busyRun(btn, run);
+    } else run();
+  }
+
+  function bindBulkAdd() {
+    var openBtn = el("dg-ps-add-bulk");
+    if (openBtn) openBtn.addEventListener("click", openBulkAdd);
+    var cancel = el("dg-ps-bulk-cancel");
+    var close = el("dg-ps-bulk-close");
+    var backdrop = el("dg-ps-bulk-backdrop");
+    var submit = el("dg-ps-bulk-submit");
+    if (cancel) cancel.addEventListener("click", closeBulkAdd);
+    if (close) close.addEventListener("click", closeBulkAdd);
+    if (backdrop) backdrop.addEventListener("click", closeBulkAdd);
+    if (submit) submit.addEventListener("click", submitBulkAdd);
+    document.addEventListener("keydown", function (e) {
+      if (e.key !== "Escape") return;
+      var overlay = el("dg-ps-bulk-overlay");
+      if (overlay && overlay.style.display === "flex") closeBulkAdd();
+    });
+  }
+
   function bind() {
     bindCollapse();
     bindSearchMirror();
     bindPsLogUi();
+    bindBulkAdd();
     ["dg-ps-search", "dg-ps-f-status", "dg-ps-f-has-stock", "dg-ps-f-limit"].forEach(function (id) {
       var node = el(id);
       if (!node) return;

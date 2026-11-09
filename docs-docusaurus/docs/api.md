@@ -1894,6 +1894,12 @@ Body: `photoshoot_status`, `photoshoot_comment`. При смене статус�
 
 Журнал полей съёмки (`photoshoot_status` / `photoshoot_comment` / `photoshoot_at`). Query: `field`, `limit`, `offset`. UI — мини-кнопка «лог» на ячейках статуса/комментария/даты (как на «Новые товары»).
 
+### POST `/api/exports/photoshoot/bulk`
+
+Ручное массовое добавление в список съёмки. Тело: `{ text }` — строки `код;артикул;название` (название — всё после второй `;`, пустые строки и строки с `#` пропускаются, лимит 500). Создаёт строку `dg_new_products` с `channel=marketplaces`, `status=new`, `photoshoot_status=not_shot`. Код сверяется с `ms_export.code`: при совпадении пишется `ms_product_uuid`. Повтор кода в очереди маркетов или в комплекте не создаёт вторую строку.
+
+Ответ: `{ success, total, to_create, created, skipped, with_stock, no_stock, created_ids[], errors: [{ line, code, error }] (до 20), duration_sec }`. `view` — метод запрещён. На экране кнопка «Массовое добавление» рядом с «По умолчанию»; журнал `#dg-ps-action-log`.
+
 ## Exports / Huckster
 
 Префикс: `/api/exports/huckster`. Экран: `/exports-huckster.html`.

@@ -7,6 +7,7 @@
  */
 
 const express = require('express');
+const markets = require('../lib/dgNewProductsMarkets');
 
 const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 500;
@@ -99,22 +100,55 @@ function desiredAutoStatus(current, stock) {
     return 'not_shot';
 }
 
-async function insertLog(db, { productId, field, oldValue, newValue, actor, source }) {
+async function insertLog(db, { productId, field, oldValue, newValue, actor, source, action, note }) {
     await db.query(
         `INSERT INTO dg_new_products_log
             (product_id, channel, kit_id, field, old_value, new_value, action, source,
              changed_by_user_id, changed_by_name, note)
-         VALUES (?, 'marketplaces', NULL, ?, ?, ?, 'set', ?, ?, ?, NULL)`,
+         VALUES (?, 'marketplaces', NULL, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
             productId,
             String(field).slice(0, 64),
             clipLogVal(oldValue),
             clipLogVal(newValue),
+            String(action || 'set').slice(0, 16),
             String(source || 'ui').slice(0, 32),
             actor && actor.id != null && Number.isFinite(Number(actor.id)) ? Number(actor.id) : null,
             actorDisplayName(actor) || null,
+            note ? String(note).slice(0, 255) : null,
         ]
     );
+}
+
+const BULK_MAX_LINES = 500;
+
+/** Строка «код;артикул;название». Название — всё после второй «;». */
+function parseBulkLine(raw, lineNo) {
+    const s = String(raw || '').trim();
+    if (!s || s.startsWith('#')) return null;
+    const parts = s.split(';');
+    if (parts.length < 3) {
+        return {
+            error: {
+                line: lineNo,
+                code: s.slice(0, 64),
+                error: 'Формат: код;артикул;название',
+            },
+        };
+    }
+    const product_code = clip(parts[0], 128);
+    const article = clip(parts[1], 128);
+    const title = clip(parts.slice(2).join(';'), 255);
+    if (!product_code) {
+        return { error: { line: lineNo, error: 'Пустой код' } };
+    }
+    if (!article) {
+        return { error: { line: lineNo, code: product_code, error: 'Пустой артикул' } };
+    }
+    if (!title) {
+        return { error: { line: lineNo, code: product_code, error: 'Пустое название' } };
+    }
+    return { row: { lineNo, product_code, article, title } };
 }
 
 /** LEFT JOIN ms_export: uuid, иначе code = product_code. */
@@ -285,6 +319,181 @@ module.exports = function exportsPhotoshootRouterFactory(db) {
             });
         } catch (e) {
             res.status(500).json({ error: e.message || 'Ошибка meta' });
+        }
+    });
+
+    /**
+     * Массовое добавление в список съёмки (та же очередь, channel=marketplaces).
+     * Body: { text } — строки «код;артикул;название».
+     */
+    router.post('/bulk', async (req, res) => {
+        const t0 = Date.now();
+        try {
+            await ensureSchema(db);
+            const body = req.body && typeof req.body === 'object' ? req.body : {};
+            const actor = req.datagonActor;
+            const text = String(body.text != null ? body.text : '');
+            const errors = [];
+            const parsed = [];
+            const seen = new Set();
+            const lines = text.split(/\r?\n/);
+            for (let i = 0; i < lines.length; i += 1) {
+                if (parsed.length >= BULK_MAX_LINES) {
+                    errors.push({ line: i + 1, error: `Лимит ${BULK_MAX_LINES} строк за один запрос` });
+                    break;
+                }
+                const got = parseBulkLine(lines[i], i + 1);
+                if (!got) continue;
+                if (got.error) {
+                    errors.push(got.error);
+                    continue;
+                }
+                const key = got.row.product_code.toLowerCase();
+                if (seen.has(key)) {
+                    errors.push({
+                        line: got.row.lineNo,
+                        code: got.row.product_code,
+                        error: 'Код повторяется в этом списке',
+                    });
+                    continue;
+                }
+                seen.add(key);
+                parsed.push(got.row);
+            }
+
+            if (!parsed.length) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Нет корректных строк для добавления',
+                    total: 0,
+                    created: 0,
+                    skipped: errors.length,
+                    with_stock: 0,
+                    no_stock: 0,
+                    errors: errors.slice(0, 20),
+                    duration_sec: Math.round((Date.now() - t0) / 1000),
+                });
+            }
+
+            const codes = parsed.map((r) => r.product_code);
+            const taken = new Map();
+            const [prodRows] = await db.query(
+                `SELECT id, channel_num, title, product_code
+                   FROM dg_new_products
+                  WHERE channel = 'marketplaces'
+                    AND status <> 'removed'
+                    AND product_code IN (?)`,
+                [codes]
+            );
+            (prodRows || []).forEach((p) => {
+                const c = String(p.product_code || '').trim().toLowerCase();
+                if (!c || taken.has(c)) return;
+                const num = p.channel_num != null ? `Марк #${p.channel_num}` : `id=${p.id}`;
+                taken.set(c, `Код уже в списке (${num})`);
+            });
+            const [kitRows] = await db.query(
+                `SELECT k.product_code, p.channel_num
+                   FROM dg_new_product_kits k
+                   JOIN dg_new_products p ON p.id = k.parent_product_id
+                  WHERE p.channel = 'marketplaces'
+                    AND p.status <> 'removed'
+                    AND k.product_code IN (?)`,
+                [codes]
+            );
+            (kitRows || []).forEach((k) => {
+                const c = String(k.product_code || '').trim().toLowerCase();
+                if (!c || taken.has(c)) return;
+                const num = k.channel_num != null ? `Марк #${k.channel_num}` : 'комплект';
+                taken.set(c, `Код уже используется в комплекте (${num})`);
+            });
+
+            const msByCode = new Map();
+            const [msRows] = await db.query(
+                `SELECT uuid, code, COALESCE(stock, 0) AS stock
+                   FROM ms_export
+                  WHERE code IN (?)`,
+                [codes]
+            );
+            (msRows || []).forEach((m) => {
+                const c = String(m.code || '').trim().toLowerCase();
+                if (!c) return;
+                const prev = msByCode.get(c);
+                const stock = stockNum(m.stock);
+                if (!prev || stock > stockNum(prev.stock)) {
+                    msByCode.set(c, { uuid: m.uuid || null, stock });
+                }
+            });
+
+            let created = 0;
+            let withStock = 0;
+            let noStock = 0;
+            const createdIds = [];
+            for (const row of parsed) {
+                const dup = taken.get(row.product_code.toLowerCase());
+                if (dup) {
+                    errors.push({ line: row.lineNo, code: row.product_code, error: dup });
+                    continue;
+                }
+                try {
+                    const ms = msByCode.get(row.product_code.toLowerCase()) || null;
+                    const channelNum = await markets.allocChannelNum(db, 'marketplaces');
+                    const [ins] = await db.query(
+                        `INSERT INTO dg_new_products (
+                            channel, channel_num, article, title, priority, status,
+                            product_code, ms_product_uuid, photoshoot_status, created_by_user_id
+                         ) VALUES ('marketplaces', ?, ?, ?, 'normal', 'new', ?, ?, 'not_shot', ?)`,
+                        [
+                            channelNum,
+                            row.article,
+                            row.title,
+                            row.product_code,
+                            ms && ms.uuid ? String(ms.uuid) : null,
+                            actor && actor.id != null ? Number(actor.id) : null,
+                        ]
+                    );
+                    created += 1;
+                    createdIds.push(ins.insertId);
+                    taken.set(row.product_code.toLowerCase(), 'Код уже добавлен в этом запросе');
+                    if (ms && stockNum(ms.stock) > 0) withStock += 1;
+                    else noStock += 1;
+                    try {
+                        await insertLog(db, {
+                            productId: ins.insertId,
+                            field: '_row',
+                            oldValue: null,
+                            newValue: row.title || row.product_code,
+                            actor,
+                            source: 'photoshoot_bulk',
+                            action: 'create',
+                            note: 'Массовое добавление со съёмки',
+                        });
+                    } catch (le) {
+                        console.warn('[photoshoot] bulk create log', le);
+                    }
+                } catch (ie) {
+                    errors.push({
+                        line: row.lineNo,
+                        code: row.product_code,
+                        error: (ie && ie.message) || 'Ошибка вставки',
+                    });
+                }
+            }
+
+            res.json({
+                success: true,
+                total: parsed.length,
+                to_create: parsed.length,
+                created,
+                skipped: errors.length,
+                with_stock: withStock,
+                no_stock: noStock,
+                created_ids: createdIds.slice(0, 50),
+                errors: errors.slice(0, 20),
+                duration_sec: Math.round((Date.now() - t0) / 1000),
+            });
+        } catch (e) {
+            console.error('[photoshoot] POST /bulk', e);
+            res.status(500).json({ error: e.message || 'Ошибка массового добавления' });
         }
     });
 

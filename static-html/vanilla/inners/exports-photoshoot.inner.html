@@ -75,7 +75,17 @@
                 >
                   По умолчанию
                 </button>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-success"
+                  id="dg-ps-add-bulk"
+                  data-dg-notify-start="Открываем массовое добавление…"
+                  title="Формат: код;артикул;название — по одной строке"
+                >
+                  Массовое добавление
+                </button>
               </div>
+              <div id="dg-ps-action-log" class="alert mt-3 mb-0 d-none" role="status"></div>
             </div>
           </div>
 
@@ -132,6 +142,36 @@
                   <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-ps-prev" disabled>Назад</button>
                   <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-ps-next" disabled>Вперёд</button>
                 </div>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-ps-bulk-overlay" class="dg-ps-log-overlay" style="display: none" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="dg-ps-bulk-title">
+            <div class="dg-ps-log-backdrop" id="dg-ps-bulk-backdrop"></div>
+            <div class="dg-ps-log-panel dg-ps-bulk-panel card shadow-lg border-0">
+              <div class="card-header d-flex align-items-center justify-content-between gap-2">
+                <div class="fw-semibold" id="dg-ps-bulk-title">Массовое добавление</div>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-ps-bulk-close" data-dg-no-activity="1" aria-label="Закрыть">Закрыть</button>
+              </div>
+              <div class="card-body">
+                <p class="small text-muted mb-2">
+                  По одной строке: <code>код;артикул;название</code>. Разделитель — <code>;</code>. Пустые строки пропускаются.
+                </p>
+                <label class="form-label" for="dg-ps-bulk-text">Список товаров</label>
+                <textarea
+                  id="dg-ps-bulk-text"
+                  class="form-control font-monospace"
+                  rows="12"
+                  placeholder="40943;A-40943;Игла инъекционная однократного применения&#10;40914;A-40914;Игла инъекционная однократного применения"
+                  data-dg-no-activity="1"
+                ></textarea>
+                <p class="small text-muted mt-2 mb-0" id="dg-ps-bulk-hint">
+                  Добавление в список «Отснять товары». Формат: код;артикул;название. Лимит — 500 строк.
+                </p>
+              </div>
+              <div class="card-footer d-flex justify-content-end gap-2 flex-wrap bg-white border-top-0">
+                <button type="button" class="btn btn-outline-secondary" id="dg-ps-bulk-cancel" data-dg-no-activity="1">Отмена</button>
+                <button type="button" class="btn btn-success" id="dg-ps-bulk-submit" data-dg-notify-start="Добавляем товары…">Добавить</button>
               </div>
             </div>
           </div>
