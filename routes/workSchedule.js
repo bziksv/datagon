@@ -1446,6 +1446,7 @@ function createWorkScheduleRouter(db) {
 
     // ----- employees -----
     router.get('/employees', async (req, res) => {
+        await ensureSchema(db);
         const a = actorOf(req);
         const accounting = isAccounting(a);
         let sql = `SELECT e.*,
@@ -1596,6 +1597,7 @@ function createWorkScheduleRouter(db) {
     });
 
     router.put('/employees/:id', async (req, res) => {
+        await ensureSchema(db);
         if (!isAccounting(actorOf(req))) return res.status(403).json({ success: false, error: 'forbidden' });
         const id = Number(req.params.id);
         const b = req.body || {};
@@ -1615,6 +1617,8 @@ function createWorkScheduleRouter(db) {
         const crmUserId =
             b.crm_user_id === '' || b.crm_user_id == null ? null : Number(b.crm_user_id);
         const seniorityOff = b.seniority_pay_disabled === true || b.seniority_pay_disabled === 1 || b.seniority_pay_disabled === '1';
+        const sheetHighlight =
+            b.sheet_row_highlight === true || b.sheet_row_highlight === 1 || b.sheet_row_highlight === '1';
         const payType = calc.normalizePayType(b.pay_type);
         const newPremRaw = normalizePremiumRuleBody(b.personal_premium_rule_json, {
             allowInherit: true,
@@ -1636,7 +1640,7 @@ function createWorkScheduleRouter(db) {
                  organization_id=?, department_id=?, position=?, hire_date=?, fire_date=?, grade=?,
                  official_employment=?, personal_work_hours_per_day=?, personal_rate_full_hours=?,
                  personal_rate_half_hours=?, personal_sick_leave_rate=?, personal_schedule_type=?,
-                 bitcop_employee_id=?, crm_user_id=?, seniority_pay_disabled=?
+                 bitcop_employee_id=?, crm_user_id=?, seniority_pay_disabled=?, sheet_row_highlight=?
                  WHERE id=?`,
                 [
                     Number(b.organization_id),
@@ -1654,6 +1658,7 @@ function createWorkScheduleRouter(db) {
                     Number.isFinite(bitcopId) && bitcopId > 0 ? bitcopId : null,
                     Number.isFinite(crmUserId) && crmUserId > 0 ? crmUserId : null,
                     seniorityOff ? 1 : 0,
+                    sheetHighlight ? 1 : 0,
                     id,
                 ]
             );
@@ -1663,7 +1668,7 @@ function createWorkScheduleRouter(db) {
                  organization_id=?, department_id=?, position=?, hire_date=?, fire_date=?, salary=?, pay_type=?, grade=?,
                  official_employment=?, personal_work_hours_per_day=?, personal_rate_full_hours=?,
                  personal_rate_half_hours=?, personal_sick_leave_rate=?, personal_schedule_type=?,
-                 personal_premium_rule_json=?, bitcop_employee_id=?, crm_user_id=?, seniority_pay_disabled=?
+                 personal_premium_rule_json=?, bitcop_employee_id=?, crm_user_id=?, seniority_pay_disabled=?, sheet_row_highlight=?
                  WHERE id=?`,
                 [
                     Number(b.organization_id),
@@ -1684,6 +1689,7 @@ function createWorkScheduleRouter(db) {
                     Number.isFinite(bitcopId) && bitcopId > 0 ? bitcopId : null,
                     Number.isFinite(crmUserId) && crmUserId > 0 ? crmUserId : null,
                     seniorityOff ? 1 : 0,
+                    sheetHighlight ? 1 : 0,
                     id,
                 ]
             );
@@ -2262,7 +2268,7 @@ function createWorkScheduleRouter(db) {
                            e.personal_seniority_base, e.personal_seniority_step, e.personal_seniority_period_months,
                            e.personal_schedule_type, e.personal_work_hours_per_day,
                            e.personal_rate_full_hours, e.personal_rate_half_hours,
-                           e.bitcop_employee_id, e.seniority_pay_disabled,
+                           e.bitcop_employee_id, e.seniority_pay_disabled, e.sheet_row_highlight,
                            u.full_name, d.name AS department_name, d.schedule_type,
                            d.premium_rule_json AS dept_premium_rule_json,
                            o.seniority_base, o.seniority_step, o.seniority_period_months
@@ -2497,6 +2503,7 @@ function createWorkScheduleRouter(db) {
                 seniority_full: seniorityFull,
                 seniority_accrued: seniorityAccrued,
                 seniority_pay_disabled: senDisabled,
+                sheet_row_highlight: Number(e.sheet_row_highlight) === 1 ? 1 : 0,
                 bitcop_employee_id: e.bitcop_employee_id != null ? Number(e.bitcop_employee_id) : null,
                 total_accrued: totalAccrued,
                 total_planned: totalPlanned,

@@ -1668,6 +1668,8 @@
     if (noSen) noSen.checked = Number(e.seniority_pay_disabled) === 1;
     var officialCb = document.getElementById("dg-ws-set-emp-official");
     if (officialCb) officialCb.checked = Number(e.official_employment) === 1;
+    var highlightCb = document.getElementById("dg-ws-set-emp-highlight");
+    if (highlightCb) highlightCb.checked = Number(e.sheet_row_highlight) === 1;
     var fireInp = document.getElementById("dg-ws-set-emp-fire");
     if (fireInp) fireInp.value = toDateInput(e.fire_date);
     var restoreBtn = document.getElementById("dg-ws-set-emp-restore");
@@ -1759,6 +1761,7 @@
     var crmSel = document.getElementById("dg-ws-set-emp-crm");
     var noSen = document.getElementById("dg-ws-set-emp-no-seniority");
     var officialCb = document.getElementById("dg-ws-set-emp-official");
+    var highlightCb = document.getElementById("dg-ws-set-emp-highlight");
     var paySel = document.getElementById("dg-ws-set-emp-pay-type");
     var compFrom = document.getElementById("dg-ws-set-emp-comp-from");
     var body = {
@@ -1784,6 +1787,7 @@
       bitcop_employee_id: bitcopSel && bitcopSel.value ? Number(bitcopSel.value) : null,
       crm_user_id: crmSel && crmSel.value ? Number(crmSel.value) : null,
       seniority_pay_disabled: !!(noSen && noSen.checked),
+      sheet_row_highlight: !!(highlightCb && highlightCb.checked),
       comp_from: (compFrom && compFrom.value) || undefined,
     };
     var btn = extra

@@ -1320,8 +1320,11 @@
     var carried = lines.some(function (line) {
       return line.carry;
     });
+    var hl = Number(emp.sheet_row_highlight) === 1 ? " dg-ws-hl" : "";
     return (
-      '<td class="dg-ws-pay cell-click dg-ws-pay-cash" data-emp-cash="' +
+      '<td class="dg-ws-pay cell-click dg-ws-pay-cash' +
+      hl +
+      '" data-emp-cash="' +
       kind +
       '" data-emp-id="' +
       emp.id +
@@ -1482,8 +1485,11 @@
         var nameExtra = hasBitcop
           ? ' <span class="dg-ws-bitcop-mark" title="Привязан к Bitcop">B</span>'
           : "";
+        var hl = Number(e.sheet_row_highlight) === 1 ? " dg-ws-hl" : "";
         html +=
-          '<tr><td class="emp">' +
+          '<tr><td class="emp' +
+          hl +
+          '">' +
           (e.full_name || "") +
           nameExtra +
           '</td><td class="dg-ws-pay">' +
@@ -1514,7 +1520,9 @@
               ? "полная " + money(senFull)
               : "нет стажа") +
           "</span></td>" +
-          '<td class="dg-ws-pay dg-ws-pay-total" title="Накапало / плановый итог">' +
+          '<td class="dg-ws-pay dg-ws-pay-total' +
+          hl +
+          '" title="Накапало / плановый итог">' +
           '<span class="dg-ws-pay-main">' +
           money(totAcc) +
           '</span><span class="dg-ws-pay-sub">' +
