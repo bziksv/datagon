@@ -2,7 +2,7 @@
 
 const express = require('express');
 const { openCmsDbConnection } = require('../lib/datagonCmsDb');
-const { deactivateProductInCms } = require('../lib/datagonCmsPriceWrite');
+const { deactivateProductInCms, activateProductInCms } = require('../lib/datagonCmsPriceWrite');
 const { setMyProductStickers, enrichRowsWithStickersAndMs } = require('../lib/datagonMyProductStickers');
 const { applySiteWarehouseStockBySiteId } = require('../lib/datagonMyProductOwnStockPriceGuard');
 const {
@@ -266,6 +266,29 @@ module.exports = function catalogReviewRouter(db) {
         }
     }
 
+    /**
+     * Было ли «Деактивировать» в журнале этой строки (и отмена без включения).
+     * Нужно для «залипших» карточек: решение уже сняли, а CMS осталась выключенной.
+     */
+    async function reviewNeedsReactivateFromLog(reviewId) {
+        const [rows] = await db.query(
+            `SELECT old_value, new_value
+               FROM dg_catalog_review_log
+              WHERE review_id = ? AND field = 'decision'
+              ORDER BY id DESC
+              LIMIT 40`,
+            [reviewId]
+        );
+        const deactivateLabel = DECISION_LABELS.deactivate;
+        for (const entry of rows || []) {
+            const oldVal = String(entry.old_value || '');
+            const newVal = String(entry.new_value || '');
+            if (oldVal === deactivateLabel && newVal !== deactivateLabel) return true;
+            if (newVal === deactivateLabel) return true;
+        }
+        return false;
+    }
+
     async function applyDecisionToSite(row, who, decision) {
         if (decision === 'discontinued' || decision === 'not_supplied') {
             await syncReviewStickers(row, who, decision === 'discontinued'
@@ -288,14 +311,28 @@ module.exports = function catalogReviewRouter(db) {
         if (!sites.length) throw new Error('Сайт не найден');
         const conn = await openCmsDbConnection(sites[0], { appDb: db, connectTimeout: 10000 });
         try {
-            await deactivateProductInCms(conn, sites[0], product);
+            if (decision === 'activate') {
+                await activateProductInCms(conn, sites[0], product);
+            } else {
+                await deactivateProductInCms(conn, sites[0], product);
+            }
         } finally {
             try { await conn.end(); } catch (_) {}
         }
         await db.query(
-            `UPDATE my_products SET source_enabled = 0, updated_at = NOW() WHERE id = ? AND site_id = ?`,
-            [row.my_product_id, row.my_site_id]
+            `UPDATE my_products SET source_enabled = ?, updated_at = NOW() WHERE id = ? AND site_id = ?`,
+            [decision === 'activate' ? 1 : 0, row.my_product_id, row.my_site_id]
         );
+    }
+
+    async function reactivateAfterDeactivateUndo(row, who) {
+        const enabled = Number(row.source_enabled) === 0 ? 0 : 1;
+        if (enabled === 1) return;
+        const fromDecision = row.decision === 'deactivate';
+        const fromLog = !fromDecision && await reviewNeedsReactivateFromLog(row.id);
+        if (!fromDecision && !fromLog) return;
+        await applyDecisionToSite(row, who, 'activate');
+        row.source_enabled = 1;
     }
 
     async function archiveSkuRows(mySiteId) {
@@ -786,13 +823,16 @@ module.exports = function catalogReviewRouter(db) {
                     continue;
                 }
                 if (clearing) {
-                    if (row.decision === 'discontinued' || row.decision === 'not_supplied') {
-                        try {
+                    try {
+                        if (row.decision === 'discontinued' || row.decision === 'not_supplied') {
                             await applyDecisionToSite(row, who, 'clear_stickers');
-                        } catch (err) {
-                            skipped.push({ id: row.id, sku, reason: err.message || String(err) });
-                            continue;
                         }
+                        if (row.decision === 'deactivate') {
+                            await reactivateAfterDeactivateUndo(row, who);
+                        }
+                    } catch (err) {
+                        skipped.push({ id: row.id, sku, reason: err.message || String(err) });
+                        continue;
                     }
                     const backStatus = row.sales_user_id && row.content_user_id ? 'with_sales' : 'unassigned';
                     await db.query(
@@ -853,20 +893,23 @@ module.exports = function catalogReviewRouter(db) {
                 }
                 let status = decision === 'keep' ? 'done' : 'done';
                 let contentStatus = decision === 'keep' ? null : 'done';
-                if (decision !== 'keep') {
-                    try {
+                try {
+                    if (decision === 'keep') {
+                        if (row.decision === 'discontinued' || row.decision === 'not_supplied') {
+                            await applyDecisionToSite(row, who, 'clear_stickers');
+                        }
+                        // Отмена «Деактивировать» (в т.ч. если решение уже сняли, а сайт остался выкл.)
+                        await reactivateAfterDeactivateUndo(row, who);
+                    } else if (decision !== 'deactivate' && row.decision === 'deactivate') {
+                        // Смена с деактивации на галку — сначала включить карточку
+                        await reactivateAfterDeactivateUndo(row, who);
                         await applyDecisionToSite(row, who, decision);
-                    } catch (err) {
-                        skipped.push({ id: row.id, sku, reason: err.message || String(err) });
-                        continue;
+                    } else {
+                        await applyDecisionToSite(row, who, decision);
                     }
-                } else if (row.decision === 'discontinued' || row.decision === 'not_supplied') {
-                    try {
-                        await applyDecisionToSite(row, who, 'clear_stickers');
-                    } catch (err) {
-                        skipped.push({ id: row.id, sku, reason: err.message || String(err) });
-                        continue;
-                    }
+                } catch (err) {
+                    skipped.push({ id: row.id, sku, reason: err.message || String(err) });
+                    continue;
                 }
                 const stock = row.stock_qty_live == null ? null : row.stock_qty_live;
                 await db.query(
