@@ -2294,6 +2294,21 @@
     });
   }
 
+  /** «Менеджер маркетплейсов» и «SEO-специалист»: ручная премия по умолчанию делится по дням. */
+  function deptPremDefaultsToDays(name) {
+    var s = String(name || "")
+      .toLowerCase()
+      .replace(/ё/g, "е");
+    return s.indexOf("маркетплейс") >= 0 || s.indexOf("seo") >= 0;
+  }
+
+  function premModalModeDays(emp) {
+    var src = String((emp && emp.premium_source) || "");
+    if (src === "manual_days") return true;
+    if (src === "manual" || src === "sales") return false;
+    return deptPremDefaultsToDays(emp && emp.department_name);
+  }
+
   function openPremModal(empId) {
     var month = state.filters.month || defaultMonthStr();
     var emp = (state.sheet && state.sheet.employees || []).find(function (e) {
@@ -2326,7 +2341,7 @@
         inp.select();
       }, 50);
     }
-    var modeDays = String(emp.premium_source || "") === "manual_days";
+    var modeDays = premModalModeDays(emp);
     var modeFull = document.getElementById("dg-ws-prem-mode-full");
     var modeDaysEl = document.getElementById("dg-ws-prem-mode-days");
     if (modeFull) modeFull.checked = !modeDays;
