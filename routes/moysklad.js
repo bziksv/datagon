@@ -13,6 +13,8 @@ const {
     attachStockByStoreToRows,
 } = require('../lib/msExportStockByStore');
 const { createSupplierNameResolver } = require('../lib/datagonMsSupplierLabel');
+const { loadMsCurrencies, msPriceToRub } = require('../lib/datagonMsMoney');
+const { getFxRates } = require('../lib/datagonFxRates');
 
 const router = express.Router();
 
@@ -366,6 +368,12 @@ const MS_ATTRS_META_CACHE_TTL_MS = 60 * 60 * 1000;
 let msAttrsMetaCache = { ts: 0, rows: [] };
 const msRefNameCache = new Map();
 
+function formatMsPriceRub(price, currencyByHref, fx) {
+    const rub = msPriceToRub(price, currencyByHref, fx);
+    if (rub == null) return '';
+    return `${rub.toFixed(2)} ₽`;
+}
+
 async function getMsProductAttributesMeta(headers) {
     const now = Date.now();
     if (msAttrsMetaCache.rows.length && now - msAttrsMetaCache.ts < MS_ATTRS_META_CACHE_TTL_MS) return msAttrsMetaCache.rows;
@@ -655,7 +663,7 @@ function pushDetailRow(rows, label, value) {
     if (v !== '') rows.push({ label, value: v });
 }
 
-function buildMoyskladDetailPayload(attrMetaRows, entity, kind) {
+function buildMoyskladDetailPayload(attrMetaRows, entity, kind, currencyByHref, fx) {
     const idToName = new Map();
     for (const r of attrMetaRows || []) {
         if (r && r.id) idToName.set(r.id, r.name);
@@ -681,23 +689,19 @@ function buildMoyskladDetailPayload(attrMetaRows, entity, kind) {
     if (entity.weight != null && entity.weight !== '') pushDetailRow(main, 'Вес', entity.weight);
     if (entity.volume != null && entity.volume !== '') pushDetailRow(main, 'Объём', entity.volume);
 
-    if (entity.buyPrice && entity.buyPrice.value != null) {
-        const cents = Number(entity.buyPrice.value);
-        if (Number.isFinite(cents)) pushDetailRow(main, 'Закупочная цена', `${(cents / 100).toFixed(2)} ₽`);
-    }
-    if (entity.minPrice && entity.minPrice.value != null) {
-        const cents = Number(entity.minPrice.value);
-        if (Number.isFinite(cents)) pushDetailRow(main, 'Мин. цена', `${(cents / 100).toFixed(2)} ₽`);
-    }
+    const priceText = (price) => formatMsPriceRub(price, currencyByHref, fx);
+
+    const buyText = priceText(entity.buyPrice);
+    if (buyText) pushDetailRow(main, 'Закупочная цена', buyText);
+    const minText = priceText(entity.minPrice);
+    if (minText) pushDetailRow(main, 'Мин. цена', minText);
 
     if (Array.isArray(entity.salePrices) && entity.salePrices.length) {
         for (const sp of entity.salePrices) {
-            if (sp?.value == null) continue;
-            const cents = Number(sp.value);
-            if (!Number.isFinite(cents)) continue;
+            const value = priceText(sp);
+            if (!value) continue;
             const pt = String(sp?.priceType?.name || '').trim();
             const label = pt ? pt : 'Цена продажи';
-            const value = `${(cents / 100).toFixed(2)} ₽`;
             main.push({ label, value });
         }
     }
@@ -1395,8 +1399,11 @@ async function syncMsExport(db, config, settings = {}) {
     addLog(`К записи подготовлено (все товары/комплекты): ${all.length}`);
     addLog('Этап 5/6: расчет полей и подготовка строк');
     jobState.message = `Подготовка строк: 0/${jobState.total}`;
+    const msCurrencies = await loadMsCurrencies(token);
+    const msFx = await getFxRates();
 
-    // Карта закупочных цен по коду (только для товаров/компонентов):
+    // Карта закупочных цен по коду (только для товаров/компонентов).
+    // Закупочная карточки в валюте переводится в рубли по курсу справочника МС.
     // приоритет — себестоимость из отчёта остатков МС (`report/stock/all.price`), иначе `buyPrice` из карточки.
     const buyPriceByCode = new Map();
     for (const prod of products) {
@@ -1406,7 +1413,7 @@ async function syncMsExport(db, config, settings = {}) {
         const stockCostNum = sm && sm.costPrice != null && Number.isFinite(sm.costPrice) && sm.costPrice > 0
             ? sm.costPrice
             : null;
-        const cardBuyNum = Number(prod?.buyPrice?.value || 0) / 100;
+        const cardBuyNum = msPriceToRub(prod?.buyPrice, msCurrencies, msFx) || 0;
         const buyNum = stockCostNum != null ? stockCostNum : (Number.isFinite(cardBuyNum) && cardBuyNum > 0 ? cardBuyNum : 0);
         if (Number.isFinite(buyNum) && buyNum > 0) {
             buyPriceByCode.set(prodCode, buyNum);
@@ -1451,7 +1458,7 @@ async function syncMsExport(db, config, settings = {}) {
             : stock - (smRow && Number.isFinite(smRow.reserve) ? smRow.reserve : 0) + (smRow && Number.isFinite(smRow.inTransit) ? smRow.inTransit : 0);
         let stockDays = smRow?.stockDays ?? '';
         let salePrice = smRow?.salePrice || '';
-        const cardBuyNum = Number(item?.buyPrice?.value || 0) / 100;
+        const cardBuyNum = msPriceToRub(item?.buyPrice, msCurrencies, msFx) || 0;
         let stockCostValue =
             smRow && smRow.stock > 0 && smRow.costPrice != null && Number.isFinite(smRow.costPrice)
                 ? smRow.costPrice
@@ -2309,7 +2316,9 @@ function createMoyskladRouter(db, settings, config) {
                 if (cooName) entity.countryOfOrigin.name = cooName;
             }
             const attrMeta = await getMsProductAttributesMeta(headers);
-            const { webHref, blocks } = buildMoyskladDetailPayload(attrMeta, entity, kind);
+            const currencyByHref = await loadMsCurrencies(token);
+            const fx = await getFxRates();
+            const { webHref, blocks } = buildMoyskladDetailPayload(attrMeta, entity, kind, currencyByHref, fx);
             return res.json({
                 success: true,
                 uuid,

@@ -1587,7 +1587,8 @@ module.exports = (db, settings) => {
                     `SELECT mp.sku, mp.name
                      FROM match_exclusion e
                      INNER JOIN my_products mp ON mp.id = e.my_product_id AND mp.site_id = e.my_site_id
-                     WHERE e.my_site_id = ? AND e.competitor_site_id IN (${placeholders})`,
+                     WHERE e.my_site_id = ? AND e.competitor_site_id IN (${placeholders})
+                       AND LOWER(COALESCE(e.reason, '')) = 'rejected'`,
                     [mySiteId, ...competitorIds]
                 );
                 for (const r of exResume) {
@@ -1651,13 +1652,18 @@ module.exports = (db, settings) => {
         }
 
         await ensureMatchLaneTables();
-        // Пропуск авто: ручная очередь (шаг 3) + архив после отказа (шаг 4).
+        // Пропуск авто: только «Отклонить» (reason=rejected) и архив (шаг 4).
+        // Промах no_match остаётся в очереди «Не нашли пару», но следующий прогон сравнивает его снова
+        // и снимает строку, если пара появилась.
         const exclusionSet = new Set();
         if (competitorIds.length) {
             const phEx = competitorIds.map(() => '?').join(',');
             try {
                 const [exRows] = await db.query(
-                    `SELECT competitor_site_id, my_product_id FROM match_exclusion WHERE my_site_id = ? AND competitor_site_id IN (${phEx})`,
+                    `SELECT competitor_site_id, my_product_id
+                     FROM match_exclusion
+                     WHERE my_site_id = ? AND competitor_site_id IN (${phEx})
+                       AND LOWER(COALESCE(reason, '')) = 'rejected'`,
                     [mySiteId, ...competitorIds]
                 );
                 for (const r of exRows) {
@@ -1713,9 +1719,32 @@ module.exports = (db, settings) => {
         const NAME_MATCH_INNER_HEARTBEAT_MS = 30000;
         let lastNameInnerHeartbeatMs = Date.now();
 
+        async function clearNoMatchExclusions(rows) {
+            const pairs = [];
+            for (const m of rows || []) {
+                const pid = Number(m.my_product_id);
+                const cid = Number(m.comp_project_id);
+                if (Number.isFinite(pid) && pid > 0 && Number.isFinite(cid)) pairs.push([cid, pid]);
+            }
+            for (let i = 0; i < pairs.length; i += 200) {
+                const chunk = pairs.slice(i, i + 200);
+                const ph = chunk.map(() => '(?, ?)').join(', ');
+                const params = [mySiteId];
+                for (const [cid, pid] of chunk) params.push(cid, pid);
+                await db.query(
+                    `DELETE FROM match_exclusion
+                     WHERE my_site_id = ?
+                       AND LOWER(COALESCE(reason, '')) = 'no_match'
+                       AND (competitor_site_id, my_product_id) IN (${ph})`,
+                    params
+                );
+            }
+        }
+
         async function flushPendingMatchesCore() {
             if (!pendingMatches.length) return;
             await ensureProductMatchIdentitySchema();
+            const savedRows = pendingMatches.slice();
             const values = pendingMatches.map((m) => [
                 mySiteId,
                 m.my_sku,
@@ -1758,6 +1787,7 @@ module.exports = (db, settings) => {
             );
             totalMatchesSaved += pendingMatches.length;
             pendingMatches.length = 0;
+            await clearNoMatchExclusions(savedRows);
         }
 
         async function flushPendingMatches() {
@@ -1960,8 +1990,7 @@ module.exports = (db, settings) => {
                     processed += 1;
                     batchProcessedForCompetitor += 1;
                     loopCounter += 1;
-                    // Исключения (ручная очередь/архив): без sleep и без UPDATE/лога на каждый батч —
-                    // иначе паузы+MySQL roundtrip съедают часы на десятках тысяч пропусков.
+                    // Пропуск (отклонено / архив): без sleep и без UPDATE/лога на каждый батч.
                     if ((loopCounter & 255) === 0) {
                         if (await bailIfCancelled(compPos, pIdx)) return { matches: [], count: totalMatchesSaved };
                         await new Promise((resolve) => setImmediate(resolve));
@@ -2034,6 +2063,7 @@ module.exports = (db, settings) => {
 
                 if (bestMatch) {
                     pendingMatches.push({
+                        my_product_id: myProd.id,
                         my_sku: myProd.sku,
                         my_name: myProd.name,
                         comp_sku: bestMatch.sku,
@@ -2053,10 +2083,9 @@ module.exports = (db, settings) => {
                         if (await bailIfCancelled(compPos, pIdx)) return { matches: [], count: totalMatchesSaved };
                     }
                 } else if (!productHasConfirmedMatch(myProd) && Number.isFinite(Number(myProd.id))) {
-                    // Все режимы (включая SKU): мисс → ручная очередь «авто не нашло».
-                    // Пишем пакетом, не 3–4 SQL на товар.
+                    // Мисс остаётся в очереди «Не нашли пару», но в exclusionSet не кладётся:
+                    // следующий прогон сравнивает товар снова. Пропуск — только rejected и архив.
                     queueNoMatch(compId, Number(myProd.id));
-                    exclusionSet.add(`${compId}:${myProd.id}`);
                     if (pendingNoMatchQueue.length >= NO_MATCH_FLUSH_EVERY) {
                         await flushPendingNoMatches();
                         if (await bailIfCancelled(compPos, pIdx)) return { matches: [], count: totalMatchesSaved };
