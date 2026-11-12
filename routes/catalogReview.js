@@ -11,7 +11,7 @@ const {
     productIdsForRoot,
 } = require('../lib/datagonMatchArchiveCategories');
 
-const DECISIONS = new Set(['keep', 'discontinued', 'not_supplied', 'deactivate']);
+const DECISIONS = new Set(['keep', 'keep_as_is', 'discontinued', 'not_supplied', 'deactivate']);
 const SALES_SPECIALTY = 'Менеджер по продажам';
 const CONTENT_SPECIALTY = 'Контент-Менеджер';
 
@@ -179,7 +179,8 @@ module.exports = function catalogReviewRouter(db) {
         content_note: 'Комментарий контента',
     };
     const DECISION_LABELS = {
-        keep: 'Оставить',
+        keep: 'Оставить включенным',
+        keep_as_is: 'Оставить тек. состояние',
         discontinued: 'Снят / аналог',
         not_supplied: 'Не поставляется',
         deactivate: 'Деактивировать',
@@ -558,6 +559,7 @@ module.exports = function catalogReviewRouter(db) {
             const allowedDecision = {
                 none: "(r.decision IS NULL OR r.decision = '')",
                 keep: "r.decision = 'keep'",
+                keep_as_is: "r.decision = 'keep_as_is'",
                 discontinued: "r.decision = 'discontinued'",
                 not_supplied: "r.decision = 'not_supplied'",
                 deactivate: "r.decision = 'deactivate'",
@@ -891,18 +893,24 @@ module.exports = function catalogReviewRouter(db) {
                     updated += 1;
                     continue;
                 }
-                let status = decision === 'keep' ? 'done' : 'done';
-                let contentStatus = decision === 'keep' ? null : 'done';
+                const leaveCatalog = decision === 'keep' || decision === 'keep_as_is';
+                let status = 'done';
+                let contentStatus = leaveCatalog ? null : 'done';
                 try {
-                    if (decision === 'keep') {
-                        if (row.decision === 'discontinued' || row.decision === 'not_supplied') {
+                    if (row.decision === 'discontinued' || row.decision === 'not_supplied') {
+                        if (leaveCatalog || decision === 'deactivate') {
                             await applyDecisionToSite(row, who, 'clear_stickers');
                         }
-                        // Отмена «Деактивировать» (в т.ч. если решение уже сняли, а сайт остался выкл.)
-                        await reactivateAfterDeactivateUndo(row, who);
-                    } else if (decision !== 'deactivate' && row.decision === 'deactivate') {
-                        // Смена с деактивации на галку — сначала включить карточку
-                        await reactivateAfterDeactivateUndo(row, who);
+                    }
+                    if (decision === 'keep') {
+                        // Всегда включить на Альмамеде (в т.ч. после ошибочной деактивации)
+                        await applyDecisionToSite(row, who, 'activate');
+                    } else if (decision === 'keep_as_is') {
+                        // Сайт не трогаем: как есть включён/выключен
+                    } else if (decision === 'discontinued' || decision === 'not_supplied') {
+                        if (row.decision === 'deactivate') {
+                            await reactivateAfterDeactivateUndo(row, who);
+                        }
                         await applyDecisionToSite(row, who, decision);
                     } else {
                         await applyDecisionToSite(row, who, decision);
