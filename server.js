@@ -350,6 +350,7 @@ const productAnalysisRouterFactory = require('./routes/productAnalysis');
 const productRouterFactory = require('./routes/product');
 const pagesRouterFactory = require('./routes/pages');
 const matchesRouterFactory = require('./routes/matches');
+const catalogReviewRouterFactory = require('./routes/catalogReview');
 const exportsMarketplacesRouterFactory = require('./routes/exportsMarketplaces');
 const exportsHucksterRouterFactory = require('./routes/exportsHuckster');
 /** Прямой импорт модуля габаритов: нужен для processAutoSyncQueue (task='dimensions')
@@ -4639,6 +4640,7 @@ initDB().then(async () => {
     app.use('/api/network-prices', networkPricesRouterFactory(db, appSettings));
     matchesRouter = matchesRouterFactory(db, appSettings);
     app.use('/api/matches', matchesRouter);
+    app.use('/api/catalog-review', catalogReviewRouterFactory(db));
     setTimeout(() => {
         (async () => {
             // Лог нулей — один SQL, без большого RAM. Список закупок — SQL-пагинация в routes/purchase.js (без in-memory снимка).

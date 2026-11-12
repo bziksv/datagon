@@ -1516,6 +1516,16 @@
                               <i class="metismenu-icon pe-7s-link"></i>Сопоставление
                             </a>
                           </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="catalog-review"
+                              href="/catalog-review.html"
+                              title="Проверка каталога: товары на вывод и на ввод"
+                            >
+                              <i class="metismenu-icon pe-7s-check"></i>Проверка каталога
+                            </a>
+                          </li>
                         </ul>
                       </li>
                       <li class="metismenu-item">
@@ -2622,7 +2632,7 @@
             );
           }
           lines.push(
-            "<small>Фильтр «подтверждено» ≠ цена Dealmed/Медкомплекс: «без цены ДМ/МК» — нет пригодной цены ДМ/МК (>0), своя цена не меняется.</small>"
+            "<small>Фильтр «подтверждено» ≠ цена Dealmed/Медкомплекс. Нет пригодной цены ДМ/МК (&gt;0): при остатке 0 и своей цене &gt; 0 цена снимается (0). Иначе своя цена не меняется.</small>"
           );
           if (j.note) lines.push(escHtml(j.note));
           if (totalSql >= 2000) {
@@ -2651,6 +2661,9 @@
                   ? st.no_dm_mk_price
                   : st.no_competitor || st.skipped_no_competitor || 0
               ).toLocaleString("ru-RU") +
+              (Number(st.cleared_no_competitor || 0)
+                ? "; снято цен: " + Number(st.cleared_no_competitor || 0).toLocaleString("ru-RU")
+                : "") +
               (Number(st.skipped_hold || 0)
                 ? "; заморозка: " + Number(st.skipped_hold || 0).toLocaleString("ru-RU")
                 : "") +

@@ -849,9 +849,10 @@
               <p class="small text-muted mb-2">
                 Сюда товар попадает только кнопкой <strong>«В архив»</strong>. Это единственный список, который автопрогон пропускает.
                 «Удалить» возвращает товар в обычный запуск. Фильтры «Мой сайт» / «Конкурент» — из блока «Совпадения» выше.
+                Родительские категории — корни каталога нашего сайта. Можно отметить несколько, в списке есть поиск. Таблица обновляется по «Применить».
               </p>
               <div class="row g-2 align-items-end mb-2">
-                <div class="col-12 col-md-7 col-lg-6">
+                <div class="col-12 col-lg-4">
                   <label class="form-label mb-0 small text-uppercase text-muted" for="dg-manual-archive-search">Поиск в архиве</label>
                   <input
                     type="text"
@@ -861,13 +862,42 @@
                     autocomplete="off"
                   />
                 </div>
-                <div class="col-12 col-md-5 col-lg-6 d-flex flex-wrap gap-2 align-items-end">
+                <div class="col-12 col-lg-5">
+                  <label class="form-label mb-0 small text-uppercase text-muted" for="dg-manual-archive-category-btn">Родительские категории</label>
+                  <div class="dropdown w-100">
+                    <button
+                      type="button"
+                      class="btn btn-outline-secondary dg-vanilla-dropdown-toggle w-100 text-start"
+                      id="dg-manual-archive-category-btn"
+                      aria-expanded="false"
+                      aria-haspopup="true"
+                      title="Отметьте несколько корней каталога. Список обновится после «Применить»."
+                    >
+                      <span id="dg-manual-archive-category-label">Все</span>
+                    </button>
+                    <div
+                      class="dropdown-menu p-2"
+                      id="dg-manual-archive-category-menu"
+                      style="width: min(420px, calc(100vw - 1.5rem))"
+                    >
+                      <input
+                        type="search"
+                        class="form-control mb-2"
+                        id="dg-manual-archive-category-q"
+                        placeholder="Найти категорию"
+                        autocomplete="off"
+                      />
+                      <div id="dg-manual-archive-category-list" style="max-height: 280px; overflow: auto"></div>
+                    </div>
+                  </div>
+                </div>
+                <div class="col-12 col-lg-3 d-flex flex-wrap gap-2 align-items-end">
                   <button
                     type="button"
                     class="btn btn-sm btn-primary"
                     id="dg-manual-archive-refresh"
-                    data-dg-notify-start="Применяем поиск по архиву…"
-                    data-dg-tooltip="Применить поиск к архиву (шаг 4). Enter в поле поиска — то же действие."
+                    data-dg-notify-start="Применяем фильтры архива…"
+                    data-dg-tooltip="Применить поиск и родительскую категорию к архиву. Enter в поле поиска — то же действие."
                   >
                     <i class="pe-7s-search me-1"></i>Применить
                   </button>

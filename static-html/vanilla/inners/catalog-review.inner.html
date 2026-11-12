@@ -1,0 +1,159 @@
+<div class="app-page-title">
+  <div class="page-title-wrapper">
+    <div class="page-title-heading">
+      <div class="page-title-icon"><i class="pe-7s-check icon-gradient bg-mean-fruit"></i></div>
+      <div>
+        Проверка каталога
+        <div class="page-title-subheading">Последняя проверка товаров из архива сопоставления: оставить, пометить или выключить на сайте.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<ul class="nav nav-tabs mb-3" id="dg-cr-tabs">
+  <li class="nav-item">
+    <button type="button" class="nav-link active" data-dg-cr-lane="out" id="dg-cr-tab-out">Товары на вывод</button>
+  </li>
+  <li class="nav-item">
+    <button type="button" class="nav-link" data-dg-cr-lane="in" id="dg-cr-tab-in">Товары на ввод</button>
+  </li>
+  <li class="nav-item">
+    <button type="button" class="nav-link" data-dg-cr-lane="owners" id="dg-cr-tab-owners">Закрепление категорий</button>
+  </li>
+</ul>
+
+<div id="dg-cr-out">
+  <div class="main-card mb-3 card">
+    <div class="card-header">Фильтры</div>
+    <div class="card-body">
+      <div class="row g-2 align-items-end">
+        <div class="col-12 col-md-4">
+          <label class="form-label mb-0 small text-uppercase text-muted" for="dg-cr-search">Поиск</label>
+          <input type="search" class="form-control" id="dg-cr-search" placeholder="Артикул, название, категория" autocomplete="off" />
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label mb-0 small text-uppercase text-muted" for="dg-cr-status">Статус</label>
+          <select class="form-select" id="dg-cr-status">
+            <option value="">Все</option>
+            <option value="unassigned">Не распределено</option>
+            <option value="with_sales">У менеджера</option>
+            <option value="with_content">У контента</option>
+            <option value="done">Готово</option>
+          </select>
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label mb-0 small text-uppercase text-muted" for="dg-cr-mine">Чьи</label>
+          <select class="form-select" id="dg-cr-mine">
+            <option value="all">Все</option>
+            <option value="mine">Мои</option>
+            <option value="unassigned">Не распределено</option>
+          </select>
+        </div>
+        <div class="col-12 col-md-4 d-flex flex-wrap gap-2">
+          <button type="button" class="btn btn-primary" id="dg-cr-apply" data-dg-notify-start="Применяем фильтр очереди…">Применить</button>
+          <button type="button" class="btn btn-outline-primary" id="dg-cr-intake-open" data-dg-notify-start="Открываем категории архива…">Взять из архива</button>
+        </div>
+      </div>
+      <p class="small text-muted mt-2 mb-0">Менеджер и контент сначала берутся из вкладки «Закрепление категорий», в очереди их меняют прямо в колонках. На сайт решение попадает только после «Сделано на сайте». «Оставить» закрывает строку сразу. Для «Снят / аналог» нужен комментарий: куда поставить аналог или что взять в работу.</p>
+    </div>
+  </div>
+
+  <div class="main-card mb-3 card">
+    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <span>Очередь на вывод</span>
+      <span class="small text-muted" id="dg-cr-count">Найдено: —</span>
+    </div>
+    <div class="card-body">
+      <div class="d-flex flex-wrap gap-2 align-items-end mb-2">
+        <button type="button" class="btn btn-outline-success" id="dg-cr-keep" data-dg-notify-start="Закрываем как актуальные…">Оставить</button>
+        <button type="button" class="btn btn-outline-warning" id="dg-cr-disc" data-dg-notify-start="Ставим решение «Снят / аналог»…">Снят / аналог</button>
+        <button type="button" class="btn btn-outline-warning" id="dg-cr-nosup" data-dg-notify-start="Ставим решение «Не поставляется»…">Не поставляется</button>
+        <button type="button" class="btn btn-outline-danger" id="dg-cr-off" data-dg-notify-start="Ставим решение «Деактивировать»…">Деактивировать</button>
+        <button type="button" class="btn btn-success" id="dg-cr-apply-cms" data-dg-notify-start="Проводим решение на сайт…">Сделано на сайте</button>
+        <button type="button" class="btn btn-outline-dark" id="dg-cr-return" data-dg-notify-start="Возвращаем менеджеру…">Вернуть менеджеру</button>
+      </div>
+      <div id="dg-cr-action-log" class="alert mt-0 mb-3 d-none" role="status"></div>
+      <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              <th style="width:36px"><input type="checkbox" id="dg-cr-all" title="Отметить на странице" /></th>
+              <th>Категория</th>
+              <th>Товар</th>
+              <th>Цена</th>
+              <th>Остаток</th>
+              <th>Решение</th>
+              <th>Менеджер</th>
+              <th>Контент</th>
+              <th>Статус</th>
+            </tr>
+          </thead>
+          <tbody id="dg-cr-tbody"></tbody>
+        </table>
+      </div>
+      <div class="d-flex justify-content-between align-items-center mt-2">
+        <div class="small text-muted" id="dg-cr-page">Страница 1/1</div>
+        <div class="btn-group">
+          <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-cr-prev">Назад</button>
+          <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-cr-next">Вперёд</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="dg-cr-in" class="d-none">
+  <div class="main-card mb-3 card">
+    <div class="card-header">Товары на ввод</div>
+    <div class="card-body">
+      <p class="mb-0">Очередь ввода пока пустая. Сюда позже попадут товары, которые нужно включить или заново опубликовать. Вывод из архива на эту вкладку не кладётся.</p>
+    </div>
+  </div>
+</div>
+
+<div id="dg-cr-owners" class="d-none">
+  <div class="main-card mb-3 card">
+    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <span>Закрепление категорий</span>
+      <button type="button" class="btn btn-sm btn-primary" id="dg-cr-owners-save" data-dg-notify-start="Сохраняем закрепление категорий…">Сохранить закрепление</button>
+    </div>
+    <div class="card-body">
+      <p class="small text-muted">Категория сразу закрепляется за менеджером по продажам и контент-менеджером. Новые товары из архива получают этих людей сами. Уже открытые строки без решения тоже обновятся.</p>
+      <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Категория</th>
+              <th>Менеджер по продажам</th>
+              <th>Контент</th>
+            </tr>
+          </thead>
+          <tbody id="dg-cr-owners-body">
+            <tr><td colspan="3" class="text-muted">Загрузка категорий…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="dg-cr-overlay" class="d-none" style="position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:1080;display:flex;align-items:center;justify-content:center;padding:16px">
+  <div class="card shadow" style="width:min(560px,100%)" role="dialog" aria-modal="true" aria-labelledby="dg-cr-overlay-title">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <strong id="dg-cr-overlay-title">Подтверждение</strong>
+      <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-cr-overlay-x">Закрыть</button>
+    </div>
+    <div class="card-body">
+      <p id="dg-cr-overlay-text" class="mb-2"></p>
+      <textarea class="form-control d-none mb-2" id="dg-cr-overlay-note" rows="3" placeholder="Комментарий"></textarea>
+      <div id="dg-cr-overlay-cats" class="d-none mb-2">
+        <input type="search" class="form-control mb-2" id="dg-cr-cat-q" placeholder="Найти категорию" autocomplete="off" />
+        <div id="dg-cr-cat-list" style="max-height:280px;overflow:auto"></div>
+      </div>
+      <div class="d-flex justify-content-end gap-2">
+        <button type="button" class="btn btn-outline-secondary" id="dg-cr-overlay-cancel">Отмена</button>
+        <button type="button" class="btn btn-danger" id="dg-cr-overlay-ok" data-dg-notify-start="Выполняем…">Подтвердить</button>
+      </div>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,631 @@
+<script>
+(function () {
+  var state = { lane: "out", page: 1, pages: 1, total: 0, limit: 100, rows: [], people: null, pending: null };
+  var STATUS = {
+    unassigned: "Не распределено",
+    with_sales: "У менеджера",
+    with_content: "У контента",
+    done: "Готово"
+  };
+  var DECISION = {
+    keep: "Оставить",
+    discontinued: "Снят / аналог",
+    not_supplied: "Не поставляется",
+    deactivate: "Деактивировать"
+  };
+
+  var logTimer = null;
+  function toast(type, message) {
+    if (window.DatagonNotify && window.DatagonNotify.toast) {
+      window.DatagonNotify.toast({ type: type, message: message });
+    }
+  }
+  function escHtml(s) {
+    if (window.DatagonFmt && window.DatagonFmt.escapeHtml) return window.DatagonFmt.escapeHtml(s);
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+  function showActionLog(type, html) {
+    var box = document.getElementById("dg-cr-action-log");
+    if (!box) return;
+    var t = type || "info";
+    box.className = "alert mt-0 mb-3 alert-" + (t === "danger" ? "danger" : t === "success" ? "success" : t === "warning" ? "warning" : "info");
+    box.innerHTML = html;
+    box.classList.remove("d-none");
+  }
+  function filterLine() {
+    var status = document.getElementById("dg-cr-status");
+    var mine = document.getElementById("dg-cr-mine");
+    var search = document.getElementById("dg-cr-search").value.trim();
+    var parts = [];
+    parts.push("статус: " + (status && status.selectedOptions[0] ? status.selectedOptions[0].textContent : "Все"));
+    parts.push("чьи: " + (mine && mine.selectedOptions[0] ? mine.selectedOptions[0].textContent : "Все"));
+    if (search) parts.push("поиск: «" + escHtml(search) + "»");
+    return parts.join("; ");
+  }
+  function beginLog(title) {
+    if (logTimer) clearInterval(logTimer);
+    var started = Date.now();
+    function paint(extra) {
+      showActionLog("info", "<strong>" + escHtml(title) + "</strong><br>Фильтры: " + filterLine() + "<br>" + extra);
+    }
+    paint("Идёт, прошло 0 с…");
+    logTimer = setInterval(function () {
+      paint("Идёт, прошло " + Math.round((Date.now() - started) / 1000) + " с…");
+    }, 1000);
+    return function finish(type, lines) {
+      if (logTimer) clearInterval(logTimer);
+      logTimer = null;
+      var sec = ((Date.now() - started) / 1000).toFixed(1).replace(".", ",");
+      showActionLog(type, "<strong>" + escHtml(title) + "</strong><br>Фильтры: " + filterLine() + "<br>" + lines + "<br>Время: " + sec + " с");
+    };
+  }
+  function fmtNum(v) {
+    if (v == null || v === "") return "—";
+    if (window.DatagonFmt && window.DatagonFmt.formatNumber) return window.DatagonFmt.formatNumber(v);
+    return String(v);
+  }
+  function fmtInt(v) {
+    if (v == null || v === "") return "—";
+    if (window.DatagonFmt && window.DatagonFmt.formatInteger) return window.DatagonFmt.formatInteger(v);
+    return String(v);
+  }
+  function selectedIds() {
+    return Array.prototype.map.call(
+      document.querySelectorAll("#dg-cr-tbody input[data-dg-cr-id]:checked"),
+      function (el) { return Number(el.getAttribute("data-dg-cr-id")); }
+    ).filter(function (n) { return n > 0; });
+  }
+  function openOverlay(opts) {
+    state.pending = opts;
+    document.getElementById("dg-cr-overlay-title").textContent = opts.title || "Подтверждение";
+    document.getElementById("dg-cr-overlay-text").textContent = opts.text || "";
+    var note = document.getElementById("dg-cr-overlay-note");
+    note.classList.toggle("d-none", !opts.note);
+    note.value = "";
+    note.placeholder = opts.notePlaceholder || "Комментарий";
+    document.getElementById("dg-cr-overlay-ok").textContent = opts.okText || "Подтвердить";
+    document.getElementById("dg-cr-overlay-cats").classList.toggle("d-none", !opts.categories);
+    var box = document.getElementById("dg-cr-overlay");
+    box.classList.remove("d-none");
+    box.style.display = "flex";
+  }
+  function closeOverlay() {
+    state.pending = null;
+    var box = document.getElementById("dg-cr-overlay");
+    box.classList.add("d-none");
+  }
+
+  function loadPeople() {
+    return fetch("/api/catalog-review/people", { credentials: "same-origin" })
+      .then(function (r) { return r.json().then(function (j) { return { r: r, j: j }; }); })
+      .then(function (x) {
+        if (!x.r.ok) throw new Error(x.j.error || "Ошибка списка людей");
+        state.people = x.j;
+      })
+      .catch(function (e) { toast("warning", e.message || "Не удалось загрузить людей"); });
+  }
+
+  function personSelect(list, selected, row, field) {
+    var select = document.createElement("select");
+    select.className = "form-select form-select-sm dg-cr-person";
+    select.disabled = row.status === "done";
+    var blank = document.createElement("option");
+    blank.value = "";
+    blank.textContent = "Не назначен";
+    select.appendChild(blank);
+    (list || []).forEach(function (p) {
+      var opt = document.createElement("option");
+      opt.value = String(p.id);
+      opt.textContent = p.label || p.username;
+      select.appendChild(opt);
+    });
+    select.value = selected ? String(selected) : "";
+    if (select.value !== String(selected || "") && selected) {
+      var extra = document.createElement("option");
+      extra.value = String(selected);
+      extra.textContent = field === "sales" ? (row.sales_name || ("#" + selected)) : (row.content_name || ("#" + selected));
+      select.appendChild(extra);
+      select.value = String(selected);
+    }
+    select.setAttribute("data-dg-cr-prev", select.value);
+    select.addEventListener("change", function () {
+      var body = { ids: [row.id] };
+      var next = select.value ? Number(select.value) : null;
+      if (field === "sales") body.sales_user_id = next;
+      else body.content_user_id = next;
+      var who = select.selectedOptions[0] ? select.selectedOptions[0].textContent : "Не назначен";
+      var title = (field === "sales" ? "Менеджер" : "Контент") + ": " + (row.sku || ("#" + row.id)) + " → " + who;
+      var finish = beginLog(title);
+      select.disabled = true;
+      post("/api/catalog-review/assign", body).then(function (x) {
+        select.disabled = row.status === "done";
+        if (!x.r.ok) throw new Error(x.j.error || "Ошибка назначения");
+        select.setAttribute("data-dg-cr-prev", select.value);
+        finish("success", "Записано: " + fmtInt(x.j.updated));
+        toast("success", "Назначено: " + who);
+        load();
+      }).catch(function (e) {
+        select.value = select.getAttribute("data-dg-cr-prev") || "";
+        select.disabled = row.status === "done";
+        finish("danger", "Ошибка: " + escHtml(e.message || "не записалось"));
+        toast("danger", e.message);
+      });
+    });
+    return select;
+  }
+
+  function render(rows) {
+    var tb = document.getElementById("dg-cr-tbody");
+    tb.replaceChildren();
+    document.getElementById("dg-cr-all").checked = false;
+    if (!rows.length) {
+      var tr = document.createElement("tr");
+      var td = document.createElement("td");
+      td.colSpan = 9;
+      td.className = "text-muted";
+      td.textContent = "В очереди нет строк по этому фильтру.";
+      tr.appendChild(td);
+      tb.appendChild(tr);
+      return;
+    }
+    rows.forEach(function (row) {
+      var tr = document.createElement("tr");
+      var td0 = document.createElement("td");
+      var cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.setAttribute("data-dg-cr-id", String(row.id));
+      td0.appendChild(cb);
+      var tdCat = document.createElement("td");
+      tdCat.textContent = row.parent_category_name || "—";
+      var tdP = document.createElement("td");
+      var sku = document.createElement("div");
+      sku.className = "fw-semibold";
+      sku.textContent = row.sku || "—";
+      var name = document.createElement("div");
+      name.textContent = row.product_name || "";
+      var code = document.createElement("div");
+      code.className = "small text-muted";
+      code.textContent = row.cms_product_id ? "Код " + row.cms_product_id : "";
+      tdP.appendChild(sku);
+      tdP.appendChild(name);
+      if (code.textContent) tdP.appendChild(code);
+      var tdPrice = document.createElement("td");
+      tdPrice.textContent = row.price != null ? fmtNum(row.price) + (row.currency ? " " + row.currency : "") : "—";
+      var tdStock = document.createElement("td");
+      tdStock.textContent = row.stock_qty_live == null ? "—" : fmtInt(row.stock_qty_live);
+      if (Number(row.stock_qty_live) > 0) tdStock.className = "text-danger";
+      var tdDec = document.createElement("td");
+      tdDec.textContent = DECISION[row.decision] || "—";
+      if (row.decision === "discontinued" && row.status !== "done") {
+        var analog = document.createElement("input");
+        analog.type = "text";
+        analog.className = "form-control form-control-sm mt-1";
+        analog.placeholder = "Куда разместить аналог или что взять в работу";
+        analog.value = row.decision_note || "";
+        analog.setAttribute("data-dg-cr-prev", analog.value);
+        analog.addEventListener("keydown", function (ev) {
+          if (ev.key === "Enter") { ev.preventDefault(); analog.blur(); }
+        });
+        analog.addEventListener("blur", function () {
+          var next = String(analog.value || "").trim();
+          var prev = analog.getAttribute("data-dg-cr-prev") || "";
+          if (next === prev) return;
+          if (!next) {
+            analog.value = prev;
+            toast("warning", "Комментарий по аналогу нужен: куда разместить или что взять в работу");
+            return;
+          }
+          var finish = beginLog("Комментарий к аналогу " + (row.sku || ("#" + row.id)));
+          analog.disabled = true;
+          post("/api/catalog-review/decide", { ids: [row.id], decision: "discontinued", note: next }).then(function (x) {
+            analog.disabled = false;
+            if (!x.r.ok) throw new Error(x.j.error || "Комментарий не записался");
+            if (!x.j.updated) throw new Error("Комментарий не записался: строка уже закрыта или не ваша");
+            analog.value = next;
+            analog.setAttribute("data-dg-cr-prev", next);
+            finish("success", "Записано: " + fmtInt(x.j.updated) + "<br>Комментарий: " + escHtml(next));
+            toast("success", "Комментарий записан");
+          }).catch(function (e) {
+            analog.disabled = false;
+            analog.value = prev;
+            finish("danger", "Ошибка: " + escHtml(e.message));
+            toast("danger", e.message);
+          });
+        });
+        tdDec.appendChild(analog);
+      } else if (row.decision === "discontinued" && row.decision_note) {
+        var n1 = document.createElement("div");
+        n1.className = "small text-muted";
+        n1.textContent = "Аналог: " + row.decision_note;
+        tdDec.appendChild(n1);
+      } else if (row.decision_note) {
+        var n0 = document.createElement("div");
+        n0.className = "small text-muted";
+        n0.textContent = row.decision_note;
+        tdDec.appendChild(n0);
+      }
+      if (row.content_note) {
+        var n2 = document.createElement("div");
+        n2.className = "small";
+        n2.textContent = "Контент: " + row.content_note;
+        tdDec.appendChild(n2);
+      }
+      var people = state.people || { sales: [], content: [] };
+      var tdS = document.createElement("td");
+      tdS.appendChild(personSelect(people.sales, row.sales_user_id, row, "sales"));
+      var tdC = document.createElement("td");
+      tdC.appendChild(personSelect(people.content, row.content_user_id, row, "content"));
+      var tdSt = document.createElement("td");
+      tdSt.textContent = STATUS[row.status] || row.status || "—";
+      [td0, tdCat, tdP, tdPrice, tdStock, tdDec, tdS, tdC, tdSt].forEach(function (td) { tr.appendChild(td); });
+      tb.appendChild(tr);
+    });
+  }
+
+  function load() {
+    if (state.lane !== "out") return;
+    var params = new URLSearchParams();
+    params.set("lane", "out");
+    params.set("page", String(state.page));
+    params.set("limit", String(state.limit));
+    var status = document.getElementById("dg-cr-status").value;
+    var mine = document.getElementById("dg-cr-mine").value;
+    var search = document.getElementById("dg-cr-search").value.trim();
+    if (status) params.set("status", status);
+    if (mine) params.set("mine", mine);
+    if (search) params.set("search", search);
+    fetch("/api/catalog-review?" + params.toString(), { credentials: "same-origin" })
+      .then(function (r) { return r.json().then(function (j) { return { r: r, j: j }; }); })
+      .then(function (x) {
+        if (!x.r.ok) throw new Error(x.j.error || "Ошибка очереди");
+        state.rows = x.j.data || [];
+        state.total = Number(x.j.total || 0);
+        state.pages = Math.max(1, Math.ceil(state.total / state.limit));
+        if (state.page > state.pages) {
+          state.page = state.pages;
+          load();
+          return;
+        }
+        document.getElementById("dg-cr-count").textContent = "Найдено: " + fmtInt(state.total);
+        document.getElementById("dg-cr-page").textContent = "Страница " + state.page + "/" + state.pages;
+        render(state.rows);
+      })
+      .catch(function (e) { toast("danger", e.message || "Ошибка очереди"); });
+  }
+
+  function post(url, body) {
+    return fetch(url, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    }).then(function (r) { return r.json().then(function (j) { return { r: r, j: j }; }); });
+  }
+
+  function runDecide(decision, confirmStock, note) {
+    var ids = selectedIds();
+    if (!ids.length) { toast("warning", "Отметьте строки"); return; }
+    var title = "Решение «" + (DECISION[decision] || decision) + "»";
+    var finish = beginLog(title);
+    var body = { ids: ids, decision: decision, confirm_stock: confirmStock ? 1 : 0 };
+    if (note) body.note = note;
+    post("/api/catalog-review/decide", body)
+      .then(function (x) {
+        if (x.r.status === 409 && x.j.code === "STOCK_CONFIRM") {
+          finish("warning", escHtml(x.j.error || "Есть остаток"));
+          openOverlay({
+            title: "На складе есть остаток",
+            text: x.j.error,
+            okText: "Всё равно выводить",
+            run: function () { closeOverlay(); runDecide(decision, true, note); }
+          });
+          return;
+        }
+        if (!x.r.ok) throw new Error(x.j.error || "Ошибка решения");
+        var lines = "Отмечено: " + fmtInt(ids.length) + "<br>Записано: " + fmtInt(x.j.updated) + ", пропущено: " + fmtInt(x.j.skipped);
+        if (note) lines += "<br>Комментарий: " + escHtml(note);
+        finish(x.j.skipped ? "warning" : "success", lines);
+        toast("success", "Решение записано: " + fmtInt(x.j.updated));
+        load();
+      })
+      .catch(function (e) {
+        finish("danger", "Ошибка: " + escHtml(e.message));
+        toast("danger", e.message);
+      });
+  }
+
+  function runApply(confirmStock) {
+    var ids = selectedIds();
+    if (!ids.length) { toast("warning", "Отметьте строки"); return; }
+    var finish = beginLog("Сделано на сайте");
+    post("/api/catalog-review/apply", { ids: ids, confirm: true, confirm_stock: confirmStock ? 1 : 0 })
+      .then(function (x) {
+        if (x.r.status === 409 && x.j.code === "STOCK_CONFIRM") {
+          finish("warning", escHtml(x.j.error || "Есть остаток"));
+          openOverlay({
+            title: "Выключить товары с остатком",
+            text: x.j.error,
+            okText: "Выключить",
+            run: function () { closeOverlay(); runApply(true); }
+          });
+          return;
+        }
+        if (!x.r.ok) throw new Error(x.j.error || "Ошибка проведения");
+        var lines = "Отмечено: " + fmtInt(ids.length) + "<br>Проведено на сайт: " + fmtInt(x.j.applied);
+        var errs = x.j.errors || [];
+        if (errs.length) {
+          lines += "<br>Ошибок: " + fmtInt(errs.length);
+          errs.slice(0, 20).forEach(function (er) {
+            lines += "<br>• " + escHtml(er.sku || er.id || "?") + " — " + escHtml(er.error || "ошибка");
+          });
+        }
+        finish(errs.length ? "warning" : "success", lines);
+        var msg = "Проведено на сайт: " + fmtInt(x.j.applied);
+        if (errs.length) msg += ". Ошибок: " + errs.length;
+        toast(errs.length ? "warning" : "success", msg);
+        load();
+      })
+      .catch(function (e) {
+        finish("danger", "Ошибка: " + escHtml(e.message));
+        toast("danger", e.message);
+      });
+  }
+
+  function renderIntakeCats(rows) {
+    var list = document.getElementById("dg-cr-cat-list");
+    var q = document.getElementById("dg-cr-cat-q");
+    if (q) q.value = "";
+    list.replaceChildren();
+    (rows || []).forEach(function (c) {
+      var label = document.createElement("label");
+      label.className = "d-flex align-items-start gap-2 mb-1";
+      label.setAttribute("data-dg-cr-cat-name", String(c.name || "").toLowerCase());
+      var cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.className = "form-check-input mt-1";
+      cb.value = String(c.id);
+      var text = document.createElement("span");
+      text.textContent = String(c.name || "") + " (" + fmtInt(c.count) + ")";
+      label.appendChild(cb);
+      label.appendChild(text);
+      list.appendChild(label);
+    });
+  }
+
+  document.getElementById("dg-cr-apply").addEventListener("click", function () {
+    state.page = 1;
+    load();
+  });
+  document.getElementById("dg-cr-search").addEventListener("keydown", function (ev) {
+    if (ev.key === "Enter") {
+      ev.preventDefault();
+      state.page = 1;
+      load();
+    }
+  });
+  document.getElementById("dg-cr-prev").addEventListener("click", function () {
+    if (state.page > 1) { state.page -= 1; load(); }
+  });
+  document.getElementById("dg-cr-next").addEventListener("click", function () {
+    if (state.page < state.pages) { state.page += 1; load(); }
+  });
+  document.getElementById("dg-cr-all").addEventListener("change", function () {
+    var on = document.getElementById("dg-cr-all").checked;
+    document.querySelectorAll("#dg-cr-tbody input[data-dg-cr-id]").forEach(function (el) { el.checked = on; });
+  });
+  document.getElementById("dg-cr-keep").addEventListener("click", function () { runDecide("keep", false); });
+  document.getElementById("dg-cr-disc").addEventListener("click", function () {
+    var ids = selectedIds();
+    if (!ids.length) { toast("warning", "Отметьте строки"); return; }
+    openOverlay({
+      title: "Снят / аналог",
+      text: "Напишите, какой аналог поставить или что взять в работу. Комментарий увидит контент.",
+      okText: "Записать",
+      note: true,
+      notePlaceholder: "Какой аналог разместить или что взять в работу",
+      run: function () {
+        var note = String(document.getElementById("dg-cr-overlay-note").value || "").trim();
+        if (!note) { toast("warning", "Напишите комментарий по аналогу"); return; }
+        closeOverlay();
+        runDecide("discontinued", false, note);
+      }
+    });
+  });
+  document.getElementById("dg-cr-nosup").addEventListener("click", function () { runDecide("not_supplied", false); });
+  document.getElementById("dg-cr-off").addEventListener("click", function () { runDecide("deactivate", false); });
+  document.getElementById("dg-cr-apply-cms").addEventListener("click", function () {
+    var ids = selectedIds();
+    if (!ids.length) { toast("warning", "Отметьте строки"); return; }
+    openOverlay({
+      title: "Провести на сайт",
+      text: "Галка или выключение запишутся на сайт только для строк «У контента». Продолжить?",
+      okText: "Сделано на сайте",
+      run: function () { closeOverlay(); runApply(false); }
+    });
+  });
+  document.getElementById("dg-cr-return").addEventListener("click", function () {
+    var ids = selectedIds();
+    if (!ids.length) { toast("warning", "Отметьте строки"); return; }
+    openOverlay({
+      title: "Вернуть менеджеру",
+      text: "Строка снова станет «У менеджера». Напишите, что не сходится.",
+      okText: "Вернуть",
+      note: true,
+      run: function () {
+        var note = String(document.getElementById("dg-cr-overlay-note").value || "").trim();
+        if (!note) { toast("warning", "Напишите комментарий"); return; }
+        closeOverlay();
+        var finish = beginLog("Вернуть менеджеру");
+        post("/api/catalog-review/return", { ids: ids, note: note }).then(function (x) {
+          if (!x.r.ok) throw new Error(x.j.error || "Ошибка возврата");
+          finish("success", "Отмечено: " + fmtInt(ids.length) + "<br>Возвращено: " + fmtInt(x.j.updated) + "<br>Комментарий: " + escHtml(note));
+          toast("success", "Возвращено: " + fmtInt(x.j.updated));
+          load();
+        }).catch(function (e) {
+          finish("danger", "Ошибка: " + escHtml(e.message));
+          toast("danger", e.message);
+        });
+      }
+    });
+  });
+  document.getElementById("dg-cr-intake-open").addEventListener("click", function () {
+    fetch("/api/catalog-review/categories?my_site_id=2", { credentials: "same-origin" })
+      .then(function (r) { return r.json().then(function (j) { return { r: r, j: j }; }); })
+      .then(function (x) {
+        if (!x.r.ok) throw new Error(x.j.error || "Ошибка категорий");
+        renderIntakeCats(x.j.data || []);
+        openOverlay({
+          title: "Взять из архива",
+          text: "В скобках — сколько товаров ещё можно добавить. Уже выключенные на сайте и уже стоящие в очереди в это число не входят.",
+          okText: "Взять в очередь",
+          categories: true,
+          run: function () {
+            var ids = Array.prototype.map.call(
+              document.querySelectorAll("#dg-cr-cat-list input:checked"),
+              function (el) { return Number(el.value); }
+            ).filter(function (n) { return n > 0; });
+            if (!ids.length) { toast("warning", "Отметьте категории"); return; }
+            closeOverlay();
+            var finish = beginLog("Взять из архива");
+            post("/api/catalog-review/intake", { my_site_id: 2, parent_category_ids: ids, confirm: true })
+              .then(function (res) {
+                if (!res.r.ok) throw new Error(res.j.error || "Ошибка набора");
+                finish("success", "Категорий: " + fmtInt(ids.length) +
+                  "<br>Добавлено: " + fmtInt(res.j.added) +
+                  "<br>Уже были в очереди: " + fmtInt(res.j.skipped_existing) +
+                  "<br>Выключены на сайте: " + fmtInt(res.j.skipped_disabled));
+                toast("success", "Добавлено: " + fmtInt(res.j.added) + ". Уже были: " + fmtInt(res.j.skipped_existing) + ". Выключены на сайте: " + fmtInt(res.j.skipped_disabled));
+                state.page = 1;
+                load();
+              })
+              .catch(function (e) {
+                finish("danger", "Ошибка: " + escHtml(e.message));
+                toast("danger", e.message);
+              });
+          }
+        });
+      })
+      .catch(function (e) { toast("danger", e.message); });
+  });
+  document.getElementById("dg-cr-cat-q").addEventListener("input", function () {
+    var needle = String(this.value || "").trim().toLowerCase();
+    document.querySelectorAll("#dg-cr-cat-list label").forEach(function (row) {
+      var name = row.getAttribute("data-dg-cr-cat-name") || "";
+      row.classList.toggle("d-none", !!(needle && name.indexOf(needle) === -1));
+    });
+  });
+  document.getElementById("dg-cr-overlay-cancel").addEventListener("click", closeOverlay);
+  document.getElementById("dg-cr-overlay-x").addEventListener("click", closeOverlay);
+  document.getElementById("dg-cr-overlay").addEventListener("click", function (ev) {
+    if (ev.target.id === "dg-cr-overlay") closeOverlay();
+  });
+  document.addEventListener("keydown", function (ev) {
+    if (ev.key === "Escape") closeOverlay();
+  });
+  document.getElementById("dg-cr-overlay-ok").addEventListener("click", function () {
+    if (state.pending && state.pending.run) state.pending.run();
+  });
+
+  document.querySelectorAll("[data-dg-cr-lane]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var lane = btn.getAttribute("data-dg-cr-lane");
+      state.lane = lane;
+      document.querySelectorAll("[data-dg-cr-lane]").forEach(function (el) {
+        el.classList.toggle("active", el === btn);
+      });
+      document.getElementById("dg-cr-out").classList.toggle("d-none", lane !== "out");
+      document.getElementById("dg-cr-in").classList.toggle("d-none", lane !== "in");
+      document.getElementById("dg-cr-owners").classList.toggle("d-none", lane !== "owners");
+      if (location.hash !== "#" + lane) history.replaceState(null, "", location.pathname + location.search + "#" + lane);
+    });
+  });
+  if (location.hash === "#in") document.getElementById("dg-cr-tab-in").click();
+  if (location.hash === "#owners") document.getElementById("dg-cr-tab-owners").click();
+
+  function fillOwnerSelect(select, list, selected) {
+    select.replaceChildren();
+    var blank = document.createElement("option");
+    blank.value = "";
+    blank.textContent = "Не закреплён";
+    select.appendChild(blank);
+    (list || []).forEach(function (p) {
+      var opt = document.createElement("option");
+      opt.value = String(p.id);
+      opt.textContent = p.label || p.username;
+      select.appendChild(opt);
+    });
+    if (selected) select.value = String(selected);
+  }
+  function renderOwners(rows) {
+    var tb = document.getElementById("dg-cr-owners-body");
+    if (!tb) return;
+    tb.replaceChildren();
+    if (!rows.length) {
+      var tr = document.createElement("tr");
+      var td = document.createElement("td");
+      td.colSpan = 3;
+      td.className = "text-muted";
+      td.textContent = "В архиве нет категорий.";
+      tr.appendChild(td);
+      tb.appendChild(tr);
+      return;
+    }
+    var people = state.people || { sales: [], content: [] };
+    rows.forEach(function (row) {
+      var tr = document.createElement("tr");
+      tr.setAttribute("data-dg-cr-owner-id", String(row.id));
+      tr.setAttribute("data-dg-cr-owner-name", row.name || "");
+      var tdName = document.createElement("td");
+      tdName.textContent = (row.name || "—") + " (" + fmtInt(row.count) + ")";
+      var tdS = document.createElement("td");
+      var sales = document.createElement("select");
+      sales.className = "form-select form-select-sm dg-cr-owner-sales";
+      fillOwnerSelect(sales, people.sales, row.sales_user_id);
+      tdS.appendChild(sales);
+      var tdC = document.createElement("td");
+      var content = document.createElement("select");
+      content.className = "form-select form-select-sm dg-cr-owner-content";
+      fillOwnerSelect(content, people.content, row.content_user_id);
+      tdC.appendChild(content);
+      tr.appendChild(tdName);
+      tr.appendChild(tdS);
+      tr.appendChild(tdC);
+      tb.appendChild(tr);
+    });
+  }
+  function loadOwners() {
+    return fetch("/api/catalog-review/owners?my_site_id=2", { credentials: "same-origin" })
+      .then(function (r) { return r.json().then(function (j) { return { r: r, j: j }; }); })
+      .then(function (x) {
+        if (!x.r.ok) throw new Error(x.j.error || "Ошибка закрепления");
+        renderOwners(x.j.data || []);
+      })
+      .catch(function (e) { toast("warning", e.message || "Не удалось загрузить закрепление"); });
+  }
+  var ownersSave = document.getElementById("dg-cr-owners-save");
+  if (ownersSave) {
+    ownersSave.addEventListener("click", function () {
+      var items = [];
+      document.querySelectorAll("#dg-cr-owners-body tr[data-dg-cr-owner-id]").forEach(function (tr) {
+        items.push({
+          id: Number(tr.getAttribute("data-dg-cr-owner-id")),
+          name: tr.getAttribute("data-dg-cr-owner-name") || "",
+          sales_user_id: tr.querySelector(".dg-cr-owner-sales").value,
+          content_user_id: tr.querySelector(".dg-cr-owner-content").value
+        });
+      });
+      post("/api/catalog-review/owners", { my_site_id: 2, items: items }).then(function (x) {
+        if (!x.r.ok) throw new Error(x.j.error || "Ошибка сохранения");
+        toast("success", "Закреплено категорий: " + fmtInt(x.j.saved) + ". Обновлено строк очереди: " + fmtInt(x.j.applied));
+        load();
+      }).catch(function (e) { toast("danger", e.message); });
+    });
+  }
+
+  loadPeople().then(function () { return loadOwners(); }).then(load);
+})();
+</script>

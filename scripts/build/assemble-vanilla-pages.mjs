@@ -150,6 +150,14 @@ function assemble() {
             PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/matches.scripts.html')),
         },
         {
+            out: 'catalog-review.html',
+            PAGE_TITLE: 'Проверка каталога — Датагон',
+            BODY_ATTRS: 'class="datagon-vanilla-body" data-dg-active-nav="catalog-review"',
+            EXTRA_HEAD: read(path.join(vanillaDir, 'inners/catalog-review.head.html')),
+            MAIN_INNER: read(path.join(vanillaDir, 'inners/catalog-review.inner.html')),
+            PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/catalog-review.scripts.html')),
+        },
+        {
             out: 'processes.html',
             PAGE_TITLE: 'Активность/Логи — Датагон',
             BODY_ATTRS: 'class="datagon-vanilla-body" data-dg-active-nav="processes"',

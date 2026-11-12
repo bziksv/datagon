@@ -1225,7 +1225,8 @@ function myProductsRouterFactory(db, settings) {
             const rowKey = `${m.my_site_id}::${mySku || myName}`;
             if (!matchMap.has(rowKey)) matchMap.set(rowKey, {});
 
-            if (kind) {
+                if (kind) {
+                matchMap.get(rowKey)[`${kind}_linked`] = true;
                 const skuKey = `${m.competitor_site_id}::${String(m.competitor_sku || '').trim()}`;
                 const nameKey = `${m.competitor_site_id}::${String(m.competitor_name || '').trim()}`;
                 const compValue = latestBySku.get(skuKey) ?? latestByName.get(nameKey) ?? null;
@@ -1266,6 +1267,8 @@ function myProductsRouterFactory(db, settings) {
             const key = `${r.site_id}::${String(r.sku || '').trim() || String(r.name || '').trim()}`;
             const prices = matchMap.get(key) || {};
             const audit = auditMap.get(key) || null;
+            r.dealmed_linked = prices.dealmed_linked === true;
+            r.medkompleks_linked = prices.medkompleks_linked === true;
             r.dealmed_price = prices.dealmed_price ?? null;
             r.medkompleks_price = prices.medkompleks_price ?? null;
             r.dealmed_price_list = prices.dealmed_price_list ?? null;
@@ -1669,6 +1672,20 @@ function myProductsRouterFactory(db, settings) {
         };
     }
 
+    /**
+     * Остаток 0, есть подтверждённая связка ДМ/МК, но пригодной цены (>0) нет,
+     * а своя цена > 0 — снимаем её (0 в CMS и в my_products).
+     * Нет связки, остаток неизвестен или > 0 — цену не трогаем.
+     */
+    function shouldClearOwnPriceWhenCompetitorEmpty(product) {
+        if (!product) return false;
+        if (product.dealmed_linked !== true && product.medkompleks_linked !== true) return false;
+        const stock = Number(product.sticker_ms_stock);
+        if (!Number.isFinite(stock) || stock !== 0) return false;
+        const own = Number(product.price);
+        return Number.isFinite(own) && own > 0;
+    }
+
     async function applyPriceToCms(conn, siteCfg, product, finalPrice, opts) {
         return applyPriceToCmsShared(conn, siteCfg, product, finalPrice, opts || {});
     }
@@ -2047,6 +2064,7 @@ function myProductsRouterFactory(db, settings) {
         skipped_no_competitor: 0,
         skipped_hold: 0,
         skipped_own_stock: 0,
+        cleared_no_competitor: 0,
         errors: []
     };
 
@@ -2079,6 +2097,7 @@ function myProductsRouterFactory(db, settings) {
             skipped_no_competitor: Number(priceSyncJob.skipped_no_competitor || 0),
             skipped_hold: Number(priceSyncJob.skipped_hold || 0),
             skipped_own_stock: Number(priceSyncJob.skipped_own_stock || 0),
+            cleared_no_competitor: Number(priceSyncJob.cleared_no_competitor || 0),
             no_dm_mk_price: Number(priceSyncJob.skipped_no_competitor || 0),
             skipped,
             no_competitor: Number(priceSyncJob.skipped_no_competitor || 0),
@@ -2117,6 +2136,7 @@ function myProductsRouterFactory(db, settings) {
         priceSyncJob.skipped_no_competitor = 0;
         priceSyncJob.skipped_hold = 0;
         priceSyncJob.skipped_own_stock = 0;
+        priceSyncJob.cleared_no_competitor = 0;
         priceSyncJob.errors = [];
     }
 
@@ -2140,6 +2160,7 @@ function myProductsRouterFactory(db, settings) {
                 `; записано ✓ ${priceSyncJob.cms_ok.toLocaleString('ru-RU')}` +
                 `, ошибок × ${priceSyncJob.cms_failed.toLocaleString('ru-RU')}` +
                 `, без цены ДМ/МК ${priceSyncJob.skipped_no_competitor.toLocaleString('ru-RU')}` +
+                `, снято цен ${priceSyncJob.cleared_no_competitor.toLocaleString('ru-RU')}` +
                 `, заморозка ${priceSyncJob.skipped_hold.toLocaleString('ru-RU')}` +
                 `, свой остаток ${priceSyncJob.skipped_own_stock.toLocaleString('ru-RU')}` +
                 (showGapSkips ? `, отсеяно по Δ ${priceSyncJob.skipped_gap.toLocaleString('ru-RU')}` : '')
@@ -2297,10 +2318,14 @@ function myProductsRouterFactory(db, settings) {
                         ctx.eurRate
                     );
                     if (!computed.ok) {
-                        priceSyncJob.skipped_no_competitor += 1;
+                        if (shouldClearOwnPriceWhenCompetitorEmpty(product)) {
+                            toWrite.push({ product, clear: true });
+                        } else {
+                            priceSyncJob.skipped_no_competitor += 1;
+                        }
                         continue;
                     }
-                    toWrite.push({ product, computed });
+                    toWrite.push({ product, computed, clear: false });
                 }
 
                 const siteIds = [...new Set(toWrite.map((x) => Number(x.product.site_id)).filter(Number.isFinite))];
@@ -2313,11 +2338,15 @@ function myProductsRouterFactory(db, settings) {
                 await mapPool(toWrite, PRICE_SYNC_CMS_CONCURRENCY, async (item, _idx, slot) => {
                     if (priceSyncJob.cancelRequested) return;
                     if (priceSyncJob.job_serial !== serial) return;
-                    const { product, computed } = item;
+                    const { product, computed, clear } = item;
                     const code = String(product.sku || product.source_id || product.id || '?');
+                    const finalPrice = clear ? 0 : computed.finalPrice;
+                    const note = clear
+                        ? 'bulk;cleared;stock=0;no_dm_mk_price'
+                        : `bulk;from=${computed.selected.source};rnd=${computed.randomPct.toFixed(4)}%`;
                     try {
                         const { site, conn } = takeSiteConn(product.site_id, slot);
-                        await applyPriceToCms(conn, site, product, computed.finalPrice, {
+                        await applyPriceToCms(conn, site, product, finalPrice, {
                             deferStorefrontCacheClear: true,
                         });
                         if (String(site.cms_type || '').toLowerCase() === 'bitrix') {
@@ -2328,15 +2357,16 @@ function myProductsRouterFactory(db, settings) {
                              SET price = ?, comp_sync_by = ?, comp_sync_at = NOW(), comp_sync_note = ?, updated_at = NOW()
                              WHERE site_id = ? AND source_id = ?`,
                             [
-                                computed.finalPrice,
+                                finalPrice,
                                 actorDisplayName,
-                                `bulk;from=${computed.selected.source};rnd=${computed.randomPct.toFixed(4)}%`,
+                                note,
                                 Number(product.site_id),
                                 String(product.source_id || '')
                             ]
                         );
                         priceSyncJob.cms_ok += 1;
                         priceSyncJob.synced += 1;
+                        if (clear) priceSyncJob.cleared_no_competitor += 1;
                     } catch (itemErr) {
                         priceSyncJob.cms_failed += 1;
                         if (priceSyncJob.errors.length < 20) {
@@ -3237,7 +3267,8 @@ function myProductsRouterFactory(db, settings) {
                 usdRate,
                 eurRate
             );
-            if (!computed.ok) {
+            const clearOwn = !computed.ok && shouldClearOwnPriceWhenCompetitorEmpty(product);
+            if (!computed.ok && !clearOwn) {
                 return res.status(400).json({ error: computed.error });
             }
 
@@ -3246,9 +3277,13 @@ function myProductsRouterFactory(db, settings) {
                 return res.status(404).json({ error: 'Сайт не найден' });
             }
             const s = sites[0];
+            const finalPrice = clearOwn ? 0 : computed.finalPrice;
+            const syncNote = clearOwn
+                ? 'cleared;stock=0;no_dm_mk_price'
+                : `from=${computed.selected.source};rnd=${computed.randomPct.toFixed(4)}%`;
             const conn = await openCmsDbConnection(s, { connectTimeout: 10000, appDb: db });
             try {
-                await applyPriceToCms(conn, s, product, computed.finalPrice);
+                await applyPriceToCms(conn, s, product, finalPrice);
             } finally {
                 await conn.end();
             }
@@ -3260,9 +3295,9 @@ function myProductsRouterFactory(db, settings) {
                  SET price = ?, comp_sync_by = ?, comp_sync_at = NOW(), comp_sync_note = ?, updated_at = NOW()
                  WHERE site_id = ? AND source_id = ?`,
                 [
-                    computed.finalPrice,
+                    finalPrice,
                     actorDisplayName,
-                    `from=${computed.selected.source};rnd=${computed.randomPct.toFixed(4)}%`,
+                    syncNote,
                     siteIdNum,
                     String(product.source_id || '')
                 ]
@@ -3280,13 +3315,16 @@ function myProductsRouterFactory(db, settings) {
 
             return res.json({
                 success: true,
-                message: 'Цена обновлена от конкурента',
+                message: clearOwn
+                    ? 'Остаток 0 и у конкурента нет цены — своя цена снята'
+                    : 'Цена обновлена от конкурента',
+                cleared: clearOwn,
                 data: {
                     ...(syncMeta || {}),
-                    competitor_source: computed.selected.source,
-                    competitor_price_rub: Number(computed.selected.rub.toFixed(2)),
-                    random_pct: Number(computed.randomPct.toFixed(4)),
-                    target_price: computed.finalPrice,
+                    competitor_source: clearOwn ? null : computed.selected.source,
+                    competitor_price_rub: clearOwn ? null : Number(computed.selected.rub.toFixed(2)),
+                    random_pct: clearOwn ? null : Number(computed.randomPct.toFixed(4)),
+                    target_price: finalPrice,
                     target_currency: product.currency || 'RUB',
                     synced_by: actorDisplayName
                 }

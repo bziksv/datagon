@@ -654,7 +654,7 @@ Body:
 Массовая заморозка / снятие по **тем же фильтрам**, что у list / sync-price-bulk (включая `price_hold`, Δ). `dry_run=1` или `confirm=1`. Для set — ещё `hold_days` / `hold_until`. Ответ: `total`, `already_held`, `free`, `would_hold` / `held` или `would_clear` / `cleared`, `duration_sec`, `applied_filters`. Потолок выборки — **50 000**. CMS не трогает. При clear также снимает `sticker_sale`.
 
 ### POST `/api/my-products/sync-price-from-competitor`
-Подтянуть цену с конкурента в источник (логика в `routes/myproducts.js`). В теле: **`confirm: true`** (обяз., F-MP-01), `site_id`, `sku`, опционально `source_id`, `random_min_pct` / `random_max_pct`. Берётся **минимальная** цена среди Dealmed/Медкомплекс (в RUB), минус случайный % из диапазона; запись в CMS + аудит `comp_sync_*` в `my_products`. Заголовок `x-auth-username` / сессия попадает в аудит. Если у товара активна заморозка (`price_hold_until > NOW()`) → **`409 PRICE_HOLD_ACTIVE`**. Если у сайта заданы склады и сумма остатка по ним &gt; 0 → **`409 OWN_MS_STOCK_BLOCK`** (без привязки складов блок не действует).
+Подтянуть цену с конкурента в источник (логика в `routes/myproducts.js`). В теле: **`confirm: true`** (обяз., F-MP-01), `site_id`, `sku`, опционально `source_id`, `random_min_pct` / `random_max_pct`. Берётся **минимальная** цена среди Dealmed/Медкомплекс (в RUB), минус случайный % из диапазона; запись в CMS + аудит `comp_sync_*` в `my_products`. Заголовок `x-auth-username` / сессия попадает в аудит. Если у товара активна заморозка (`price_hold_until > NOW()`) → **`409 PRICE_HOLD_ACTIVE`**. Если у сайта заданы склады и сумма остатка по ним &gt; 0 → **`409 OWN_MS_STOCK_BLOCK`** (без привязки складов блок не действует). Если связка ДМ/МК есть, цены конкурента нет, остаток **0** и своя цена **> 0** — ответ `cleared: true`, в CMS и `my_products.price` пишется **0**.
 
 ### POST `/api/my-products/sync-price-from-competitor-bulk`
 Массовая синхронизация цены с конкурента по **тем же API-фильтрам**, что у `GET /api/my-products` (сайт, статус, поиск, остаток, валюта, связь с МС, `match_audit`, фильтр Δ и курсы).
@@ -670,17 +670,33 @@ Body:
 - без Δ: читает порциями `PRICE_SYNC_CHUNK` (**150**) по `id DESC`;
 - enrich конкурентов пачкой на чанк;
 - пишет в CMS параллельно до **`cms_concurrency` = 4** соединений на `site_id` (слот воркера → своё соединение);
-- счётчик `skipped_no_competitor` / alias `no_dm_mk_price` — **нет пригодной цены Dealmed/Медкомплекс > 0** (не путать с `match_audit=confirmed`: confirmed может быть с любым конкурентом);
+- счётчик `skipped_no_competitor` / alias `no_dm_mk_price` — **нет пригодной цены Dealmed/Медкомплекс > 0** и цену не меняли (нет связки ДМ/МК, остаток неизвестен или своя цена уже 0; не путать с `match_audit=confirmed`: confirmed может быть с любым конкурентом);
+- счётчик `cleared_no_competitor` — есть подтверждённая связка ДМ/МК, пригодной цены нет, остаток МС **0** и своя цена была **> 0**: в CMS и `my_products.price` пишется **0**. Остаток **> 0**, заморозка и акция по-прежнему цену не трогают;
 - счётчик `skipped_hold` — активная ручная заморозка цены (`price_hold_until > NOW()`), строка не пишется в CMS;
 - счётчик `skipped_own_stock` — у сайта заданы `ms_stock_store_uuids` и сумма остатка по ним &gt; 0; без привязки складов не считается.
 
 ### GET `/api/my-products/sync-price-from-competitor-bulk-status`
-Статус: `active`, `phase` (`idle|selecting|writing|done|cancelled|error`), `scanned` / `total_sql`, `cms_ok`, `cms_failed`, `skipped_gap`, `skipped_no_competitor` / `no_dm_mk_price`, `skipped_hold`, `skipped_own_stock`, `chunk_size`, `cms_concurrency`, `message`, `errors[]`, `duration_sec`.
+Статус: `active`, `phase` (`idle|selecting|writing|done|cancelled|error`), `scanned` / `total_sql`, `cms_ok`, `cms_failed`, `skipped_gap`, `skipped_no_competitor` / `no_dm_mk_price`, `cleared_no_competitor`, `skipped_hold`, `skipped_own_stock`, `chunk_size`, `cms_concurrency`, `message`, `errors[]`, `duration_sec`.
 
 ### POST `/api/my-products/sync-price-from-competitor-bulk-stop`
 Запрос остановки (`cancel_requested`); на отборе Δ останавливается между чанками SQL, на записи — после текущего чанка → `phase: cancelled`.
 
 UI: `/my-products.html` → **«Синх. цены по фильтрам»** + **«Стоп синх. цен»** + заморозка (колонка «Ручн.», срок 30/60/90/180, bulk) + бейдж **«МС»** / «блок: остаток МС» + `#mp-action-log` (план → опрос статуса каждые 2 с → итог; подпись пропуска — «без цены ДМ/МК» / «заморозка» / «свой остаток МС» / «отсеяно по Δ»).
+
+## Проверка каталога
+
+Страница `/catalog-review.html`. API `/api/catalog-review`.
+
+- `GET /people` — менеджеры по продажам и контент-менеджеры.
+- `GET /owners?my_site_id=` — родительские категории и закреплённые менеджер/контент.
+- `POST /owners` — `{ my_site_id, items: [{ id, name, sales_user_id, content_user_id }] }`. Сохраняет закрепление и проставляет людей в открытые строки этой категории без решения.
+- `GET /categories?my_site_id=` — родительские категории архива сопоставления.
+- `GET /?lane=out&status=&mine=mine|all|unassigned&search=&page=&limit=` — очередь.
+- `POST /intake` — `{ my_site_id, parent_category_ids, confirm: true }`.
+- `POST /assign` — `{ ids, sales_user_id?, content_user_id? }`.
+- `POST /decide` — `{ ids, decision: keep|discontinued|not_supplied|deactivate, note?, confirm_stock? }`. Для `discontinued` поле `note` обязательно: куда разместить аналог или что взять в работу. Пока строка «У контента» и решение уже `discontinued`, повторный вызов обновляет только комментарий. Остаток > 0 и `deactivate` без `confirm_stock` → `409 STOCK_CONFIRM`.
+- `POST /return` — `{ ids, note }` из «У контента» обратно менеджеру.
+- `POST /apply` — `{ ids, confirm: true, confirm_stock? }` проводит галку или выключение на сайт.
 
 ## Matches
 
@@ -809,7 +825,7 @@ Body:
 `POST /api/matches/manual-match/confirm` принимает те же опциональные `pack_qty` / `pack_basis` и тоже снимает лишние confirmed с того же конкурента.
 ## Расширенные маршруты матчинга
 
-Эндпоинты для экрана «Сопоставление» (ручная очередь, архив, поиск по ценам конкурента, лог): `GET/DELETE /api/matches/manual-queue`, `POST /api/matches/manual-queue/return-to-auto` (массово «Вернуть в авто» по фильтрам: `my_site_id`, опц. `competitor_site_id` / `search` / `exclusion_reason`, `confirm: true`; ответ `{ success, deleted, duration_sec, filters }`; лог — пакет до 50 примеров + сводка, без N отдельных INSERT), `POST /api/matches/manual-queue/archive-all` (массово «В архив все» по тем же фильтрам + опц. `note`; ответ `{ success, archived, duration_sec, filters }`), `GET/DELETE /api/matches/manual-archive` (`GET` — query `my_site_id`, опц. `competitor_site_id` / `search` / `limit` (1–300, UI по умолчанию 100) / `offset`; UI шага 4 — пагинация «На странице» + Назад/Вперёд, URL `manual_archive_page` / `manual_archive_limit`; поиск по SKU/названию нашего товара, SKU/названию конкурента, заметке, `archived_by`, имени/домену проекта; в строках также `mp_source_url`, `my_site_domain`, `my_site_cms_type` для ссылки «Мой товар»), `GET /api/matches/prices-resolve-sku`, `GET /api/matches/prices-search` (оба и загрузка прайса в автомате — только `page_type=product` / без типа), `GET /api/matches/product-match-log`, `POST /api/matches/manual-match/confirm`, `POST /api/matches/manual-match/archive`. Точные query и JSON — в `routes/matches.js`. **Поле `archived_by`** в ответе `GET /api/matches/manual-archive` — пользователь, который нажал «В архив» в блоке ручного сопоставления (заполняется при `POST /api/matches/manual-match/archive` через `resolveActorDisplayName`); миграция колонки `match_manual_archive.archived_by VARCHAR(100) NULL` и UNIQUE `uq_match_manual_archive (my_site_id, competitor_site_id, my_product_id)` живут внутри `ensureMatchLaneTables()` (дубли архива схлопываются при старте; запись в архив — upsert). **Семантика шага 4:** пара в `match_manual_archive` больше не попадает в авто-сопоставление и не создаёт `match_exclusion` (шаг 3), пока запись не удалят из архива; при миграции/архивировании пересечения с очередью очищаются.
+Эндпоинты для экрана «Сопоставление» (ручная очередь, архив, поиск по ценам конкурента, лог): `GET/DELETE /api/matches/manual-queue`, `POST /api/matches/manual-queue/return-to-auto` (массово «Вернуть в авто» по фильтрам: `my_site_id`, опц. `competitor_site_id` / `search` / `exclusion_reason`, `confirm: true`; ответ `{ success, deleted, duration_sec, filters }`; лог — пакет до 50 примеров + сводка, без N отдельных INSERT), `POST /api/matches/manual-queue/archive-all` (массово «В архив все» по тем же фильтрам + опц. `note`; ответ `{ success, archived, duration_sec, filters }`), `GET /api/matches/manual-archive-categories` (query `my_site_id`, опц. `competitor_site_id`; ответ `data[]` с `{ id, name, count }` — корневые категории каталога, в которых есть строки архива; Webasyst сворачивает дочерние разделы к `parent_id=0`; count — число строк архива), `GET/DELETE /api/matches/manual-archive` (`GET` — query `my_site_id`, опц. `competitor_site_id` / `search` / `parent_category_id` (один id или несколько через запятую, объединение товаров) / `limit` (1–300, UI по умолчанию 100) / `offset`; UI шага 4 — пагинация «На странице» + Назад/Вперёд, URL `manual_archive_page` / `manual_archive_limit` / `manual_archive_category`; поиск по SKU/названию нашего товара, SKU/названию конкурента, заметке, `archived_by`, имени/домену проекта; в строках также `mp_source_url`, `my_site_domain`, `my_site_cms_type` для ссылки «Мой товар»), `GET /api/matches/prices-resolve-sku`, `GET /api/matches/prices-search` (оба и загрузка прайса в автомате — только `page_type=product` / без типа), `GET /api/matches/product-match-log`, `POST /api/matches/manual-match/confirm`, `POST /api/matches/manual-match/archive`. Точные query и JSON — в `routes/matches.js`. **Поле `archived_by`** в ответе `GET /api/matches/manual-archive` — пользователь, который нажал «В архив» в блоке ручного сопоставления (заполняется при `POST /api/matches/manual-match/archive` через `resolveActorDisplayName`); миграция колонки `match_manual_archive.archived_by VARCHAR(100) NULL` и UNIQUE `uq_match_manual_archive (my_site_id, competitor_site_id, my_product_id)` живут внутри `ensureMatchLaneTables()` (дубли архива схлопываются при старте; запись в архив — upsert). **Семантика шага 4:** пара в `match_manual_archive` больше не попадает в авто-сопоставление и не создаёт `match_exclusion` (шаг 3), пока запись не удалят из архива; при миграции/архивировании пересечения с очередью очищаются.
 
 ## MoySklad
 

@@ -466,6 +466,19 @@
 
       var MATCH_MODES_ALLOWED = { all: 1, name: 1, sku: 1, sku_norm: 1, sku_best: 1 };
 
+      function parseArchiveCategoryIds(raw) {
+        var seen = {};
+        var out = [];
+        String(raw || "")
+          .split(/[,\s]+/)
+          .forEach(function (part) {
+            if (!/^[0-9]+$/.test(part) || seen[part]) return;
+            seen[part] = 1;
+            out.push(part);
+          });
+        return out.slice(0, 40);
+      }
+
       function syncUrlFromState() {
         var params = new URLSearchParams();
         var launchSite = document.getElementById("dg-matches-my-site").value;
@@ -499,6 +512,10 @@
         var maLimit = Number(state.manualArchiveLimit || 100);
         if (maPage > 1) params.set("manual_archive_page", String(maPage));
         if (maLimit !== 100) params.set("manual_archive_limit", String(maLimit));
+        var maCats = parseArchiveCategoryIds(
+          Array.isArray(state.manualArchiveCategoryIds) ? state.manualArchiveCategoryIds.join(",") : ""
+        );
+        if (maCats.length) params.set("manual_archive_category", maCats.join(","));
         var next = params.toString()
           ? window.location.pathname + "?" + params.toString()
           : window.location.pathname;
@@ -557,6 +574,7 @@
         manualArchivePage: 1,
         manualArchiveLimit: 100,
         manualArchiveTotal: 0,
+        manualArchiveCategoryIds: [],
       };
 
       var matchesMyProductsSearchDebounceId = null;
@@ -614,6 +632,7 @@
           manual_queue_reason: String(p.get("manual_queue_reason") || "").trim().toLowerCase(),
           manual_archive_page: Number(p.get("manual_archive_page") || 1),
           manual_archive_limit: Number(p.get("manual_archive_limit") || 100),
+          manual_archive_category: String(p.get("manual_archive_category") || "").trim(),
         };
       }
 
@@ -3195,6 +3214,7 @@
           state.manualQueueReason = normalizeManualQueueReason(up.manual_queue_reason);
           var mqReasonEl = document.getElementById("dg-manual-queue-reason");
           if (mqReasonEl) mqReasonEl.value = state.manualQueueReason || "";
+          state.manualArchiveCategoryIds = parseArchiveCategoryIds(up.manual_archive_category);
           if (Number.isFinite(up.manual_archive_page) && up.manual_archive_page > 0) state.manualArchivePage = up.manual_archive_page;
           if ([50, 100, 200].indexOf(up.manual_archive_limit) !== -1) {
             state.manualArchiveLimit = up.manual_archive_limit;
@@ -3847,37 +3867,19 @@
           var m = meta && typeof meta === "object" ? meta : {};
           var total = Number.isFinite(Number(m.total)) ? Math.max(0, Math.floor(Number(m.total))) : null;
           var shown = Math.max(0, Math.floor(Number(shownLen) || 0));
-          var lim = Number.isFinite(Number(m.limit)) ? Math.max(1, Math.floor(Number(m.limit))) : 100;
-          var off = Number.isFinite(Number(m.offset)) ? Math.max(0, Math.floor(Number(m.offset))) : 0;
           var page = Number.isFinite(Number(m.page)) ? Math.max(1, Math.floor(Number(m.page))) : 1;
           var pages = Number.isFinite(Number(m.pages)) ? Math.max(1, Math.floor(Number(m.pages))) : 1;
           if (total === null) total = shown;
-          if (total === 0)
-            return (
-              "По текущему фильтру в очереди 0 " +
-              ruRecordsWord(0) +
-              ". Много строк «Авто не нашло пару» — нормально: после каждого прогона шага 1 сюда попадают все товары без пары по выбранному конкуренту (не только отклонения из шага 2)."
-            );
-          if (total <= lim)
-            return "В очереди по фильтру: " + formatNumber(total) + " " + ruRecordsWord(total) + " (все на одной странице).";
-          var fromN = shown ? off + 1 : 0;
-          var toN = off + shown;
+          if (total === 0) return "Найдено: 0; страница 1/1; показано: 0";
           return (
-            "Всего по фильтру: " +
+            "Найдено: " +
             formatNumber(total) +
-            " " +
-            ruRecordsWord(total) +
-            ". Страница " +
+            "; страница " +
             page +
-            " из " +
+            "/" +
             pages +
-            ": записи " +
-            formatNumber(fromN) +
-            "–" +
-            formatNumber(toN) +
-            " (лимит страницы " +
-            formatNumber(lim) +
-            ", как в блоке «Совпадения»). Остальные — кнопки «Назад»/«Вперёд» или поиск в очереди."
+            "; показано: " +
+            formatNumber(shown)
           );
         }
         function manualQueuePages() {
@@ -4374,6 +4376,7 @@
                 })
                 .then(function (x) {
                   if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Ошибка");
+                  loadManualArchiveCategories();
                   loadManualArchive();
                 })
                 .catch(function (e) {
@@ -4384,6 +4387,125 @@
             tr.appendChild(tdA);
             tb.appendChild(tr);
           });
+        }
+        function archiveCategoryIdsFromState() {
+          return parseArchiveCategoryIds((state.manualArchiveCategoryIds || []).join(","));
+        }
+        function readCheckedArchiveCategoryIds() {
+          var list = document.getElementById("dg-manual-archive-category-list");
+          if (!list) return [];
+          var ids = [];
+          list.querySelectorAll("input[type=checkbox][data-dg-arch-cat-id]").forEach(function (cb) {
+            if (cb.checked) ids.push(String(cb.getAttribute("data-dg-arch-cat-id")));
+          });
+          return parseArchiveCategoryIds(ids.join(","));
+        }
+        function archiveCategoryLabel(ids, rows) {
+          var selected = parseArchiveCategoryIds((ids || []).join(","));
+          if (!selected.length) return "Все";
+          var byId = {};
+          (rows || []).forEach(function (c) {
+            byId[String(c.id)] = String(c.name || "");
+          });
+          var names = selected.map(function (id) { return byId[id] || id; }).filter(Boolean);
+          if (names.length <= 1) return names[0] || "Все";
+          return names[0] + " и ещё " + (names.length - 1);
+        }
+        function syncArchiveCategoryLabel() {
+          var label = document.getElementById("dg-manual-archive-category-label");
+          var list = document.getElementById("dg-manual-archive-category-list");
+          if (!label) return;
+          var rows = [];
+          if (list) {
+            list.querySelectorAll("[data-dg-arch-cat-id]").forEach(function (el) {
+              if (el.tagName !== "INPUT") return;
+              rows.push({
+                id: el.getAttribute("data-dg-arch-cat-id"),
+                name: el.getAttribute("data-dg-arch-cat-name") || ""
+              });
+            });
+          }
+          label.textContent = archiveCategoryLabel(readCheckedArchiveCategoryIds(), rows);
+        }
+        function formatArchiveCategoryCount(n) {
+          var num = Number(n);
+          if (!Number.isFinite(num)) return "";
+          if (window.DatagonFmt && window.DatagonFmt.formatInteger) return window.DatagonFmt.formatInteger(num);
+          return String(Math.round(num));
+        }
+        function loadManualArchiveCategories() {
+          var list = document.getElementById("dg-manual-archive-category-list");
+          if (!list) return;
+          var sid = listSiteId();
+          function fill(rows) {
+            var keep = archiveCategoryIdsFromState();
+            var known = {};
+            list.replaceChildren();
+            var q = document.getElementById("dg-manual-archive-category-q");
+            if (q) q.value = "";
+            if (!(rows || []).length) {
+              var empty = document.createElement("div");
+              empty.className = "text-muted";
+              empty.textContent = "Нет категорий в архиве";
+              list.appendChild(empty);
+            }
+            (rows || []).forEach(function (c) {
+              var id = String(c.id);
+              known[id] = 1;
+              var row = document.createElement("label");
+              row.className = "d-flex align-items-start gap-2 mb-1";
+              row.setAttribute("data-dg-arch-cat", "1");
+              row.setAttribute("data-dg-arch-cat-name", String(c.name || "").toLowerCase());
+              var cb = document.createElement("input");
+              cb.type = "checkbox";
+              cb.className = "form-check-input mt-1 flex-shrink-0";
+              cb.setAttribute("data-dg-arch-cat-id", id);
+              cb.setAttribute("data-dg-arch-cat-name", String(c.name || ""));
+              cb.checked = keep.indexOf(id) !== -1;
+              cb.addEventListener("change", syncArchiveCategoryLabel);
+              var text = document.createElement("span");
+              text.textContent = String(c.name || "") + " (" + formatArchiveCategoryCount(c.count) + ")";
+              row.appendChild(cb);
+              row.appendChild(text);
+              list.appendChild(row);
+            });
+            var still = keep.filter(function (id) { return known[id]; });
+            if (still.length !== keep.length) {
+              state.manualArchiveCategoryIds = still;
+              state.manualArchivePage = 1;
+              syncArchiveCategoryLabel();
+              loadManualArchive();
+              return;
+            }
+            syncArchiveCategoryLabel();
+          }
+          if (!sid) {
+            fill([]);
+            return;
+          }
+          var params = new URLSearchParams();
+          params.set("my_site_id", sid);
+          var cid = listCompetitorId();
+          if (cid) params.set("competitor_site_id", cid);
+          fetch("/api/matches/manual-archive-categories?" + params.toString(), { credentials: "same-origin" })
+            .then(function (r) {
+              return r.json().then(function (j) {
+                return { r: r, j: j };
+              });
+            })
+            .then(function (x) {
+              if (!x.r.ok) throw new Error((x.j && x.j.error) || "Ошибка категорий");
+              fill(x.j.data || []);
+            })
+            .catch(function (e) {
+              fill([]);
+              if (window.DatagonNotify && window.DatagonNotify.toast) {
+                window.DatagonNotify.toast({
+                  type: "warning",
+                  message: e.message || "Не удалось загрузить родительские категории"
+                });
+              }
+            });
         }
         function loadManualArchive() {
           var sid = listSiteId();
@@ -4404,6 +4526,8 @@
           var sq = document.getElementById("dg-manual-archive-search");
           var search = sq ? String(sq.value || "").trim() : "";
           if (search) params.set("search", search);
+          var catIds = archiveCategoryIdsFromState();
+          if (catIds.length) params.set("parent_category_id", catIds.join(","));
           params.set("limit", String(lim));
           params.set("offset", String(off));
           fetch("/api/matches/manual-archive?" + params.toString(), { credentials: "same-origin" })
@@ -5003,9 +5127,31 @@
           var bA = document.getElementById("dg-manual-archive-refresh");
           if (bA)
             bA.addEventListener("click", function () {
+              state.manualArchiveCategoryIds = readCheckedArchiveCategoryIds();
               state.manualArchivePage = 1;
+              syncArchiveCategoryLabel();
               loadManualArchive();
+              scheduleSyncUrl();
             });
+          var catQ = document.getElementById("dg-manual-archive-category-q");
+          if (catQ) {
+            catQ.addEventListener("input", function () {
+              var needle = String(catQ.value || "").trim().toLowerCase();
+              var list = document.getElementById("dg-manual-archive-category-list");
+              if (!list) return;
+              list.querySelectorAll("[data-dg-arch-cat]").forEach(function (row) {
+                var name = row.getAttribute("data-dg-arch-cat-name") || "";
+                row.classList.toggle("d-none", !!(needle && name.indexOf(needle) === -1));
+              });
+            });
+            catQ.addEventListener("keydown", function (ev) {
+              ev.stopPropagation();
+              if (ev.key === "Enter") ev.preventDefault();
+            });
+            catQ.addEventListener("click", function (ev) {
+              ev.stopPropagation();
+            });
+          }
           var sqA = document.getElementById("dg-manual-archive-search");
           if (sqA) {
             sqA.addEventListener("keydown", function (ev) {
@@ -5051,7 +5197,10 @@
             ls.addEventListener("change", function () {
               state.manualQueuePage = 1;
               state.manualArchivePage = 1;
+              state.manualArchiveCategoryIds = [];
+              syncArchiveCategoryLabel();
               loadManualQueue();
+              loadManualArchiveCategories();
               loadManualArchive();
               scheduleSyncUrl();
             });
@@ -5060,11 +5209,13 @@
               state.manualQueuePage = 1;
               state.manualArchivePage = 1;
               loadManualQueue();
+              loadManualArchiveCategories();
               loadManualArchive();
               scheduleSyncUrl();
             });
           window.__dgMatchesRefreshManualLanes = function () {
             loadManualQueue();
+            loadManualArchiveCategories();
             loadManualArchive();
           };
         }

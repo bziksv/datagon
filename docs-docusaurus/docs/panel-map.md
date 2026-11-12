@@ -69,6 +69,7 @@ description: Все пункты бокового меню Datagon — URL, кл
 | Очередь | `/queue.html` | `queue` | [Очередь](/docs/queue/) |
 | Результаты | `/results.html` | `results` | [Результаты](/docs/results/) |
 | Сопоставление | `/matches.html` | `matches` | [Сопоставление](/docs/matches/) |
+| Проверка каталога | `/catalog-review.html` | `catalog-review` | [Проверка каталога](/docs/catalog-review/) |
 
 ## Маркетплейсы
 

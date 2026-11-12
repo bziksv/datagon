@@ -1,6 +1,11 @@
 const express = require('express');
 const crypto = require('crypto');
 const { recordDatagonActivity } = require('../lib/datagonActivity');
+const {
+    getArchiveParentCategoryIndex,
+    summarizeParentCategories,
+    productIdsForRoot
+} = require('../lib/datagonMatchArchiveCategories');
 const router = express.Router();
 
 // Функция расстояния Левенштейна для умного поиска
@@ -3124,30 +3129,10 @@ module.exports = (db, settings) => {
      * и шторм COUNT на 30+ минут).
      */
     function buildManualQueueParts(filters) {
-        const confParams = [filters.mySiteId];
-        let confCompSql = '';
-        if (filters.compId) {
-            confCompSql = ' AND pm_ok.competitor_site_id = ?';
-            confParams.push(filters.compId);
-        }
         const fromSql = `
                 FROM match_exclusion e
                 LEFT JOIN my_products mp ON mp.id = e.my_product_id AND mp.site_id = e.my_site_id
                 LEFT JOIN product_matches pm ON pm.id = e.source_product_match_id
-                LEFT JOIN (
-                    SELECT DISTINCT
-                        pm_ok.my_site_id,
-                        pm_ok.competitor_site_id,
-                        pm_ok.my_product_name AS conf_name
-                    FROM product_matches pm_ok
-                    WHERE pm_ok.my_site_id = ?
-                      AND pm_ok.status = 'confirmed'
-                      AND TRIM(IFNULL(pm_ok.my_product_name, '')) <> ''
-                      ${confCompSql}
-                ) pm_conf
-                  ON pm_conf.my_site_id = e.my_site_id
-                 AND pm_conf.competitor_site_id = e.competitor_site_id
-                 AND pm_conf.conf_name = mp.name
         `;
         let whereSql = ' WHERE e.my_site_id = ?';
         const whereParams = [filters.mySiteId];
@@ -3167,10 +3152,7 @@ module.exports = (db, settings) => {
             whereSql += " AND LOWER(TRIM(COALESCE(e.reason, ''))) = ?";
             whereParams.push(filters.reasonFilter);
         }
-        // Уже подтверждённая ЭТА карточка (по названию) не должна висеть в шаге 3.
-        // Дубли с тем же SKU оставляем — с подсказкой про неуникальный артикул.
-        whereSql += ` AND (TRIM(IFNULL(mp.name, '')) = '' OR pm_conf.conf_name IS NULL)`;
-        return { fromSql, whereSql, params: [...confParams, ...whereParams] };
+        return { fromSql, whereSql, params: whereParams };
     }
 
     /** @deprecated use buildManualQueueParts */
@@ -3637,11 +3619,65 @@ module.exports = (db, settings) => {
         }
     });
 
+    async function archiveCmsCounts(mySiteId, compId) {
+        let sql = `
+            SELECT CAST(mp.cms_product_id AS UNSIGNED) AS cms_id, COUNT(*) AS n
+            FROM match_manual_archive a
+            JOIN my_products mp ON mp.id = a.my_product_id AND mp.site_id = a.my_site_id
+            WHERE a.my_site_id = ?
+              AND mp.cms_product_id REGEXP '^[0-9]+$'
+        `;
+        const params = [mySiteId];
+        if (Number.isFinite(compId) && compId > 0) {
+            sql += ' AND a.competitor_site_id = ?';
+            params.push(compId);
+        }
+        sql += ' GROUP BY CAST(mp.cms_product_id AS UNSIGNED)';
+        const [rows] = await db.query(sql, params);
+        return rows || [];
+    }
+
+    async function archiveCategoryContext(mySiteId, compId) {
+        const [sites] = await db.query('SELECT * FROM my_sites WHERE id = ? LIMIT 1', [mySiteId]);
+        if (!sites.length) {
+            const err = new Error('Сайт не найден');
+            err.status = 404;
+            throw err;
+        }
+        const counts = await archiveCmsCounts(mySiteId, compId);
+        const ids = counts.map((row) => Number(row.cms_id)).filter((n) => Number.isFinite(n) && n > 0);
+        const index = await getArchiveParentCategoryIndex(db, sites[0], ids);
+        return { categories: summarizeParentCategories(index, counts), index };
+    }
+
+    router.get('/manual-archive-categories', async (req, res) => {
+        const mySiteId = parseInt(String(req.query.my_site_id || '').trim(), 10);
+        if (!Number.isFinite(mySiteId) || mySiteId < 1) return res.status(400).json({ error: 'my_site_id required' });
+        const compRaw = String(req.query.competitor_site_id || '').trim();
+        const compId = compRaw === '' ? null : parseInt(compRaw, 10);
+        try {
+            await ensureMatchLaneTables();
+            const ctx = await archiveCategoryContext(mySiteId, Number.isFinite(compId) && compId > 0 ? compId : null);
+            return res.json({ data: ctx.categories });
+        } catch (e) {
+            const status = e && e.status ? e.status : 500;
+            return res.status(status).json({ error: e.message });
+        }
+    });
+
     router.get('/manual-archive', async (req, res) => {
         const mySiteId = parseInt(String(req.query.my_site_id || '').trim(), 10);
         if (!Number.isFinite(mySiteId) || mySiteId < 1) return res.status(400).json({ error: 'my_site_id required' });
         const compRaw = String(req.query.competitor_site_id || '').trim();
         const compId = compRaw === '' ? null : parseInt(compRaw, 10);
+        const parentCategoryIds = [
+            ...new Set(
+                String(req.query.parent_category_id || '')
+                    .split(/[,\s]+/)
+                    .map((part) => parseInt(part, 10))
+                    .filter((n) => Number.isFinite(n) && n > 0)
+            )
+        ].slice(0, 40);
         const search = String(req.query.search || '').trim().slice(0, 120);
         const limit = Math.max(1, Math.min(parseInt(String(req.query.limit || '100'), 10) || 100, 300));
         const offset = Math.max(0, parseInt(String(req.query.offset || '0'), 10) || 0);
@@ -3670,6 +3706,20 @@ module.exports = (db, settings) => {
                 )`;
                 p.push(v, v, v, v, v, v, v, v);
             }
+            if (parentCategoryIds.length) {
+                const ctx = await archiveCategoryContext(mySiteId, Number.isFinite(compId) && compId > 0 ? compId : null);
+                const idSet = new Set();
+                for (const rootId of parentCategoryIds) {
+                    for (const pid of productIdsForRoot(ctx.index, rootId)) idSet.add(pid);
+                }
+                const ids = [...idSet];
+                if (!ids.length) {
+                    whereExtra += ' AND 1 = 0';
+                } else {
+                    whereExtra += ` AND CAST(mp.cms_product_id AS UNSIGNED) IN (${ids.map(() => '?').join(',')})`;
+                    p.push(...ids);
+                }
+            }
             const q = `
                 SELECT a.id, a.my_site_id, a.competitor_site_id, a.my_product_id, a.competitor_sku, a.competitor_name, a.note, a.archived_by, a.created_at,
                        mp.sku AS mp_sku, mp.name AS mp_name, mp.source_url AS mp_source_url,
@@ -3683,7 +3733,15 @@ module.exports = (db, settings) => {
             const [data] = await db.query(q, [...p, limit, offset]);
             const qc = `SELECT COUNT(*) AS total ${fromSql} ${whereExtra}`;
             const [[cntRow]] = await db.query(qc, p);
-            return res.json({ data, total: Number(cntRow?.total || 0), limit, offset, search: search || '' });
+            return res.json({
+                data,
+                total: Number(cntRow?.total || 0),
+                limit,
+                offset,
+                search: search || '',
+                parent_category_id: parentCategoryIds.length ? parentCategoryIds.join(',') : null,
+                parent_category_ids: parentCategoryIds
+            });
         } catch (e) {
             return res.status(500).json({ error: e.message });
         }

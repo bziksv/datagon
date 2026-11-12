@@ -22,7 +22,7 @@ module.exports = {
     {
       type: "category",
       label: "Парсинг",
-      items: ["projects", "queue", "results", "matches"],
+      items: ["projects", "queue", "results", "matches", "catalog-review"],
     },
     {
       type: "category",
