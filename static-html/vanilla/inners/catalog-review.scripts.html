@@ -1,6 +1,6 @@
 <script>
 (function () {
-  var state = { lane: "out", page: 1, pages: 1, total: 0, limit: 100, rows: [], people: null, pending: null, statuses: [], site: "all", categoryIds: [], categoryOptions: [] };
+  var state = { lane: "out", page: 1, pages: 1, total: 0, limit: 100, rows: [], people: null, pending: null, decisions: [], site: "all", categoryIds: [], categoryOptions: [] };
   var STATUS = {
     unassigned: "Не распределено",
     with_sales: "У менеджера",
@@ -14,6 +14,13 @@
     done: "Готово"
   };
   var DECISION = {
+    keep: "Оставить",
+    discontinued: "Снят / аналог",
+    not_supplied: "Не поставляется",
+    deactivate: "Деактивировать"
+  };
+  var DECISION_FILTER = {
+    none: "Не выбрано",
     keep: "Оставить",
     discontinued: "Снят / аналог",
     not_supplied: "Не поставляется",
@@ -46,7 +53,7 @@
     var mine = document.getElementById("dg-cr-mine");
     var search = document.getElementById("dg-cr-search").value.trim();
     var parts = [];
-    parts.push("статус: " + statusButtonText(state.statuses));
+    parts.push("решение: " + decisionButtonText(state.decisions));
     parts.push("чьи: " + (mine && mine.selectedOptions[0] ? mine.selectedOptions[0].textContent : "Все"));
     parts.push("на Альмамеде: " + (state.site === "on" ? "Включён" : state.site === "off" ? "Выключен" : "Все"));
     parts.push("категории: " + categoryButtonText(state.categoryIds));
@@ -302,7 +309,7 @@
         }
         openOverlay({
           title: "Снят / аналог",
-          text: "Напишите, какой аналог поставить или что взять в работу. Комментарий увидит контент.",
+          text: "Напишите, какой аналог поставить или что взять в работу. Комментарий останется у решения.",
           okText: "Записать",
           note: true,
           notePlaceholder: "Какой аналог разместить или что взять в работу",
@@ -354,7 +361,7 @@
     if (!rows.length) {
       var tr = document.createElement("tr");
       var td = document.createElement("td");
-      td.colSpan = 8;
+      td.colSpan = 6;
       td.className = "text-muted";
       td.textContent = "В очереди нет строк по этому фильтру.";
       tr.appendChild(td);
@@ -469,13 +476,7 @@
       var tdS = document.createElement("td");
       tdS.appendChild(personSelect(people.sales, row.sales_user_id, row, "sales"));
       attachFieldLog(tdS, row, "sales_user_id");
-      var tdC = document.createElement("td");
-      tdC.appendChild(personSelect(people.content, row.content_user_id, row, "content"));
-      attachFieldLog(tdC, row, "content_user_id");
-      var tdSt = document.createElement("td");
-      tdSt.appendChild(contentStatusControl(row));
-      attachFieldLog(tdSt, row, row.status === "with_content" ? "content_status" : "status");
-      [tdCat, tdP, tdPrice, tdStock, tdDec, tdS, tdC, tdSt].forEach(function (td) { tr.appendChild(td); });
+      [tdCat, tdP, tdPrice, tdStock, tdDec, tdS].forEach(function (td) { tr.appendChild(td); });
       tb.appendChild(tr);
     });
   }
@@ -486,10 +487,10 @@
     params.set("lane", "out");
     params.set("page", String(state.page));
     params.set("limit", String(state.limit));
-    var active = (state.statuses || []).filter(function (id) { return STATUS[id]; });
     var mine = document.getElementById("dg-cr-mine").value;
     var search = document.getElementById("dg-cr-search").value.trim();
-    if (active.length && active.length < Object.keys(STATUS).length) params.set("status", active.join(","));
+    var picked = (state.decisions || []).filter(function (id) { return DECISION_FILTER[id]; });
+    if (picked.length && picked.length < Object.keys(DECISION_FILTER).length) params.set("decision", picked.join(","));
     if (mine) params.set("mine", mine);
     if (search) params.set("search", search);
     if (state.site === "on") params.set("site", "1");
@@ -1010,30 +1011,30 @@
     loadCrLog();
   }
 
-  function statusButtonText(ids) {
-    var list = (ids || []).filter(function (id) { return STATUS[id]; });
-    if (!list.length || list.length === Object.keys(STATUS).length) return "Все";
-    var names = list.map(function (id) { return STATUS[id]; });
+  function decisionButtonText(ids) {
+    var list = (ids || []).filter(function (id) { return DECISION_FILTER[id]; });
+    if (!list.length || list.length === Object.keys(DECISION_FILTER).length) return "Все";
+    var names = list.map(function (id) { return DECISION_FILTER[id]; });
     if (names.length === 1) return names[0];
     return names[0] + " и ещё " + (names.length - 1);
   }
-  function readDraftStatuses() {
+  function readDraftDecisions() {
     return Array.prototype.map.call(
-      document.querySelectorAll("#dg-cr-status-list input:checked"),
+      document.querySelectorAll("#dg-cr-decision-list input:checked"),
       function (el) { return el.value; }
-    ).filter(function (id) { return STATUS[id]; });
+    ).filter(function (id) { return DECISION_FILTER[id]; });
   }
-  function paintStatusButton() {
-    var label = document.getElementById("dg-cr-status-label");
-    if (label) label.textContent = statusButtonText(readDraftStatuses());
+  function paintDecisionButton() {
+    var label = document.getElementById("dg-cr-decision-label");
+    if (label) label.textContent = decisionButtonText(readDraftDecisions());
   }
-  function buildStatusFilter(selected) {
-    var list = document.getElementById("dg-cr-status-list");
+  function buildDecisionFilter(selected) {
+    var list = document.getElementById("dg-cr-decision-list");
     if (!list) return;
     var chosen = {};
-    (selected || []).forEach(function (id) { if (STATUS[id]) chosen[id] = true; });
+    (selected || []).forEach(function (id) { if (DECISION_FILTER[id]) chosen[id] = true; });
     list.replaceChildren();
-    Object.keys(STATUS).forEach(function (key) {
+    Object.keys(DECISION_FILTER).forEach(function (key) {
       var label = document.createElement("label");
       label.className = "d-flex align-items-center gap-2 mb-1";
       var cb = document.createElement("input");
@@ -1041,14 +1042,14 @@
       cb.className = "form-check-input m-0";
       cb.value = key;
       cb.checked = !!chosen[key];
-      cb.addEventListener("change", paintStatusButton);
+      cb.addEventListener("change", paintDecisionButton);
       var text = document.createElement("span");
-      text.textContent = STATUS[key];
+      text.textContent = DECISION_FILTER[key];
       label.appendChild(cb);
       label.appendChild(text);
       list.appendChild(label);
     });
-    paintStatusButton();
+    paintDecisionButton();
   }
   function categoryButtonText(ids) {
     var list = ids || [];
@@ -1100,13 +1101,13 @@
     paintCategoryButton();
   }
   function commitStatuses() {
-    state.statuses = readDraftStatuses();
+    state.decisions = readDraftDecisions();
     var site = document.getElementById("dg-cr-site");
     state.site = site && (site.value === "on" || site.value === "off") ? site.value : "all";
     if (document.querySelector("#dg-cr-queue-cat-list input")) state.categoryIds = readDraftCategories();
     if (window.DatagonFilters) {
       var prev = window.DatagonFilters.load("catalog-review") || {};
-      prev.statuses = state.statuses;
+      prev.decisions = state.decisions;
       prev.site = state.site;
       prev.categoryIds = state.categoryIds;
       window.DatagonFilters.save("catalog-review", prev);
@@ -1114,14 +1115,13 @@
   }
   (function restoreStatuses() {
     var saved = window.DatagonFilters ? window.DatagonFilters.load("catalog-review") : null;
-    var map = { with_content: "content_new", done: "content_done" };
-    var initial = saved && Array.isArray(saved.statuses) ? saved.statuses : [];
-    state.statuses = initial.map(function (id) { return map[id] || id; }).filter(function (id) { return STATUS[id]; });
+    var initial = saved && Array.isArray(saved.decisions) ? saved.decisions : [];
+    state.decisions = initial.filter(function (id) { return DECISION_FILTER[id]; });
     state.site = saved && (saved.site === "on" || saved.site === "off") ? saved.site : "all";
     state.categoryIds = saved && Array.isArray(saved.categoryIds)
       ? saved.categoryIds.map(function (id) { return Number(id); }).filter(function (id) { return id > 0; })
       : [];
-    buildStatusFilter(state.statuses);
+    buildDecisionFilter(state.decisions);
     var site = document.getElementById("dg-cr-site");
     if (site) site.value = state.site;
   })();

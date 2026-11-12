@@ -518,6 +518,22 @@ module.exports = function catalogReviewRouter(db) {
             if (statuses.length && statuses.length < Object.keys(allowedStatus).length) {
                 where.push(`(${statuses.map((key) => allowedStatus[key]).join(' OR ')})`);
             }
+            const allowedDecision = {
+                none: "(r.decision IS NULL OR r.decision = '')",
+                keep: "r.decision = 'keep'",
+                discontinued: "r.decision = 'discontinued'",
+                not_supplied: "r.decision = 'not_supplied'",
+                deactivate: "r.decision = 'deactivate'",
+            };
+            const decisions = [...new Set(
+                String(req.query.decision || '')
+                    .split(',')
+                    .map((part) => part.trim())
+                    .filter((part) => Object.prototype.hasOwnProperty.call(allowedDecision, part))
+            )];
+            if (decisions.length && decisions.length < Object.keys(allowedDecision).length) {
+                where.push(`(${decisions.map((key) => allowedDecision[key]).join(' OR ')})`);
+            }
             if (mine === 'mine' && who.id) {
                 where.push('(r.sales_user_id = ? OR r.content_user_id = ?)');
                 params.push(who.id, who.id);
