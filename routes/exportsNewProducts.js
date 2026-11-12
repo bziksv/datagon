@@ -11,8 +11,8 @@
  *  - verified — «Проверен» (после проверки контента), только если manager_checked=1
  *    и роль admin / can_manage_users / «Полный доступ»;
  *  - manager_checked — галочка «Проверено менеджером» (менеджеры по своей части);
- *  - new ↔ not_added — авто по обязательным полям (Альмамед); на маркетах — new/not_added/added
- *    по заполненности/наличию на МП, не трогает workflow-статусы;
+ *  - new ↔ not_added — авто по обязательным полям (Альмамед и маркеты).
+ *    На маркетах статус added больше не выставляется (legacy-строки не перетираются);
  *  - revision / added / not_cooperate / in_bundle — по сценарию;
  *  - transferred/removed — закрытые строки.
  */
@@ -625,7 +625,6 @@ module.exports = function exportsNewProductsRouterFactory(db, config, appSetting
                     'new',
                     'not_added',
                     'in_progress',
-                    'added',
                     'revision',
                     'review',
                     'verified',
@@ -3138,7 +3137,7 @@ module.exports = function exportsNewProductsRouterFactory(db, config, appSetting
         }
     });
 
-    /** Убрать размещенные (status=added) с вкладки маркетов после проверки. */
+    /** Убрать размещенные (verified и legacy added) с вкладки маркетов. */
     router.post('/remove-placed', async (req, res) => {
         const t0 = Date.now();
         try {
@@ -3151,7 +3150,7 @@ module.exports = function exportsNewProductsRouterFactory(db, config, appSetting
             res.json({
                 success: true,
                 channel: 'marketplaces',
-                status_filter: 'added',
+                status_filter: 'added,verified',
                 ...result,
                 duration_sec: Math.round((Date.now() - t0) / 1000),
             });

@@ -2423,7 +2423,7 @@
                   class="btn btn-sm btn-warning"
                   id="dg-np-remove-placed"
                   data-dg-notify-start="Убираем размещённые…"
-                  title="Альмамед: скрыть «Проверен» (фильтр). Маркеты: убрать «Добавлен» в удалённые."
+                  title="Альмамед: скрыть «Проверен» (фильтр). Маркеты: убрать «Проверен» и старые «Добавлен» в удалённые."
                 >
                   Убрать размещенные
                 </button>
@@ -3461,7 +3461,6 @@
     { key: "new", label: "Новый" },
     { key: "not_added", label: "Не добавлен" },
     { key: "in_progress", label: "В работе" },
-    { key: "added", label: "Добавлен" },
     { key: "revision", label: "На доработке" },
     { key: "review", label: "На проверку" },
     { key: "verified", label: "Проверен" },
@@ -5034,9 +5033,9 @@
           "Workflow: <b>Новый</b> → контент <b>В работе</b> → <b>На проверку</b>. " +
           "Менеджер: галочка <b>Проверено менеджером</b> и поле <b>Комментарий менеджер</b> (если не ок). " +
           "Статус <b>Проверен</b> — только после галочки и только у admin / Полный доступ. " +
-          "Авто: заполненные обязательные поля → <b>Не добавлен</b>; на всех МП → <b>Добавлен</b> (не трогает «В работе» / «На проверку» / «Проверен»). " +
+          "Авто: заполненные обязательные поля → <b>Не добавлен</b> (не трогает «В работе» / «На проверку» / «Проверен»). " +
           "«Не сотрудничаем» / «В составе комплекта» — ручные. " +
-          "«Убрать размещенные» убирает строки со статусом «Добавлен» после проверки.";
+          "«Убрать размещенные» убирает строки со статусом «Проверен» и старые «Добавлен».";
       } else {
         hint.innerHTML =
           "Workflow: <b>Новый</b> → контент <b>В работе</b> → <b>На проверку</b>. " +
@@ -5075,7 +5074,7 @@
     var isMp = state.channel === "marketplaces";
     if (isMp) {
       btn.textContent = "Убрать размещенные";
-      btn.title = "Убрать из таблицы все со статусом «Добавлен» после проверки (в удалённые)";
+      btn.title = "Убрать из таблицы статусы «Проверен» и старые «Добавлен» (в удалённые)";
       btn.setAttribute("data-dg-notify-start", "Убираем размещённые…");
       btn.classList.remove("btn-outline-warning");
       btn.classList.add("btn-warning");
@@ -5539,6 +5538,13 @@
       oCur.textContent = "Проверен";
       oCur.selected = true;
       selSt.appendChild(oCur);
+    }
+    if (row.status === "added" && !Array.prototype.some.call(selSt.options, function (opt) { return opt.value === "added"; })) {
+      var oAdded = document.createElement("option");
+      oAdded.value = "added";
+      oAdded.textContent = "Добавлен";
+      oAdded.selected = true;
+      selSt.appendChild(oAdded);
     }
     selSt.addEventListener("change", function () {
       var next = selSt.value;
@@ -6735,6 +6741,13 @@
       if (String(kit.status || "new") === o.key) opt.selected = true;
       selSt.appendChild(opt);
     });
+    if (String(kit.status || "") === "added" && !Array.prototype.some.call(selSt.options, function (opt) { return opt.value === "added"; })) {
+      var oKitAdded = document.createElement("option");
+      oKitAdded.value = "added";
+      oKitAdded.textContent = "Добавлен";
+      oKitAdded.selected = true;
+      selSt.appendChild(oKitAdded);
+    }
     selSt.setAttribute("data-dg-no-activity", "1");
     selSt.addEventListener("change", function () {
       kitApi(parent.id, "PATCH", "/" + kit.id, { status: selSt.value })
@@ -7422,7 +7435,7 @@
     openNpConfirm({
       title: "Убрать размещённые?",
       message:
-        "Убрать из таблицы все строки со статусом «Добавлен» (размещение на маркетах)? Делайте после проверки.",
+        "Убрать из таблицы строки со статусом «Проверен» и старые «Добавлен»? Они уйдут в «Удалённые».",
       okLabel: "Убрать размещённые",
       notifyStart: "Убираем размещённые из таблицы…",
     }).then(function (ok) {
@@ -7434,9 +7447,9 @@
   function removePlacedRun() {
     var t0 = Date.now();
     var tick = null;
-    var filtersLine = "Канал: <b>Размещение на маркеты</b>; статус: <b>Добавлен</b>";
+    var filtersLine = "Канал: <b>Размещение на маркеты</b>; статусы: <b>Проверен</b>, <b>Добавлен</b>";
 
-    showLog("warning", "Preflight: считаем строки «Добавлен»…<br>" + filtersLine);
+    showLog("warning", "Preflight: считаем строки «Проверен» и «Добавлен»…<br>" + filtersLine);
 
     var run = function () {
       return fetch("/api/exports/new-products/remove-placed", {
@@ -7470,7 +7483,7 @@
           }, 1000);
           if (!would) {
             if (tick) clearInterval(tick);
-            showLog("info", "Нет товаров со статусом «Добавлен» для удаления из таблицы.<br>" + filtersLine);
+            showLog("info", "Нет товаров со статусом «Проверен» или «Добавлен» для удаления из таблицы.<br>" + filtersLine);
             return null;
           }
           return fetch("/api/exports/new-products/remove-placed", {
@@ -7493,8 +7506,10 @@
             "success",
             "Итог «Убрать размещенные»<br>" +
               filtersLine +
-              "<br>Всего «Добавлен»: <b>" +
-              (j.total || 0) +
+              "<br>Проверен: <b>" +
+              (j.verified || 0) +
+              "</b>; Добавлен: <b>" +
+              (j.added || 0) +
               "</b>; убрано из таблицы ✓: <b>" +
               (j.removed || 0) +
               "</b>; длительность: <b>" +
