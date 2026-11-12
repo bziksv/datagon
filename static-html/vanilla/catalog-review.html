@@ -25,8 +25,79 @@
   body[data-dg-active-nav="catalog-review"] #dg-cr-cat-list label {
     cursor: pointer;
   }
-  body[data-dg-active-nav="catalog-review"] .dg-cr-person {
+  body[data-dg-active-nav="catalog-review"] .dg-cr-person,
+  body[data-dg-active-nav="catalog-review"] .dg-cr-decision,
+  body[data-dg-active-nav="catalog-review"] .dg-cr-content-status {
     min-width: 11rem;
+  }
+  body[data-dg-active-nav="catalog-review"] .dg-cr-field-cell {
+    position: relative;
+  }
+  body[data-dg-active-nav="catalog-review"] .dg-cr-field-log-btn {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    z-index: 3;
+    opacity: 0;
+    pointer-events: none;
+    font-size: 0.6rem;
+    line-height: 1;
+    padding: 0.12rem 0.28rem;
+    border: 1px solid #ced4da;
+    border-radius: 0.25rem;
+    background: #fff;
+    color: #495057;
+  }
+  body[data-dg-active-nav="catalog-review"] .dg-cr-field-cell:hover .dg-cr-field-log-btn,
+  body[data-dg-active-nav="catalog-review"] .dg-cr-field-log-btn:focus {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  body[data-dg-active-nav="catalog-review"] .dg-cr-log-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1090;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+  }
+  body[data-dg-active-nav="catalog-review"] .dg-cr-log-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.45);
+  }
+  body[data-dg-active-nav="catalog-review"] .dg-cr-log-panel {
+    position: relative;
+    z-index: 1;
+    width: min(920px, 100%);
+    max-height: min(80vh, 720px);
+    display: flex;
+    flex-direction: column;
+  }
+  body[data-dg-active-nav="catalog-review"] #dg-cr-log-body {
+    max-height: min(64vh, 560px);
+    overflow: auto;
+  }
+  body[data-dg-active-nav="catalog-review"] .dg-cr-balance-track {
+    height: 8px;
+    background: #eef1f5;
+    border-radius: 999px;
+    overflow: hidden;
+  }
+  body[data-dg-active-nav="catalog-review"] .dg-cr-balance-bar {
+    height: 100%;
+    border-radius: 999px;
+    min-width: 0;
+  }
+  body[data-dg-active-nav="catalog-review"] .dg-cr-balance-bar.is-sales {
+    background: #3f6ad8;
+  }
+  body[data-dg-active-nav="catalog-review"] .dg-cr-balance-bar.is-content {
+    background: #3ac47d;
+  }
+  body[data-dg-active-nav="catalog-review"] .dg-cr-balance-bar.is-zero {
+    width: 0;
   }
 </style>
 
@@ -977,18 +1048,39 @@
     <div class="card-header">Фильтры</div>
     <div class="card-body">
       <div class="row g-2 align-items-end">
-        <div class="col-12 col-md-4">
+        <div class="col-12 col-md-3">
           <label class="form-label mb-0 small text-uppercase text-muted" for="dg-cr-search">Поиск</label>
           <input type="search" class="form-control" id="dg-cr-search" placeholder="Артикул, название, категория" autocomplete="off" />
         </div>
+        <div class="col-6 col-md-3">
+          <label class="form-label mb-0 small text-uppercase text-muted" for="dg-cr-status-btn">Статус</label>
+          <div class="dropdown w-100">
+            <button type="button" class="btn btn-outline-secondary dg-vanilla-dropdown-toggle w-100 text-start text-truncate" id="dg-cr-status-btn" aria-expanded="false" aria-haspopup="true" title="Можно отметить несколько статусов. Список обновится после «Применить».">
+              <span id="dg-cr-status-label">Все</span>
+            </button>
+            <div class="dropdown-menu p-2" id="dg-cr-status-menu" style="min-width: 220px">
+              <div id="dg-cr-status-list"></div>
+            </div>
+          </div>
+        </div>
+        <div class="col-12 col-md-3">
+          <label class="form-label mb-0 small text-uppercase text-muted" for="dg-cr-queue-cat-btn">Категория</label>
+          <div class="dropdown w-100">
+            <button type="button" class="btn btn-outline-secondary dg-vanilla-dropdown-toggle w-100 text-start text-truncate" id="dg-cr-queue-cat-btn" aria-expanded="false" aria-haspopup="true" title="Можно отметить несколько категорий. Список обновится после «Применить».">
+              <span id="dg-cr-queue-cat-label">Все</span>
+            </button>
+            <div class="dropdown-menu p-2" id="dg-cr-queue-cat-menu" style="min-width: 280px; width: min(420px, calc(100vw - 1.5rem))">
+              <input type="search" class="form-control form-control-sm mb-2" id="dg-cr-queue-cat-q" placeholder="Найти категорию" autocomplete="off" />
+              <div id="dg-cr-queue-cat-list" style="max-height: 280px; overflow: auto"></div>
+            </div>
+          </div>
+        </div>
         <div class="col-6 col-md-2">
-          <label class="form-label mb-0 small text-uppercase text-muted" for="dg-cr-status">Статус</label>
-          <select class="form-select" id="dg-cr-status">
-            <option value="">Все</option>
-            <option value="unassigned">Не распределено</option>
-            <option value="with_sales">У менеджера</option>
-            <option value="with_content">У контента</option>
-            <option value="done">Готово</option>
+          <label class="form-label mb-0 small text-uppercase text-muted" for="dg-cr-site">На Альмамеде</label>
+          <select class="form-select" id="dg-cr-site" title="Выключен только на Альмамеде. На других сайтах этой отметки может не быть.">
+            <option value="all">Все</option>
+            <option value="on">Включён</option>
+            <option value="off">Выключен</option>
           </select>
         </div>
         <div class="col-6 col-md-2">
@@ -1004,7 +1096,7 @@
           <button type="button" class="btn btn-outline-primary" id="dg-cr-intake-open" data-dg-notify-start="Открываем категории архива…">Взять из архива</button>
         </div>
       </div>
-      <p class="small text-muted mt-2 mb-0">Менеджер и контент сначала берутся из вкладки «Закрепление категорий», в очереди их меняют прямо в колонках. На сайт решение попадает только после «Сделано на сайте». «Оставить» закрывает строку сразу. Для «Снят / аналог» нужен комментарий: куда поставить аналог или что взять в работу.</p>
+      <p class="small text-muted mt-2 mb-0">Решение в колонке «Решение» сразу пишет на Альмамед: «Снят / аналог» и «Не поставляется» включают галку, «Деактивировать» выключает карточку. «Оставить» сайт не трогает. «Не выбрано» снимает решение и убирает эти галки, если они уже были поставлены отсюда. Если на складе есть остаток, выключение спросит подтверждение.</p>
     </div>
   </div>
 
@@ -1014,20 +1106,11 @@
       <span class="small text-muted" id="dg-cr-count">Найдено: —</span>
     </div>
     <div class="card-body">
-      <div class="d-flex flex-wrap gap-2 align-items-end mb-2">
-        <button type="button" class="btn btn-outline-success" id="dg-cr-keep" data-dg-notify-start="Закрываем как актуальные…">Оставить</button>
-        <button type="button" class="btn btn-outline-warning" id="dg-cr-disc" data-dg-notify-start="Ставим решение «Снят / аналог»…">Снят / аналог</button>
-        <button type="button" class="btn btn-outline-warning" id="dg-cr-nosup" data-dg-notify-start="Ставим решение «Не поставляется»…">Не поставляется</button>
-        <button type="button" class="btn btn-outline-danger" id="dg-cr-off" data-dg-notify-start="Ставим решение «Деактивировать»…">Деактивировать</button>
-        <button type="button" class="btn btn-success" id="dg-cr-apply-cms" data-dg-notify-start="Проводим решение на сайт…">Сделано на сайте</button>
-        <button type="button" class="btn btn-outline-dark" id="dg-cr-return" data-dg-notify-start="Возвращаем менеджеру…">Вернуть менеджеру</button>
-      </div>
       <div id="dg-cr-action-log" class="alert mt-0 mb-3 d-none" role="status"></div>
       <div class="table-responsive">
         <table class="table table-sm table-hover align-middle mb-0">
           <thead>
             <tr>
-              <th style="width:36px"><input type="checkbox" id="dg-cr-all" title="Отметить на странице" /></th>
               <th>Категория</th>
               <th>Товар</th>
               <th>Цена</th>
@@ -1069,6 +1152,7 @@
     </div>
     <div class="card-body">
       <p class="small text-muted">Категория сразу закрепляется за менеджером по продажам и контент-менеджером. Новые товары из архива получают этих людей сами. Уже открытые строки без решения тоже обновятся.</p>
+      <div id="dg-cr-owner-balance" class="row g-3 mb-3"></div>
       <div class="table-responsive">
         <table class="table table-sm table-hover align-middle mb-0">
           <thead>
@@ -1084,6 +1168,20 @@
         </table>
       </div>
     </div>
+  </div>
+</div>
+
+<div id="dg-cr-log-overlay" class="dg-cr-log-overlay d-none" aria-hidden="true">
+  <div class="dg-cr-log-backdrop" id="dg-cr-log-backdrop"></div>
+  <div class="dg-cr-log-panel card shadow" role="dialog" aria-modal="true" aria-labelledby="dg-cr-log-title">
+    <div class="card-header d-flex align-items-center justify-content-between gap-2">
+      <div style="min-width:0">
+        <div class="fw-semibold" id="dg-cr-log-title">Журнал изменений</div>
+        <div class="text-muted small" id="dg-cr-log-subtitle"></div>
+      </div>
+      <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-cr-log-close">Закрыть</button>
+    </div>
+    <div class="card-body p-0" id="dg-cr-log-body"></div>
   </div>
 </div>
 
@@ -1217,11 +1315,17 @@
   <script src="/datagon-vanilla.js?v=20261105-page-partial"></script>
   <script>
 (function () {
-  var state = { lane: "out", page: 1, pages: 1, total: 0, limit: 100, rows: [], people: null, pending: null };
+  var state = { lane: "out", page: 1, pages: 1, total: 0, limit: 100, rows: [], people: null, pending: null, statuses: [], site: "all", categoryIds: [], categoryOptions: [] };
   var STATUS = {
     unassigned: "Не распределено",
     with_sales: "У менеджера",
-    with_content: "У контента",
+    content_new: "Новая",
+    content_working: "В работе",
+    content_done: "Готово"
+  };
+  var CONTENT_STATUS = {
+    new: "Новая",
+    working: "В работе",
     done: "Готово"
   };
   var DECISION = {
@@ -1254,12 +1358,13 @@
     box.classList.remove("d-none");
   }
   function filterLine() {
-    var status = document.getElementById("dg-cr-status");
     var mine = document.getElementById("dg-cr-mine");
     var search = document.getElementById("dg-cr-search").value.trim();
     var parts = [];
-    parts.push("статус: " + (status && status.selectedOptions[0] ? status.selectedOptions[0].textContent : "Все"));
+    parts.push("статус: " + statusButtonText(state.statuses));
     parts.push("чьи: " + (mine && mine.selectedOptions[0] ? mine.selectedOptions[0].textContent : "Все"));
+    parts.push("на Альмамеде: " + (state.site === "on" ? "Включён" : state.site === "off" ? "Выключен" : "Все"));
+    parts.push("категории: " + categoryButtonText(state.categoryIds));
     if (search) parts.push("поиск: «" + escHtml(search) + "»");
     return parts.join("; ");
   }
@@ -1310,10 +1415,12 @@
     box.classList.remove("d-none");
     box.style.display = "flex";
   }
-  function closeOverlay() {
+  function closeOverlay(cancelled) {
+    var pending = state.pending;
     state.pending = null;
     var box = document.getElementById("dg-cr-overlay");
     box.classList.add("d-none");
+    if (cancelled && pending && pending.onCancel) pending.onCancel();
   }
 
   function loadPeople() {
@@ -1375,14 +1482,194 @@
     return select;
   }
 
+  function applyDecision(row, decision, note, confirmStock, select) {
+    var finish = beginLog((decision ? "Решение «" + (DECISION[decision] || decision) + "»" : "Решение снято") + ": " + (row.sku || ("#" + row.id)));
+    if (select) select.disabled = true;
+    var body = { ids: [row.id], decision: decision, confirm_stock: confirmStock ? 1 : 0 };
+    if (note) body.note = note;
+    post("/api/catalog-review/decide", body).then(function (x) {
+      if (x.r.status === 409 && x.j.code === "STOCK_CONFIRM") {
+        if (select) select.disabled = row.status === "done";
+        finish("warning", escHtml(x.j.error || "Есть остаток"));
+        openOverlay({
+          title: "На складе есть остаток",
+          text: x.j.error,
+          okText: "Всё равно выводить",
+          onCancel: function () { if (select) select.value = select.getAttribute("data-dg-cr-prev") || ""; },
+          run: function () { closeOverlay(); applyDecision(row, decision, note, true, select); }
+        });
+        return;
+      }
+      if (!x.r.ok) throw new Error(x.j.error || "Ошибка решения");
+      if (!Number(x.j.updated)) {
+        var why = (x.j.skip_reasons && x.j.skip_reasons[0] && x.j.skip_reasons[0].reason) || "строка не изменилась";
+        throw new Error(why);
+      }
+      if (select) select.setAttribute("data-dg-cr-prev", decision);
+      var lines = "Записано: " + fmtInt(x.j.updated);
+      if (note) lines += "<br>Комментарий: " + escHtml(note);
+      finish("success", lines);
+      toast("success", decision ? "Решение: " + (DECISION[decision] || decision) : "Решение снято");
+      load();
+    }).catch(function (e) {
+      if (select) {
+        select.disabled = row.status === "done";
+        select.value = select.getAttribute("data-dg-cr-prev") || "";
+      }
+      finish("danger", "Ошибка: " + escHtml(e.message));
+      toast("danger", e.message);
+    });
+  }
+
+  function isSales(row) {
+    var me = state.me || {};
+    return !!me.isAdmin || Number(me.id) === Number(row.sales_user_id);
+  }
+  function isContent(row) {
+    var me = state.me || {};
+    return !!me.isAdmin || Number(me.id) === Number(row.content_user_id);
+  }
+  function rowStatusText(row) {
+    if (row.status === "with_content") return CONTENT_STATUS[row.content_status] || "Новая";
+    if (row.status === "done") return "Готово";
+    if (row.status === "with_sales") return "У менеджера";
+    if (row.status === "unassigned") return "Не распределено";
+    return row.status || "—";
+  }
+  function contentStatusControl(row) {
+    if (row.status !== "with_content") {
+      var span = document.createElement("span");
+      span.textContent = rowStatusText(row);
+      return span;
+    }
+    var select = document.createElement("select");
+    select.className = "form-select form-select-sm dg-cr-content-status";
+    select.disabled = !isContent(row);
+    Object.keys(CONTENT_STATUS).forEach(function (key) {
+      var opt = document.createElement("option");
+      opt.value = key;
+      opt.textContent = CONTENT_STATUS[key];
+      select.appendChild(opt);
+    });
+    select.value = CONTENT_STATUS[row.content_status] ? row.content_status : "new";
+    select.setAttribute("data-dg-cr-prev", select.value);
+    select.addEventListener("change", function () {
+      var next = select.value;
+      var prev = select.getAttribute("data-dg-cr-prev") || "new";
+      if (next === prev) return;
+      var finish = beginLog("Статус контента «" + (CONTENT_STATUS[next] || next) + "»: " + (row.sku || ("#" + row.id)));
+      select.disabled = true;
+      post("/api/catalog-review/content-status", { ids: [row.id], content_status: next }).then(function (x) {
+        select.disabled = !isContent(row);
+        if (!x.r.ok) throw new Error(x.j.error || "Статус не записался");
+        if (!Number(x.j.updated)) {
+          var why = (x.j.skip_reasons && x.j.skip_reasons[0] && x.j.skip_reasons[0].reason) || "статус не изменился";
+          throw new Error(why);
+        }
+        select.setAttribute("data-dg-cr-prev", next);
+        finish("success", "Записано: " + fmtInt(x.j.updated));
+        toast("success", "Статус контента: " + (CONTENT_STATUS[next] || next));
+        load();
+      }).catch(function (e) {
+        select.disabled = !isContent(row);
+        select.value = prev;
+        finish("danger", "Ошибка: " + escHtml(e.message));
+        toast("danger", e.message);
+      });
+    });
+    return select;
+  }
+
+  function decisionSelect(row) {
+    var select = document.createElement("select");
+    select.className = "form-select form-select-sm dg-cr-decision";
+    select.disabled = !isSales(row);
+    if (select.disabled) {
+      select.title = "Решение ставит менеджер по продажам этой строки";
+    } else {
+      select.title = "Можно сменить решение: галка на Альмамеде обновится сразу";
+    }
+    var blank = document.createElement("option");
+    blank.value = "";
+    blank.textContent = "Не выбрано";
+    select.appendChild(blank);
+    Object.keys(DECISION).forEach(function (key) {
+      var opt = document.createElement("option");
+      opt.value = key;
+      opt.textContent = DECISION[key];
+      select.appendChild(opt);
+    });
+    select.value = row.decision && DECISION[row.decision] ? row.decision : "";
+    select.setAttribute("data-dg-cr-prev", select.value);
+    select.addEventListener("change", function () {
+      var next = select.value;
+      var prev = select.getAttribute("data-dg-cr-prev") || "";
+      if (next === prev) return;
+      if (!next) {
+        applyDecision(row, "", "", false, select);
+        return;
+      }
+      if (next === "discontinued") {
+        var existing = String(row.decision_note || "").trim();
+        if (existing && row.decision === "discontinued") {
+          applyDecision(row, next, existing, false, select);
+          return;
+        }
+        openOverlay({
+          title: "Снят / аналог",
+          text: "Напишите, какой аналог поставить или что взять в работу. Комментарий увидит контент.",
+          okText: "Записать",
+          note: true,
+          notePlaceholder: "Какой аналог разместить или что взять в работу",
+          onCancel: function () { select.value = prev; },
+          run: function () {
+            var note = String(document.getElementById("dg-cr-overlay-note").value || "").trim();
+            if (!note) { toast("warning", "Напишите комментарий по аналогу"); return; }
+            closeOverlay();
+            applyDecision(row, next, note, false, select);
+          }
+        });
+        return;
+      }
+      applyDecision(row, next, "", false, select);
+    });
+    return select;
+  }
+
+  function productHref(row) {
+    var raw = String(row.source_url || "").trim();
+    if (!raw) return "";
+    if (!/^https?:\/\//i.test(raw)) {
+      var domain = String(row.site_domain || "almamed.su").trim().replace(/^https?:\/\//i, "").replace(/\/+$/, "");
+      if (!domain) return "";
+      raw = "https://" + domain + (raw.charAt(0) === "/" ? raw : "/" + raw);
+    }
+    try {
+      var u = new URL(raw);
+      var cms = String(row.cms_type || "").toLowerCase();
+      if (cms === "webasyst") {
+        var path = String(u.pathname || "/");
+        if (path.toLowerCase().indexOf("/webasyst/") >= 0) return "";
+        if (path.toLowerCase().indexOf("/product/") !== 0) {
+          var slug = path.replace(/^\/+|\/+$/g, "").split("/").filter(Boolean).pop();
+          if (!slug) return "";
+          u.pathname = "/product/" + slug + "/";
+        } else if (!path.endsWith("/")) {
+          u.pathname = path + "/";
+        }
+      }
+      return u.toString();
+    } catch (e) {
+      return "";
+    }
+  }
   function render(rows) {
     var tb = document.getElementById("dg-cr-tbody");
     tb.replaceChildren();
-    document.getElementById("dg-cr-all").checked = false;
     if (!rows.length) {
       var tr = document.createElement("tr");
       var td = document.createElement("td");
-      td.colSpan = 9;
+      td.colSpan = 8;
       td.className = "text-muted";
       td.textContent = "В очереди нет строк по этому фильтру.";
       tr.appendChild(td);
@@ -1391,11 +1678,6 @@
     }
     rows.forEach(function (row) {
       var tr = document.createElement("tr");
-      var td0 = document.createElement("td");
-      var cb = document.createElement("input");
-      cb.type = "checkbox";
-      cb.setAttribute("data-dg-cr-id", String(row.id));
-      td0.appendChild(cb);
       var tdCat = document.createElement("td");
       tdCat.textContent = row.parent_category_name || "—";
       var tdP = document.createElement("td");
@@ -1403,31 +1685,58 @@
       sku.className = "fw-semibold";
       sku.textContent = row.sku || "—";
       var name = document.createElement("div");
-      name.textContent = row.product_name || "";
+      var href = productHref(row);
+      if (href) {
+        var link = document.createElement("a");
+        link.href = href;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.textContent = row.product_name || href;
+        name.appendChild(link);
+      } else {
+        name.textContent = row.product_name || "";
+      }
       var code = document.createElement("div");
       code.className = "small text-muted";
       code.textContent = row.cms_product_id ? "Код " + row.cms_product_id : "";
       tdP.appendChild(sku);
       tdP.appendChild(name);
       if (code.textContent) tdP.appendChild(code);
+      if (Number(row.source_enabled) === 0) {
+        var off = document.createElement("div");
+        off.className = "mt-1";
+        var badge = document.createElement("span");
+        badge.className = "badge bg-secondary";
+        badge.textContent = "Выключен на Альмамеде";
+        var note = document.createElement("div");
+        note.className = "small text-muted";
+        note.textContent = "Снят только на этом сайте. На других сайтах такой отметки может не быть.";
+        off.appendChild(badge);
+        off.appendChild(note);
+        tdP.appendChild(off);
+      }
+      attachFieldLog(tdP, row, "");
       var tdPrice = document.createElement("td");
       tdPrice.textContent = row.price != null ? fmtNum(row.price) + (row.currency ? " " + row.currency : "") : "—";
       var tdStock = document.createElement("td");
       tdStock.textContent = row.stock_qty_live == null ? "—" : fmtInt(row.stock_qty_live);
       if (Number(row.stock_qty_live) > 0) tdStock.className = "text-danger";
       var tdDec = document.createElement("td");
-      tdDec.textContent = DECISION[row.decision] || "—";
+      tdDec.appendChild(decisionSelect(row));
+      attachFieldLog(tdDec, row, "decision");
       if (row.decision === "discontinued" && row.status !== "done") {
         var analog = document.createElement("input");
         analog.type = "text";
         analog.className = "form-control form-control-sm mt-1";
         analog.placeholder = "Куда разместить аналог или что взять в работу";
         analog.value = row.decision_note || "";
+        analog.readOnly = !isSales(row);
         analog.setAttribute("data-dg-cr-prev", analog.value);
         analog.addEventListener("keydown", function (ev) {
           if (ev.key === "Enter") { ev.preventDefault(); analog.blur(); }
         });
         analog.addEventListener("blur", function () {
+          if (analog.readOnly) return;
           var next = String(analog.value || "").trim();
           var prev = analog.getAttribute("data-dg-cr-prev") || "";
           if (next === prev) return;
@@ -1474,11 +1783,14 @@
       var people = state.people || { sales: [], content: [] };
       var tdS = document.createElement("td");
       tdS.appendChild(personSelect(people.sales, row.sales_user_id, row, "sales"));
+      attachFieldLog(tdS, row, "sales_user_id");
       var tdC = document.createElement("td");
       tdC.appendChild(personSelect(people.content, row.content_user_id, row, "content"));
+      attachFieldLog(tdC, row, "content_user_id");
       var tdSt = document.createElement("td");
-      tdSt.textContent = STATUS[row.status] || row.status || "—";
-      [td0, tdCat, tdP, tdPrice, tdStock, tdDec, tdS, tdC, tdSt].forEach(function (td) { tr.appendChild(td); });
+      tdSt.appendChild(contentStatusControl(row));
+      attachFieldLog(tdSt, row, row.status === "with_content" ? "content_status" : "status");
+      [tdCat, tdP, tdPrice, tdStock, tdDec, tdS, tdC, tdSt].forEach(function (td) { tr.appendChild(td); });
       tb.appendChild(tr);
     });
   }
@@ -1489,16 +1801,22 @@
     params.set("lane", "out");
     params.set("page", String(state.page));
     params.set("limit", String(state.limit));
-    var status = document.getElementById("dg-cr-status").value;
+    var active = (state.statuses || []).filter(function (id) { return STATUS[id]; });
     var mine = document.getElementById("dg-cr-mine").value;
     var search = document.getElementById("dg-cr-search").value.trim();
-    if (status) params.set("status", status);
+    if (active.length && active.length < Object.keys(STATUS).length) params.set("status", active.join(","));
     if (mine) params.set("mine", mine);
     if (search) params.set("search", search);
+    if (state.site === "on") params.set("site", "1");
+    if (state.site === "off") params.set("site", "0");
+    if (state.categoryIds && state.categoryIds.length && state.categoryOptions.length && state.categoryIds.length < state.categoryOptions.length) {
+      params.set("category", state.categoryIds.join(","));
+    }
     fetch("/api/catalog-review?" + params.toString(), { credentials: "same-origin" })
       .then(function (r) { return r.json().then(function (j) { return { r: r, j: j }; }); })
       .then(function (x) {
         if (!x.r.ok) throw new Error(x.j.error || "Ошибка очереди");
+        state.me = x.j.me || state.me || {};
         state.rows = x.j.data || [];
         state.total = Number(x.j.total || 0);
         state.pages = Math.max(1, Math.ceil(state.total / state.limit));
@@ -1545,8 +1863,12 @@
         if (!x.r.ok) throw new Error(x.j.error || "Ошибка решения");
         var lines = "Отмечено: " + fmtInt(ids.length) + "<br>Записано: " + fmtInt(x.j.updated) + ", пропущено: " + fmtInt(x.j.skipped);
         if (note) lines += "<br>Комментарий: " + escHtml(note);
-        finish(x.j.skipped ? "warning" : "success", lines);
-        toast("success", "Решение записано: " + fmtInt(x.j.updated));
+        (x.j.skip_reasons || []).forEach(function (item) {
+          lines += "<br>• " + escHtml(item.sku || item.id || "?") + " — " + escHtml(item.reason || "пропущено");
+        });
+        var ok = Number(x.j.updated) > 0;
+        finish(ok && !x.j.skipped ? "success" : "warning", lines);
+        toast(ok ? "success" : "warning", ok ? "Решение записано: " + fmtInt(x.j.updated) : "Решение не записано");
         load();
       })
       .catch(function (e) {
@@ -1555,9 +1877,8 @@
       });
   }
 
-  function runApply(confirmStock) {
-    var ids = selectedIds();
-    if (!ids.length) { toast("warning", "Отметьте строки"); return; }
+  function runApply(ids, confirmStock) {
+    if (!ids || !ids.length) return;
     var finish = beginLog("Сделано на сайте");
     post("/api/catalog-review/apply", { ids: ids, confirm: true, confirm_stock: confirmStock ? 1 : 0 })
       .then(function (x) {
@@ -1567,7 +1888,7 @@
             title: "Выключить товары с остатком",
             text: x.j.error,
             okText: "Выключить",
-            run: function () { closeOverlay(); runApply(true); }
+            run: function () { closeOverlay(); runApply(ids, true); }
           });
           return;
         }
@@ -1614,12 +1935,14 @@
   }
 
   document.getElementById("dg-cr-apply").addEventListener("click", function () {
+    commitStatuses();
     state.page = 1;
     load();
   });
   document.getElementById("dg-cr-search").addEventListener("keydown", function (ev) {
     if (ev.key === "Enter") {
       ev.preventDefault();
+      commitStatuses();
       state.page = 1;
       load();
     }
@@ -1630,65 +1953,6 @@
   document.getElementById("dg-cr-next").addEventListener("click", function () {
     if (state.page < state.pages) { state.page += 1; load(); }
   });
-  document.getElementById("dg-cr-all").addEventListener("change", function () {
-    var on = document.getElementById("dg-cr-all").checked;
-    document.querySelectorAll("#dg-cr-tbody input[data-dg-cr-id]").forEach(function (el) { el.checked = on; });
-  });
-  document.getElementById("dg-cr-keep").addEventListener("click", function () { runDecide("keep", false); });
-  document.getElementById("dg-cr-disc").addEventListener("click", function () {
-    var ids = selectedIds();
-    if (!ids.length) { toast("warning", "Отметьте строки"); return; }
-    openOverlay({
-      title: "Снят / аналог",
-      text: "Напишите, какой аналог поставить или что взять в работу. Комментарий увидит контент.",
-      okText: "Записать",
-      note: true,
-      notePlaceholder: "Какой аналог разместить или что взять в работу",
-      run: function () {
-        var note = String(document.getElementById("dg-cr-overlay-note").value || "").trim();
-        if (!note) { toast("warning", "Напишите комментарий по аналогу"); return; }
-        closeOverlay();
-        runDecide("discontinued", false, note);
-      }
-    });
-  });
-  document.getElementById("dg-cr-nosup").addEventListener("click", function () { runDecide("not_supplied", false); });
-  document.getElementById("dg-cr-off").addEventListener("click", function () { runDecide("deactivate", false); });
-  document.getElementById("dg-cr-apply-cms").addEventListener("click", function () {
-    var ids = selectedIds();
-    if (!ids.length) { toast("warning", "Отметьте строки"); return; }
-    openOverlay({
-      title: "Провести на сайт",
-      text: "Галка или выключение запишутся на сайт только для строк «У контента». Продолжить?",
-      okText: "Сделано на сайте",
-      run: function () { closeOverlay(); runApply(false); }
-    });
-  });
-  document.getElementById("dg-cr-return").addEventListener("click", function () {
-    var ids = selectedIds();
-    if (!ids.length) { toast("warning", "Отметьте строки"); return; }
-    openOverlay({
-      title: "Вернуть менеджеру",
-      text: "Строка снова станет «У менеджера». Напишите, что не сходится.",
-      okText: "Вернуть",
-      note: true,
-      run: function () {
-        var note = String(document.getElementById("dg-cr-overlay-note").value || "").trim();
-        if (!note) { toast("warning", "Напишите комментарий"); return; }
-        closeOverlay();
-        var finish = beginLog("Вернуть менеджеру");
-        post("/api/catalog-review/return", { ids: ids, note: note }).then(function (x) {
-          if (!x.r.ok) throw new Error(x.j.error || "Ошибка возврата");
-          finish("success", "Отмечено: " + fmtInt(ids.length) + "<br>Возвращено: " + fmtInt(x.j.updated) + "<br>Комментарий: " + escHtml(note));
-          toast("success", "Возвращено: " + fmtInt(x.j.updated));
-          load();
-        }).catch(function (e) {
-          finish("danger", "Ошибка: " + escHtml(e.message));
-          toast("danger", e.message);
-        });
-      }
-    });
-  });
   document.getElementById("dg-cr-intake-open").addEventListener("click", function () {
     fetch("/api/catalog-review/categories?my_site_id=2", { credentials: "same-origin" })
       .then(function (r) { return r.json().then(function (j) { return { r: r, j: j }; }); })
@@ -1697,7 +1961,7 @@
         renderIntakeCats(x.j.data || []);
         openOverlay({
           title: "Взять из архива",
-          text: "В скобках — сколько товаров ещё можно добавить. Уже выключенные на сайте и уже стоящие в очереди в это число не входят.",
+          text: "В скобках — сколько товаров ещё можно добавить, включая выключенные на Альмамеде. Уже стоящие в очереди в это число не входят.",
           okText: "Взять в очередь",
           categories: true,
           run: function () {
@@ -1714,8 +1978,8 @@
                 finish("success", "Категорий: " + fmtInt(ids.length) +
                   "<br>Добавлено: " + fmtInt(res.j.added) +
                   "<br>Уже были в очереди: " + fmtInt(res.j.skipped_existing) +
-                  "<br>Выключены на сайте: " + fmtInt(res.j.skipped_disabled));
-                toast("success", "Добавлено: " + fmtInt(res.j.added) + ". Уже были: " + fmtInt(res.j.skipped_existing) + ". Выключены на сайте: " + fmtInt(res.j.skipped_disabled));
+                  "<br>Из выборки выключены на Альмамеде: " + fmtInt(res.j.disabled) + " — они тоже ставятся в очередь");
+                toast("success", "Добавлено: " + fmtInt(res.j.added) + ". Уже были: " + fmtInt(res.j.skipped_existing) + ". Выключены на Альмамеде в выборке: " + fmtInt(res.j.disabled));
                 state.page = 1;
                 load();
               })
@@ -1735,13 +1999,19 @@
       row.classList.toggle("d-none", !!(needle && name.indexOf(needle) === -1));
     });
   });
-  document.getElementById("dg-cr-overlay-cancel").addEventListener("click", closeOverlay);
-  document.getElementById("dg-cr-overlay-x").addEventListener("click", closeOverlay);
+  document.getElementById("dg-cr-overlay-cancel").addEventListener("click", function () { closeOverlay(true); });
+  document.getElementById("dg-cr-overlay-x").addEventListener("click", function () { closeOverlay(true); });
   document.getElementById("dg-cr-overlay").addEventListener("click", function (ev) {
-    if (ev.target.id === "dg-cr-overlay") closeOverlay();
+    if (ev.target.id === "dg-cr-overlay") closeOverlay(true);
   });
   document.addEventListener("keydown", function (ev) {
-    if (ev.key === "Escape") closeOverlay();
+    if (ev.key !== "Escape") return;
+    var logBox = document.getElementById("dg-cr-log-overlay");
+    if (logBox && !logBox.classList.contains("d-none")) {
+      closeCrLog();
+      return;
+    }
+    closeOverlay(true);
   });
   document.getElementById("dg-cr-overlay-ok").addEventListener("click", function () {
     if (state.pending && state.pending.run) state.pending.run();
@@ -1796,30 +2066,133 @@
       var tr = document.createElement("tr");
       tr.setAttribute("data-dg-cr-owner-id", String(row.id));
       tr.setAttribute("data-dg-cr-owner-name", row.name || "");
+      tr.setAttribute("data-dg-cr-owner-count", String(Number(row.count) || 0));
       var tdName = document.createElement("td");
       tdName.textContent = (row.name || "—") + " (" + fmtInt(row.count) + ")";
       var tdS = document.createElement("td");
       var sales = document.createElement("select");
       sales.className = "form-select form-select-sm dg-cr-owner-sales";
       fillOwnerSelect(sales, people.sales, row.sales_user_id);
+      sales.addEventListener("change", renderOwnerBalance);
       tdS.appendChild(sales);
       var tdC = document.createElement("td");
       var content = document.createElement("select");
       content.className = "form-select form-select-sm dg-cr-owner-content";
       fillOwnerSelect(content, people.content, row.content_user_id);
+      content.addEventListener("change", renderOwnerBalance);
       tdC.appendChild(content);
       tr.appendChild(tdName);
       tr.appendChild(tdS);
       tr.appendChild(tdC);
       tb.appendChild(tr);
     });
+    renderOwnerBalance();
+  }
+  function ownerAssignments() {
+    return Array.prototype.map.call(
+      document.querySelectorAll("#dg-cr-owners-body tr[data-dg-cr-owner-id]"),
+      function (tr) {
+        return {
+          sales: tr.querySelector(".dg-cr-owner-sales").value,
+          content: tr.querySelector(".dg-cr-owner-content").value,
+          cards: Number(tr.getAttribute("data-dg-cr-owner-count") || 0)
+        };
+      }
+    );
+  }
+  function tallyOwners(rows, field, people) {
+    var map = {};
+    (people || []).forEach(function (p) {
+      map[String(p.id)] = { label: p.label || p.username || ("#" + p.id), cats: 0, cards: 0 };
+    });
+    var free = { cats: 0, cards: 0 };
+    rows.forEach(function (row) {
+      var id = String(row[field] || "");
+      if (!id || !map[id]) {
+        free.cats += 1;
+        free.cards += row.cards;
+        return;
+      }
+      map[id].cats += 1;
+      map[id].cards += row.cards;
+    });
+    var list = Object.keys(map).map(function (key) { return map[key]; });
+    list.sort(function (a, b) {
+      if (b.cats !== a.cats) return b.cats - a.cats;
+      return String(a.label).localeCompare(String(b.label), "ru");
+    });
+    return { list: list, free: free };
+  }
+  function balanceCard(title, tone, tally, totalCats) {
+    var col = document.createElement("div");
+    col.className = "col-12 col-lg-6";
+    var card = document.createElement("div");
+    card.className = "border rounded p-3 h-100";
+    var head = document.createElement("div");
+    head.className = "d-flex justify-content-between align-items-baseline gap-2 mb-2";
+    var h = document.createElement("div");
+    h.className = "fw-semibold";
+    h.textContent = title;
+    var meta = document.createElement("div");
+    meta.className = "small text-muted";
+    var assigned = totalCats - tally.free.cats;
+    var withLoad = tally.list.filter(function (p) { return p.cats > 0; }).length;
+    var avg = withLoad ? Math.round(assigned / withLoad) : 0;
+    meta.textContent = "Закреплено " + fmtInt(assigned) + " из " + fmtInt(totalCats) +
+      (withLoad ? " · в среднем " + fmtInt(avg) : "");
+    head.appendChild(h);
+    head.appendChild(meta);
+    card.appendChild(head);
+    var max = tally.list.reduce(function (n, p) { return Math.max(n, p.cats); }, 0);
+    tally.list.forEach(function (p) {
+      var line = document.createElement("div");
+      line.className = "mb-2";
+      var top = document.createElement("div");
+      top.className = "d-flex justify-content-between gap-2 small";
+      var name = document.createElement("span");
+      name.textContent = p.label;
+      var nums = document.createElement("span");
+      nums.className = "text-muted text-nowrap";
+      nums.textContent = fmtInt(p.cats) + " кат. · " + fmtInt(p.cards) + " карт.";
+      top.appendChild(name);
+      top.appendChild(nums);
+      var track = document.createElement("div");
+      track.className = "dg-cr-balance-track mt-1";
+      var bar = document.createElement("div");
+      bar.className = "dg-cr-balance-bar " + (p.cats ? tone : "is-zero");
+      bar.style.width = max ? Math.round((p.cats / max) * 100) + "%" : "0";
+      track.appendChild(bar);
+      line.appendChild(top);
+      line.appendChild(track);
+      card.appendChild(line);
+    });
+    if (tally.free.cats) {
+      var free = document.createElement("div");
+      free.className = "small text-muted mt-1";
+      free.textContent = "Без закрепления: " + fmtInt(tally.free.cats) + " кат. · " + fmtInt(tally.free.cards) + " карт.";
+      card.appendChild(free);
+    }
+    col.appendChild(card);
+    return col;
+  }
+  function renderOwnerBalance() {
+    var host = document.getElementById("dg-cr-owner-balance");
+    if (!host) return;
+    var rows = ownerAssignments();
+    host.replaceChildren();
+    if (!rows.length) return;
+    var people = state.people || { sales: [], content: [] };
+    host.appendChild(balanceCard("Менеджеры по продажам", "is-sales", tallyOwners(rows, "sales", people.sales), rows.length));
+    host.appendChild(balanceCard("Контент", "is-content", tallyOwners(rows, "content", people.content), rows.length));
   }
   function loadOwners() {
     return fetch("/api/catalog-review/owners?my_site_id=2", { credentials: "same-origin" })
       .then(function (r) { return r.json().then(function (j) { return { r: r, j: j }; }); })
       .then(function (x) {
         if (!x.r.ok) throw new Error(x.j.error || "Ошибка закрепления");
-        renderOwners(x.j.data || []);
+        state.categoryOptions = x.j.data || [];
+        renderOwners(state.categoryOptions);
+        buildCategoryFilter();
       })
       .catch(function (e) { toast("warning", e.message || "Не удалось загрузить закрепление"); });
   }
@@ -1842,6 +2215,271 @@
       }).catch(function (e) { toast("danger", e.message); });
     });
   }
+
+  var logState = { id: 0, label: "", field: "", offset: 0, limit: 50, total: 0 };
+  var LOG_FIELDS = {
+    decision: "Решение",
+    decision_note: "Комментарий к аналогу",
+    sales_user_id: "Менеджер",
+    content_user_id: "Контент",
+    content_status: "Статус контента",
+    status: "Статус",
+    content_note: "Комментарий контента"
+  };
+  function attachFieldLog(td, row, field) {
+    if (!td || !row) return;
+    td.classList.add("dg-cr-field-cell");
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.textContent = "лог";
+    btn.setAttribute("data-dg-no-activity", "1");
+    btn.setAttribute("data-dg-cr-log-id", String(row.id));
+    btn.setAttribute("data-dg-cr-log-label", row.sku || ("#" + row.id));
+    if (field) {
+      btn.className = "dg-cr-field-log-btn";
+      btn.title = "Журнал изменений: " + (LOG_FIELDS[field] || field);
+      btn.setAttribute("data-dg-cr-log-field", field);
+    } else {
+      btn.className = "btn btn-sm btn-outline-secondary mt-1 py-0";
+      btn.title = "Журнал изменений строки";
+    }
+    td.appendChild(btn);
+  }
+  function formatLogWhen(value) {
+    var d = new Date(value);
+    if (Number.isNaN(d.getTime())) return "—";
+    function p(n) { return n < 10 ? "0" + n : String(n); }
+    return p(d.getDate()) + "-" + p(d.getMonth() + 1) + "-" + d.getFullYear() + " " + p(d.getHours()) + ":" + p(d.getMinutes());
+  }
+  function closeCrLog() {
+    var box = document.getElementById("dg-cr-log-overlay");
+    if (!box) return;
+    box.classList.add("d-none");
+    box.setAttribute("aria-hidden", "true");
+  }
+  function renderCrLog(rows) {
+    var body = document.getElementById("dg-cr-log-body");
+    if (!body) return;
+    var note = logState.field
+      ? '<div class="alert alert-info py-2 px-3 mb-0 rounded-0 small">Фильтр: <b>' + escHtml(LOG_FIELDS[logState.field] || logState.field) + "</b></div>"
+      : "";
+    if (!rows.length) {
+      body.innerHTML = note + '<div class="text-muted small text-center py-4">' +
+        (logState.field ? "По этому полю изменений пока нет." : "По этой строке изменений пока нет.") +
+        "</div>";
+      return;
+    }
+    var html = note + '<div class="table-responsive"><table class="table table-sm mb-0"><thead><tr><th>Когда</th><th>Кто</th>' +
+      (logState.field ? "" : "<th>Поле</th>") +
+      "<th>Было → Стало</th></tr></thead><tbody>";
+    rows.forEach(function (row) {
+      var oldVal = row.old_value == null ? '<span class="text-muted">∅</span>' : escHtml(row.old_value);
+      var newVal = row.new_value == null ? '<span class="text-muted">∅</span>' : escHtml(row.new_value);
+      html += "<tr><td class=\"text-nowrap small\">" + escHtml(formatLogWhen(row.changed_at)) + "</td><td>" +
+        escHtml(row.changed_by_name || "—") + "</td>" +
+        (logState.field ? "" : "<td>" + escHtml(row.field_label || row.field || "—") + "</td>") +
+        "<td>" + oldVal + " → " + newVal + "</td></tr>";
+    });
+    var page = Math.floor(logState.offset / logState.limit) + 1;
+    var pages = Math.max(1, Math.ceil(logState.total / logState.limit));
+    html += "</tbody></table></div>" +
+      '<div class="d-flex justify-content-between align-items-center px-3 py-2 border-top">' +
+      '<span class="small text-muted">Найдено: ' + fmtInt(logState.total) + "; страница " + page + "/" + pages + "</span>" +
+      '<div class="btn-group">' +
+      '<button type="button" class="btn btn-sm btn-outline-secondary" id="dg-cr-log-prev"' + (logState.offset <= 0 ? " disabled" : "") + ">Назад</button>" +
+      '<button type="button" class="btn btn-sm btn-outline-secondary" id="dg-cr-log-next"' + (logState.offset + logState.limit >= logState.total ? " disabled" : "") + ">Вперёд</button>" +
+      "</div></div>";
+    body.innerHTML = html;
+  }
+  function loadCrLog() {
+    var body = document.getElementById("dg-cr-log-body");
+    if (!body || !logState.id) return;
+    body.innerHTML = '<div class="text-muted small text-center py-4">Загрузка журнала…</div>';
+    var qs = new URLSearchParams();
+    qs.set("limit", String(logState.limit));
+    qs.set("offset", String(logState.offset));
+    if (logState.field) qs.set("field", logState.field);
+    fetch("/api/catalog-review/" + logState.id + "/log?" + qs.toString(), { credentials: "same-origin" })
+      .then(function (r) { return r.json().then(function (j) { return { r: r, j: j }; }); })
+      .then(function (x) {
+        if (!x.r.ok) throw new Error(x.j.error || "Ошибка журнала");
+        logState.total = Number(x.j.total || 0);
+        renderCrLog(x.j.rows || []);
+      })
+      .catch(function (e) {
+        body.innerHTML = '<div class="text-danger small text-center py-4">' + escHtml(e.message || "Ошибка журнала") + "</div>";
+      });
+  }
+  function openCrLog(id, label, field) {
+    logState.id = id;
+    logState.label = label || ("#" + id);
+    logState.field = field || "";
+    logState.offset = 0;
+    document.getElementById("dg-cr-log-title").textContent = logState.field
+      ? "Журнал: " + (LOG_FIELDS[logState.field] || logState.field)
+      : "Журнал изменений";
+    document.getElementById("dg-cr-log-subtitle").textContent = logState.label;
+    var box = document.getElementById("dg-cr-log-overlay");
+    box.classList.remove("d-none");
+    box.setAttribute("aria-hidden", "false");
+    loadCrLog();
+  }
+
+  function statusButtonText(ids) {
+    var list = (ids || []).filter(function (id) { return STATUS[id]; });
+    if (!list.length || list.length === Object.keys(STATUS).length) return "Все";
+    var names = list.map(function (id) { return STATUS[id]; });
+    if (names.length === 1) return names[0];
+    return names[0] + " и ещё " + (names.length - 1);
+  }
+  function readDraftStatuses() {
+    return Array.prototype.map.call(
+      document.querySelectorAll("#dg-cr-status-list input:checked"),
+      function (el) { return el.value; }
+    ).filter(function (id) { return STATUS[id]; });
+  }
+  function paintStatusButton() {
+    var label = document.getElementById("dg-cr-status-label");
+    if (label) label.textContent = statusButtonText(readDraftStatuses());
+  }
+  function buildStatusFilter(selected) {
+    var list = document.getElementById("dg-cr-status-list");
+    if (!list) return;
+    var chosen = {};
+    (selected || []).forEach(function (id) { if (STATUS[id]) chosen[id] = true; });
+    list.replaceChildren();
+    Object.keys(STATUS).forEach(function (key) {
+      var label = document.createElement("label");
+      label.className = "d-flex align-items-center gap-2 mb-1";
+      var cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.className = "form-check-input m-0";
+      cb.value = key;
+      cb.checked = !!chosen[key];
+      cb.addEventListener("change", paintStatusButton);
+      var text = document.createElement("span");
+      text.textContent = STATUS[key];
+      label.appendChild(cb);
+      label.appendChild(text);
+      list.appendChild(label);
+    });
+    paintStatusButton();
+  }
+  function categoryButtonText(ids) {
+    var list = ids || [];
+    var opts = state.categoryOptions || [];
+    if (!list.length || (opts.length && list.length >= opts.length)) return "Все";
+    var nameById = {};
+    opts.forEach(function (cat) { nameById[String(cat.id)] = cat.name || ("#" + cat.id); });
+    var first = nameById[String(list[0])] || ("#" + list[0]);
+    if (list.length === 1) return first;
+    return first + " и ещё " + (list.length - 1);
+  }
+  function readDraftCategories() {
+    return Array.prototype.map.call(
+      document.querySelectorAll("#dg-cr-queue-cat-list input:checked"),
+      function (el) { return Number(el.value); }
+    ).filter(function (id) { return id > 0; });
+  }
+  function paintCategoryButton() {
+    var label = document.getElementById("dg-cr-queue-cat-label");
+    if (!label) return;
+    var draft = document.querySelector("#dg-cr-queue-cat-list input") ? readDraftCategories() : (state.categoryIds || []);
+    label.textContent = categoryButtonText(draft);
+  }
+  function buildCategoryFilter() {
+    var list = document.getElementById("dg-cr-queue-cat-list");
+    if (!list) return;
+    var chosen = {};
+    (state.categoryIds || []).forEach(function (id) { chosen[String(id)] = true; });
+    var rows = (state.categoryOptions || []).slice().sort(function (a, b) {
+      return String(a.name || "").localeCompare(String(b.name || ""), "ru");
+    });
+    list.replaceChildren();
+    rows.forEach(function (cat) {
+      var label = document.createElement("label");
+      label.className = "d-flex align-items-start gap-2 mb-1";
+      label.setAttribute("data-dg-cr-queue-cat-name", String(cat.name || "").toLowerCase());
+      var cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.className = "form-check-input mt-1";
+      cb.value = String(cat.id);
+      cb.checked = !!chosen[String(cat.id)];
+      cb.addEventListener("change", paintCategoryButton);
+      var text = document.createElement("span");
+      text.textContent = cat.name || "—";
+      label.appendChild(cb);
+      label.appendChild(text);
+      list.appendChild(label);
+    });
+    paintCategoryButton();
+  }
+  function commitStatuses() {
+    state.statuses = readDraftStatuses();
+    var site = document.getElementById("dg-cr-site");
+    state.site = site && (site.value === "on" || site.value === "off") ? site.value : "all";
+    if (document.querySelector("#dg-cr-queue-cat-list input")) state.categoryIds = readDraftCategories();
+    if (window.DatagonFilters) {
+      var prev = window.DatagonFilters.load("catalog-review") || {};
+      prev.statuses = state.statuses;
+      prev.site = state.site;
+      prev.categoryIds = state.categoryIds;
+      window.DatagonFilters.save("catalog-review", prev);
+    }
+  }
+  (function restoreStatuses() {
+    var saved = window.DatagonFilters ? window.DatagonFilters.load("catalog-review") : null;
+    var map = { with_content: "content_new", done: "content_done" };
+    var initial = saved && Array.isArray(saved.statuses) ? saved.statuses : [];
+    state.statuses = initial.map(function (id) { return map[id] || id; }).filter(function (id) { return STATUS[id]; });
+    state.site = saved && (saved.site === "on" || saved.site === "off") ? saved.site : "all";
+    state.categoryIds = saved && Array.isArray(saved.categoryIds)
+      ? saved.categoryIds.map(function (id) { return Number(id); }).filter(function (id) { return id > 0; })
+      : [];
+    buildStatusFilter(state.statuses);
+    var site = document.getElementById("dg-cr-site");
+    if (site) site.value = state.site;
+  })();
+  (function bindCategorySearch() {
+    var catQ = document.getElementById("dg-cr-queue-cat-q");
+    if (!catQ) return;
+    catQ.addEventListener("click", function (ev) { ev.stopPropagation(); });
+    catQ.addEventListener("keydown", function (ev) {
+      ev.stopPropagation();
+      if (ev.key === "Enter") ev.preventDefault();
+    });
+    catQ.addEventListener("input", function () {
+      var needle = String(this.value || "").trim().toLowerCase();
+      document.querySelectorAll("#dg-cr-queue-cat-list label").forEach(function (row) {
+        var name = row.getAttribute("data-dg-cr-queue-cat-name") || "";
+        row.classList.toggle("d-none", !!(needle && name.indexOf(needle) === -1));
+      });
+    });
+  })();
+
+  document.getElementById("dg-cr-log-close").addEventListener("click", closeCrLog);
+  document.getElementById("dg-cr-log-backdrop").addEventListener("click", closeCrLog);
+  document.getElementById("dg-cr-log-body").addEventListener("click", function (ev) {
+    var prev = ev.target.closest && ev.target.closest("#dg-cr-log-prev");
+    var next = ev.target.closest && ev.target.closest("#dg-cr-log-next");
+    if (prev && logState.offset > 0) {
+      logState.offset = Math.max(0, logState.offset - logState.limit);
+      loadCrLog();
+    }
+    if (next && logState.offset + logState.limit < logState.total) {
+      logState.offset += logState.limit;
+      loadCrLog();
+    }
+  });
+  document.addEventListener("click", function (ev) {
+    var btn = ev.target.closest && ev.target.closest("[data-dg-cr-log-id]");
+    if (!btn) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    var id = Number(btn.getAttribute("data-dg-cr-log-id"));
+    if (!id) return;
+    openCrLog(id, btn.getAttribute("data-dg-cr-log-label") || "", btn.getAttribute("data-dg-cr-log-field") || "");
+  });
 
   loadPeople().then(function () { return loadOwners(); }).then(load);
 })();

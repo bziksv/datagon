@@ -46,6 +46,15 @@ module.exports = function catalogReviewRouter(db) {
                 KEY idx_dg_catalog_review_content (content_user_id)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         `);
+        const [contentCols] = await db.query(
+            `SHOW COLUMNS FROM dg_catalog_review LIKE 'content_status'`
+        );
+        if (!contentCols.length) {
+            await db.query(
+                `ALTER TABLE dg_catalog_review
+                    ADD COLUMN content_status VARCHAR(16) NULL AFTER status`
+            );
+        }
         await db.query(`
             CREATE TABLE IF NOT EXISTS dg_catalog_review_owner (
                 my_site_id INT NOT NULL,
@@ -57,6 +66,20 @@ module.exports = function catalogReviewRouter(db) {
                 PRIMARY KEY (my_site_id, parent_category_id)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         `);
+        await db.query(`
+            CREATE TABLE IF NOT EXISTS dg_catalog_review_log (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                review_id INT NOT NULL,
+                field VARCHAR(64) NOT NULL,
+                old_value VARCHAR(500) NULL,
+                new_value VARCHAR(500) NULL,
+                action VARCHAR(32) NOT NULL DEFAULT 'set',
+                changed_by_user_id INT NULL,
+                changed_by_name VARCHAR(255) NULL,
+                changed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                KEY idx_dg_cr_log_review (review_id, changed_at)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        `);
     }
 
     function actor(req) {
@@ -64,6 +87,7 @@ module.exports = function catalogReviewRouter(db) {
         return {
             id: Number(a.id) || 0,
             username: String(a.username || '').trim(),
+            full_name: String(a.full_name || '').trim(),
             isAdmin: String(a.username || '') === 'admin',
         };
     }
@@ -140,6 +164,138 @@ module.exports = function catalogReviewRouter(db) {
     }
     function canContent(row, who) {
         return who.isAdmin || Number(row.content_user_id) === who.id;
+    }
+    function canDecide(row, who) {
+        return canSales(row, who);
+    }
+
+    const REVIEW_LOG_LABELS = {
+        decision: 'Решение',
+        decision_note: 'Комментарий к аналогу',
+        sales_user_id: 'Менеджер',
+        content_user_id: 'Контент',
+        content_status: 'Статус контента',
+        status: 'Статус',
+        content_note: 'Комментарий контента',
+    };
+    const DECISION_LABELS = {
+        keep: 'Оставить',
+        discontinued: 'Снят / аналог',
+        not_supplied: 'Не поставляется',
+        deactivate: 'Деактивировать',
+    };
+    const CONTENT_STATUS_LABELS = { new: 'Новая', working: 'В работе', done: 'Готово' };
+    const ROW_STATUS_LABELS = {
+        unassigned: 'Не распределено',
+        with_sales: 'У менеджера',
+        with_content: 'У контента',
+        done: 'Готово',
+    };
+
+    function clipLog(value) {
+        if (value == null) return null;
+        const text = String(value).trim();
+        return text ? text.slice(0, 500) : null;
+    }
+
+    async function userNameMap(ids) {
+        const clean = [...new Set(ids.map((id) => Number(id)).filter((id) => id > 0))];
+        const map = new Map();
+        if (!clean.length) return map;
+        const [rows] = await db.query(
+            `SELECT id, full_name, username FROM users WHERE id IN (${clean.map(() => '?').join(',')})`,
+            clean
+        );
+        for (const row of rows || []) {
+            map.set(Number(row.id), String(row.full_name || row.username || '').trim() || ('#' + row.id));
+        }
+        return map;
+    }
+
+    async function writeReviewLogs(who, entries) {
+        const list = (entries || []).filter((entry) => {
+            if (!entry || !entry.reviewId || !entry.field) return false;
+            return clipLog(entry.oldValue) !== clipLog(entry.newValue);
+        });
+        if (!list.length) return;
+        const name = String((who && (who.full_name || who.username)) || '').trim() || null;
+        for (const entry of list) {
+            await db.query(
+                `INSERT INTO dg_catalog_review_log
+                    (review_id, field, old_value, new_value, action, changed_by_user_id, changed_by_name)
+                 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                [
+                    entry.reviewId,
+                    entry.field,
+                    clipLog(entry.oldValue),
+                    clipLog(entry.newValue),
+                    entry.action || 'set',
+                    who && who.id ? who.id : null,
+                    name,
+                ]
+            );
+        }
+    }
+
+    async function syncReviewStickers(row, who, patch) {
+        const product = {
+            id: row.my_product_id,
+            site_id: row.my_site_id,
+            source_id: row.source_id,
+            cms_product_id: row.cms_product_id,
+            sku: row.sku,
+        };
+        await setMyProductStickers(db, product, patch, {
+            action: 'update',
+            source: 'catalog-review',
+            login: who.username,
+            name: who.full_name || who.username,
+        });
+        const [sites] = await db.query('SELECT * FROM my_sites WHERE id = ? LIMIT 1', [row.my_site_id]);
+        const site = sites[0];
+        if (site && String(site.cms_type || '').toLowerCase() === 'webasyst') {
+            const cmsPid = Number(row.cms_product_id);
+            if (cmsPid > 0) {
+                const { syncMyProductStickersToCms } = require('../lib/datagonMyProductStickersCmsSync');
+                await syncMyProductStickersToCms(db, {
+                    siteId: row.my_site_id,
+                    cmsProductIds: [cmsPid],
+                    featuresOnly: true,
+                });
+            }
+        }
+    }
+
+    async function applyDecisionToSite(row, who, decision) {
+        if (decision === 'discontinued' || decision === 'not_supplied') {
+            await syncReviewStickers(row, who, decision === 'discontinued'
+                ? { sticker_discontinued: 1, sticker_not_supplied: 0 }
+                : { sticker_not_supplied: 1, sticker_discontinued: 0 });
+            return;
+        }
+        if (decision === 'clear_stickers') {
+            await syncReviewStickers(row, who, { sticker_discontinued: 0, sticker_not_supplied: 0 });
+            return;
+        }
+        const product = {
+            id: row.my_product_id,
+            site_id: row.my_site_id,
+            source_id: row.source_id,
+            cms_product_id: row.cms_product_id,
+            sku: row.sku,
+        };
+        const [sites] = await db.query('SELECT * FROM my_sites WHERE id = ? LIMIT 1', [row.my_site_id]);
+        if (!sites.length) throw new Error('Сайт не найден');
+        const conn = await openCmsDbConnection(sites[0], { appDb: db, connectTimeout: 10000 });
+        try {
+            await deactivateProductInCms(conn, sites[0], product);
+        } finally {
+            try { await conn.end(); } catch (_) {}
+        }
+        await db.query(
+            `UPDATE my_products SET source_enabled = 0, updated_at = NOW() WHERE id = ? AND site_id = ?`,
+            [row.my_product_id, row.my_site_id]
+        );
     }
 
     async function archiveSkuRows(mySiteId) {
@@ -320,7 +476,7 @@ module.exports = function catalogReviewRouter(db) {
             if (!sites.length) return res.status(404).json({ error: 'Сайт не найден' });
             const allRows = await archiveSkuRows(mySiteId);
             const queued = await queuedProductIds(mySiteId);
-            const eligible = allRows.filter((row) => row.source_enabled === 1 && !queued.has(row.my_product_id));
+            const eligible = allRows.filter((row) => !queued.has(row.my_product_id));
             const counts = eligible.map((row) => ({ cms_id: row.cms_id, n: 1 }));
             const index = await getArchiveParentCategoryIndex(
                 db,
@@ -338,7 +494,20 @@ module.exports = function catalogReviewRouter(db) {
             await ensureSchema();
             const lane = String(req.query.lane || 'out') === 'in' ? 'in' : 'out';
             const who = actor(req);
-            const status = String(req.query.status || '').trim();
+            const allowedStatus = {
+                unassigned: "r.status = 'unassigned'",
+                with_sales: "r.status = 'with_sales'",
+                content_new: "(r.status = 'with_content' AND (r.content_status IS NULL OR r.content_status = 'new'))",
+                content_working: "(r.status = 'with_content' AND r.content_status = 'working')",
+                content_done: "(r.status = 'done' OR (r.status = 'with_content' AND r.content_status = 'done'))",
+            };
+            const legacy = { with_content: 'content_new', done: 'content_done' };
+            const statuses = [...new Set(
+                String(req.query.status || '')
+                    .split(',')
+                    .map((part) => legacy[part.trim()] || part.trim())
+                    .filter((part) => Object.prototype.hasOwnProperty.call(allowedStatus, part))
+            )];
             const mine = String(req.query.mine || (who.isAdmin ? 'all' : 'mine')).trim();
             const search = String(req.query.search || '').trim().slice(0, 120);
             const limit = Math.max(1, Math.min(parseInt(String(req.query.limit || '100'), 10) || 100, 200));
@@ -346,9 +515,8 @@ module.exports = function catalogReviewRouter(db) {
             const offset = (page - 1) * limit;
             const where = ['r.lane = ?'];
             const params = [lane];
-            if (['unassigned', 'with_sales', 'with_content', 'done'].includes(status)) {
-                where.push('r.status = ?');
-                params.push(status);
+            if (statuses.length && statuses.length < Object.keys(allowedStatus).length) {
+                where.push(`(${statuses.map((key) => allowedStatus[key]).join(' OR ')})`);
             }
             if (mine === 'mine' && who.id) {
                 where.push('(r.sales_user_id = ? OR r.content_user_id = ?)');
@@ -361,18 +529,30 @@ module.exports = function catalogReviewRouter(db) {
                 const v = `%${search}%`;
                 params.push(v, v, v);
             }
+            const site = String(req.query.site || '').trim();
+            if (site === '1' || site === '0') {
+                where.push('COALESCE(mp.source_enabled, 1) = ?');
+                params.push(Number(site));
+            }
+            const categoryIds = parseIds(req.query.category).slice(0, 40);
+            if (categoryIds.length) {
+                where.push(`r.parent_category_id IN (${categoryIds.map(() => '?').join(',')})`);
+                params.push(...categoryIds);
+            }
             const from = `
                 FROM dg_catalog_review r
                 JOIN my_products mp ON mp.id = r.my_product_id AND mp.site_id = r.my_site_id
                 LEFT JOIN users su ON su.id = r.sales_user_id
                 LEFT JOIN users cu ON cu.id = r.content_user_id
+                LEFT JOIN my_sites site ON site.id = r.my_site_id
                 WHERE ${where.join(' AND ')}
             `;
             const [data] = await db.query(
                 `SELECT r.id, r.lane, r.my_site_id, r.my_product_id, r.parent_category_id, r.parent_category_name,
-                        r.status, r.decision, r.sales_user_id, r.content_user_id, r.decision_note, r.content_note,
+                        r.status, r.content_status, r.decision, r.sales_user_id, r.content_user_id, r.decision_note, r.content_note,
                         r.stock_qty, r.decision_at, r.applied_at, r.created_at,
                         mp.sku, mp.name AS product_name, mp.price, mp.currency, mp.cms_product_id, mp.source_enabled,
+                        mp.source_url, site.domain AS site_domain, site.cms_type,
                         COALESCE(NULLIF(TRIM(su.full_name), ''), su.username) AS sales_name,
                         COALESCE(NULLIF(TRIM(cu.full_name), ''), cu.username) AS content_name
                  ${from}
@@ -413,14 +593,11 @@ module.exports = function catalogReviewRouter(db) {
                 sites[0],
                 [...new Set(allRows.map((row) => row.cms_id))]
             );
-            const names = new Map(
-                (summarizeParentCategories(index, allRows.filter((row) => row.source_enabled === 1).map((row) => ({ cms_id: row.cms_id, n: 1 }))) || [])
-                    .map((c) => [c.id, c.name])
-            );
+            const names = index.rootNames || new Map();
             const owners = await loadOwnerMap(mySiteId);
             let added = 0;
             let skipped_existing = 0;
-            let skipped_disabled = 0;
+            let disabled = 0;
             let skipped_outside = 0;
             const values = [];
             for (const item of allRows) {
@@ -433,10 +610,7 @@ module.exports = function catalogReviewRouter(db) {
                     skipped_outside += 1;
                     continue;
                 }
-                if (item.source_enabled === 0) {
-                    skipped_disabled += 1;
-                    continue;
-                }
+                if (item.source_enabled === 0) disabled += 1;
                 const owned = roots.find((id) => owners.has(id));
                 const catId = owned || roots[0];
                 const owner = owners.get(catId) || {};
@@ -467,11 +641,21 @@ module.exports = function catalogReviewRouter(db) {
                 added += ins;
                 skipped_existing += chunk.length - ins;
             }
+            for (const [id, name] of names) {
+                const label = String(name || '').trim().slice(0, 255);
+                if (!label) continue;
+                await db.query(
+                    `UPDATE dg_catalog_review
+                        SET parent_category_name = ?
+                      WHERE my_site_id = ? AND parent_category_id = ? AND parent_category_name <> ?`,
+                    [label, mySiteId, id, label]
+                );
+            }
             return res.json({
                 success: true,
                 added,
                 skipped_existing,
-                skipped_disabled,
+                disabled,
                 considered: values.length,
                 skipped_outside,
             });
@@ -500,7 +684,14 @@ module.exports = function catalogReviewRouter(db) {
         }
         try {
             await ensureSchema();
+            const who = actor(req);
             const rows = await loadReviewRows(ids);
+            const names = await userNameMap(rows.flatMap((row) => [row.sales_user_id, row.content_user_id]).concat([salesId, contentId]));
+            const person = (id) => {
+                const n = Number(id);
+                if (!n) return null;
+                return names.get(n) || ('#' + n);
+            };
             let updated = 0;
             for (const row of rows) {
                 if (row.lane !== 'out' || row.status === 'done') continue;
@@ -516,6 +707,22 @@ module.exports = function catalogReviewRouter(db) {
                       WHERE id = ?`,
                     [nextSales || null, nextContent || null, status, row.id]
                 );
+                const logs = [];
+                if (hasSales) {
+                    logs.push({ reviewId: row.id, field: 'sales_user_id', oldValue: person(row.sales_user_id), newValue: person(nextSales) });
+                }
+                if (hasContent) {
+                    logs.push({ reviewId: row.id, field: 'content_user_id', oldValue: person(row.content_user_id), newValue: person(nextContent) });
+                }
+                if (status !== row.status) {
+                    logs.push({
+                        reviewId: row.id,
+                        field: 'status',
+                        oldValue: ROW_STATUS_LABELS[row.status] || row.status,
+                        newValue: ROW_STATUS_LABELS[status] || status,
+                    });
+                }
+                await writeReviewLogs(who, logs);
                 updated += 1;
             }
             return res.json({ success: true, updated });
@@ -531,7 +738,8 @@ module.exports = function catalogReviewRouter(db) {
         const note = String(body.note || '').trim().slice(0, 500);
         const confirmStock = body.confirm_stock === true || String(body.confirm_stock) === '1';
         if (!ids.length) return res.status(400).json({ error: 'Не выбраны строки' });
-        if (!DECISIONS.has(decision)) return res.status(400).json({ error: 'Неизвестное решение' });
+        const clearing = !decision;
+        if (!clearing && !DECISIONS.has(decision)) return res.status(400).json({ error: 'Неизвестное решение' });
         if (decision === 'discontinued' && !note) {
             return res.status(400).json({ error: 'Для «Снят / аналог» напишите, куда разместить аналог или что взять в работу' });
         }
@@ -552,48 +760,186 @@ module.exports = function catalogReviewRouter(db) {
             let updated = 0;
             const skipped = [];
             for (const row of rows) {
-                if (row.lane !== 'out' || row.status === 'done') {
-                    skipped.push(row.id);
+                const sku = row.sku || String(row.id);
+                if (row.lane !== 'out') {
+                    skipped.push({ id: row.id, sku, reason: 'не очередь вывода' });
                     continue;
                 }
-                if (row.status === 'with_content') {
-                    if (
-                        decision === 'discontinued'
-                        && row.decision === 'discontinued'
-                        && note
-                        && (canSales(row, who) || canContent(row, who))
-                    ) {
-                        await db.query(
-                            `UPDATE dg_catalog_review
-                                SET decision_note = ?, updated_at = NOW()
-                              WHERE id = ?`,
-                            [note, row.id]
-                        );
-                        updated += 1;
+                if (!canDecide(row, who)) {
+                    skipped.push({ id: row.id, sku, reason: 'решение ставит менеджер по продажам этой строки' });
+                    continue;
+                }
+                if (clearing) {
+                    if (row.decision === 'discontinued' || row.decision === 'not_supplied') {
+                        try {
+                            await applyDecisionToSite(row, who, 'clear_stickers');
+                        } catch (err) {
+                            skipped.push({ id: row.id, sku, reason: err.message || String(err) });
+                            continue;
+                        }
+                    }
+                    const backStatus = row.sales_user_id && row.content_user_id ? 'with_sales' : 'unassigned';
+                    await db.query(
+                        `UPDATE dg_catalog_review
+                            SET decision = NULL, decision_note = NULL, content_status = NULL,
+                                status = ?, decision_by = NULL, decision_at = NULL,
+                                applied_at = NULL, applied_by = NULL, updated_at = NOW()
+                          WHERE id = ?`,
+                        [backStatus, row.id]
+                    );
+                    await writeReviewLogs(who, [
+                        {
+                            reviewId: row.id,
+                            field: 'decision',
+                            oldValue: DECISION_LABELS[row.decision] || row.decision,
+                            newValue: null,
+                            action: 'clear',
+                        },
+                        { reviewId: row.id, field: 'decision_note', oldValue: row.decision_note, newValue: null, action: 'clear' },
+                        {
+                            reviewId: row.id,
+                            field: 'status',
+                            oldValue: ROW_STATUS_LABELS[row.status] || row.status,
+                            newValue: ROW_STATUS_LABELS[backStatus] || backStatus,
+                            action: 'clear',
+                        },
+                        {
+                            reviewId: row.id,
+                            field: 'content_status',
+                            oldValue: CONTENT_STATUS_LABELS[row.content_status] || row.content_status,
+                            newValue: null,
+                            action: 'clear',
+                        },
+                    ]);
+                    updated += 1;
+                    continue;
+                }
+                if (
+                    row.status === 'with_content'
+                    && decision === 'discontinued'
+                    && row.decision === 'discontinued'
+                    && note
+                ) {
+                    await db.query(
+                        `UPDATE dg_catalog_review
+                            SET decision_note = ?, updated_at = NOW()
+                          WHERE id = ?`,
+                        [note, row.id]
+                    );
+                    await writeReviewLogs(who, [{
+                        reviewId: row.id,
+                        field: 'decision_note',
+                        oldValue: row.decision_note,
+                        newValue: note,
+                    }]);
+                    updated += 1;
+                    continue;
+                }
+                let status = decision === 'keep' ? 'done' : 'done';
+                let contentStatus = decision === 'keep' ? null : 'done';
+                if (decision !== 'keep') {
+                    try {
+                        await applyDecisionToSite(row, who, decision);
+                    } catch (err) {
+                        skipped.push({ id: row.id, sku, reason: err.message || String(err) });
                         continue;
                     }
-                    skipped.push(row.id);
-                    continue;
+                } else if (row.decision === 'discontinued' || row.decision === 'not_supplied') {
+                    try {
+                        await applyDecisionToSite(row, who, 'clear_stickers');
+                    } catch (err) {
+                        skipped.push({ id: row.id, sku, reason: err.message || String(err) });
+                        continue;
+                    }
                 }
-                if (row.status !== 'with_sales' || !canSales(row, who)) {
-                    skipped.push(row.id);
-                    continue;
-                }
-                const status = decision === 'keep' ? 'done' : 'with_content';
                 const stock = row.stock_qty_live == null ? null : row.stock_qty_live;
                 await db.query(
                     `UPDATE dg_catalog_review
-                        SET decision = ?, status = ?, decision_by = ?, decision_at = NOW(),
+                        SET decision = ?, status = ?, content_status = ?, decision_by = ?, decision_at = NOW(),
                             decision_note = ?, stock_qty = ?,
                             applied_at = IF(? = 'done', NOW(), NULL),
                             applied_by = IF(? = 'done', ?, NULL),
                             updated_at = NOW()
                       WHERE id = ?`,
-                    [decision, status, who.id || null, note || null, stock, status, status, who.id || null, row.id]
+                    [decision, status, contentStatus, who.id || null, note || null, stock, status, status, who.id || null, row.id]
                 );
+                await writeReviewLogs(who, [
+                    {
+                        reviewId: row.id,
+                        field: 'decision',
+                        oldValue: DECISION_LABELS[row.decision] || row.decision,
+                        newValue: DECISION_LABELS[decision] || decision,
+                    },
+                    { reviewId: row.id, field: 'decision_note', oldValue: row.decision_note, newValue: note || null },
+                    {
+                        reviewId: row.id,
+                        field: 'status',
+                        oldValue: ROW_STATUS_LABELS[row.status] || row.status,
+                        newValue: ROW_STATUS_LABELS[status] || status,
+                    },
+                    {
+                        reviewId: row.id,
+                        field: 'content_status',
+                        oldValue: CONTENT_STATUS_LABELS[row.content_status] || row.content_status,
+                        newValue: CONTENT_STATUS_LABELS[contentStatus] || contentStatus,
+                    },
+                ]);
                 updated += 1;
             }
-            return res.json({ success: true, updated, skipped: skipped.length });
+            return res.json({
+                success: true,
+                updated,
+                skipped: skipped.length,
+                skip_reasons: skipped.slice(0, 20),
+            });
+        } catch (e) {
+            return res.status(500).json({ error: e.message });
+        }
+    });
+
+    router.post('/content-status', async (req, res) => {
+        const body = req.body || {};
+        const ids = parseIds(body.ids);
+        const contentStatus = String(body.content_status || '').trim();
+        const allowed = new Set(['new', 'working', 'done']);
+        if (!ids.length) return res.status(400).json({ error: 'Не выбраны строки' });
+        if (!allowed.has(contentStatus)) return res.status(400).json({ error: 'Неизвестный статус контента' });
+        try {
+            await ensureSchema();
+            const who = actor(req);
+            const rows = await loadReviewRows(ids);
+            let updated = 0;
+            const skipped = [];
+            for (const row of rows) {
+                const sku = row.sku || String(row.id);
+                if (row.status !== 'with_content') {
+                    skipped.push({ id: row.id, sku, reason: 'статус контента ставится, когда строка уже у контента' });
+                    continue;
+                }
+                if (!canContent(row, who)) {
+                    skipped.push({ id: row.id, sku, reason: 'статус контента ставит контент-менеджер этой строки' });
+                    continue;
+                }
+                await db.query(
+                    `UPDATE dg_catalog_review
+                        SET content_status = ?, updated_at = NOW()
+                      WHERE id = ?`,
+                    [contentStatus, row.id]
+                );
+                await writeReviewLogs(who, [{
+                    reviewId: row.id,
+                    field: 'content_status',
+                    oldValue: CONTENT_STATUS_LABELS[row.content_status] || row.content_status,
+                    newValue: CONTENT_STATUS_LABELS[contentStatus] || contentStatus,
+                }]);
+                updated += 1;
+            }
+            return res.json({
+                success: true,
+                updated,
+                skipped: skipped.length,
+                skip_reasons: skipped.slice(0, 20),
+            });
         } catch (e) {
             return res.status(500).json({ error: e.message });
         }
@@ -614,10 +960,25 @@ module.exports = function catalogReviewRouter(db) {
                 if (row.status !== 'with_content' || !canContent(row, who)) continue;
                 await db.query(
                     `UPDATE dg_catalog_review
-                        SET status = 'with_sales', content_note = ?, updated_at = NOW()
+                        SET status = 'with_sales', content_status = NULL, content_note = ?, updated_at = NOW()
                       WHERE id = ?`,
                     [note, row.id]
                 );
+                await writeReviewLogs(who, [
+                    {
+                        reviewId: row.id,
+                        field: 'status',
+                        oldValue: ROW_STATUS_LABELS[row.status] || row.status,
+                        newValue: ROW_STATUS_LABELS.with_sales,
+                    },
+                    {
+                        reviewId: row.id,
+                        field: 'content_status',
+                        oldValue: CONTENT_STATUS_LABELS[row.content_status] || row.content_status,
+                        newValue: null,
+                    },
+                    { reviewId: row.id, field: 'content_note', oldValue: row.content_note, newValue: note },
+                ]);
                 updated += 1;
             }
             return res.json({ success: true, updated });
@@ -651,59 +1012,32 @@ module.exports = function catalogReviewRouter(db) {
             let applied = 0;
             const errors = [];
             for (const row of rows) {
-                if (row.status !== 'with_content' || !canContent(row, who)) continue;
+                if (row.status !== 'with_content' || (!canContent(row, who) && !canSales(row, who))) continue;
                 if (!['discontinued', 'not_supplied', 'deactivate'].includes(String(row.decision || ''))) continue;
                 try {
-                    const product = {
-                        id: row.my_product_id,
-                        site_id: row.my_site_id,
-                        source_id: row.source_id,
-                        cms_product_id: row.cms_product_id,
-                        sku: row.sku,
-                    };
-                    if (row.decision === 'discontinued' || row.decision === 'not_supplied') {
-                        const patch = row.decision === 'discontinued'
-                            ? { sticker_discontinued: 1 }
-                            : { sticker_not_supplied: 1 };
-                        await setMyProductStickers(db, product, patch, {
-                            action: 'update',
-                            source: 'catalog-review',
-                            login: who.username,
-                            name: who.username,
-                        });
-                        const [sites] = await db.query('SELECT * FROM my_sites WHERE id = ? LIMIT 1', [row.my_site_id]);
-                        const site = sites[0];
-                        if (site && String(site.cms_type || '').toLowerCase() === 'webasyst') {
-                            const cmsPid = Number(row.cms_product_id);
-                            if (cmsPid > 0) {
-                                const { syncMyProductStickersToCms } = require('../lib/datagonMyProductStickersCmsSync');
-                                await syncMyProductStickersToCms(db, {
-                                    siteId: row.my_site_id,
-                                    cmsProductIds: [cmsPid],
-                                    featuresOnly: true,
-                                });
-                            }
-                        }
-                    } else {
-                        const [sites] = await db.query('SELECT * FROM my_sites WHERE id = ? LIMIT 1', [row.my_site_id]);
-                        if (!sites.length) throw new Error('Сайт не найден');
-                        const conn = await openCmsDbConnection(sites[0], { appDb: db, connectTimeout: 10000 });
-                        try {
-                            await deactivateProductInCms(conn, sites[0], product);
-                        } finally {
-                            try { await conn.end(); } catch (_) {}
-                        }
-                        await db.query(
-                            `UPDATE my_products SET source_enabled = 0, updated_at = NOW() WHERE id = ? AND site_id = ?`,
-                            [row.my_product_id, row.my_site_id]
-                        );
-                    }
+                    await applyDecisionToSite(row, who, row.decision);
                     await db.query(
                         `UPDATE dg_catalog_review
-                            SET status = 'done', applied_at = NOW(), applied_by = ?, stock_qty = ?, updated_at = NOW()
+                            SET status = 'done', content_status = 'done', applied_at = NOW(), applied_by = ?, stock_qty = ?, updated_at = NOW()
                           WHERE id = ?`,
                         [who.id || null, row.stock_qty_live, row.id]
                     );
+                    await writeReviewLogs(who, [
+                        {
+                            reviewId: row.id,
+                            field: 'status',
+                            oldValue: ROW_STATUS_LABELS[row.status] || row.status,
+                            newValue: ROW_STATUS_LABELS.done,
+                            action: 'apply',
+                        },
+                        {
+                            reviewId: row.id,
+                            field: 'content_status',
+                            oldValue: CONTENT_STATUS_LABELS[row.content_status] || row.content_status,
+                            newValue: CONTENT_STATUS_LABELS.done,
+                            action: 'apply',
+                        },
+                    ]);
                     applied += 1;
                 } catch (err) {
                     if (errors.length < 20) {
@@ -712,6 +1046,46 @@ module.exports = function catalogReviewRouter(db) {
                 }
             }
             return res.json({ success: true, applied, errors });
+        } catch (e) {
+            return res.status(500).json({ error: e.message });
+        }
+    });
+
+    router.get('/:id/log', async (req, res) => {
+        const reviewId = parseInt(String(req.params.id || ''), 10);
+        if (!reviewId) return res.status(400).json({ error: 'Некорректная строка' });
+        const field = String(req.query.field || '').trim();
+        const limit = Math.max(1, Math.min(parseInt(String(req.query.limit || '50'), 10) || 50, 200));
+        const offset = Math.max(0, parseInt(String(req.query.offset || '0'), 10) || 0);
+        try {
+            await ensureSchema();
+            const where = ['review_id = ?'];
+            const params = [reviewId];
+            if (field && REVIEW_LOG_LABELS[field]) {
+                where.push('field = ?');
+                params.push(field);
+            }
+            const [rows] = await db.query(
+                `SELECT id, review_id, field, old_value, new_value, action, changed_by_user_id, changed_by_name, changed_at
+                   FROM dg_catalog_review_log
+                  WHERE ${where.join(' AND ')}
+                  ORDER BY id DESC
+                  LIMIT ? OFFSET ?`,
+                [...params, limit, offset]
+            );
+            const [[cnt]] = await db.query(
+                `SELECT COUNT(*) AS total FROM dg_catalog_review_log WHERE ${where.join(' AND ')}`,
+                params
+            );
+            return res.json({
+                rows: (rows || []).map((row) => ({
+                    ...row,
+                    field_label: REVIEW_LOG_LABELS[row.field] || row.field,
+                })),
+                total: Number(cnt?.total || 0),
+                limit,
+                offset,
+            });
         } catch (e) {
             return res.status(500).json({ error: e.message });
         }

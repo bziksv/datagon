@@ -27,18 +27,39 @@
     <div class="card-header">Фильтры</div>
     <div class="card-body">
       <div class="row g-2 align-items-end">
-        <div class="col-12 col-md-4">
+        <div class="col-12 col-md-3">
           <label class="form-label mb-0 small text-uppercase text-muted" for="dg-cr-search">Поиск</label>
           <input type="search" class="form-control" id="dg-cr-search" placeholder="Артикул, название, категория" autocomplete="off" />
         </div>
+        <div class="col-6 col-md-3">
+          <label class="form-label mb-0 small text-uppercase text-muted" for="dg-cr-status-btn">Статус</label>
+          <div class="dropdown w-100">
+            <button type="button" class="btn btn-outline-secondary dg-vanilla-dropdown-toggle w-100 text-start text-truncate" id="dg-cr-status-btn" aria-expanded="false" aria-haspopup="true" title="Можно отметить несколько статусов. Список обновится после «Применить».">
+              <span id="dg-cr-status-label">Все</span>
+            </button>
+            <div class="dropdown-menu p-2" id="dg-cr-status-menu" style="min-width: 220px">
+              <div id="dg-cr-status-list"></div>
+            </div>
+          </div>
+        </div>
+        <div class="col-12 col-md-3">
+          <label class="form-label mb-0 small text-uppercase text-muted" for="dg-cr-queue-cat-btn">Категория</label>
+          <div class="dropdown w-100">
+            <button type="button" class="btn btn-outline-secondary dg-vanilla-dropdown-toggle w-100 text-start text-truncate" id="dg-cr-queue-cat-btn" aria-expanded="false" aria-haspopup="true" title="Можно отметить несколько категорий. Список обновится после «Применить».">
+              <span id="dg-cr-queue-cat-label">Все</span>
+            </button>
+            <div class="dropdown-menu p-2" id="dg-cr-queue-cat-menu" style="min-width: 280px; width: min(420px, calc(100vw - 1.5rem))">
+              <input type="search" class="form-control form-control-sm mb-2" id="dg-cr-queue-cat-q" placeholder="Найти категорию" autocomplete="off" />
+              <div id="dg-cr-queue-cat-list" style="max-height: 280px; overflow: auto"></div>
+            </div>
+          </div>
+        </div>
         <div class="col-6 col-md-2">
-          <label class="form-label mb-0 small text-uppercase text-muted" for="dg-cr-status">Статус</label>
-          <select class="form-select" id="dg-cr-status">
-            <option value="">Все</option>
-            <option value="unassigned">Не распределено</option>
-            <option value="with_sales">У менеджера</option>
-            <option value="with_content">У контента</option>
-            <option value="done">Готово</option>
+          <label class="form-label mb-0 small text-uppercase text-muted" for="dg-cr-site">На Альмамеде</label>
+          <select class="form-select" id="dg-cr-site" title="Выключен только на Альмамеде. На других сайтах этой отметки может не быть.">
+            <option value="all">Все</option>
+            <option value="on">Включён</option>
+            <option value="off">Выключен</option>
           </select>
         </div>
         <div class="col-6 col-md-2">
@@ -54,7 +75,7 @@
           <button type="button" class="btn btn-outline-primary" id="dg-cr-intake-open" data-dg-notify-start="Открываем категории архива…">Взять из архива</button>
         </div>
       </div>
-      <p class="small text-muted mt-2 mb-0">Менеджер и контент сначала берутся из вкладки «Закрепление категорий», в очереди их меняют прямо в колонках. На сайт решение попадает только после «Сделано на сайте». «Оставить» закрывает строку сразу. Для «Снят / аналог» нужен комментарий: куда поставить аналог или что взять в работу.</p>
+      <p class="small text-muted mt-2 mb-0">Решение в колонке «Решение» сразу пишет на Альмамед: «Снят / аналог» и «Не поставляется» включают галку, «Деактивировать» выключает карточку. «Оставить» сайт не трогает. «Не выбрано» снимает решение и убирает эти галки, если они уже были поставлены отсюда. Если на складе есть остаток, выключение спросит подтверждение.</p>
     </div>
   </div>
 
@@ -64,20 +85,11 @@
       <span class="small text-muted" id="dg-cr-count">Найдено: —</span>
     </div>
     <div class="card-body">
-      <div class="d-flex flex-wrap gap-2 align-items-end mb-2">
-        <button type="button" class="btn btn-outline-success" id="dg-cr-keep" data-dg-notify-start="Закрываем как актуальные…">Оставить</button>
-        <button type="button" class="btn btn-outline-warning" id="dg-cr-disc" data-dg-notify-start="Ставим решение «Снят / аналог»…">Снят / аналог</button>
-        <button type="button" class="btn btn-outline-warning" id="dg-cr-nosup" data-dg-notify-start="Ставим решение «Не поставляется»…">Не поставляется</button>
-        <button type="button" class="btn btn-outline-danger" id="dg-cr-off" data-dg-notify-start="Ставим решение «Деактивировать»…">Деактивировать</button>
-        <button type="button" class="btn btn-success" id="dg-cr-apply-cms" data-dg-notify-start="Проводим решение на сайт…">Сделано на сайте</button>
-        <button type="button" class="btn btn-outline-dark" id="dg-cr-return" data-dg-notify-start="Возвращаем менеджеру…">Вернуть менеджеру</button>
-      </div>
       <div id="dg-cr-action-log" class="alert mt-0 mb-3 d-none" role="status"></div>
       <div class="table-responsive">
         <table class="table table-sm table-hover align-middle mb-0">
           <thead>
             <tr>
-              <th style="width:36px"><input type="checkbox" id="dg-cr-all" title="Отметить на странице" /></th>
               <th>Категория</th>
               <th>Товар</th>
               <th>Цена</th>
@@ -119,6 +131,7 @@
     </div>
     <div class="card-body">
       <p class="small text-muted">Категория сразу закрепляется за менеджером по продажам и контент-менеджером. Новые товары из архива получают этих людей сами. Уже открытые строки без решения тоже обновятся.</p>
+      <div id="dg-cr-owner-balance" class="row g-3 mb-3"></div>
       <div class="table-responsive">
         <table class="table table-sm table-hover align-middle mb-0">
           <thead>
@@ -134,6 +147,20 @@
         </table>
       </div>
     </div>
+  </div>
+</div>
+
+<div id="dg-cr-log-overlay" class="dg-cr-log-overlay d-none" aria-hidden="true">
+  <div class="dg-cr-log-backdrop" id="dg-cr-log-backdrop"></div>
+  <div class="dg-cr-log-panel card shadow" role="dialog" aria-modal="true" aria-labelledby="dg-cr-log-title">
+    <div class="card-header d-flex align-items-center justify-content-between gap-2">
+      <div style="min-width:0">
+        <div class="fw-semibold" id="dg-cr-log-title">Журнал изменений</div>
+        <div class="text-muted small" id="dg-cr-log-subtitle"></div>
+      </div>
+      <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-cr-log-close">Закрыть</button>
+    </div>
+    <div class="card-body p-0" id="dg-cr-log-body"></div>
   </div>
 </div>
 

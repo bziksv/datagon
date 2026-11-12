@@ -2,7 +2,78 @@
   body[data-dg-active-nav="catalog-review"] #dg-cr-cat-list label {
     cursor: pointer;
   }
-  body[data-dg-active-nav="catalog-review"] .dg-cr-person {
+  body[data-dg-active-nav="catalog-review"] .dg-cr-person,
+  body[data-dg-active-nav="catalog-review"] .dg-cr-decision,
+  body[data-dg-active-nav="catalog-review"] .dg-cr-content-status {
     min-width: 11rem;
+  }
+  body[data-dg-active-nav="catalog-review"] .dg-cr-field-cell {
+    position: relative;
+  }
+  body[data-dg-active-nav="catalog-review"] .dg-cr-field-log-btn {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    z-index: 3;
+    opacity: 0;
+    pointer-events: none;
+    font-size: 0.6rem;
+    line-height: 1;
+    padding: 0.12rem 0.28rem;
+    border: 1px solid #ced4da;
+    border-radius: 0.25rem;
+    background: #fff;
+    color: #495057;
+  }
+  body[data-dg-active-nav="catalog-review"] .dg-cr-field-cell:hover .dg-cr-field-log-btn,
+  body[data-dg-active-nav="catalog-review"] .dg-cr-field-log-btn:focus {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  body[data-dg-active-nav="catalog-review"] .dg-cr-log-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1090;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+  }
+  body[data-dg-active-nav="catalog-review"] .dg-cr-log-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.45);
+  }
+  body[data-dg-active-nav="catalog-review"] .dg-cr-log-panel {
+    position: relative;
+    z-index: 1;
+    width: min(920px, 100%);
+    max-height: min(80vh, 720px);
+    display: flex;
+    flex-direction: column;
+  }
+  body[data-dg-active-nav="catalog-review"] #dg-cr-log-body {
+    max-height: min(64vh, 560px);
+    overflow: auto;
+  }
+  body[data-dg-active-nav="catalog-review"] .dg-cr-balance-track {
+    height: 8px;
+    background: #eef1f5;
+    border-radius: 999px;
+    overflow: hidden;
+  }
+  body[data-dg-active-nav="catalog-review"] .dg-cr-balance-bar {
+    height: 100%;
+    border-radius: 999px;
+    min-width: 0;
+  }
+  body[data-dg-active-nav="catalog-review"] .dg-cr-balance-bar.is-sales {
+    background: #3f6ad8;
+  }
+  body[data-dg-active-nav="catalog-review"] .dg-cr-balance-bar.is-content {
+    background: #3ac47d;
+  }
+  body[data-dg-active-nav="catalog-review"] .dg-cr-balance-bar.is-zero {
+    width: 0;
   }
 </style>
