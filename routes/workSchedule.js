@@ -2487,9 +2487,12 @@ function createWorkScheduleRouter(db) {
             summary: {
                 bonus_accrued: details.bonus,
                 bonus_payable: details.bonus_payable,
+                bonus_payable_base: details.bonus_payable_base,
                 bonus_unshipped: details.bonus_unshipped,
                 unshipped_count: details.unshipped_count,
                 pct_mp: details.pct_mp,
+                pct_mp_before: details.pct_mp_before,
+                refund: details.refund || null,
                 amount_ex: details.amount_ex,
                 diff: details.diff,
             },

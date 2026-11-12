@@ -981,6 +981,19 @@
             "</span>"
           : "") +
         '<br><span class="text-muted">клик — заказы</span>';
+      var rfCard = fk.refund;
+      if (rfCard && Number(rfCard.carry_out) > 0.004) {
+        bonusSub +=
+          '<br><span class="text-danger">возврат: минус ' +
+          esc(money(rfCard.carry_out)) +
+          " перенесён на месяц даты возврата; «к выплате» без повторного вычета</span>";
+      }
+      if (rfCard && Number(rfCard.carry_in) > 0.004) {
+        bonusSub +=
+          '<br><span class="text-danger">минус возврата ' +
+          esc(money(rfCard.carry_in)) +
+          " вычтен из этой премии</span>";
+      }
     } else if (fk.unshipped_count > 0 && fk.unshipped_bonus > 0) {
       bonusSub =
         "Отгружено: <strong>" +
@@ -1443,7 +1456,13 @@
       if (MONEY_KEYS[key]) return '<span class="dg-msl-cell-ro">' + esc(money(val === "" ? null : val)) + "</span>";
       if (PCT_KEYS[key]) return '<span class="dg-msl-cell-ro">' + esc(val === "" ? "—" : num(val) + "%") + "</span>";
       if (key === "has_contract") return esc(val || "—");
-      if (key === "status") return esc(val || "—");
+      if (key === "status") {
+        var st = esc(val || "—");
+        if (String(row.status || "") === "Возврат средств" && row.refund_at) {
+          st += '<div class="small text-danger">возврат ' + esc(fmtYmdUi(row.refund_at)) + "</div>";
+        }
+        return st;
+      }
       if (key === "invoice_org") return esc(normOrgUi(row.invoice_org_label || val) || "—");
       return esc(val || "—");
     }
@@ -1460,7 +1479,16 @@
       return selectFieldHtml("has_contract", CONTRACT_OPTS, val);
     }
     if (key === "status") {
-      return selectFieldHtml("status", STATUS_OPTS, val);
+      var statusHtml = selectFieldHtml("status", STATUS_OPTS, val);
+      if (String(row.status || "") === "Возврат средств") {
+        var rd = row.refund_at ? String(row.refund_at).slice(0, 10) : "";
+        statusHtml +=
+          '<input type="date" class="form-control form-control-sm mt-1" data-msl-field="refund_at" value="' +
+          esc(rd) +
+          '" title="Дата возврата: минус уже выплаченной премии уходит в этот месяц" />' +
+          '<div class="small text-danger mt-1">минус премии → месяц этой даты</div>';
+      }
+      return statusHtml;
     }
     if (type === "date") {
       return '<input type="date" class="' + cls + '" data-msl-field="' + esc(key) + '" value="' + esc(val) + '" />';
@@ -4499,6 +4527,103 @@
     return (name + " " + (year || "")).trim();
   }
 
+  function monthNameCap(m) {
+    var name = MONTH_NAMES[Number(m)] || "";
+    return name ? name.charAt(0).toUpperCase() + name.slice(1) : "";
+  }
+
+  function refundNotesHtml(summary) {
+    var rf = summary && summary.refund;
+    if (!rf) return "";
+    var blocks = [];
+    (rf.items_out || []).forEach(function (it) {
+      var dest = (it.transfers || [])
+        .map(function (t) {
+          return monthNameCap(t.month) + " " + t.year + " · минус " + money(t.amount);
+        })
+        .join("; ");
+      var lines = [];
+      lines.push(
+        "Возврат по счёту <strong>" +
+          esc(it.our_invoice_no || "—") +
+          "</strong>" +
+          (it.refund_at ? " от " + esc(fmtYmdUi(it.refund_at)) : "") +
+          "."
+      );
+      lines.push(
+        "Из оборота убрано <strong>" +
+          esc(money(it.amount_ex)) +
+          "</strong>, разница <strong>" +
+          esc(money(it.diff)) +
+          "</strong>."
+      );
+      if (it.pct_before != null && it.pct_after != null) {
+        lines.push(
+          "Ставка месяца: была <strong>" +
+            esc(String(it.pct_before)) +
+            "%</strong>, стала <strong>" +
+            esc(String(it.pct_after)) +
+            "%</strong>."
+        );
+      }
+      if (Number(it.own_released) > 0.004) {
+        lines.push(
+          "Премия этой продажи <strong>" +
+            esc(money(it.own_bonus)) +
+            "</strong> была в резерве и в «к выплате» не входила — резерв снят."
+        );
+      }
+      if (Number(it.carry_amount) > 0.004) {
+        lines.push(
+          "Уже выплаченная премия считалась по старой ставке. Минус <strong>" +
+            esc(money(it.carry_amount)) +
+            "</strong> перенесён: " +
+            (dest || "месяц даты возврата") +
+            "."
+        );
+      } else if (!it.refund_at) {
+        lines.push("Укажите дату возврата в строке — минус премии уйдёт в месяц этой даты.");
+      } else {
+        lines.push("Дата возврата в этом же месяце: минус остаётся здесь.");
+      }
+      blocks.push(lines.join("<br>"));
+    });
+    (rf.items_in || []).forEach(function (it) {
+      blocks.push(
+        "Возврат счёта <strong>" +
+          esc(it.our_invoice_no || "—") +
+          "</strong> (оплата " +
+          esc(fmtYmdUi(it.paid_at)) +
+          ", сумма " +
+          esc(money(it.amount_ex)) +
+          ").<br>В " +
+          monthNameCap(it.paid_month) +
+          " " +
+          esc(String(it.paid_year || "")) +
+          " ставка была " +
+          esc(String(it.pct_before)) +
+          "% вместо " +
+          esc(String(it.pct_after)) +
+          "%. Минус <strong>" +
+          esc(money(it.carry_amount)) +
+          "</strong> вычтен из премии этого месяца."
+      );
+    });
+    if (!blocks.length) return "";
+    var foot = "";
+    if (Number(rf.carry_out) > 0.004 && summary.bonus_payable_base != null) {
+      foot =
+        "<br>К выплате этого месяца остаётся <strong>" +
+        esc(money(summary.bonus_payable)) +
+        "</strong> — как уже выплачено. По новой ставке было бы <strong>" +
+        esc(money(summary.bonus_payable_base)) +
+        "</strong>.";
+    }
+    return (
+      '<div class="alert alert-warning py-2 px-3 mb-0 mt-2">' + blocks.join("<hr class='my-2'>") + foot + "</div>"
+    );
+  }
+
   function openBonusOrdersModal() {
     var mid = state.manager_user_id;
     if (!mid || String(mid) === "all") {
@@ -4557,7 +4682,8 @@
                 esc(money(s.bonus_unshipped)) +
                 (s.unshipped_count ? " · " + esc(String(s.unshipped_count)) + " зак." : "") +
                 "</span>"
-              : "");
+              : "") +
+            refundNotesHtml(s);
         }
         if (!tb) return;
         if (!orders.length) {
@@ -4565,7 +4691,7 @@
           return;
         }
         var sorted = orders.slice().sort(function (a, b) {
-          var rank = { waiting: 0, shipped: 1, refund: 2 };
+          var rank = { waiting: 0, shipped: 1, refund: 2, refund_carry: 3 };
           var ra = rank[a.bucket] != null ? rank[a.bucket] : 9;
           var rb = rank[b.bucket] != null ? rank[b.bucket] : 9;
           if (ra !== rb) return ra - rb;
@@ -4580,19 +4706,29 @@
                   ? o.shipped_at || o.shipped_effective
                     ? '<span class="badge bg-warning text-dark">отгрузка позже</span>'
                     : '<span class="badge bg-warning text-dark">ждёт</span>'
-                  : '<span class="badge bg-secondary">возврат</span>';
+                  : o.bucket === "refund_carry"
+                    ? '<span class="badge bg-danger">минус возврата</span>'
+                    : '<span class="badge bg-secondary">возврат</span>';
             var inv = esc(o.our_invoice_no || "—");
             var href = safeHref(o.order_url);
             if (href) {
               inv = '<a href="' + esc(href) + '" target="_blank" rel="noopener">' + inv + "</a>";
             }
             var shipTxt = fmtYmdUi(o.shipped_effective || o.shipped_at);
-            if (o.bucket === "waiting" && !(o.shipped_at || o.shipped_effective)) shipTxt = "—";
+            if (o.bucket === "refund_carry") {
+              shipTxt = o.refund_at ? "возврат " + fmtYmdUi(o.refund_at) : "—";
+            } else if (o.bucket === "refund") {
+              shipTxt = o.refund_at ? "возврат " + fmtYmdUi(o.refund_at) : "—";
+            } else if (o.bucket === "waiting" && !(o.shipped_at || o.shipped_effective)) shipTxt = "—";
             else if (o.shipped_fallback) shipTxt += ' <span class="text-muted">(≈ оплата)</span>';
             var stExtra = o.status && o.bucket !== "shipped" ? " · " + esc(o.status) : "";
             return (
               "<tr" +
-              (o.bucket === "waiting" ? ' class="table-warning"' : "") +
+              (o.bucket === "waiting"
+                ? ' class="table-warning"'
+                : o.bucket === "refund" || o.bucket === "refund_carry"
+                  ? ' class="table-danger"'
+                  : "") +
               "><td>" +
               inv +
               (o.handed ? ' <span class="badge bg-info text-dark">передан</span>' : "") +

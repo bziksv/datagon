@@ -2316,7 +2316,7 @@ Query: `year`, `month` (1–12; без параметра — все месяц�
 
 ### GET `/api/manager-sales/bonus-orders`
 
-Query: `year`, `month` (1–12), `manager_user_id` (один id, не `all`). Доступ — как у карточки аналитики (`can_view_analytics` на этого менеджера). Ответ: `{ success, year, month, manager: { id, full_name }, summary: { bonus_accrued, bonus_payable, bonus_unshipped, unshipped_count, pct_mp }, orders[] }`. Строки те же, что модалка графика: `bucket` `shipped` | `waiting` | `refund`, `paid_prior`, `handed`, `bonus_share`, `order_url`. Источник — `fetchManagerBonusOrderDetails`.
+Query: `year`, `month` (1–12), `manager_user_id` (один id, не `all`). Доступ — как у карточки аналитики (`can_view_analytics` на этого менеджера). Ответ: `{ success, year, month, manager: { id, full_name }, summary: { bonus_accrued, bonus_payable, bonus_payable_base, bonus_unshipped, unshipped_count, pct_mp, pct_mp_before, refund }, orders[] }`. Строки те же, что модалка графика: `bucket` `shipped` | `waiting` | `refund` | `refund_carry`, `paid_prior`, `handed`, `bonus_share`, `order_url`. `refund` — возвраты месяца: убранный оборот, ставка до/после, `carry_out` (минус, перенесённый на месяц `refund_at`) и `carry_in` (минус, пришедший в этот месяц). Источник — `fetchManagerBonusOrderDetails`.
 
 ### GET `/api/manager-sales/plans`
 

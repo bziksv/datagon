@@ -29,6 +29,7 @@ const {
 } = require('../lib/managerSalesCalc');
 const { buildManagerSalesInsights } = require('../lib/managerSalesInsights');
 const { fetchManagerBonusOrderDetails } = require('../lib/managerSalesMonthBonus');
+const { isRefundStatus, ensureRefundColumns } = require('../lib/managerSalesRefund');
 
 const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 500;
@@ -71,6 +72,7 @@ const PATCH_FIELDS = new Set([
     'supplier_invoice_no',
     'status',
     'shipped_at',
+    'refund_at',
     'invoice_mark',
     'our_invoice_mark',
     'year',
@@ -166,6 +168,7 @@ const FIELD_LOG_LABELS = {
     pct_r: '% Р.',
     status: 'Статус',
     shipped_at: 'Дата отгрузки',
+    refund_at: 'Дата возврата',
     pct_mp: '% МП.',
     bonus: 'Премия',
     archived: 'Архив',
@@ -197,6 +200,7 @@ const LOG_COMPARE_KEYS = [
     'pct_r',
     'status',
     'shipped_at',
+    'refund_at',
     'pct_mp',
     'bonus',
     'handed_to_user_id',
@@ -786,6 +790,7 @@ async function ensureSchema(db) {
     try {
         await db.query('ALTER TABLE dg_manager_sales_rows ADD COLUMN shipped_at DATE NULL');
     } catch (_) {}
+    await ensureRefundColumns(db);
     try {
         await db.query('ALTER TABLE dg_manager_sales_rows ADD KEY idx_msl_shipped (shipped_at)');
     } catch (_) {}
@@ -1058,8 +1063,10 @@ function mapRow(r, pctMpOverride) {
         pct_r: calc.pct_r,
         status: r.status || '',
         shipped_at: sqlDate(r.shipped_at),
-        pct_mp: calc.pct_mp,
-        bonus: calc.bonus,
+        refund_at: sqlDate(r.refund_at),
+        refund_was_payable: Number(r.refund_was_payable) === 1 ? 1 : 0,
+        pct_mp: isRefundStatus(r.status) ? 0 : calc.pct_mp,
+        bonus: isRefundStatus(r.status) ? 0 : calc.bonus,
         handed_to_user_id: Number.isFinite(handed) && handed > 0 ? handed : null,
         handed_to_username: r.handed_to_username || '',
         handed_to_full_name: r.handed_to_full_name || '',
@@ -1105,6 +1112,8 @@ function applyBodyToRow(body, base) {
             next[key] = normStatus(v);
         } else if (key === 'shipped_at') {
             next.shipped_at = parseDate(v);
+        } else if (key === 'refund_at') {
+            next.refund_at = parseDate(v);
         }
     }
     const packed = applySuppliersPatch(next, body || {});
@@ -1122,14 +1131,27 @@ function applyBodyToRow(body, base) {
         // Переход в «Отгружен» / «Частично» — дата отгрузки = сегодня (МСК), если не задана явно
         next.shipped_at = moscowTodaySql();
     }
+    const wasRefund = isRefundStatus(base && base.status);
+    const nowRefund = isRefundStatus(next.status);
+    if (nowRefund && !wasRefund) {
+        next.refund_was_payable = wasShipped ? 1 : 0;
+        if (!next.refund_at) next.refund_at = moscowTodaySql();
+    } else if (!nowRefund && wasRefund) {
+        next.refund_at = null;
+        next.refund_was_payable = 0;
+    }
+    if (nowRefund) {
+        next.pct_mp = 0;
+        next.bonus = 0;
+    }
     const calc = computeRow(next);
     next.amount_ex_delivery = calc.amount_ex_delivery;
     next.amount_incl_stock = calc.amount_incl_stock;
     next.delivery_to_us = calc.delivery_to_us;
-    next.pct_mp = calc.pct_mp;
+    next.pct_mp = nowRefund ? 0 : calc.pct_mp;
     next.diff = calc.diff;
     next.pct_r = calc.pct_r;
-    next.bonus = calc.bonus;
+    next.bonus = nowRefund ? 0 : calc.bonus;
     return next;
 }
 
@@ -1174,7 +1196,7 @@ const UPDATE_SQL = `UPDATE dg_manager_sales_rows SET
     year=?, manager_user_id=?, row_no=?, payment_terms=?, paid_at=?, invoice_org=?, order_url=?,
     amount_ex_delivery=?, vat=?, our_invoice_no=?, has_contract=?, supplier_invoice_url=?,
     amount_incl_stock=?, delivery_to_us=?, supplier_name=?, supplier_invoice_no=?,
-    diff=?, pct_r=?, status=?, shipped_at=?, pct_mp=?, bonus=?, invoice_mark=?, our_invoice_mark=?, suppliers_json=?, updated_by=?
+    diff=?, pct_r=?, status=?, shipped_at=?, refund_at=?, refund_was_payable=?, pct_mp=?, bonus=?, invoice_mark=?, our_invoice_mark=?, suppliers_json=?, updated_by=?
     WHERE id=?`;
 
 function parseDelimited(text) {
@@ -1595,7 +1617,8 @@ async function persistRowsPct(db, rows, plans, totals, year) {
     const y = Number(year);
     const whenPct = [];
     const whenBonus = [];
-    const params = [];
+    const pctParams = [];
+    const bonusParams = [];
     const ids = [];
     for (const r of list) {
         const id = Number(r.id);
@@ -1605,14 +1628,15 @@ async function persistRowsPct(db, rows, plans, totals, year) {
         const total = month ? totals[monthKey(mid, month)] || 0 : 0;
         const plan = resolvePlan(plans, mid, y, month);
         const pct = month ? pctMpFromMonthTotal(total, plan.plan_amount, plan.steps) : 0;
-        const calc = computeRow(Object.assign({}, r, { pct_mp: pct }));
-        const nextPct = Number(calc.pct_mp);
-        const nextBonus = Number(calc.bonus);
+        const calc = computeRow(Object.assign({}, r, { pct_mp: isRefundStatus(r.status) ? 0 : pct }));
+        const nextPct = isRefundStatus(r.status) ? 0 : Number(calc.pct_mp);
+        const nextBonus = isRefundStatus(r.status) ? 0 : Number(calc.bonus);
         if (Number(r.pct_mp) === nextPct && Number(r.bonus) === nextBonus) continue;
         ids.push(id);
         whenPct.push('WHEN ? THEN ?');
         whenBonus.push('WHEN ? THEN ?');
-        params.push(id, nextPct, id, nextBonus);
+        pctParams.push(id, nextPct);
+        bonusParams.push(id, nextBonus);
     }
     if (!ids.length) return 0;
     const inPh = ids.map(() => '?').join(',');
@@ -1621,7 +1645,7 @@ async function persistRowsPct(db, rows, plans, totals, year) {
             SET pct_mp = CASE id ${whenPct.join(' ')} END,
                 bonus = CASE id ${whenBonus.join(' ')} END
           WHERE id IN (${inPh})`,
-        params.concat(ids)
+        pctParams.concat(bonusParams, ids)
     );
     return ids.length;
 }
@@ -1633,7 +1657,7 @@ async function persistYearPct(db, managerUserId, year) {
     const plans = await loadPlans(db);
     const totals = await fetchMonthTotals(db, y, [mid]);
     const [raw] = await db.query(
-        `SELECT id, manager_user_id, handed_to_user_id, paid_at, amount_ex_delivery, amount_incl_stock, delivery_to_us, vat, pct_mp, bonus
+        `SELECT id, manager_user_id, handed_to_user_id, paid_at, amount_ex_delivery, amount_incl_stock, delivery_to_us, vat, pct_mp, bonus, status
            FROM dg_manager_sales_rows
           WHERE year = ? AND archived_at IS NULL
             AND (manager_user_id = ? OR handed_to_user_id = ?)`,
@@ -1660,7 +1684,7 @@ async function persistMonthPct(db, managerUserId, year, month) {
             ? `${y + 1}-01-01`
             : `${y}-${String(m + 1).padStart(2, '0')}-01`;
     const [raw] = await db.query(
-        `SELECT id, manager_user_id, handed_to_user_id, paid_at, amount_ex_delivery, amount_incl_stock, delivery_to_us, vat, pct_mp, bonus
+        `SELECT id, manager_user_id, handed_to_user_id, paid_at, amount_ex_delivery, amount_incl_stock, delivery_to_us, vat, pct_mp, bonus, status
            FROM dg_manager_sales_rows
           WHERE year = ? AND archived_at IS NULL
             AND (manager_user_id = ? OR handed_to_user_id = ?)
@@ -1690,6 +1714,7 @@ async function fetchMonthTotals(db, year, managerIds) {
           WHERE year = ?
             AND archived_at IS NULL
             AND paid_at IS NOT NULL
+            AND TRIM(COALESCE(status,'')) <> 'Возврат средств'
             AND COALESCE(handed_to_user_id, manager_user_id) IN (${ph})
           GROUP BY COALESCE(handed_to_user_id, manager_user_id), MONTH(paid_at)`,
         [year].concat(ids)
@@ -2233,9 +2258,12 @@ module.exports = function managerSalesRouterFactory(db) {
                 summary: {
                     bonus_accrued: details.bonus,
                     bonus_payable: details.bonus_payable,
+                    bonus_payable_base: details.bonus_payable_base,
                     bonus_unshipped: details.bonus_unshipped,
                     unshipped_count: details.unshipped_count,
                     pct_mp: details.pct_mp,
+                    pct_mp_before: details.pct_mp_before,
+                    refund: details.refund || null,
                 },
                 orders: details.orders || [],
             });
@@ -2275,15 +2303,16 @@ module.exports = function managerSalesRouterFactory(db) {
                 built.params
             );
             const midView = built.managerId ? Number(built.managerId) : null;
+            const notRefund = `TRIM(COALESCE(r.status,'')) <> 'Возврат средств'`;
             const totCredit = midView
-                ? `COALESCE(SUM(CASE WHEN COALESCE(r.handed_to_user_id, r.manager_user_id) = ? THEN r.amount_ex_delivery END),0) AS amount_ex_delivery,
-                    COALESCE(SUM(CASE WHEN COALESCE(r.handed_to_user_id, r.manager_user_id) = ? THEN r.amount_incl_stock END),0) AS amount_incl_stock,
-                    COALESCE(SUM(CASE WHEN COALESCE(r.handed_to_user_id, r.manager_user_id) = ? THEN r.delivery_to_us END),0) AS delivery_to_us,
-                    COALESCE(SUM(CASE WHEN COALESCE(r.handed_to_user_id, r.manager_user_id) = ? THEN r.diff END),0) AS diff`
-                : `COALESCE(SUM(r.amount_ex_delivery),0) AS amount_ex_delivery,
-                    COALESCE(SUM(r.amount_incl_stock),0) AS amount_incl_stock,
-                    COALESCE(SUM(r.delivery_to_us),0) AS delivery_to_us,
-                    COALESCE(SUM(r.diff),0) AS diff`;
+                ? `COALESCE(SUM(CASE WHEN ${notRefund} AND COALESCE(r.handed_to_user_id, r.manager_user_id) = ? THEN r.amount_ex_delivery END),0) AS amount_ex_delivery,
+                    COALESCE(SUM(CASE WHEN ${notRefund} AND COALESCE(r.handed_to_user_id, r.manager_user_id) = ? THEN r.amount_incl_stock END),0) AS amount_incl_stock,
+                    COALESCE(SUM(CASE WHEN ${notRefund} AND COALESCE(r.handed_to_user_id, r.manager_user_id) = ? THEN r.delivery_to_us END),0) AS delivery_to_us,
+                    COALESCE(SUM(CASE WHEN ${notRefund} AND COALESCE(r.handed_to_user_id, r.manager_user_id) = ? THEN r.diff END),0) AS diff`
+                : `COALESCE(SUM(CASE WHEN ${notRefund} THEN r.amount_ex_delivery END),0) AS amount_ex_delivery,
+                    COALESCE(SUM(CASE WHEN ${notRefund} THEN r.amount_incl_stock END),0) AS amount_incl_stock,
+                    COALESCE(SUM(CASE WHEN ${notRefund} THEN r.delivery_to_us END),0) AS delivery_to_us,
+                    COALESCE(SUM(CASE WHEN ${notRefund} THEN r.diff END),0) AS diff`;
             const totParams = midView ? [midView, midView, midView, midView].concat(built.params) : built.params;
             const [[tot]] = await db.query(
                 `SELECT ${totCredit}
@@ -2310,6 +2339,7 @@ module.exports = function managerSalesRouterFactory(db) {
                         COALESCE(SUM(r.diff),0) AS diff
                    FROM ${ROW_FROM}
                   WHERE ${built.whereSql} AND r.paid_at IS NOT NULL
+                    AND TRIM(COALESCE(r.status,'')) <> 'Возврат средств'
                   GROUP BY COALESCE(r.handed_to_user_id, r.manager_user_id), MONTH(r.paid_at)`,
                 built.params
             );
@@ -2512,8 +2542,8 @@ module.exports = function managerSalesRouterFactory(db) {
                 nextPct = pctMpFromMonthTotal(Math.max(0, fact), plan.plan_amount, plan.steps);
             }
             const calc = computeRow(Object.assign({}, next, { pct_mp: nextPct }));
-            next.pct_mp = calc.pct_mp;
-            next.bonus = calc.bonus;
+            next.pct_mp = isRefundStatus(next.status) ? 0 : calc.pct_mp;
+            next.bonus = isRefundStatus(next.status) ? 0 : calc.bonus;
             next.diff = calc.diff;
             next.pct_r = calc.pct_r;
             await db.query(UPDATE_SQL, [
@@ -2537,8 +2567,10 @@ module.exports = function managerSalesRouterFactory(db) {
                 next.pct_r,
                 next.status || null,
                 next.shipped_at || null,
+                next.refund_at || null,
+                Number(next.refund_was_payable) === 1 ? 1 : 0,
                 next.pct_mp,
-                next.bonus,
+                isRefundStatus(next.status) ? 0 : next.bonus,
                 next.invoice_mark || '',
                 next.our_invoice_mark || '',
                 next.suppliers_json || null,
@@ -3385,3 +3417,5 @@ module.exports = function managerSalesRouterFactory(db) {
 
     return router;
 };
+
+module.exports.persistMonthPct = persistMonthPct;
