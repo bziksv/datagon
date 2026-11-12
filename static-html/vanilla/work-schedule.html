@@ -557,6 +557,32 @@
     z-index: 1;
     width: min(440px, 100%);
   }
+  body.datagon-vanilla-body[data-dg-active-nav="work-schedule"] .dg-ws-overlay .dg-ws-paycash-panel {
+    width: min(640px, 100%);
+  }
+  .dg-ws-paycash-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    max-height: 280px;
+    overflow: auto;
+  }
+  .dg-ws-paycash-item {
+    display: flex;
+    gap: 0.5rem;
+    align-items: flex-start;
+    justify-content: space-between;
+    padding: 0.4rem 0.5rem;
+    border: 1px solid #e6e9ee;
+    border-radius: 0.35rem;
+    background: #fff;
+  }
+  .dg-ws-sheet td.dg-ws-pay-debt .dg-ws-pay-main {
+    font-weight: 700;
+  }
+  .dg-ws-sheet td.dg-ws-pay-debt.is-neg .dg-ws-pay-main {
+    color: #b42318;
+  }
 
   /* Tighter page bottom above fixed footer */
   body.datagon-vanilla-body[data-dg-active-nav="work-schedule"] .app-main__inner {
@@ -2041,6 +2067,51 @@
                 <button type="button" class="btn btn-outline-secondary" id="dg-ws-prem-cancel" data-dg-no-activity="1">Отмена</button>
                 <button type="button" class="btn btn-outline-primary" id="dg-ws-prem-clear" data-dg-notify-start="Сбрасываем премию…">По правилу</button>
                 <button type="button" class="btn btn-primary" id="dg-ws-prem-save" data-dg-notify-start="Сохраняем премию…">Сохранить</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-ws-paycash-overlay" class="dg-ws-overlay" style="display: none" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="dg-ws-paycash-title">
+            <div class="dg-ws-overlay-backdrop" id="dg-ws-paycash-backdrop" data-dg-no-activity="1"></div>
+            <div class="dg-ws-overlay-panel card shadow-lg border-0 dg-ws-paycash-panel">
+              <div class="card-header d-flex justify-content-between align-items-center py-2">
+                <div class="fw-semibold" id="dg-ws-paycash-title">Аванс</div>
+                <button type="button" class="btn-close" id="dg-ws-paycash-close" aria-label="Закрыть" data-dg-no-activity="1"></button>
+              </div>
+              <div class="card-body">
+                <p class="small text-muted mb-2" id="dg-ws-paycash-meta"></p>
+                <div class="row g-2 align-items-end mb-3">
+                  <div class="col-4">
+                    <label class="form-label" for="dg-ws-paycash-amount">Сумма, ₽</label>
+                    <input type="text" class="form-control" id="dg-ws-paycash-amount" inputmode="decimal" placeholder="например 10 000" />
+                  </div>
+                  <div class="col">
+                    <label class="form-label" for="dg-ws-paycash-note">Комментарий</label>
+                    <input type="text" class="form-control" id="dg-ws-paycash-note" maxlength="500" placeholder="за что эта сумма" />
+                  </div>
+                  <div class="col-auto">
+                    <button type="button" class="btn btn-primary" id="dg-ws-paycash-save" data-dg-notify-start="Сохраняем сумму…">Добавить</button>
+                  </div>
+                </div>
+                <div id="dg-ws-paycash-list" class="dg-ws-paycash-list"></div>
+                <p class="small mb-0 mt-2" id="dg-ws-paycash-sum"></p>
+              </div>
+              <div class="card-footer d-flex justify-content-end bg-white border-top-0">
+                <button type="button" class="btn btn-outline-secondary" id="dg-ws-paycash-cancel" data-dg-no-activity="1">Закрыть</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-ws-paycash-del-overlay" class="dg-ws-overlay" style="display: none" aria-hidden="true" role="dialog" aria-modal="true">
+            <div class="dg-ws-overlay-backdrop" id="dg-ws-paycash-del-backdrop" data-dg-no-activity="1"></div>
+            <div class="dg-ws-overlay-panel card shadow-lg border-0">
+              <div class="card-header py-2 fw-semibold">Удалить запись?</div>
+              <div class="card-body">
+                <p class="mb-0" id="dg-ws-paycash-del-text">Сумма пропадёт из аванса или остатка. Восстановить нельзя.</p>
+              </div>
+              <div class="card-footer d-flex justify-content-end gap-2 bg-white border-top-0">
+                <button type="button" class="btn btn-outline-secondary" id="dg-ws-paycash-del-cancel" data-dg-no-activity="1">Отмена</button>
+                <button type="button" class="btn btn-danger" id="dg-ws-paycash-del-ok" data-dg-notify-start="Удаляем запись…">Удалить</button>
               </div>
             </div>
           </div>
@@ -3553,6 +3624,55 @@
     btn.textContent = dirty ? "Применить •" : "Применить";
   }
 
+  function payCashLines(emp, kind) {
+    var list = kind === "remainder" ? emp.remainders : emp.advances;
+    return Array.isArray(list) ? list : [];
+  }
+
+  function payCashSum(emp, kind) {
+    if (kind === "remainder") return Number(emp.remainder_sum) || 0;
+    return Number(emp.advance_sum) || 0;
+  }
+
+  function payCashCellHtml(emp, kind) {
+    var lines = payCashLines(emp, kind);
+    var n = lines.length;
+    var sum = payCashSum(emp, kind);
+    var carried = lines.some(function (line) {
+      return line.carry;
+    });
+    return (
+      '<td class="dg-ws-pay cell-click dg-ws-pay-cash" data-emp-cash="' +
+      kind +
+      '" data-emp-id="' +
+      emp.id +
+      '" title="Несколько сумм, у каждой свой комментарий">' +
+      '<span class="dg-ws-pay-main">' +
+      money(sum) +
+      '</span><span class="dg-ws-pay-sub">' +
+      (carried ? "есть переплата" : n ? n + " зап." : "клик — внести") +
+      "</span></td>"
+    );
+  }
+
+  function payDebtCellHtml(emp, totAcc) {
+    var debt =
+      emp.debt != null
+        ? Number(emp.debt)
+        : Math.round((Number(totAcc) - payCashSum(emp, "advance") - payCashSum(emp, "remainder")) * 100) / 100;
+    var neg = debt < -0.004;
+    return (
+      '<td class="dg-ws-pay dg-ws-pay-debt' +
+      (neg ? " is-neg" : "") +
+      '" title="Итого (накапало) − аванс − остаток">' +
+      '<span class="dg-ws-pay-main">' +
+      money(debt) +
+      '</span><span class="dg-ws-pay-sub">' +
+      (neg ? "переплата → след. месяц" : "итог − аванс − остаток") +
+      "</span></td>"
+    );
+  }
+
   function renderSheet() {
     renderLegend(document.getElementById("dg-ws-sheet-legend"), false);
     var sh = state.sheet;
@@ -3589,7 +3709,7 @@
         "</div>";
       return;
     }
-    var colCount = 6 + dim; /* сотрудник + 4 pay + дни + Σ */
+    var colCount = 9 + dim; /* сотрудник + 7 pay + дни + Σ */
     var groups = [];
     var groupMap = {};
     filtered.forEach(function (e) {
@@ -3611,7 +3731,10 @@
       '<th class="dg-ws-pay-h" title="Накапало / оклад или ₽·ч">Оклад</th>' +
       '<th class="dg-ws-pay-h" title="Из продаж: к выплате только отгруженные; клик — правка">Премия</th>' +
       '<th class="dg-ws-pay-h" title="Накапало / полная за месяц">За стаж</th>' +
-      '<th class="dg-ws-pay-h dg-ws-pay-total-h" title="Накапало по графику / плановый итог за полный месяц">Итого</th>';
+      '<th class="dg-ws-pay-h dg-ws-pay-total-h" title="Накапало по графику / плановый итог за полный месяц">Итого</th>' +
+      '<th class="dg-ws-pay-h" title="Несколько выплат аванса с комментарием">Аванс</th>' +
+      '<th class="dg-ws-pay-h" title="Несколько выплат остатка с комментарием">Остаток</th>' +
+      '<th class="dg-ws-pay-h" title="Итого (накапало) − аванс − остаток">Долг</th>';
     for (var d = 1; d <= dim; d++) html += dayColHeaderHtml(pm.y, pm.m, d, sh.calendar || activeMonthCalendar());
     html += '<th title="Σ ставок или часов">Σ</th></tr></thead><tbody>';
     groups.forEach(function (g) {
@@ -3717,7 +3840,10 @@
           money(totAcc) +
           '</span><span class="dg-ws-pay-sub">' +
           (payHourly ? "по часам" : "план " + money(totPlan)) +
-          "</span></td>";
+          "</span></td>" +
+          payCashCellHtml(e, "advance") +
+          payCashCellHtml(e, "remainder") +
+          payDebtCellHtml(e, totAcc);
         var sumRates = 0;
         var sumHours = 0;
         var sheetCal = sh.calendar || activeMonthCalendar();
@@ -4236,6 +4362,251 @@
       });
   }
 
+  function payCashKindTitle(kind) {
+    return kind === "remainder" ? "Остаток" : "Аванс";
+  }
+
+  function payCashWhen(v) {
+    if (!v) return "";
+    var s = String(v);
+    var date = s.slice(0, 10);
+    var time = s.length >= 16 ? s.slice(11, 16) : "";
+    var shown =
+      window.DatagonFmt && window.DatagonFmt.formatDate ? window.DatagonFmt.formatDate(date) : date;
+    return time ? shown + " " + time : shown;
+  }
+
+  function showPayCashOverlay(on) {
+    var ov = document.getElementById("dg-ws-paycash-overlay");
+    if (!ov) return;
+    ov.style.display = on ? "flex" : "none";
+    ov.setAttribute("aria-hidden", on ? "false" : "true");
+  }
+
+  function showPayCashDelete(on) {
+    var ov = document.getElementById("dg-ws-paycash-del-overlay");
+    if (!ov) return;
+    ov.style.display = on ? "flex" : "none";
+    ov.setAttribute("aria-hidden", on ? "false" : "true");
+  }
+
+  function currentPayCashEmp() {
+    if (!state.payCash) return null;
+    return (state.sheet && state.sheet.employees || []).find(function (e) {
+      return Number(e.id) === Number(state.payCash.empId);
+    });
+  }
+
+  function renderPayCashBody() {
+    var ctx = state.payCash;
+    var emp = currentPayCashEmp();
+    if (!ctx || !emp) return;
+    var lines = payCashLines(emp, ctx.kind);
+    var sum = payCashSum(emp, ctx.kind);
+    var title = document.getElementById("dg-ws-paycash-title");
+    if (title) title.textContent = payCashKindTitle(ctx.kind);
+    var meta = document.getElementById("dg-ws-paycash-meta");
+    if (meta) {
+      meta.textContent =
+        (emp.full_name || "") +
+        " · " +
+        formatMonthRu(ctx.month) +
+        " · можно добавить несколько сумм, у каждой свой комментарий";
+    }
+    var saveBtn = document.getElementById("dg-ws-paycash-save");
+    if (saveBtn) saveBtn.textContent = ctx.editId ? "Сохранить" : "Добавить";
+    var list = document.getElementById("dg-ws-paycash-list");
+    if (list) {
+      if (!lines.length) {
+        list.innerHTML = '<div class="text-muted small">Пока пусто.</div>';
+      } else {
+        list.innerHTML = lines
+          .map(function (line) {
+            return (
+              '<div class="dg-ws-paycash-item">' +
+              '<div><div class="fw-semibold">' +
+              escapeHtml(money(line.amount)) +
+              '</div><div class="small text-muted">' +
+              escapeHtml(payCashWhen(line.created_at)) +
+              (line.note ? " · " + escapeHtml(line.note) : "") +
+              "</div></div>" +
+              '<div class="d-flex gap-1 flex-shrink-0">' +
+              (line.carry
+                ? '<span class="small text-muted">из долга</span>'
+                : '<button type="button" class="btn btn-sm btn-outline-secondary" data-paycash-edit="' +
+                  line.id +
+                  '" data-dg-no-activity="1">Изменить</button>' +
+                  '<button type="button" class="btn btn-sm btn-outline-danger" data-paycash-del="' +
+                  line.id +
+                  '" data-dg-no-activity="1">Удалить</button>') +
+              "</div></div>"
+            );
+          })
+          .join("");
+      }
+    }
+    var sumEl = document.getElementById("dg-ws-paycash-sum");
+    if (sumEl) {
+      var debt = emp.debt != null ? Number(emp.debt) : 0;
+      var kindGen = ctx.kind === "remainder" ? "остатка" : "аванса";
+      sumEl.innerHTML =
+        "Сумма " +
+        kindGen +
+        ": <strong>" +
+        escapeHtml(money(sum)) +
+        "</strong> · долг <strong>" +
+        escapeHtml(money(debt)) +
+        "</strong> = итог " +
+        escapeHtml(money(emp.total_accrued)) +
+        " − аванс " +
+        escapeHtml(money(emp.advance_sum || 0)) +
+        " − остаток " +
+        escapeHtml(money(emp.remainder_sum || 0));
+    }
+  }
+
+  function openPayCashModal(empId, kind) {
+    var emp = (state.sheet && state.sheet.employees || []).find(function (e) {
+      return Number(e.id) === Number(empId);
+    });
+    if (!emp) return;
+    state.payCash = {
+      empId: empId,
+      kind: kind === "remainder" ? "remainder" : "advance",
+      month: state.filters.month || defaultMonthStr(),
+      editId: null,
+    };
+    var amount = document.getElementById("dg-ws-paycash-amount");
+    var note = document.getElementById("dg-ws-paycash-note");
+    if (amount) amount.value = "";
+    if (note) note.value = "";
+    renderPayCashBody();
+    showPayCashOverlay(true);
+    setTimeout(function () {
+      if (amount) amount.focus();
+    }, 40);
+  }
+
+  function closePayCashModal() {
+    showPayCashDelete(false);
+    showPayCashOverlay(false);
+    state.payCash = null;
+  }
+
+  function fillPayCashEdit(id) {
+    var ctx = state.payCash;
+    var emp = currentPayCashEmp();
+    if (!ctx || !emp) return;
+    var line = payCashLines(emp, ctx.kind).find(function (x) {
+      return Number(x.id) === Number(id);
+    });
+    if (!line) return;
+    ctx.editId = line.id;
+    var amount = document.getElementById("dg-ws-paycash-amount");
+    var note = document.getElementById("dg-ws-paycash-note");
+    if (amount) amount.value = String(line.amount).replace(".", ",");
+    if (note) note.value = line.note || "";
+    renderPayCashBody();
+    if (amount) amount.focus();
+  }
+
+  function savePayCash() {
+    var ctx = state.payCash;
+    if (!ctx) return;
+    var amountEl = document.getElementById("dg-ws-paycash-amount");
+    var noteEl = document.getElementById("dg-ws-paycash-note");
+    var amount = amountEl ? String(amountEl.value || "").trim() : "";
+    var note = noteEl ? String(noteEl.value || "").trim() : "";
+    if (!amount) {
+      toast("warning", "Введите сумму");
+      return;
+    }
+    var btn = document.getElementById("dg-ws-paycash-save");
+    var editing = !!ctx.editId;
+    var run = function () {
+      var req = editing
+        ? api("/sheet/payouts/" + ctx.editId, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ amount: amount, note: note }),
+          })
+        : api("/sheet/payouts", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              employee_id: ctx.empId,
+              period_ym: ctx.month,
+              kind: ctx.kind,
+              amount: amount,
+              note: note,
+            }),
+          });
+      return req.then(function () {
+        toast("success", editing ? "Запись изменена" : "Сумма добавлена");
+        ctx.editId = null;
+        if (amountEl) amountEl.value = "";
+        if (noteEl) noteEl.value = "";
+        return loadSheet().then(function () {
+          renderPayCashBody();
+        });
+      });
+    };
+    var done = function () {
+      if (window.DatagonNotify && window.DatagonNotify.busyRun) return window.DatagonNotify.busyRun(btn, run);
+      return run();
+    };
+    done().catch(function (e) {
+      toast("danger", e.message || "Не сохранено");
+    });
+  }
+
+  function askPayCashDelete(id) {
+    var ctx = state.payCash;
+    var emp = currentPayCashEmp();
+    if (!ctx || !emp) return;
+    var line = payCashLines(emp, ctx.kind).find(function (x) {
+      return Number(x.id) === Number(id);
+    });
+    if (!line) return;
+    state.payCash.deleteId = line.id;
+    var text = document.getElementById("dg-ws-paycash-del-text");
+    if (text) {
+      text.textContent =
+        "Удалить " +
+        money(line.amount) +
+        (line.note ? " («" + line.note + "»)" : "") +
+        "? Сумма уйдёт из «" +
+        payCashKindTitle(ctx.kind) +
+        "», долг пересчитается.";
+    }
+    showPayCashDelete(true);
+  }
+
+  function confirmPayCashDelete() {
+    var ctx = state.payCash;
+    if (!ctx || !ctx.deleteId) return;
+    var btn = document.getElementById("dg-ws-paycash-del-ok");
+    var id = ctx.deleteId;
+    var run = function () {
+      return api("/sheet/payouts/" + id, { method: "DELETE" }).then(function () {
+        toast("success", "Запись удалена");
+        showPayCashDelete(false);
+        ctx.deleteId = null;
+        if (ctx.editId === id) ctx.editId = null;
+        return loadSheet().then(function () {
+          renderPayCashBody();
+        });
+      });
+    };
+    var done = function () {
+      if (window.DatagonNotify && window.DatagonNotify.busyRun) return window.DatagonNotify.busyRun(btn, run);
+      return run();
+    };
+    done().catch(function (e) {
+      toast("danger", e.message || "Не удалено");
+    });
+  }
+
   function openPremModal(empId) {
     var month = state.filters.month || defaultMonthStr();
     var emp = (state.sheet && state.sheet.employees || []).find(function (e) {
@@ -4638,6 +5009,12 @@
       manual_restore_full_day: "восстановил полный день",
       premium_manual_set: "задал премию вручную",
       premium_manual_clear: "сбросил ручную премию",
+      payout_advance_add: "добавил аванс",
+      payout_advance_edit: "изменил аванс",
+      payout_advance_delete: "удалил аванс",
+      payout_remainder_add: "добавил остаток",
+      payout_remainder_edit: "изменил остаток",
+      payout_remainder_delete: "удалил остаток",
       premium_from_sales: "премия из продаж",
       premium_from_sales_auto: "автозагрузка премий из продаж",
       premium_from_sales_batch: "обновление премий из продаж",
@@ -5132,6 +5509,12 @@
     var sheetHost = document.getElementById("dg-ws-sheet-host");
     if (sheetHost) {
       sheetHost.addEventListener("click", function (ev) {
+        var cashTd = ev.target.closest("td[data-emp-cash]");
+        if (cashTd) {
+          if (state.bulkMode) return;
+          openPayCashModal(Number(cashTd.getAttribute("data-emp-id")), cashTd.getAttribute("data-emp-cash"));
+          return;
+        }
         var premTd = ev.target.closest("td[data-emp-prem]");
         if (premTd) {
           if (state.bulkMode) return;
@@ -5221,6 +5604,39 @@
     if (premSave) premSave.addEventListener("click", function () { savePremModal(false); });
     var premClear = document.getElementById("dg-ws-prem-clear");
     if (premClear) premClear.addEventListener("click", function () { savePremModal(true); });
+    var payCashSave = document.getElementById("dg-ws-paycash-save");
+    if (payCashSave) payCashSave.addEventListener("click", savePayCash);
+    var payCashAmount = document.getElementById("dg-ws-paycash-amount");
+    if (payCashAmount) {
+      payCashAmount.addEventListener("keydown", function (ev) {
+        if (ev.key === "Enter") {
+          ev.preventDefault();
+          savePayCash();
+        }
+      });
+    }
+    ["dg-ws-paycash-cancel", "dg-ws-paycash-close", "dg-ws-paycash-backdrop"].forEach(function (id) {
+      var elCash = document.getElementById(id);
+      if (elCash) elCash.addEventListener("click", closePayCashModal);
+    });
+    var payCashList = document.getElementById("dg-ws-paycash-list");
+    if (payCashList) {
+      payCashList.addEventListener("click", function (ev) {
+        var editBtn = ev.target.closest("[data-paycash-edit]");
+        if (editBtn) {
+          fillPayCashEdit(editBtn.getAttribute("data-paycash-edit"));
+          return;
+        }
+        var delBtn = ev.target.closest("[data-paycash-del]");
+        if (delBtn) askPayCashDelete(delBtn.getAttribute("data-paycash-del"));
+      });
+    }
+    var payCashDelCancel = document.getElementById("dg-ws-paycash-del-cancel");
+    var payCashDelBack = document.getElementById("dg-ws-paycash-del-backdrop");
+    if (payCashDelCancel) payCashDelCancel.addEventListener("click", function () { showPayCashDelete(false); });
+    if (payCashDelBack) payCashDelBack.addEventListener("click", function () { showPayCashDelete(false); });
+    var payCashDelOk = document.getElementById("dg-ws-paycash-del-ok");
+    if (payCashDelOk) payCashDelOk.addEventListener("click", confirmPayCashDelete);
     ["dg-ws-prem-cancel", "dg-ws-prem-close", "dg-ws-prem-backdrop"].forEach(function (id) {
       var el = document.getElementById(id);
       if (el)
@@ -5240,6 +5656,16 @@
     }
     document.addEventListener("keydown", function (ev) {
       if (ev.key !== "Escape") return;
+      var cashDel = document.getElementById("dg-ws-paycash-del-overlay");
+      if (cashDel && cashDel.style.display === "flex") {
+        showPayCashDelete(false);
+        return;
+      }
+      var cashOv = document.getElementById("dg-ws-paycash-overlay");
+      if (cashOv && cashOv.style.display === "flex") {
+        closePayCashModal();
+        return;
+      }
       var salesOv = document.getElementById("dg-ws-sales-orders-overlay");
       if (salesOv && salesOv.style.display === "flex") {
         showSalesOrdersOverlay(false);

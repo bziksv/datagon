@@ -148,6 +148,126 @@ function mapVacationRow(row) {
     };
 }
 
+const PAYROLL_CASH_KINDS = new Set(['advance', 'remainder']);
+
+function parsePayrollCashAmount(raw) {
+    const n = Number(String(raw == null ? '' : raw).replace(/\s/g, '').replace(',', '.'));
+    if (!Number.isFinite(n) || n === 0) return null;
+    return Math.round(n * 100) / 100;
+}
+
+function emptyPayrollCashPack() {
+    return { advances: [], remainders: [], advance_sum: 0, remainder_sum: 0 };
+}
+
+async function loadPayrollCashMap(db, periodYm, employeeIds) {
+    const map = new Map();
+    const ids = (employeeIds || []).map((id) => Number(id)).filter((id) => id > 0);
+    if (!ids.length) return map;
+    const [rows] = await db.query(
+        `SELECT id, employee_id, kind, amount, note, origin, origin_ym,
+                DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') AS created_at
+           FROM ws_payroll_cash
+          WHERE period_ym = ? AND employee_id IN (?)
+          ORDER BY id DESC`,
+        [periodYm, ids]
+    );
+    for (const r of rows || []) {
+        const eid = Number(r.employee_id);
+        if (!map.has(eid)) map.set(eid, emptyPayrollCashPack());
+        const pack = map.get(eid);
+        const line = {
+            id: Number(r.id),
+            kind: String(r.kind || ''),
+            amount: Number(r.amount) || 0,
+            note: r.note || '',
+            carry: String(r.origin || '') === 'carry',
+            carry_from: r.origin_ym || null,
+            created_at: r.created_at || null,
+        };
+        if (line.kind === 'advance') {
+            pack.advances.push(line);
+            pack.advance_sum = Math.round((pack.advance_sum + line.amount) * 100) / 100;
+        } else if (line.kind === 'remainder') {
+            pack.remainders.push(line);
+            pack.remainder_sum = Math.round((pack.remainder_sum + line.amount) * 100) / 100;
+        }
+    }
+    return map;
+}
+
+function nextPeriodYm(ym) {
+    const [ys, ms] = String(ym || '').split('-');
+    const y = Number(ys);
+    const m = Number(ms);
+    if (!y || m < 1 || m > 12) return null;
+    if (m === 12) return `${y + 1}-01`;
+    return `${y}-${String(m + 1).padStart(2, '0')}`;
+}
+
+function periodYmLabel(ym) {
+    const names = [
+        '',
+        'января',
+        'февраля',
+        'марта',
+        'апреля',
+        'мая',
+        'июня',
+        'июля',
+        'августа',
+        'сентября',
+        'октября',
+        'ноября',
+        'декабря',
+    ];
+    const [ys, ms] = String(ym || '').split('-');
+    const m = Number(ms);
+    return names[m] ? `${names[m]} ${ys}` : String(ym || '');
+}
+
+/** Отрицательный долг месяца → аванс следующего месяца (переплата). */
+async function syncOverpayCarries(db, periodYm, items, actorId) {
+    const nextYm = nextPeriodYm(periodYm);
+    const list = (items || []).filter((it) => it && Number(it.employeeId) > 0);
+    if (!nextYm || !list.length) return;
+    const ids = list.map((it) => Number(it.employeeId));
+    const [existing] = await db.query(
+        `SELECT id, employee_id, amount
+           FROM ws_payroll_cash
+          WHERE period_ym = ? AND kind = 'advance' AND origin = 'carry' AND origin_ym = ?
+            AND employee_id IN (?)`,
+        [nextYm, periodYm, ids]
+    );
+    const byEmp = new Map((existing || []).map((r) => [Number(r.employee_id), r]));
+    const note = `Переплата с ${periodYmLabel(periodYm)}`;
+    const now = calc.moscowNowSql();
+    for (const it of list) {
+        const employeeId = Number(it.employeeId);
+        const debt = Number(it.debt) || 0;
+        const amount = debt < -0.004 ? Math.round(-debt * 100) / 100 : 0;
+        const row = byEmp.get(employeeId);
+        if (!(amount > 0)) {
+            if (row) await db.query('DELETE FROM ws_payroll_cash WHERE id = ?', [row.id]);
+            continue;
+        }
+        if (row) {
+            if (Math.abs(Number(row.amount) - amount) < 0.005) continue;
+            await db.query(
+                'UPDATE ws_payroll_cash SET amount = ?, note = ?, updated_at = ? WHERE id = ?',
+                [amount, note, now, row.id]
+            );
+            continue;
+        }
+        await db.query(
+            `INSERT INTO ws_payroll_cash
+                (employee_id, period_ym, kind, amount, note, origin, origin_ym, created_by, created_at)
+             VALUES (?, ?, 'advance', ?, ?, 'carry', ?, ?, ?)`,
+            [employeeId, nextYm, amount, note, periodYm, actorId || null, now]
+        );
+    }
+}
+
 async function writeAudit(db, req, row) {
     const a = actorOf(req);
     await db.query(
@@ -2130,6 +2250,7 @@ function createWorkScheduleRouter(db) {
     router.get('/sheet', async (req, res) => {
         const a = actorOf(req);
         if (!isAccounting(a)) return res.status(403).json({ success: false, error: 'forbidden' });
+        await ensureSchema(db);
         const ym = String(req.query.month || calc.moscowYmd().slice(0, 7));
         const deptId = req.query.department_id ? Number(req.query.department_id) : null;
         const orgId = req.query.organization_id ? Number(req.query.organization_id) : null;
@@ -2381,8 +2502,33 @@ function createWorkScheduleRouter(db) {
                 total_planned: totalPlanned,
                 worked_days: days,
                 norm_days: normDays,
+                advances: [],
+                remainders: [],
+                advance_sum: 0,
+                remainder_sum: 0,
+                debt: totalAccrued,
             });
         }
+        const cashMap = await loadPayrollCashMap(
+            db,
+            ym,
+            employeesOut.map((e) => e.id)
+        );
+        for (const emp of employeesOut) {
+            const pack = cashMap.get(emp.id);
+            if (!pack) continue;
+            emp.advances = pack.advances;
+            emp.remainders = pack.remainders;
+            emp.advance_sum = pack.advance_sum;
+            emp.remainder_sum = pack.remainder_sum;
+            emp.debt = Math.round((Number(emp.total_accrued) - pack.advance_sum - pack.remainder_sum) * 100) / 100;
+        }
+        await syncOverpayCarries(
+            db,
+            ym,
+            employeesOut.map((emp) => ({ employeeId: emp.id, debt: emp.debt })),
+            a.id
+        );
         const calendar = await rfCalendar.getMonthCalendarMap(db, ym);
         res.json({
             success: true,
@@ -2571,6 +2717,99 @@ function createWorkScheduleRouter(db) {
             premium_manual: premiumManual,
             premium_source: premiumSource,
         });
+    });
+
+    /** Аванс / остаток табеля: несколько сумм с комментарием за месяц. */
+    router.post('/sheet/payouts', async (req, res) => {
+        const a = actorOf(req);
+        if (!isAccounting(a)) return res.status(403).json({ success: false, error: 'forbidden' });
+        await ensureSchema(db);
+        const b = req.body || {};
+        const employeeId = Number(b.employee_id);
+        const periodYm = String(b.period_ym || calc.moscowYmd().slice(0, 7));
+        const kind = String(b.kind || '');
+        if (!employeeId || !/^\d{4}-\d{2}$/.test(periodYm) || !PAYROLL_CASH_KINDS.has(kind)) {
+            return res.status(400).json({ success: false, error: 'bad params' });
+        }
+        const amount = parsePayrollCashAmount(b.amount);
+        if (amount == null) return res.status(400).json({ success: false, error: 'Сумма не может быть 0' });
+        const note = String(b.note || '').trim().slice(0, 500);
+        const emp = await getEmployeeById(db, employeeId);
+        if (!emp) return res.status(404).json({ success: false, error: 'employee not found' });
+        const now = calc.moscowNowSql();
+        const [ins] = await db.query(
+            `INSERT INTO ws_payroll_cash (employee_id, period_ym, kind, amount, note, created_by, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [employeeId, periodYm, kind, amount, note || null, a.id || null, now]
+        );
+        await writeAudit(db, req, {
+            entity_type: 'payroll',
+            entity_id: `${employeeId}:${periodYm}`,
+            action: kind === 'advance' ? 'payout_advance_add' : 'payout_remainder_add',
+            field_name: kind,
+            old_value: null,
+            new_value: `${amount}${note ? ' · ' + note : ''}`,
+        });
+        res.json({ success: true, id: ins.insertId });
+    });
+
+    router.patch('/sheet/payouts/:id', async (req, res) => {
+        const a = actorOf(req);
+        if (!isAccounting(a)) return res.status(403).json({ success: false, error: 'forbidden' });
+        const id = Number(req.params.id);
+        if (!id) return res.status(400).json({ success: false, error: 'bad id' });
+        const [rows] = await db.query(`SELECT * FROM ws_payroll_cash WHERE id=? LIMIT 1`, [id]);
+        const row = rows && rows[0];
+        if (!row) return res.status(404).json({ success: false, error: 'not found' });
+        if (String(row.origin || '') === 'carry') {
+            return res.status(400).json({
+                success: false,
+                error: 'Это переплата с прошлого месяца. Она меняется вместе с долгом того месяца.',
+            });
+        }
+        const b = req.body || {};
+        const amount = parsePayrollCashAmount(b.amount);
+        if (amount == null) return res.status(400).json({ success: false, error: 'Сумма не может быть 0' });
+        const note = String(b.note != null ? b.note : row.note || '').trim().slice(0, 500);
+        await db.query(
+            `UPDATE ws_payroll_cash SET amount=?, note=?, updated_at=? WHERE id=?`,
+            [amount, note || null, calc.moscowNowSql(), id]
+        );
+        await writeAudit(db, req, {
+            entity_type: 'payroll',
+            entity_id: `${row.employee_id}:${row.period_ym}`,
+            action: row.kind === 'advance' ? 'payout_advance_edit' : 'payout_remainder_edit',
+            field_name: row.kind,
+            old_value: `${row.amount}${row.note ? ' · ' + row.note : ''}`,
+            new_value: `${amount}${note ? ' · ' + note : ''}`,
+        });
+        res.json({ success: true, id });
+    });
+
+    router.delete('/sheet/payouts/:id', async (req, res) => {
+        const a = actorOf(req);
+        if (!isAccounting(a)) return res.status(403).json({ success: false, error: 'forbidden' });
+        const id = Number(req.params.id);
+        if (!id) return res.status(400).json({ success: false, error: 'bad id' });
+        const [rows] = await db.query(`SELECT * FROM ws_payroll_cash WHERE id=? LIMIT 1`, [id]);
+        const row = rows && rows[0];
+        if (!row) return res.status(404).json({ success: false, error: 'not found' });
+        if (String(row.origin || '') === 'carry') {
+            return res.status(400).json({
+                success: false,
+                error: 'Это переплата с прошлого месяца. Она меняется вместе с долгом того месяца.',
+            });
+        }
+        await db.query(`DELETE FROM ws_payroll_cash WHERE id=?`, [id]);
+        await writeAudit(db, req, {
+            entity_type: 'payroll',
+            entity_id: `${row.employee_id}:${row.period_ym}`,
+            action: row.kind === 'advance' ? 'payout_advance_delete' : 'payout_remainder_delete',
+            field_name: row.kind,
+            old_value: `${row.amount}${row.note ? ' · ' + row.note : ''}`,
+            new_value: null,
+        });
+        res.json({ success: true, id });
     });
 
     async function applySheetCellEdit(dbConn, req, a, { employeeId, workDate, type, rate, hours }) {

@@ -633,7 +633,8 @@ async function fetchMonthAggregates(db, year, managerIds) {
                 amount_incl_stock,
                 vat,
                 delivery_to_us,
-                diff
+                diff,
+                status
            FROM dg_manager_sales_rows
           WHERE year = ?
             AND archived_at IS NULL
@@ -642,6 +643,7 @@ async function fetchMonthAggregates(db, year, managerIds) {
         [year].concat(ids)
     );
     (rows || []).forEach((r) => {
+        if (String(r.status || '').trim() === 'Возврат средств') return;
         const mid = Number(r.mid);
         const m = Number(r.m);
         if (!Number.isFinite(mid) || !m || m < 1 || m > 12) return;
