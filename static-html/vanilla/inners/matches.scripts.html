@@ -2035,12 +2035,10 @@
         }
         if (!d || typeof d !== "object") return;
         var box = document.createElement("div");
-        box.className = "small text-muted mt-1";
-        box.style.whiteSpace = "normal";
-        box.style.lineHeight = "1.25";
+        box.className = "dg-mw";
         if (d.ambiguous) {
           var amb = document.createElement("span");
-          amb.className = "badge bg-warning text-dark me-1";
+          amb.className = "badge bg-warning text-dark dg-mw-amb";
           amb.textContent = "спорно";
           if (d.alt && d.alt.name) {
             amb.title =
@@ -2053,21 +2051,44 @@
           }
           box.appendChild(amb);
         }
-        var parts = [];
-        var matched = Array.isArray(d.matched) ? d.matched : [];
-        if (matched.length) {
-          parts.push(
-            "совпало: " +
-              matched
-                .map(function (p) {
-                  return p[0] === p[1] ? p[0] : p[0] + "≈" + p[1];
-                })
-                .join(", ")
-          );
+        var HOW_TITLE = {
+          ending: "другое окончание",
+          translit: "латиница ↔ кириллица",
+          synonym: "синоним (выучен на ваших парах)"
+        };
+        function addGroup(label, kind, items) {
+          if (!items.length) return;
+          var row = document.createElement("div");
+          row.className = "dg-mw-row";
+          var lab = document.createElement("span");
+          lab.className = "dg-mw-label";
+          lab.textContent = label;
+          row.appendChild(lab);
+          items.forEach(function (it) {
+            var chip = document.createElement("span");
+            chip.className = "dg-mw-chip dg-mw-" + kind;
+            chip.textContent = it.text;
+            if (it.title) chip.title = it.title;
+            row.appendChild(chip);
+          });
+          box.appendChild(row);
         }
-        if (Array.isArray(d.miss_comp) && d.miss_comp.length) parts.push("нет у нас: " + d.miss_comp.join(", "));
-        if (Array.isArray(d.miss_my) && d.miss_my.length) parts.push("нет у конкурента: " + d.miss_my.join(", "));
-        if (parts.length) box.appendChild(document.createTextNode(parts.join(" · ")));
+        var matched = Array.isArray(d.matched) ? d.matched : [];
+        addGroup(
+          "совпало",
+          "ok",
+          matched.map(function (p) {
+            if (p[0] === p[1]) return { text: p[0] };
+            return { text: p[0] + " ≈ " + p[1], title: HOW_TITLE[p[2]] || "" };
+          })
+        );
+        var toItems = function (arr) {
+          return (Array.isArray(arr) ? arr : []).map(function (w) {
+            return { text: w };
+          });
+        };
+        addGroup("нет у конкурента", "miss", toItems(d.miss_my));
+        addGroup("нет у нас", "extra", toItems(d.miss_comp));
         if (box.childNodes.length) td.appendChild(box);
       }
 
