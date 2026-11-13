@@ -1803,22 +1803,7 @@
                     <option value="sku_v2">3. По SKU v2 — очистка, составные, артикул в названии</option>
                   </select>
                 </div>
-                <div class="col-md-1" data-dg-matches-launch-field="batch_size">
-                  <label class="form-label mb-1 small text-uppercase text-muted" style="letter-spacing: 0.04em" for="dg-matches-batch-size">Пакет</label>
-                  <input type="number" class="form-control" id="dg-matches-batch-size" min="10" value="200" title="Размер пакета" />
-                </div>
-                <div class="col-md-1" data-dg-matches-launch-field="micro_pause">
-                  <label class="form-label mb-1 small text-uppercase text-muted" style="letter-spacing: 0.04em" for="dg-matches-micro-pause">Микро, мс</label>
-                  <input type="number" class="form-control" id="dg-matches-micro-pause" min="0" value="0" title="Микропауза, мс. 0 — быстрее на больших объёмах." />
-                </div>
-                <div class="col-md-1" data-dg-matches-launch-field="batch_pause">
-                  <label class="form-label mb-1 small text-uppercase text-muted" style="letter-spacing: 0.04em" for="dg-matches-batch-pause">Пауза, мс</label>
-                  <input type="number" class="form-control" id="dg-matches-batch-pause" min="0" value="0" title="Пауза между пакетами (мс). 0 — быстрее; большие значения сильно удлиняют прогон." />
-                </div>
               </div>
-              <p class="small text-muted mb-0 mt-1 lh-sm" style="font-size: 0.8rem">
-                Время только на паузы между пакетами растёт примерно как <strong>(число пар товар–конкурент / пакет) × пауза</strong> (плюс SQL и логи). При двух конкурентах и десятках тысяч товаров пауза <strong>1000&nbsp;мс</strong> даёт уже <strong>минуты</strong> ожидания без учёта БД; для ускорения используйте <strong>0–200&nbsp;мс</strong>, если нагрузка на MySQL допустима.
-              </p>
               <div id="dg-matches-mode-hint" class="d-none mt-2">
                 <div class="rounded-3 border shadow-sm bg-white overflow-hidden">
                   <div class="px-3 py-2 border-bottom bg-light small fw-semibold text-body">Описание режимов сопоставления</div>
@@ -5819,9 +5804,9 @@
           competitorIds: state.competitorIds.map(Number),
           mode: document.getElementById("dg-matches-search-mode").value,
           productIds: state.selectedProductIds,
-          batchSize: Number(document.getElementById("dg-matches-batch-size").value || 200),
-          microPauseMs: Number(document.getElementById("dg-matches-micro-pause").value || 0),
-          batchPauseMs: Number(document.getElementById("dg-matches-batch-pause").value || 0),
+          batchSize: 200,
+          microPauseMs: 0,
+          batchPauseMs: 0,
         });
       }
 
@@ -5834,9 +5819,9 @@
           competitorIds: state.competitorIds.map(Number),
           mode: document.getElementById("dg-matches-search-mode").value,
           productSearch: String(document.getElementById("dg-matches-product-search").value || "").trim(),
-          batchSize: Number(document.getElementById("dg-matches-batch-size").value || 200),
-          microPauseMs: Number(document.getElementById("dg-matches-micro-pause").value || 0),
-          batchPauseMs: Number(document.getElementById("dg-matches-batch-pause").value || 0),
+          batchSize: 200,
+          microPauseMs: 0,
+          batchPauseMs: 0,
         });
       }
 
@@ -5855,9 +5840,9 @@
             competitorIds: state.competitorIds.map(Number),
             mode: document.getElementById("dg-matches-search-mode").value,
             productSearch: String(document.getElementById("dg-matches-product-search").value || "").trim(),
-            batchSize: Number(document.getElementById("dg-matches-batch-size").value || 200),
-            microPauseMs: Number(document.getElementById("dg-matches-micro-pause").value || 0),
-            batchPauseMs: Number(document.getElementById("dg-matches-batch-pause").value || 0),
+            batchSize: 200,
+            microPauseMs: 0,
+            batchPauseMs: 0,
           }),
         })
           .then(function (r) {
@@ -6642,9 +6627,6 @@
               { key: "smart", title: "Умный поиск", hint: "" },
               { key: "my_site", title: "Мой сайт (запуск)", hint: "Таблица товаров и задача; не задаёт сайт списка совпадений." },
               { key: "search_mode", title: "Режим сопоставления", hint: "" },
-              { key: "batch_size", title: "Размер пакета", hint: "" },
-              { key: "micro_pause", title: "Микропауза", hint: "" },
-              { key: "batch_pause", title: "Пауза между пакетами", hint: "" },
             ],
           },
           {
