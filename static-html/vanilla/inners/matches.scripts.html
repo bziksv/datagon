@@ -416,64 +416,29 @@
           buildProductSearchUrl(domain, row.mp_sku || "", row.mp_name || "")
         );
       }
-      function tryOpenMatchesTab(url) {
-        var href = String(url || "").trim();
-        if (!href) return null;
-        var w = null;
-        try {
-          w = window.open(href, "_blank");
-        } catch (eOpen) {
-          w = null;
-        }
-        if (w) {
-          try {
-            w.opener = null;
-          } catch (eOpener) {}
-        }
-        return w;
-      }
-
       /**
-       * «Оба» — настоящая <a target=_blank> на наш товар (Opera всегда пускает
-       * переход по ссылке) + на pointerdown window.open(конкурент). Два жеста:
-       * pointerdown и click — в Chromium/Opera обычно открываются обе вкладки.
-       * Нельзя два window.open подряд: Opera режет второй молча.
+       * «Оба» ведёт на /matches-open-pair.html — одна вкладка всегда открывается.
+       * Там: window.open(конкурент) + location → наш товар (location Opera не режет).
+       * Если авто-открытие конкурента сработало — обе сразу; иначе кнопка «Открыть обе».
        */
       function createOpenPairAnchor(myUrl, compUrl, className) {
         var a = String(myUrl || "").trim();
         var b = String(compUrl || "").trim();
         if (!a || !b) return null;
         var el = document.createElement("a");
-        el.href = a;
+        var q = new URLSearchParams();
+        q.set("my", a);
+        q.set("comp", b);
+        el.href = "/matches-open-pair.html?" + q.toString();
         el.target = "_blank";
         el.rel = "noopener noreferrer";
         el.className = className || "btn btn-sm btn-outline-secondary";
         el.setAttribute("data-dg-no-activity", "1");
-        el.setAttribute("data-dg-tooltip", "Открыть наш товар и конкурента в двух вкладках");
+        el.setAttribute(
+          "data-dg-tooltip",
+          "Открыть наш товар и конкурента (через служебную вкладку — так Opera не режет вторую)"
+        );
         el.innerHTML = '<i class="pe-7s-browser me-1"></i>Оба';
-        var openedComp = false;
-        el.addEventListener("pointerdown", function (ev) {
-          if (ev.pointerType === "mouse" && ev.button !== 0) return;
-          openedComp = false;
-          var w = tryOpenMatchesTab(b);
-          openedComp = !!(w && !w.closed);
-        });
-        el.addEventListener("click", function () {
-          /* Не preventDefault: браузер сам откроет href (наш товар) новой вкладкой.
-             Если конкурент на pointerdown не открылся — ещё одна попытка. */
-          if (!openedComp) {
-            var w2 = tryOpenMatchesTab(b);
-            if (!(w2 && !w2.closed) && window.DatagonNotify && window.DatagonNotify.toast) {
-              window.DatagonNotify.toast({
-                type: "warning",
-                duration: 12000,
-                message:
-                  "Вкладка конкурента заблокирована браузером. В адресной строке: значок блокировки окон → Разрешить для p.datagon.ru — после этого «Оба» откроет сразу две вкладки.",
-              });
-            }
-          }
-          openedComp = false;
-        });
         return el;
       }
 

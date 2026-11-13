@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Открытие пары — Датагон</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        background: #f0f2f5;
+        color: #343a40;
+      }
+      .box {
+        width: min(440px, calc(100% - 2rem));
+        padding: 1.25rem 1.4rem;
+        background: #fff;
+        border-radius: 0.5rem;
+        box-shadow: 0 1px 4px rgba(15, 23, 42, 0.1);
+        border: 1px solid #e6e9ee;
+      }
+      .box h1 {
+        margin: 0 0 0.5rem;
+        font-size: 1.05rem;
+      }
+      .box p {
+        margin: 0 0 1rem;
+        color: #6c757d;
+        font-size: 0.9rem;
+      }
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        padding: 0.7rem 1rem;
+        border: 0;
+        border-radius: 0.35rem;
+        background: #3f6ad8;
+        color: #fff;
+        font: inherit;
+        font-weight: 600;
+        cursor: pointer;
+        text-decoration: none;
+      }
+      .btn:hover {
+        background: #2955c8;
+      }
+      .links {
+        margin-top: 0.85rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
+      }
+      .links a {
+        color: #3f6ad8;
+        font-size: 0.88rem;
+      }
+      .muted {
+        color: #adb5bd;
+        font-size: 0.8rem;
+        margin-top: 0.75rem;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="box" id="box">
+      <h1>Открываем карточки…</h1>
+      <p id="msg">Подождите секунду.</p>
+    </div>
+    <script>
+      (function () {
+        function safeHttpUrl(raw) {
+          var s = String(raw || "").trim();
+          if (!s) return "";
+          try {
+            var u = new URL(s, window.location.href);
+            if (u.protocol !== "http:" && u.protocol !== "https:") return "";
+            return u.href;
+          } catch (e) {
+            return "";
+          }
+        }
+
+        var params = new URLSearchParams(window.location.search);
+        var my = safeHttpUrl(params.get("my"));
+        var comp = safeHttpUrl(params.get("comp"));
+        var box = document.getElementById("box");
+        var msg = document.getElementById("msg");
+
+        if (!my && !comp) {
+          if (msg) msg.textContent = "Нет ссылок для открытия.";
+          return;
+        }
+
+        function openComp() {
+          if (!comp) return null;
+          var w = null;
+          try {
+            w = window.open(comp, "_blank");
+          } catch (e) {
+            w = null;
+          }
+          if (w) {
+            try {
+              w.opener = null;
+            } catch (e2) {}
+          }
+          return w;
+        }
+
+        function goMy() {
+          if (my) {
+            window.location.replace(my);
+            return;
+          }
+          if (comp) window.location.replace(comp);
+        }
+
+        /**
+         * Один жест пользователя: window.open(конкурент) + эта вкладка → наш товар.
+         * location.replace не считается «всплывающим окном» — Opera его не режет.
+         */
+        function openBothFromGesture() {
+          openComp();
+          goMy();
+        }
+
+        /* Попытка сразу после перехода с «Оба» (иногда жест ещё действует). */
+        var wAuto = openComp();
+        if (wAuto && my) {
+          goMy();
+          return;
+        }
+
+        if (!box) return;
+        box.innerHTML =
+          "<h1>Открыть обе карточки</h1>" +
+          "<p>Браузер блокирует вторую вкладку с одного клика. Нажмите кнопку ниже — откроются конкурент и наш товар.</p>" +
+          '<button type="button" class="btn" id="go">Открыть обе</button>' +
+          '<div class="links">' +
+          (my
+            ? '<a href="' +
+              my.replace(/"/g, "&quot;") +
+              '" target="_blank" rel="noopener noreferrer">Только наш товар</a>'
+            : "") +
+          (comp
+            ? '<a href="' +
+              comp.replace(/"/g, "&quot;") +
+              '" target="_blank" rel="noopener noreferrer">Только конкурент</a>'
+            : "") +
+          "</div>" +
+          '<p class="muted">Чтобы «Оба» на сопоставлении открывало сразу две вкладки без этой страницы: в Opera разрешите всплывающие окна для p.datagon.ru.</p>';
+
+        var go = document.getElementById("go");
+        if (go) {
+          go.focus();
+          go.addEventListener("click", function (ev) {
+            ev.preventDefault();
+            openBothFromGesture();
+          });
+        }
+      })();
+    </script>
+  </body>
+</html>
