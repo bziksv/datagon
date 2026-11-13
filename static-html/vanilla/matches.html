@@ -1428,7 +1428,7 @@
                 <li><strong>Наши товары.</strong> Таблица с галочками. Нужна только для кнопки «Запустить по выбранным товарам». Для полного прогона её не трогают.</li>
                 <li><strong>Совпадения.</strong> Найденные пары: подтвердить или отклонить.</li>
                 <li><strong>Не нашли пару.</strong> Промах прошлого прогона. Следующий запуск проверяет эти товары снова и переносит строку в «Совпадения», если пара появилась.</li>
-                <li><strong>Архив.</strong> Единственный список, который авто больше не проверяет. Товар попадает сюда только кнопкой «В архив».</li>
+                <li><strong>Архив.</strong> Единственный список, который авто больше не проверяет. Товар попадает сюда кнопками «В архив» или «Товар для маркетов» (колонка «Тип»).</li>
               </ol>
             </div>
           </div>
@@ -1452,7 +1452,7 @@
             </div>
             <div id="dg-matches-workflow-panel" class="d-none card-body pt-3 border-top bg-white">
               <p class="text-muted small mb-4 lh-base">
-                Сначала прогон <strong>по SKU</strong>. Промах попадает в «Не нашли пару» и на следующем запуске проверяется снова. Из авто товар выпадает только после «В архив» или если в «Совпадениях» нажали «Отклонить».
+                Сначала прогон <strong>по SKU</strong>. Промах попадает в «Не нашли пару» и на следующем запуске проверяется снова. Из авто товар выпадает только после «В архив» / «Товар для маркетов» или если в «Совпадениях» нажали «Отклонить».
               </p>
               <div class="alert alert-light border small mb-4 mb-md-3" role="note">
                 <div class="fw-semibold text-body mb-2">Что подставляется при открытии страницы</div>
@@ -1539,7 +1539,7 @@
                     <strong>«Вернуть в авто»</strong> у «отклонили» снова включает товар в авто. У «не нашло» следующий прогон и так проверяет строку; кнопка только убирает её из списка до нового промаха.
                   </p>
                   <p class="mb-0">
-                    Кнопка <strong>«В архив»</strong> переносит ситуацию на шаг&nbsp;4, если вы осознанно отказываетесь от ручной привязки после разбора.
+                    Кнопки <strong>«В архив»</strong> и <strong>«Товар для маркетов»</strong> переносят ситуацию на шаг&nbsp;4 (разный тип в колонке «Тип»).
                   </p>
                 </div>
               </div>
@@ -1553,7 +1553,7 @@
                 </div>
                 <div id="dg-matches-workflow-t4-body" class="small text-body-secondary lh-lg px-2 pb-3 pt-2">
                   <p class="mb-0">
-                    Сюда товар попадает только кнопкой «В архив». Это единственный список, который автопрогон пропускает. Удаление возвращает товар в обычный запуск.
+                    Сюда товар попадает кнопками «В архив» или «Товар для маркетов». Это единственный список, который автопрогон пропускает. Удаление возвращает товар в обычный запуск. Фильтр «Как отправили» и колонка «Тип» показывают Архив или Маркеты.
                   </p>
                 </div>
               </div>
@@ -2122,7 +2122,7 @@
                 Здесь товары, по которым пара ещё не подтверждена.
                 <strong>«Авто не нашло пару»</strong> — следующий запуск проверит их снова и перенесёт в «Совпадения», если артикул или название совпадут.
                 <strong>«Авто-совпадение вы отклонили»</strong> — эту пару авто больше не предлагает, пока не нажмёте «Вернуть в авто».
-                Чтобы авто больше не трогал товар, нажмите <strong>«В архив»</strong>.
+                Чтобы авто больше не трогал товар, нажмите <strong>«В архив»</strong> или <strong>«Товар для маркетов»</strong> (оба переносят на шаг&nbsp;4 с разным типом).
               </p>
               <p class="small text-secondary mb-2">
                 Фильтры <strong>«Мой сайт (список)»</strong> и <strong>«Конкурент»</strong> берутся из блока «Совпадения» выше (при смене нажмите «Применить»). Селект
@@ -2196,7 +2196,8 @@
                 <span class="text-body-secondary">«Найти по конкуренту»</span> — поиск в прайсе под строкой, ссылки «Мой товар» / «Конкурент» / «Оба», выбор результата и «Подтвердить вручную» в том же блоке;
                 <span class="text-body-secondary">«Вернуть в авто»</span> — у «отклонили» снова включает товар в авто; у «не нашло» только убирает строку из списка (следующий прогон и так её проверит);
                 <span class="text-body-secondary">«Вернуть все в авто»</span> / <span class="text-body-secondary">«В архив все»</span> (у фильтра «Причина») — то же для <em>всех</em> строк по текущим фильтрам (с подтверждением);
-                <span class="text-body-secondary">«В архив»</span> — отказ от ручной привязки, запись уходит в архив (шаг&nbsp;4).
+                <span class="text-body-secondary">«В архив»</span> — отказ от ручной привязки, тип «Архив» на шаге&nbsp;4;
+                <span class="text-body-secondary">«Товар для маркетов»</span> — то же в архив, но с типом «Маркеты».
               </p>
               <p
                 class="small text-body-secondary mb-2 fw-semibold lh-sm"
@@ -2218,7 +2219,7 @@
                       <th>Конкурент</th>
                       <th>Наш товар</th>
                       <th>Обновлено</th>
-                      <th style="min-width: 300px">Действия</th>
+                      <th style="min-width: 360px">Действия</th>
                     </tr>
                   </thead>
                   <tbody id="dg-manual-queue-tbody">
@@ -2251,12 +2252,13 @@
             <div class="card-body">
               <div id="dg-matches-step4-body">
               <p class="small text-muted mb-2">
-                Сюда товар попадает только кнопкой <strong>«В архив»</strong>. Это единственный список, который автопрогон пропускает.
-                «Удалить» возвращает товар в обычный запуск. Фильтры «Мой сайт» / «Конкурент» — из блока «Совпадения» выше.
-                Родительские категории — корни каталога нашего сайта. Можно отметить несколько, в списке есть поиск. Таблица обновляется по «Применить».
+                Сюда товар попадает кнопками <strong>«В архив»</strong> (тип «Архив») или <strong>«Товар для маркетов»</strong> (тип «Маркеты») на шаге&nbsp;3.
+                Это единственный список, который автопрогон пропускает. «Удалить» возвращает товар в обычный запуск.
+                Фильтры «Мой сайт» / «Конкурент» — из блока «Совпадения» выше.
+                Родительские категории — корни каталога нашего сайта. Фильтр «Как отправили» — по колонке «Тип». Таблица обновляется по «Применить».
               </p>
               <div class="row g-2 align-items-end mb-2">
-                <div class="col-12 col-lg-4">
+                <div class="col-12 col-lg-3">
                   <label class="form-label mb-0 small text-uppercase text-muted" for="dg-manual-archive-search">Поиск в архиве</label>
                   <input
                     type="text"
@@ -2266,7 +2268,7 @@
                     autocomplete="off"
                   />
                 </div>
-                <div class="col-12 col-lg-5">
+                <div class="col-12 col-lg-4">
                   <label class="form-label mb-0 small text-uppercase text-muted" for="dg-manual-archive-category-btn">Родительские категории</label>
                   <div class="dropdown w-100">
                     <button
@@ -2295,13 +2297,25 @@
                     </div>
                   </div>
                 </div>
-                <div class="col-12 col-lg-3 d-flex flex-wrap gap-2 align-items-end">
+                <div class="col-12 col-sm-6 col-lg-3">
+                  <label class="form-label mb-0 small text-uppercase text-muted" for="dg-manual-archive-kind">Как отправили</label>
+                  <select
+                    class="form-select form-select-sm"
+                    id="dg-manual-archive-kind"
+                    title="Фильтр по типу переноса: обычный архив или товар для маркетов"
+                  >
+                    <option value="">Все</option>
+                    <option value="archive">Архив</option>
+                    <option value="markets">Маркеты</option>
+                  </select>
+                </div>
+                <div class="col-12 col-sm-6 col-lg-2 d-flex flex-wrap gap-2 align-items-end">
                   <button
                     type="button"
                     class="btn btn-sm btn-primary"
                     id="dg-manual-archive-refresh"
                     data-dg-notify-start="Применяем фильтры архива…"
-                    data-dg-tooltip="Применить поиск и родительскую категорию к архиву. Enter в поле поиска — то же действие."
+                    data-dg-tooltip="Применить поиск, тип и родительскую категорию к архиву. Enter в поле поиска — то же действие."
                   >
                     <i class="pe-7s-search me-1"></i>Применить
                   </button>
@@ -2331,18 +2345,24 @@
                 <table id="dg-manual-archive-table" class="table table-sm table-hover table-bordered mb-0">
                   <thead class="table-light">
                     <tr>
+                      <th
+                        style="width: 100px"
+                        title="Как отправили со шага 3: «В архив» → Архив, «Товар для маркетов» → Маркеты."
+                      >
+                        Тип
+                      </th>
                       <th>Конкурент</th>
                       <th>Наш товар</th>
                       <th title="Родительская (корневая) категория каталога нашего сайта. Товар из дочернего раздела попадает к корню — как в фильтре выше.">Категория</th>
                       <th>SKU / название конк. (на момент отказа)</th>
                       <th>Заметка</th>
-                      <th style="width: 200px" title="Пользователь и момент времени, когда строка была перенесена в архив (нажата кнопка «В архив» в блоке ручного сопоставления).">Кто и когда перенёс в архив</th>
+                      <th style="width: 200px" title="Пользователь и момент времени, когда строка была перенесена в архив (нажата кнопка «В архив» или «Товар для маркетов» в блоке ручного сопоставления).">Кто и когда перенёс в архив</th>
                       <th style="width: 120px">Действие</th>
                     </tr>
                   </thead>
                   <tbody id="dg-manual-archive-tbody">
                     <tr>
-                      <td colspan="7" class="text-muted small">Пусто.</td>
+                      <td colspan="8" class="text-muted small">Пусто.</td>
                     </tr>
                   </tbody>
                 </table>
@@ -3085,6 +3105,8 @@
           Array.isArray(state.manualArchiveCategoryIds) ? state.manualArchiveCategoryIds.join(",") : ""
         );
         if (maCats.length) params.set("manual_archive_category", maCats.join(","));
+        var maKind = normalizeManualArchiveKind(state.manualArchiveKind);
+        if (maKind) params.set("manual_archive_kind", maKind);
         var next = params.toString()
           ? window.location.pathname + "?" + params.toString()
           : window.location.pathname;
@@ -3144,6 +3166,8 @@
         manualArchiveLimit: 100,
         manualArchiveTotal: 0,
         manualArchiveCategoryIds: [],
+        /** Шаг 4: фильтр по archive_kind (пусто = все). */
+        manualArchiveKind: "",
       };
 
       var matchesMyProductsSearchDebounceId = null;
@@ -3202,12 +3226,46 @@
           manual_archive_page: Number(p.get("manual_archive_page") || 1),
           manual_archive_limit: Number(p.get("manual_archive_limit") || 100),
           manual_archive_category: String(p.get("manual_archive_category") || "").trim(),
+          manual_archive_kind: String(p.get("manual_archive_kind") || "").trim().toLowerCase(),
         };
       }
 
       function normalizeManualQueueReason(v) {
         var s = String(v || "").trim().toLowerCase();
         return s === "no_match" || s === "rejected" ? s : "";
+      }
+
+      function normalizeManualArchiveKind(v) {
+        var s = String(v || "").trim().toLowerCase();
+        if (s === "markets" || s === "market" || s === "маркеты" || s === "маркет") return "markets";
+        if (s === "archive" || s === "архив") return "archive";
+        return "";
+      }
+
+      function formatMsStockMetaHtml(row) {
+        var posRaw = String((row && row.ms_stock_position) || "").trim();
+        var posLow = posRaw.toLowerCase();
+        var posLabel = posLow === "да" || posLow === "yes" || posLow === "1" ? "Да" : posRaw ? posRaw : "—";
+        var stockNum = row && row.ms_stock != null ? Number(row.ms_stock) : NaN;
+        var stockLabel = Number.isFinite(stockNum) ? formatNumber(stockNum) : "—";
+        return (
+          '<div class="text-muted small mt-1">' +
+          "Складская позиция: <strong class=\"text-body\">" +
+          posLabel +
+          "</strong>" +
+          " · Остаток: <strong class=\"text-body\">" +
+          stockLabel +
+          "</strong>" +
+          "</div>"
+        );
+      }
+
+      function archiveKindBadgeHtml(kind) {
+        var k = normalizeManualArchiveKind(kind) || "archive";
+        if (k === "markets") {
+          return '<span class="badge bg-info text-dark text-wrap text-start" role="status">Маркеты</span>';
+        }
+        return '<span class="badge bg-secondary text-wrap text-start" role="status">Архив</span>';
       }
 
       function scheduleSyncUrl() {
@@ -5784,6 +5842,9 @@
           var mqReasonEl = document.getElementById("dg-manual-queue-reason");
           if (mqReasonEl) mqReasonEl.value = state.manualQueueReason || "";
           state.manualArchiveCategoryIds = parseArchiveCategoryIds(up.manual_archive_category);
+          state.manualArchiveKind = normalizeManualArchiveKind(up.manual_archive_kind);
+          var maKindEl = document.getElementById("dg-manual-archive-kind");
+          if (maKindEl) maKindEl.value = state.manualArchiveKind || "";
           if (Number.isFinite(up.manual_archive_page) && up.manual_archive_page > 0) state.manualArchivePage = up.manual_archive_page;
           if ([50, 100, 200].indexOf(up.manual_archive_limit) !== -1) {
             state.manualArchiveLimit = up.manual_archive_limit;
@@ -6546,7 +6607,8 @@
               "</strong></div><div>" +
               (row.mp_name || "—") +
               "</div>" +
-              mySiteProductCodeHtml(row);
+              mySiteProductCodeHtml(row) +
+              formatMsStockMetaHtml(row);
             var mqUrl = buildManualQueueMyProductUrl(row);
             var mqEdit = buildWebasystEditUrl(
               row.my_site_domain || "",
@@ -6682,41 +6744,84 @@
                   alert(e.message || "Ошибка");
                 });
             });
+            function postManualArchive(archiveKind, notePrompt) {
+              var note = prompt(notePrompt || "Краткая заметка (необязательно):", "") || "";
+              var btn = this;
+              var run = function () {
+                return fetch("/api/matches/manual-match/archive", {
+                  method: "POST",
+                  credentials: "same-origin",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    exclusion_id: row.id,
+                    note: note,
+                    archive_kind: archiveKind || "archive",
+                  }),
+                })
+                  .then(function (r) {
+                    return r.json().then(function (j) {
+                      return { r: r, j: j };
+                    });
+                  })
+                  .then(function (x) {
+                    if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Ошибка");
+                    loadManualQueue();
+                    loadManualArchive();
+                    if (window.DatagonNotify && window.DatagonNotify.toast) {
+                      window.DatagonNotify.toast({
+                        type: "success",
+                        message:
+                          archiveKind === "markets"
+                            ? "Перенесено в архив как товар для маркетов"
+                            : "Перенесено в архив",
+                      });
+                    }
+                  });
+              };
+              if (window.DatagonNotify && window.DatagonNotify.busyRun) {
+                window.DatagonNotify.busyRun(btn, run).catch(function (e) {
+                  alert(e.message || "Ошибка");
+                });
+              } else {
+                run().catch(function (e) {
+                  alert(e.message || "Ошибка");
+                });
+              }
+            }
             var bArch = document.createElement("button");
             bArch.type = "button";
             bArch.className = "btn btn-sm btn-outline-dark text-nowrap";
             bArch.textContent = "В архив";
             bArch.setAttribute(
+              "data-dg-notify-start",
+              "Переносим в архив…"
+            );
+            bArch.setAttribute(
               "data-dg-tooltip",
-              "Отказ от ручной привязки: запись уходит в архив (шаг 4), из очереди исчезает. Позже можно удалить из архива и вернуть товар в авто-сопоставление."
+              "Отказ от ручной привязки: запись уходит в архив (шаг 4) с типом «Архив». Позже можно удалить из архива и вернуть товар в авто-сопоставление."
             );
             bArch.setAttribute("aria-label", bArch.getAttribute("data-dg-tooltip"));
             bArch.addEventListener("click", function () {
-              var note = prompt("Краткая заметка (необязательно):", "") || "";
-              fetch("/api/matches/manual-match/archive", {
-                method: "POST",
-                credentials: "same-origin",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ exclusion_id: row.id, note: note }),
-              })
-                .then(function (r) {
-                  return r.json().then(function (j) {
-                    return { r: r, j: j };
-                  });
-                })
-                .then(function (x) {
-                  if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Ошибка");
-                  loadManualQueue();
-                  loadManualArchive();
-                })
-                .catch(function (e) {
-                  alert(e.message || "Ошибка");
-                });
+              postManualArchive.call(bArch, "archive", "Краткая заметка (необязательно):");
+            });
+            var bMarkets = document.createElement("button");
+            bMarkets.type = "button";
+            bMarkets.className = "btn btn-sm btn-outline-primary text-nowrap";
+            bMarkets.textContent = "Товар для маркетов";
+            bMarkets.setAttribute("data-dg-notify-start", "Переносим в архив как товар для маркетов…");
+            bMarkets.setAttribute(
+              "data-dg-tooltip",
+              "Перенести в архив (шаг 4) с типом «Маркеты». Авто больше не проверяет; в архиве фильтр «Как отправили» покажет такие строки отдельно."
+            );
+            bMarkets.setAttribute("aria-label", bMarkets.getAttribute("data-dg-tooltip"));
+            bMarkets.addEventListener("click", function () {
+              postManualArchive.call(bMarkets, "markets", "Заметка для маркетов (необязательно):");
             });
             wrap.appendChild(bLog);
             wrap.appendChild(bFill);
             wrap.appendChild(bDel);
             wrap.appendChild(bArch);
+            wrap.appendChild(bMarkets);
             tdA.appendChild(wrap);
             tr.appendChild(tdA);
             tb.appendChild(tr);
@@ -6851,7 +6956,7 @@
           if (!listSiteId()) {
             var tr0 = document.createElement("tr");
             var td0 = document.createElement("td");
-            td0.colSpan = 7;
+            td0.colSpan = 8;
             td0.className = "text-muted small";
             td0.textContent = "Выберите «Мой сайт (список)».";
             tr0.appendChild(td0);
@@ -6861,7 +6966,7 @@
           if (!rows || !rows.length) {
             var tr1 = document.createElement("tr");
             var td1 = document.createElement("td");
-            td1.colSpan = 7;
+            td1.colSpan = 8;
             td1.className = "text-muted small";
             td1.textContent = search
               ? "По поиску в архиве ничего не найдено. Очистите поле и нажмите «Применить»."
@@ -6872,6 +6977,10 @@
           }
           rows.forEach(function (row) {
             var tr = document.createElement("tr");
+            var tdKind = document.createElement("td");
+            tdKind.className = "small align-middle";
+            tdKind.innerHTML = archiveKindBadgeHtml(row.archive_kind);
+            tr.appendChild(tdKind);
             var tdC = document.createElement("td");
             tdC.className = "small";
             tdC.textContent =
@@ -6885,7 +6994,8 @@
               "</strong></div><div>" +
               (row.mp_name || "—") +
               "</div>" +
-              mySiteProductCodeHtml(row);
+              mySiteProductCodeHtml(row) +
+              formatMsStockMetaHtml(row);
             appendProductOpenLinks(tdM, buildManualQueueMyProductUrl(row), "", {
               myLabel: "Мой товар"
             });
@@ -7104,6 +7214,11 @@
           var sq = document.getElementById("dg-manual-archive-search");
           var search = sq ? String(sq.value || "").trim() : "";
           if (search) params.set("search", search);
+          var kindEl = document.getElementById("dg-manual-archive-kind");
+          var kindVal = normalizeManualArchiveKind(kindEl ? kindEl.value : state.manualArchiveKind);
+          state.manualArchiveKind = kindVal;
+          if (kindEl) kindEl.value = kindVal || "";
+          if (kindVal) params.set("archive_kind", kindVal);
           var catIds = archiveCategoryIdsFromState();
           if (catIds.length) params.set("parent_category_id", catIds.join(","));
           params.set("limit", String(lim));
@@ -7706,6 +7821,9 @@
           if (bA)
             bA.addEventListener("click", function () {
               state.manualArchiveCategoryIds = readCheckedArchiveCategoryIds();
+              var kindElApply = document.getElementById("dg-manual-archive-kind");
+              state.manualArchiveKind = normalizeManualArchiveKind(kindElApply ? kindElApply.value : "");
+              if (kindElApply) kindElApply.value = state.manualArchiveKind || "";
               state.manualArchivePage = 1;
               syncArchiveCategoryLabel();
               loadManualArchive();

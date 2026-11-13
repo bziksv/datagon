@@ -516,10 +516,12 @@ module.exports = (db, settings) => {
                 competitor_sku VARCHAR(255) NULL,
                 competitor_name VARCHAR(500) NULL,
                 note VARCHAR(500) NULL,
+                archive_kind VARCHAR(16) NOT NULL DEFAULT 'archive',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE KEY uq_match_manual_archive (my_site_id, competitor_site_id, my_product_id),
                 INDEX idx_march_site (my_site_id),
-                INDEX idx_march_comp (competitor_site_id)
+                INDEX idx_march_comp (competitor_site_id),
+                INDEX idx_march_kind (my_site_id, archive_kind)
             )`,
             `CREATE TABLE IF NOT EXISTS match_product_log (
                 id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -539,7 +541,11 @@ module.exports = (db, settings) => {
             } catch (_) {}
         }
         const manualArchiveExtraCols = [
-            { name: 'archived_by', ddl: 'ALTER TABLE match_manual_archive ADD COLUMN archived_by VARCHAR(100) NULL' }
+            { name: 'archived_by', ddl: 'ALTER TABLE match_manual_archive ADD COLUMN archived_by VARCHAR(100) NULL' },
+            {
+                name: 'archive_kind',
+                ddl: "ALTER TABLE match_manual_archive ADD COLUMN archive_kind VARCHAR(16) NOT NULL DEFAULT 'archive'",
+            },
         ];
         for (const c of manualArchiveExtraCols) {
             try {
@@ -555,6 +561,21 @@ module.exports = (db, settings) => {
                 if (!rows.length) await db.query(c.ddl);
             } catch (_) {}
         }
+        try {
+            const [kindIdx] = await db.query(
+                `SELECT 1
+                 FROM information_schema.statistics
+                 WHERE table_schema = DATABASE()
+                   AND table_name = 'match_manual_archive'
+                   AND index_name = 'idx_march_kind'
+                 LIMIT 1`
+            );
+            if (!kindIdx.length) {
+                await db.query(
+                    'ALTER TABLE match_manual_archive ADD INDEX idx_march_kind (my_site_id, archive_kind)'
+                );
+            }
+        } catch (_) {}
         // Архив: одна запись на пару (сайт×конкурент×товар). Дубли схлопываем, затем UNIQUE.
         try {
             await db.query(`
@@ -3244,6 +3265,7 @@ module.exports = (db, settings) => {
             // Сначала страница списка — COUNT не блокирует выдачу строк.
             const [data] = await db.query(q, [...params, limit, offset]);
             await enrichManualQueueDuplicateSkuHints(db, data);
+            await enrichRowsWithMsExportStock(db, data);
 
             let total = offset + (Array.isArray(data) ? data.length : 0);
             let totalApprox = true;
@@ -3273,6 +3295,51 @@ module.exports = (db, settings) => {
             return res.status(500).json({ error: e.message });
         }
     });
+
+    /** Остаток и складская позиция из ms_export (код = cms_product_id / source_id / sku). */
+    async function enrichRowsWithMsExportStock(dbConn, rows) {
+        if (!Array.isArray(rows) || !rows.length) return;
+        const codes = new Set();
+        for (const row of rows) {
+            for (const raw of [row.mp_cms_product_id, row.mp_source_id, row.mp_sku]) {
+                const s = String(raw || '').trim();
+                if (s) codes.add(s.toUpperCase());
+            }
+        }
+        const map = new Map();
+        const list = [...codes];
+        for (let i = 0; i < list.length; i += 400) {
+            const chunk = list.slice(i, i + 400);
+            const [msRows] = await dbConn.query(
+                `SELECT code, stock, stock_position
+                   FROM ms_export
+                  WHERE code IN (${chunk.map(() => '?').join(',')})`,
+                chunk
+            );
+            for (const ms of msRows || []) {
+                map.set(String(ms.code || '').toUpperCase(), ms);
+            }
+        }
+        for (const row of rows) {
+            let hit = null;
+            for (const raw of [row.mp_cms_product_id, row.mp_source_id, row.mp_sku]) {
+                const s = String(raw || '').trim().toUpperCase();
+                if (s && map.has(s)) {
+                    hit = map.get(s);
+                    break;
+                }
+            }
+            const stockNum = hit && hit.stock != null ? Number(hit.stock) : NaN;
+            row.ms_stock = Number.isFinite(stockNum) ? stockNum : null;
+            row.ms_stock_position = hit ? String(hit.stock_position || '').trim() || null : null;
+        }
+    }
+
+    function normalizeArchiveKind(raw) {
+        const v = String(raw || '').trim().toLowerCase();
+        if (v === 'markets' || v === 'market' || v === 'маркеты' || v === 'маркет') return 'markets';
+        return 'archive';
+    }
 
     /**
      * Для строк шага 3: неуникальный артикул + уже подтверждённая пара по тому же SKU
@@ -3486,6 +3553,7 @@ module.exports = (db, settings) => {
             return res.status(400).json({ error: 'my_site_id required' });
         }
         const note = String(body.note || '').trim().slice(0, 500);
+        const archiveKind = normalizeArchiveKind(body.archive_kind || body.kind || 'archive');
         const t0 = Date.now();
         try {
             await ensureMatchLaneTables();
@@ -3509,7 +3577,8 @@ module.exports = (db, settings) => {
                 my_site_id: filters.mySiteId,
                 competitor_site_id: filters.compId,
                 search: filters.search || '',
-                exclusion_reason: filters.reasonFilter || ''
+                exclusion_reason: filters.reasonFilter || '',
+                archive_kind: archiveKind,
             };
             if (!rows.length) {
                 return res.json({
@@ -3529,17 +3598,19 @@ module.exports = (db, settings) => {
                     null,
                     null,
                     note || null,
-                    actor || null
+                    actor || null,
+                    archiveKind,
                 ]);
                 await db.query(
                     `INSERT INTO match_manual_archive
-                     (my_site_id, competitor_site_id, my_product_id, competitor_sku, competitor_name, note, archived_by)
+                     (my_site_id, competitor_site_id, my_product_id, competitor_sku, competitor_name, note, archived_by, archive_kind)
                      VALUES ?
                      ON DUPLICATE KEY UPDATE
                        competitor_sku = COALESCE(VALUES(competitor_sku), competitor_sku),
                        competitor_name = COALESCE(VALUES(competitor_name), competitor_name),
                        note = COALESCE(VALUES(note), note),
-                       archived_by = COALESCE(VALUES(archived_by), archived_by)`,
+                       archived_by = COALESCE(VALUES(archived_by), archived_by),
+                       archive_kind = VALUES(archive_kind)`,
                     [archiveValues]
                 );
                 const ids = chunk.map((r) => Number(r.id)).filter((id) => Number.isFinite(id) && id > 0);
@@ -3560,7 +3631,8 @@ module.exports = (db, settings) => {
                     note: note || null,
                     archived_by: actor || null,
                     bulk_total: rows.length,
-                    reason: row.reason || null
+                    reason: row.reason || null,
+                    archive_kind: archiveKind,
                 }).slice(0, 60000)
             ]);
             if (logValues.length) {
@@ -3680,6 +3752,13 @@ module.exports = (db, settings) => {
             )
         ].slice(0, 40);
         const search = String(req.query.search || '').trim().slice(0, 120);
+        const archiveKindRaw = String(req.query.archive_kind || req.query.kind || '').trim().toLowerCase();
+        const archiveKindFilter =
+            archiveKindRaw === 'markets' || archiveKindRaw === 'market' || archiveKindRaw === 'маркеты'
+                ? 'markets'
+                : archiveKindRaw === 'archive' || archiveKindRaw === 'архив'
+                  ? 'archive'
+                  : '';
         const limit = Math.max(1, Math.min(parseInt(String(req.query.limit || '100'), 10) || 100, 300));
         const offset = Math.max(0, parseInt(String(req.query.offset || '0'), 10) || 0);
         try {
@@ -3696,6 +3775,10 @@ module.exports = (db, settings) => {
             if (Number.isFinite(compId) && compId > 0) {
                 whereExtra += ' AND a.competitor_site_id = ?';
                 p.push(compId);
+            }
+            if (archiveKindFilter) {
+                whereExtra += ' AND COALESCE(a.archive_kind, ?) = ?';
+                p.push('archive', archiveKindFilter);
             }
             if (search) {
                 const v = `%${search}%`;
@@ -3724,7 +3807,9 @@ module.exports = (db, settings) => {
                 }
             }
             const q = `
-                SELECT a.id, a.my_site_id, a.competitor_site_id, a.my_product_id, a.competitor_sku, a.competitor_name, a.note, a.archived_by, a.created_at,
+                SELECT a.id, a.my_site_id, a.competitor_site_id, a.my_product_id, a.competitor_sku, a.competitor_name,
+                       a.note, a.archived_by, a.created_at,
+                       COALESCE(NULLIF(TRIM(a.archive_kind), ''), 'archive') AS archive_kind,
                        mp.sku AS mp_sku, mp.name AS mp_name, mp.source_url AS mp_source_url,
                        mp.source_id AS mp_source_id, mp.cms_product_id AS mp_cms_product_id,
                        ms.domain AS my_site_domain, ms.cms_type AS my_site_cms_type,
@@ -3737,6 +3822,7 @@ module.exports = (db, settings) => {
             const qc = `SELECT COUNT(*) AS total ${fromSql} ${whereExtra}`;
             const [[cntRow]] = await db.query(qc, p);
             const rows = data || [];
+            await enrichRowsWithMsExportStock(db, rows);
             if (!categoryIndex && rows.length) {
                 const pageCmsIds = [
                     ...new Set(
@@ -3772,6 +3858,7 @@ module.exports = (db, settings) => {
                 limit,
                 offset,
                 search: search || '',
+                archive_kind: archiveKindFilter || '',
                 parent_category_id: parentCategoryIds.length ? parentCategoryIds.join(',') : null,
                 parent_category_ids: parentCategoryIds
             });
@@ -4183,6 +4270,7 @@ module.exports = (db, settings) => {
         const note = String(req.body.note || '').trim().slice(0, 500);
         const competitorSku = String(req.body.competitor_sku || '').trim().slice(0, 255);
         const competitorName = String(req.body.competitor_name || '').trim().slice(0, 500);
+        const archiveKind = normalizeArchiveKind(req.body.archive_kind || req.body.kind || 'archive');
         if (!Number.isFinite(exclusionId) || exclusionId < 1) return res.status(400).json({ error: 'exclusion_id обязателен' });
         try {
             await ensureMatchLaneTables();
@@ -4194,13 +4282,15 @@ module.exports = (db, settings) => {
             if (!rows.length) return res.status(404).json({ error: 'Строка очереди не найдена' });
             const e0 = rows[0];
             await db.query(
-                `INSERT INTO match_manual_archive (my_site_id, competitor_site_id, my_product_id, competitor_sku, competitor_name, note, archived_by)
-                 VALUES (?, ?, ?, ?, ?, ?, ?)
+                `INSERT INTO match_manual_archive
+                    (my_site_id, competitor_site_id, my_product_id, competitor_sku, competitor_name, note, archived_by, archive_kind)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                  ON DUPLICATE KEY UPDATE
                    competitor_sku = COALESCE(VALUES(competitor_sku), competitor_sku),
                    competitor_name = COALESCE(VALUES(competitor_name), competitor_name),
                    note = COALESCE(VALUES(note), note),
-                   archived_by = COALESCE(VALUES(archived_by), archived_by)`,
+                   archived_by = COALESCE(VALUES(archived_by), archived_by),
+                   archive_kind = VALUES(archive_kind)`,
                 [
                     e0.my_site_id,
                     e0.competitor_site_id,
@@ -4208,7 +4298,8 @@ module.exports = (db, settings) => {
                     competitorSku || null,
                     competitorName || null,
                     note || null,
-                    actor || null
+                    actor || null,
+                    archiveKind,
                 ]
             );
             await db.query('DELETE FROM match_exclusion WHERE id = ?', [exclusionId]);
@@ -4217,10 +4308,19 @@ module.exports = (db, settings) => {
                 my_product_id: e0.my_product_id,
                 competitor_site_id: e0.competitor_site_id,
                 event: 'manual_archived',
-                message: 'После ручного сопоставления отказ — в архив',
-                detail: { note: note || null, competitor_sku: competitorSku, competitor_name: competitorName, archived_by: actor || null }
+                message:
+                    archiveKind === 'markets'
+                        ? 'После ручного сопоставления — в архив как товар для маркетов'
+                        : 'После ручного сопоставления отказ — в архив',
+                detail: {
+                    note: note || null,
+                    competitor_sku: competitorSku,
+                    competitor_name: competitorName,
+                    archived_by: actor || null,
+                    archive_kind: archiveKind,
+                },
             });
-            return res.json({ success: true });
+            return res.json({ success: true, archive_kind: archiveKind });
         } catch (e) {
             return res.status(500).json({ error: e.message });
         }

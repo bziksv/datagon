@@ -516,6 +516,8 @@
           Array.isArray(state.manualArchiveCategoryIds) ? state.manualArchiveCategoryIds.join(",") : ""
         );
         if (maCats.length) params.set("manual_archive_category", maCats.join(","));
+        var maKind = normalizeManualArchiveKind(state.manualArchiveKind);
+        if (maKind) params.set("manual_archive_kind", maKind);
         var next = params.toString()
           ? window.location.pathname + "?" + params.toString()
           : window.location.pathname;
@@ -575,6 +577,8 @@
         manualArchiveLimit: 100,
         manualArchiveTotal: 0,
         manualArchiveCategoryIds: [],
+        /** Шаг 4: фильтр по archive_kind (пусто = все). */
+        manualArchiveKind: "",
       };
 
       var matchesMyProductsSearchDebounceId = null;
@@ -633,12 +637,46 @@
           manual_archive_page: Number(p.get("manual_archive_page") || 1),
           manual_archive_limit: Number(p.get("manual_archive_limit") || 100),
           manual_archive_category: String(p.get("manual_archive_category") || "").trim(),
+          manual_archive_kind: String(p.get("manual_archive_kind") || "").trim().toLowerCase(),
         };
       }
 
       function normalizeManualQueueReason(v) {
         var s = String(v || "").trim().toLowerCase();
         return s === "no_match" || s === "rejected" ? s : "";
+      }
+
+      function normalizeManualArchiveKind(v) {
+        var s = String(v || "").trim().toLowerCase();
+        if (s === "markets" || s === "market" || s === "маркеты" || s === "маркет") return "markets";
+        if (s === "archive" || s === "архив") return "archive";
+        return "";
+      }
+
+      function formatMsStockMetaHtml(row) {
+        var posRaw = String((row && row.ms_stock_position) || "").trim();
+        var posLow = posRaw.toLowerCase();
+        var posLabel = posLow === "да" || posLow === "yes" || posLow === "1" ? "Да" : posRaw ? posRaw : "—";
+        var stockNum = row && row.ms_stock != null ? Number(row.ms_stock) : NaN;
+        var stockLabel = Number.isFinite(stockNum) ? formatNumber(stockNum) : "—";
+        return (
+          '<div class="text-muted small mt-1">' +
+          "Складская позиция: <strong class=\"text-body\">" +
+          posLabel +
+          "</strong>" +
+          " · Остаток: <strong class=\"text-body\">" +
+          stockLabel +
+          "</strong>" +
+          "</div>"
+        );
+      }
+
+      function archiveKindBadgeHtml(kind) {
+        var k = normalizeManualArchiveKind(kind) || "archive";
+        if (k === "markets") {
+          return '<span class="badge bg-info text-dark text-wrap text-start" role="status">Маркеты</span>';
+        }
+        return '<span class="badge bg-secondary text-wrap text-start" role="status">Архив</span>';
       }
 
       function scheduleSyncUrl() {
@@ -3215,6 +3253,9 @@
           var mqReasonEl = document.getElementById("dg-manual-queue-reason");
           if (mqReasonEl) mqReasonEl.value = state.manualQueueReason || "";
           state.manualArchiveCategoryIds = parseArchiveCategoryIds(up.manual_archive_category);
+          state.manualArchiveKind = normalizeManualArchiveKind(up.manual_archive_kind);
+          var maKindEl = document.getElementById("dg-manual-archive-kind");
+          if (maKindEl) maKindEl.value = state.manualArchiveKind || "";
           if (Number.isFinite(up.manual_archive_page) && up.manual_archive_page > 0) state.manualArchivePage = up.manual_archive_page;
           if ([50, 100, 200].indexOf(up.manual_archive_limit) !== -1) {
             state.manualArchiveLimit = up.manual_archive_limit;
@@ -3977,7 +4018,8 @@
               "</strong></div><div>" +
               (row.mp_name || "—") +
               "</div>" +
-              mySiteProductCodeHtml(row);
+              mySiteProductCodeHtml(row) +
+              formatMsStockMetaHtml(row);
             var mqUrl = buildManualQueueMyProductUrl(row);
             var mqEdit = buildWebasystEditUrl(
               row.my_site_domain || "",
@@ -4113,41 +4155,84 @@
                   alert(e.message || "Ошибка");
                 });
             });
+            function postManualArchive(archiveKind, notePrompt) {
+              var note = prompt(notePrompt || "Краткая заметка (необязательно):", "") || "";
+              var btn = this;
+              var run = function () {
+                return fetch("/api/matches/manual-match/archive", {
+                  method: "POST",
+                  credentials: "same-origin",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    exclusion_id: row.id,
+                    note: note,
+                    archive_kind: archiveKind || "archive",
+                  }),
+                })
+                  .then(function (r) {
+                    return r.json().then(function (j) {
+                      return { r: r, j: j };
+                    });
+                  })
+                  .then(function (x) {
+                    if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Ошибка");
+                    loadManualQueue();
+                    loadManualArchive();
+                    if (window.DatagonNotify && window.DatagonNotify.toast) {
+                      window.DatagonNotify.toast({
+                        type: "success",
+                        message:
+                          archiveKind === "markets"
+                            ? "Перенесено в архив как товар для маркетов"
+                            : "Перенесено в архив",
+                      });
+                    }
+                  });
+              };
+              if (window.DatagonNotify && window.DatagonNotify.busyRun) {
+                window.DatagonNotify.busyRun(btn, run).catch(function (e) {
+                  alert(e.message || "Ошибка");
+                });
+              } else {
+                run().catch(function (e) {
+                  alert(e.message || "Ошибка");
+                });
+              }
+            }
             var bArch = document.createElement("button");
             bArch.type = "button";
             bArch.className = "btn btn-sm btn-outline-dark text-nowrap";
             bArch.textContent = "В архив";
             bArch.setAttribute(
+              "data-dg-notify-start",
+              "Переносим в архив…"
+            );
+            bArch.setAttribute(
               "data-dg-tooltip",
-              "Отказ от ручной привязки: запись уходит в архив (шаг 4), из очереди исчезает. Позже можно удалить из архива и вернуть товар в авто-сопоставление."
+              "Отказ от ручной привязки: запись уходит в архив (шаг 4) с типом «Архив». Позже можно удалить из архива и вернуть товар в авто-сопоставление."
             );
             bArch.setAttribute("aria-label", bArch.getAttribute("data-dg-tooltip"));
             bArch.addEventListener("click", function () {
-              var note = prompt("Краткая заметка (необязательно):", "") || "";
-              fetch("/api/matches/manual-match/archive", {
-                method: "POST",
-                credentials: "same-origin",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ exclusion_id: row.id, note: note }),
-              })
-                .then(function (r) {
-                  return r.json().then(function (j) {
-                    return { r: r, j: j };
-                  });
-                })
-                .then(function (x) {
-                  if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Ошибка");
-                  loadManualQueue();
-                  loadManualArchive();
-                })
-                .catch(function (e) {
-                  alert(e.message || "Ошибка");
-                });
+              postManualArchive.call(bArch, "archive", "Краткая заметка (необязательно):");
+            });
+            var bMarkets = document.createElement("button");
+            bMarkets.type = "button";
+            bMarkets.className = "btn btn-sm btn-outline-primary text-nowrap";
+            bMarkets.textContent = "Товар для маркетов";
+            bMarkets.setAttribute("data-dg-notify-start", "Переносим в архив как товар для маркетов…");
+            bMarkets.setAttribute(
+              "data-dg-tooltip",
+              "Перенести в архив (шаг 4) с типом «Маркеты». Авто больше не проверяет; в архиве фильтр «Как отправили» покажет такие строки отдельно."
+            );
+            bMarkets.setAttribute("aria-label", bMarkets.getAttribute("data-dg-tooltip"));
+            bMarkets.addEventListener("click", function () {
+              postManualArchive.call(bMarkets, "markets", "Заметка для маркетов (необязательно):");
             });
             wrap.appendChild(bLog);
             wrap.appendChild(bFill);
             wrap.appendChild(bDel);
             wrap.appendChild(bArch);
+            wrap.appendChild(bMarkets);
             tdA.appendChild(wrap);
             tr.appendChild(tdA);
             tb.appendChild(tr);
@@ -4282,7 +4367,7 @@
           if (!listSiteId()) {
             var tr0 = document.createElement("tr");
             var td0 = document.createElement("td");
-            td0.colSpan = 7;
+            td0.colSpan = 8;
             td0.className = "text-muted small";
             td0.textContent = "Выберите «Мой сайт (список)».";
             tr0.appendChild(td0);
@@ -4292,7 +4377,7 @@
           if (!rows || !rows.length) {
             var tr1 = document.createElement("tr");
             var td1 = document.createElement("td");
-            td1.colSpan = 7;
+            td1.colSpan = 8;
             td1.className = "text-muted small";
             td1.textContent = search
               ? "По поиску в архиве ничего не найдено. Очистите поле и нажмите «Применить»."
@@ -4303,6 +4388,10 @@
           }
           rows.forEach(function (row) {
             var tr = document.createElement("tr");
+            var tdKind = document.createElement("td");
+            tdKind.className = "small align-middle";
+            tdKind.innerHTML = archiveKindBadgeHtml(row.archive_kind);
+            tr.appendChild(tdKind);
             var tdC = document.createElement("td");
             tdC.className = "small";
             tdC.textContent =
@@ -4316,7 +4405,8 @@
               "</strong></div><div>" +
               (row.mp_name || "—") +
               "</div>" +
-              mySiteProductCodeHtml(row);
+              mySiteProductCodeHtml(row) +
+              formatMsStockMetaHtml(row);
             appendProductOpenLinks(tdM, buildManualQueueMyProductUrl(row), "", {
               myLabel: "Мой товар"
             });
@@ -4535,6 +4625,11 @@
           var sq = document.getElementById("dg-manual-archive-search");
           var search = sq ? String(sq.value || "").trim() : "";
           if (search) params.set("search", search);
+          var kindEl = document.getElementById("dg-manual-archive-kind");
+          var kindVal = normalizeManualArchiveKind(kindEl ? kindEl.value : state.manualArchiveKind);
+          state.manualArchiveKind = kindVal;
+          if (kindEl) kindEl.value = kindVal || "";
+          if (kindVal) params.set("archive_kind", kindVal);
           var catIds = archiveCategoryIdsFromState();
           if (catIds.length) params.set("parent_category_id", catIds.join(","));
           params.set("limit", String(lim));
@@ -5137,6 +5232,9 @@
           if (bA)
             bA.addEventListener("click", function () {
               state.manualArchiveCategoryIds = readCheckedArchiveCategoryIds();
+              var kindElApply = document.getElementById("dg-manual-archive-kind");
+              state.manualArchiveKind = normalizeManualArchiveKind(kindElApply ? kindElApply.value : "");
+              if (kindElApply) kindElApply.value = state.manualArchiveKind || "";
               state.manualArchivePage = 1;
               syncArchiveCategoryLabel();
               loadManualArchive();
