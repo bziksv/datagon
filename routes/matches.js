@@ -1348,10 +1348,16 @@ module.exports = (db, settings) => {
         activeMatchingJobs.delete(jobId);
     }
 
-    async function getFreshRunningJob(mySiteId, staleAfterSec = 600) {
+    /**
+     * @param {object} [opts]
+     * @param {boolean} [opts.reapOrphans=false] — можно ли гасить «чужие» running.
+     *   GET /status всегда без reap: иначе локальный Node на общей БД убивает прод-задачу
+     *   («нет живого воркера» на чанках). Reap — только start/retry/watchdog.
+     */
+    async function getFreshRunningJob(mySiteId, staleAfterSec = 600, opts = {}) {
+        const reapOrphans = Boolean(opts && opts.reapOrphans);
         try {
-            // idle только в SQL: round-trip Date через prepared params ломает TZ и даёт ложный orphan
-            // («нет живого воркера») прямо во время чанков загрузки.
+            // idle только в SQL: round-trip Date через prepared params ломает TZ.
             const [jobs] = await db.query(
                 `SELECT j.id, j.my_site_id, j.status, j.message, j.processed, j.total, j.started_at, j.finished_at,
                         TIMESTAMPDIFF(
@@ -1367,16 +1373,18 @@ module.exports = (db, settings) => {
             );
             if (!jobs.length) return null;
             const job = jobs[0];
+            const jobIdNum = Number(job.id);
             const idleRaw = Number(job.idle_sec);
             const idleSec = Number.isFinite(idleRaw) ? Math.max(0, idleRaw) : 0;
-            // После kill/рестарта Node задача остаётся running, а cancelledJobs пустой.
-            // Свежие логи (≤120с) = воркер жив — даже если Set в этом процессе пуст.
-            if (!activeMatchingJobs.has(job.id)) {
-                if (idleSec <= 120) {
+            const inThisProcess =
+                activeMatchingJobs.has(jobIdNum) || activeMatchingJobs.has(job.id);
+            // Свежие логи = воркер жив (этот или другой процесс на той же БД).
+            if (!inThisProcess) {
+                if (!reapOrphans || idleSec <= 120) {
                     return job;
                 }
                 await forceFinishOrphanJob(
-                    job.id,
+                    jobIdNum,
                     'Остановлено: нет живого воркера (процесс Node перезапущен или задача зависла)'
                 );
                 return null;
@@ -1384,15 +1392,18 @@ module.exports = (db, settings) => {
             const stopping = /Остановка\s+задачи/i.test(String(job.message || ''));
             const limitSec = stopping ? Math.min(90, staleAfterSec) : staleAfterSec;
             if (idleSec <= limitSec) return job;
+            if (!reapOrphans) return job;
             try {
-                await updateJob(job.id, {
+                await updateJob(jobIdNum, {
                     status: 'failed',
                     message: `Прервано: нет активности ${idleSec}с (процесс перезапущен или завис)`,
                     finished_at: new Date()
                 });
-                await addJobLog(job.id, `Автозавершение stale-задачи: нет активности ${idleSec}с`);
+                await addJobLog(jobIdNum, `Автозавершение stale-задачи: нет активности ${idleSec}с`);
             } catch (_) {}
+            activeMatchingJobs.delete(jobIdNum);
             activeMatchingJobs.delete(job.id);
+            cancelledJobs.delete(jobIdNum);
             cancelledJobs.delete(job.id);
             return null;
         } catch (e) {
@@ -1535,11 +1546,12 @@ module.exports = (db, settings) => {
         /** При resume — поле processed последней задачи (точнее, чем COUNT(*) по всему сайту). */
         resumeProcessedBaseHint = null
     }) {
-        activeMatchingJobs.add(jobId);
+        const jobKey = Number(jobId);
+        activeMatchingJobs.add(jobKey);
         try {
             return await executeMatchingBody(arguments[0]);
         } finally {
-            activeMatchingJobs.delete(jobId);
+            activeMatchingJobs.delete(jobKey);
         }
     }
 
@@ -2513,7 +2525,7 @@ module.exports = (db, settings) => {
         if (!mySiteId || !competitorIds || competitorIds.length === 0) {
             return res.status(400).json({ error: 'Не выбраны сайты' });
         }
-        const running = await getFreshRunningJob(mySiteId);
+        const running = await getFreshRunningJob(mySiteId, 600, { reapOrphans: true });
         if (running) {
             return res.status(409).json({ error: 'Сопоставление уже выполняется' });
         }
@@ -2548,7 +2560,7 @@ module.exports = (db, settings) => {
             replayFromId: null,
         });
 
-        activeMatchingJobs.add(jobId);
+        activeMatchingJobs.add(Number(jobId));
         executeMatching({ jobId, mySiteId, competitorIds, threshold, mode, productIds, productSearch, batchSize, batchPauseMs, microPauseMs, microPauseEvery, resumeMode, startCompIndex: 0, startProductIndex: 0 }).catch(async (e) => {
             await updateJob(jobId, {
                 status: 'failed',
@@ -2574,7 +2586,7 @@ module.exports = (db, settings) => {
         } = req.body;
         if (!mySiteId) return res.status(400).json({ error: 'mySiteId required' });
 
-        const running = await getFreshRunningJob(mySiteId);
+        const running = await getFreshRunningJob(mySiteId, 600, { reapOrphans: true });
         if (running) return res.status(409).json({ error: 'Уже есть активная задача' });
 
         // Сначала пытаемся продолжить именно прерванную/упавшую задачу.
@@ -2738,11 +2750,7 @@ module.exports = (db, settings) => {
     router.get('/status', async (req, res) => {
         const { my_site_id } = req.query;
         if (!my_site_id) return res.status(400).json({ error: 'my_site_id required' });
-        try {
-            await getFreshRunningJob(my_site_id);
-        } catch (e) {
-            console.error('[matches] GET /status stale check:', e && e.message ? e.message : e);
-        }
+        // Только чтение: опрос статуса не должен cancel'ить running (локальный Node на общей БД).
         try {
             const [jobs] = await db.query(
                 `SELECT mj.*,
