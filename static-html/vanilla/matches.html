@@ -1781,57 +1781,12 @@
                   </select>
                 </div>
                 <div class="col-md-3" data-dg-matches-launch-field="search_mode">
-                  <div class="d-flex align-items-baseline gap-1 mb-1 flex-wrap">
-                    <label class="form-label mb-0 small text-uppercase text-muted" style="letter-spacing: 0.04em" for="dg-matches-search-mode">Режим сопоставления</label>
-                    <span id="dg-matches-match-script" class="badge bg-light text-dark border fw-normal d-none" title=""></span>
-                    <button
-                      type="button"
-                      class="btn btn-link btn-sm p-0 lh-1 border-0 text-muted shadow-none align-baseline"
-                      style="margin-top: -1px"
-                      id="dg-matches-mode-hint-toggle"
-                      aria-expanded="false"
-                      aria-controls="dg-matches-mode-hint"
-                      aria-label="Описание режимов сопоставления"
-                      data-dg-tooltip="Краткие описания всех режимов"
-                    >
-                      <i class="pe-7s-help1" style="font-size: 0.95rem" aria-hidden="true"></i>
-                    </button>
-                  </div>
+                  <label class="form-label mb-1 small text-uppercase text-muted" style="letter-spacing: 0.04em" for="dg-matches-search-mode">Режим сопоставления</label>
                   <select class="form-select" id="dg-matches-search-mode">
                     <option value="sku" selected>1. По SKU — строгий отбор (trim + регистр)</option>
                     <option value="name_words_v2">2. По словам v2 — вес слов, бренды, транслит</option>
                     <option value="sku_v2">3. По SKU v2 — очистка, составные, артикул в названии</option>
                   </select>
-                </div>
-              </div>
-              <div id="dg-matches-mode-hint" class="d-none mt-2">
-                <div class="rounded-3 border shadow-sm bg-white overflow-hidden">
-                  <div class="px-3 py-2 border-bottom bg-light small fw-semibold text-body">Описание режимов сопоставления</div>
-                  <div class="px-3 py-3 small text-body-secondary lh-base">
-                    <p class="mb-2 text-muted" style="font-size: 0.75rem">
-                      Рекомендуемый порядок: <strong>1</strong> строгий SKU → <strong>2</strong> по словам v2 → <strong>3</strong> SKU v2 (добить составные артикулы и артикулы в названии). По умолчанию выбран шаг 1.
-                    </p>
-                    <dl class="row mb-0">
-                      <dt class="col-md-4 col-lg-3 mb-2 text-body fw-semibold">
-                        <code class="small">sku</code> · 1. По SKU — строгий отбор <span class="badge bg-primary">по умолчанию</span>
-                      </dt>
-                      <dd class="col-md-8 col-lg-9 mb-2">
-                        Артикул = SKU: <code>trim</code> + верхний регистр, без другой нормализации. Первый прогон.
-                      </dd>
-                      <dt class="col-md-4 col-lg-3 mb-2 text-body fw-semibold">
-                        <code class="small">name_words_v2</code> · 2. По словам v2
-                      </dt>
-                      <dd class="col-md-8 col-lg-9 mb-2">
-                        Без SKU. Вес слова по редкости, пустышки не считаются, буквы/цифры и единицы, латиница ↔ кириллица, бренды, «спорно». Порог 75%. После строгого SKU.
-                      </dd>
-                      <dt class="col-md-4 col-lg-3 mb-2 text-body fw-semibold">
-                        <code class="small">sku_v2</code> · 3. По SKU v2
-                      </dt>
-                      <dd class="col-md-8 col-lg-9 mb-0">
-                        Очистка артикула («Арт.», пробелы, тире, А↔A), составные артикулы, артикул в названии; из нескольких карточек — лучшая по названию. После шагов 1–2.
-                      </dd>
-                    </dl>
-                  </div>
                 </div>
               </div>
               <div id="dg-matches-filter-logic" class="d-none mt-3">
@@ -1891,6 +1846,11 @@
               <div class="mt-2 dg-matches-job-status-block">
                 <div class="d-flex flex-wrap align-items-baseline column-gap-3 row-gap-1 mb-2">
                   <p class="text-body mb-0 fw-semibold" id="dg-matches-job-hint">Ожидание</p>
+                  <span
+                    id="dg-matches-match-script"
+                    class="badge bg-light text-dark border fw-normal d-none"
+                    data-dg-tooltip="Версия алгоритма сопоставления на сервере"
+                  ></span>
                   <span class="small text-muted" id="dg-matches-job-times" aria-live="polite"
                     >Старт: — · Окончание: —</span
                   >
@@ -3687,7 +3647,8 @@
           var ms = js.matchScript;
           if (ms && ms.version) {
             scriptBadge.textContent = "v" + ms.version + " · rev." + ms.revision;
-            scriptBadge.title = ms.notes || "";
+            scriptBadge.removeAttribute("title");
+            scriptBadge.setAttribute("data-dg-tooltip", "Версия алгоритма сопоставления на сервере");
             scriptBadge.classList.remove("d-none");
           }
         }
@@ -6210,17 +6171,6 @@
       (function initMatchesFilterLogicToggle() {
         var btn = document.getElementById("dg-matches-filter-logic-toggle");
         var panel = document.getElementById("dg-matches-filter-logic");
-        if (!btn || !panel) return;
-        btn.addEventListener("click", function () {
-          var show = panel.classList.contains("d-none");
-          panel.classList.toggle("d-none", !show);
-          btn.setAttribute("aria-expanded", show ? "true" : "false");
-        });
-      })();
-
-      (function initMatchesModeHintToggle() {
-        var btn = document.getElementById("dg-matches-mode-hint-toggle");
-        var panel = document.getElementById("dg-matches-mode-hint");
         if (!btn || !panel) return;
         btn.addEventListener("click", function () {
           var show = panel.classList.contains("d-none");

@@ -902,7 +902,8 @@
           var ms = js.matchScript;
           if (ms && ms.version) {
             scriptBadge.textContent = "v" + ms.version + " · rev." + ms.revision;
-            scriptBadge.title = ms.notes || "";
+            scriptBadge.removeAttribute("title");
+            scriptBadge.setAttribute("data-dg-tooltip", "Версия алгоритма сопоставления на сервере");
             scriptBadge.classList.remove("d-none");
           }
         }
@@ -3425,17 +3426,6 @@
       (function initMatchesFilterLogicToggle() {
         var btn = document.getElementById("dg-matches-filter-logic-toggle");
         var panel = document.getElementById("dg-matches-filter-logic");
-        if (!btn || !panel) return;
-        btn.addEventListener("click", function () {
-          var show = panel.classList.contains("d-none");
-          panel.classList.toggle("d-none", !show);
-          btn.setAttribute("aria-expanded", show ? "true" : "false");
-        });
-      })();
-
-      (function initMatchesModeHintToggle() {
-        var btn = document.getElementById("dg-matches-mode-hint-toggle");
-        var panel = document.getElementById("dg-matches-mode-hint");
         if (!btn || !panel) return;
         btn.addEventListener("click", function () {
           var show = panel.classList.contains("d-none");
