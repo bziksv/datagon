@@ -416,11 +416,6 @@
           buildProductSearchUrl(domain, row.mp_sku || "", row.mp_name || "")
         );
       }
-      /**
-       * Chrome/Edge: один window.open на жест пользователя — второе молча режется.
-       * Без «noopener» в features можно проверить, открылось ли окно (null = блок).
-       * Если второе заблокировано — модалка с одной кнопкой (новый жест).
-       */
       function tryOpenMatchesTab(url) {
         var href = String(url || "").trim();
         if (!href) return null;
@@ -438,59 +433,31 @@
         return w;
       }
 
-      function closeMatchesSecondTabPrompt() {
-        var ov = document.getElementById("dg-matches-second-tab-overlay");
-        if (!ov) return;
-        ov.style.display = "none";
-        ov.setAttribute("aria-hidden", "true");
-        ov.removeAttribute("data-open-url");
-      }
-
-      function openMatchesSecondTabPrompt(url, whichLabel) {
-        var ov = document.getElementById("dg-matches-second-tab-overlay");
-        var text = document.getElementById("dg-matches-second-tab-text");
-        var ok = document.getElementById("dg-matches-second-tab-ok");
-        if (!ov || !ok) {
-          tryOpenMatchesTab(url);
-          return;
-        }
-        ov.setAttribute("data-open-url", String(url || ""));
-        if (text) {
-          text.textContent =
-            "Браузер открыл только одну вкладку (блокирует второе окно с одного клика). Нажмите кнопку ниже, чтобы открыть " +
-            (whichLabel || "вторую страницу") +
-            ".";
-        }
-        ok.textContent = "Открыть " + (whichLabel || "страницу");
-        ov.style.display = "flex";
-        ov.setAttribute("aria-hidden", "false");
-      }
-
-      function openMatchesPairWindows(myUrl, compUrl) {
+      /**
+       * Две вкладки без модалки: Chrome/Opera дают один window.open на жест.
+       * pointerdown открывает «наш» сайт, click — конкурента (два жеста подряд).
+       * Клавиатура (только click) — обе попытки в одном обработчике.
+       */
+      function bindOpenPairButton(btn, myUrl, compUrl) {
+        if (!btn) return;
         var a = String(myUrl || "").trim();
         var b = String(compUrl || "").trim();
-        if (!a && !b) return;
-        if (a && !b) {
-          tryOpenMatchesTab(a);
-          return;
-        }
-        if (b && !a) {
-          tryOpenMatchesTab(b);
-          return;
-        }
-        /* Сначала наш сайт (Альмамед и т.п.), затем конкурент. */
-        var wMy = tryOpenMatchesTab(a);
-        var wComp = tryOpenMatchesTab(b);
-        var myOk = !!(wMy && !wMy.closed);
-        var compOk = !!(wComp && !wComp.closed);
-        if (!compOk) {
-          openMatchesSecondTabPrompt(b, "конкурента");
-          return;
-        }
-        if (!myOk) {
-          openMatchesSecondTabPrompt(a, "наш товар");
-        }
+        var openedMyOnPointer = false;
+        btn.addEventListener("pointerdown", function (ev) {
+          if (ev.pointerType === "mouse" && ev.button !== 0) return;
+          openedMyOnPointer = false;
+          if (!a) return;
+          var w = tryOpenMatchesTab(a);
+          openedMyOnPointer = !!(w && !w.closed);
+        });
+        btn.addEventListener("click", function (ev) {
+          ev.preventDefault();
+          if (b) tryOpenMatchesTab(b);
+          if (a && !openedMyOnPointer) tryOpenMatchesTab(a);
+          openedMyOnPointer = false;
+        });
       }
+
       function appendProductOpenLinks(host, myUrl, compUrl, opts) {
         if (!host) return;
         var o = opts || {};
@@ -520,14 +487,8 @@
           both.className = "btn btn-sm btn-outline-secondary";
           both.setAttribute("data-dg-no-activity", "1");
           both.innerHTML = '<i class="pe-7s-browser me-1"></i>Оба';
-          both.setAttribute(
-            "data-dg-tooltip",
-            "Открыть наш товар и конкурента. Если браузер режет вторую вкладку — появится кнопка дооткрыть."
-          );
-          both.addEventListener("click", function (ev) {
-            ev.preventDefault();
-            openMatchesPairWindows(myUrl, compUrl);
-          });
+          both.setAttribute("data-dg-tooltip", "Открыть наш товар и конкурента в двух вкладках");
+          bindOpenPairButton(both, myUrl, compUrl);
           wrap.appendChild(both);
         }
         if (wrap.childNodes.length) host.appendChild(wrap);
@@ -2266,15 +2227,9 @@
             both.type = "button";
             both.className = "btn btn-link btn-sm p-0";
             both.setAttribute("data-dg-no-activity", "1");
-            both.setAttribute(
-              "data-dg-tooltip",
-              "Открыть наш товар и конкурента. Если браузер режет вторую вкладку — появится кнопка «Открыть конкурента»."
-            );
+            both.setAttribute("data-dg-tooltip", "Открыть наш товар и конкурента в двух вкладках");
             both.innerHTML = '<i class="pe-7s-browser me-1"></i>Оба';
-            both.addEventListener("click", function (ev) {
-              ev.preventDefault();
-              openMatchesPairWindows(myProductUrl, competitorUrl);
-            });
+            bindOpenPairButton(both, myProductUrl, competitorUrl);
             clinks.appendChild(both);
           }
           tdComp.appendChild(clinks);
@@ -5229,29 +5184,8 @@
           var bArchiveBackdrop = document.getElementById("dg-manual-queue-archive-all-backdrop");
           if (bArchiveBackdrop) bArchiveBackdrop.addEventListener("click", function () { closeArchiveAllConfirm(false); });
 
-          (function bindSecondTabPrompt() {
-            var cancel = document.getElementById("dg-matches-second-tab-cancel");
-            var backdrop = document.getElementById("dg-matches-second-tab-backdrop");
-            var ok = document.getElementById("dg-matches-second-tab-ok");
-            if (cancel) cancel.addEventListener("click", closeMatchesSecondTabPrompt);
-            if (backdrop) backdrop.addEventListener("click", closeMatchesSecondTabPrompt);
-            if (ok) {
-              ok.addEventListener("click", function () {
-                var ov = document.getElementById("dg-matches-second-tab-overlay");
-                var url = ov ? String(ov.getAttribute("data-open-url") || "").trim() : "";
-                closeMatchesSecondTabPrompt();
-                if (url) tryOpenMatchesTab(url);
-              });
-            }
-          })();
-
           document.addEventListener("keydown", function (ev) {
             if (ev.key !== "Escape") return;
-            var secondOv = document.getElementById("dg-matches-second-tab-overlay");
-            if (secondOv && secondOv.style.display === "flex") {
-              closeMatchesSecondTabPrompt();
-              return;
-            }
             var skuOv = document.getElementById("dg-matches-sku-conflict-overlay");
             if (skuOv && skuOv.style.display === "flex") {
               closeSkuConflictModal();
