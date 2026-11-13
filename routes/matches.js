@@ -7,6 +7,15 @@ const {
     productIdsForRoot,
     parentCategoryLabelsForProduct,
 } = require('../lib/datagonMatchArchiveCategories');
+const { getMatchesMatchMeta } = require('../lib/matchesMatchRevision');
+const {
+    NAME_WORDS_THRESHOLD,
+    tokenizeNameWords,
+    nameWordsSimilarity,
+    createNameWordsIndex,
+    indexNameWordsRow,
+    collectNameWordCandidates,
+} = require('../lib/matchNameWords');
 const router = express.Router();
 
 // Функция расстояния Левенштейна для умного поиска
@@ -176,7 +185,7 @@ function computeMatchIdentityHash(mySiteId, compSiteId, mySku, myName, compSku, 
     return crypto.createHash('sha256').update(`name|${sid}|${cid}|${nn}|${cn}`).digest('hex');
 }
 
-const MATCHING_MODES = new Set(['all', 'name', 'sku', 'sku_norm', 'sku_best']);
+const MATCHING_MODES = new Set(['all', 'name', 'name_words', 'sku', 'sku_norm', 'sku_best']);
 
 function sanitizeMatchingMode(mode) {
     const m = String(mode || '').trim();
@@ -1426,6 +1435,7 @@ module.exports = (db, settings) => {
         resumeProcessedBaseHint = null
     }) {
         mode = sanitizeMatchingMode(mode);
+        if (mode === 'name_words') threshold = NAME_WORDS_THRESHOLD;
         /** Счётчики «по SKU / по названию» сразу из seed (продолжение), чтобы UI не показывал 0 на фазе загрузки товаров. */
         let foundSku = Math.max(0, Math.floor(Number(seedFoundSku) || 0));
         let foundName = Math.max(0, Math.floor(Number(seedFoundName) || 0));
@@ -1476,6 +1486,11 @@ module.exports = (db, settings) => {
         }
 
         await updateJob(jobId, withRunningCounters({ message: 'Подготовка...' }));
+        const matchScript = getMatchesMatchMeta();
+        await addJobLog(
+            jobId,
+            `Скрипт сопоставления v${matchScript.version} · rev.${matchScript.revision}`
+        );
         await addJobLog(jobId, 'Подготовка данных');
         await phaseStart('prepare', 'Подготовка данных', { mode, threshold, resumeMode, mySiteId });
         if (!resumeMode) {
@@ -1921,6 +1936,21 @@ module.exports = (db, settings) => {
             }
 
             let compNormNames = null;
+            let nameWordsIndex = null;
+            if (mode === 'name_words') {
+                nameWordsIndex = createNameWordsIndex(compPrices.length);
+                const cnw = compPrices.length;
+                for (let ci = 0; ci < cnw; ci += 1) {
+                    if ((ci & 4095) === 0 && cancelledJobs.has(jobId)) {
+                        await completeCancellation(compPos, productStart);
+                        return { matches: [], count: totalMatchesSaved };
+                    }
+                    indexNameWordsRow(nameWordsIndex, ci, compPrices[ci].product_name);
+                    if (ci > 0 && (ci & 4095) === 0) {
+                        await new Promise((r) => setImmediate(r));
+                    }
+                }
+            }
             if (mode === 'all' || mode === 'name') {
                 const cn = compPrices.length;
                 compNormNames = new Array(cn);
@@ -1938,6 +1968,7 @@ module.exports = (db, settings) => {
 
             await phaseEnd({
                 normNameRows: compNormNames ? compNormNames.length : 0,
+                nameWordRows: nameWordsIndex ? nameWordsIndex.tokenLists.length : 0,
                 skuMap:
                     mode === 'all' || mode === 'sku'
                         ? 'strict'
@@ -1945,7 +1976,9 @@ module.exports = (db, settings) => {
                             ? 'norm_first'
                             : mode === 'sku_best'
                                 ? 'norm_best'
-                                : 'none'
+                                : mode === 'name_words'
+                                    ? 'name_words'
+                                    : 'none'
             });
 
             const foundSkuAtComp = foundSku;
@@ -2034,7 +2067,7 @@ module.exports = (db, settings) => {
                 const normMySkuNorm = normalizeSkuForMatch(myProd.sku);
                 const normMyName = normalizeText(myProd.name);
 
-                if (mode !== 'name') {
+                if (mode !== 'name' && mode !== 'name_words') {
                     let skuMatch = null;
                     if (mode === 'all' || mode === 'sku') {
                         if (normMySkuStrict && skuLookupStrict) skuMatch = skuLookupStrict.get(normMySkuStrict) || null;
@@ -2088,6 +2121,47 @@ module.exports = (db, settings) => {
                     }
                 }
 
+                if (mode === 'name_words' && nameWordsIndex && normMyName.length > 3) {
+                    const myTokens = tokenizeNameWords(myProd.name);
+                    if (myTokens.length) {
+                        const cands = collectNameWordCandidates(nameWordsIndex, myTokens);
+                        const nCand = cands.length;
+                        for (let ci = 0; ci < nCand; ci += 1) {
+                            if ((ci & 31) === 0 && cancelledJobs.has(jobId)) {
+                                await completeCancellation(compPos, pIdx);
+                                return { matches: [], count: totalMatchesSaved };
+                            }
+                            if (ci > 0 && (ci & 511) === 0) {
+                                await new Promise((r) => setImmediate(r));
+                                const now = Date.now();
+                                if (now - lastNameInnerHeartbeatMs >= NAME_MATCH_INNER_HEARTBEAT_MS) {
+                                    lastNameInnerHeartbeatMs = now;
+                                    await addJobLog(
+                                        jobId,
+                                        `По словам: товар ${pIdx + 1}/${myProducts.length}, кандидатов ${ci}/${nCand} (конк. ${compId})`
+                                    );
+                                    await updateJob(
+                                        jobId,
+                                        withRunningCounters({
+                                            message: `Сопоставление по словам: товар ${pIdx + 1}/${myProducts.length}, кандидатов ${ci}/${nCand}`
+                                        })
+                                    );
+                                }
+                            }
+                            const ni = cands[ci];
+                            const compTokens = nameWordsIndex.tokenLists[ni];
+                            if (!compTokens || compTokens.length < 1) continue;
+                            const score = nameWordsSimilarity(myTokens, compTokens, threshold, bestScore);
+                            if (score >= threshold && score > bestScore) {
+                                bestMatch = compPrices[ni];
+                                bestScore = score;
+                                matchType = 'name';
+                                if (score >= 0.999) break;
+                            }
+                        }
+                    }
+                }
+
                 if (bestMatch) {
                     pendingMatches.push({
                         my_product_id: myProd.id,
@@ -2102,7 +2176,8 @@ module.exports = (db, settings) => {
                     });
                     if (matchType === 'sku') foundSku += 1;
                     if (matchType === 'name') foundName += 1;
-                    jobLogBuffer.push(`${myProd.sku || myProd.name} -> ${bestMatch.sku || bestMatch.product_name} (${matchType})`);
+                    const logKind = mode === 'name_words' && matchType === 'name' ? 'name_words' : matchType;
+                    jobLogBuffer.push(`${myProd.sku || myProd.name} -> ${bestMatch.sku || bestMatch.product_name} (${logKind})`);
                     if (jobLogBuffer.length >= 50) await flushJobLogs();
                     if (await bailIfCancelled(compPos, pIdx)) return { matches: [], count: totalMatchesSaved };
                     if (pendingMatches.length >= saveChunkSize) {
@@ -2250,6 +2325,7 @@ module.exports = (db, settings) => {
     router.post('/start-matching', async (req, res) => {
         let { mySiteId, competitorIds, threshold = 0.85, mode = 'sku', productIds = null, productSearch = '', batchSize = 200, batchPauseMs = 0, microPauseMs = 0, microPauseEvery = 20, resumeMode = false } = req.body;
         mode = sanitizeMatchingMode(mode);
+        if (mode === 'name_words') threshold = NAME_WORDS_THRESHOLD;
         if (!mySiteId || !competitorIds || competitorIds.length === 0) {
             return res.status(400).json({ error: 'Не выбраны сайты' });
         }
@@ -2482,7 +2558,8 @@ module.exports = (db, settings) => {
                     message: 'Нет задач',
                     startedAt: null,
                     finishedAt: null,
-                    stopPending: false
+                    stopPending: false,
+                    match_script: getMatchesMatchMeta()
                 });
             }
             const job = jobs[0];
@@ -2573,7 +2650,8 @@ module.exports = (db, settings) => {
                     const t = new Date(l.created_at).toLocaleTimeString('ru-RU');
                     return `[${t}] ${l.message}`;
                 }),
-                canRetry: job.status === 'failed' || job.status === 'completed' || job.status === 'cancelled'
+                canRetry: job.status === 'failed' || job.status === 'completed' || job.status === 'cancelled',
+                match_script: getMatchesMatchMeta()
             });
         } catch (e) {
             console.error('[matches] GET /status:', e && e.message ? e.message : e);

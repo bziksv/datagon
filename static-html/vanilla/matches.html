@@ -1492,7 +1492,7 @@
                     <strong>«Запустить авто по фильтру»</strong> или отметьте товары в таблице «Наши товары» и запустите по выбранным.
                   </p>
                   <p class="mb-2">
-                    Дождитесь завершения задачи по логам. Затем <strong>смените режим на «Только название»</strong>, снова запустите сопоставление по тому же или расширенному набору — так вы отдельно обрабатываете артикулы и названия, без смешения логики в одном прогоне. Ожидающие строки в «Совпадениях» по разным режимам (SKU / название / нормализации) для тех же конкурентов <strong>сохраняются</strong>; заново снимаются только ожидающие по выбранным конкурентам при режиме запуска <strong>«все поля»</strong>.
+                    Дождитесь завершения задачи по логам. Затем <strong>смените режим на «Только название»</strong> или <strong>«По словам»</strong>, снова запустите сопоставление по тому же или расширенному набору — так вы отдельно обрабатываете артикулы и названия, без смешения логики в одном прогоне. «По словам» не штрафует перестановку слов. Ожидающие строки в «Совпадениях» по разным режимам (SKU / название / слова / нормализации) для тех же конкурентов <strong>сохраняются</strong>; заново снимаются только ожидающие по выбранным конкурентам при режиме запуска <strong>«все поля»</strong>.
                   </p>
                   <p class="mb-0">
                     В статусе задачи числитель/знаменатель — <strong>пары «наш товар × конкурент»</strong> (шаги воркера), а не число URL в очереди парсинга прайса.
@@ -1632,6 +1632,7 @@
                 <div class="col-md-3" data-dg-matches-launch-field="search_mode">
                   <div class="d-flex align-items-baseline gap-1 mb-1 flex-wrap">
                     <label class="form-label mb-0 small text-uppercase text-muted" style="letter-spacing: 0.04em" for="dg-matches-search-mode">Режим сопоставления</label>
+                    <span id="dg-matches-match-script" class="badge bg-light text-dark border fw-normal d-none" title=""></span>
                     <button
                       type="button"
                       class="btn btn-link btn-sm p-0 lh-1 border-0 text-muted shadow-none align-baseline"
@@ -1654,6 +1655,7 @@
                     <optgroup label="2. Потом (после прогона по SKU)">
                       <option value="all">Общий — SKU, затем название (не вместо SKU)</option>
                       <option value="name">Только название (запускать после SKU)</option>
+                      <option value="name_words">По названию — слова, порядок не важен</option>
                     </optgroup>
                   </select>
                 </div>
@@ -1678,7 +1680,7 @@
                   <div class="px-3 py-2 border-bottom bg-light small fw-semibold text-body">Описание режимов сопоставления</div>
                   <div class="px-3 py-3 small text-body-secondary lh-base">
                     <p class="mb-2 text-muted" style="font-size: 0.75rem">
-                      В селекте по умолчанию выбран <strong>«По SKU — строгий отбор»</strong> (<code>sku</code>). Сначала закрывайте артикулы одним из режимов SKU; «Общий» и «Только название» — отдельно, после SKU.
+                      В селекте по умолчанию выбран <strong>«По SKU — строгий отбор»</strong> (<code>sku</code>). Сначала закрывайте артикулы одним из режимов SKU; «Общий», «Только название» и «По словам» — отдельно, после SKU.
                     </p>
                     <dl class="row mb-0">
                       <dt class="col-md-4 col-lg-3 mb-2 text-body fw-semibold">
@@ -1708,8 +1710,14 @@
                       <dt class="col-md-4 col-lg-3 mb-2 text-body fw-semibold">
                         <code class="small">name</code> · Только название
                       </dt>
+                      <dd class="col-md-8 col-lg-9 mb-2">
+                        SKU не сравнивается. Схожесть — Левенштейн всей строки: перестановка слов сильно снижает балл. Имеет смысл после прогона по артикулам. Промах не блокирует следующий прогон по SKU.
+                      </dd>
+                      <dt class="col-md-4 col-lg-3 mb-2 text-body fw-semibold">
+                        <code class="small">name_words</code> · По названию — слова
+                      </dt>
                       <dd class="col-md-8 col-lg-9 mb-0">
-                        SKU не сравнивается. Имеет смысл после прогона по артикулам: режим смотрит только названия. Промах не блокирует следующий прогон по SKU.
+                        SKU не сравнивается. Те же слова в любом порядке дают около 100%. Окончания почти не режут балл («насос» / «насоса», «водяной» / «водяного», «циркуляционный» / «циркуляционного»). Числа и короткие коды («25», «мм») совпадают только целиком — «насос 25» и «насос 32» не проходят порог 75%. Лишнее или пропущенное слово снижает балл пропорционально. Запускать после SKU, отдельно от «Только название».
                       </dd>
                     </dl>
                   </div>
@@ -1739,8 +1747,11 @@
                     <li class="mb-2">
                       <strong>Общий</strong> — сначала строгий SKU, если нет — название (~85%). Запускать <strong>после</strong> отдельного прогона по SKU, не вместо него.
                     </li>
+                    <li class="mb-2">
+                      <strong>Только название</strong> — без SKU, Левенштейн всей строки. Удобнее после прогона по артикулам. Промах не блокирует следующий прогон по SKU.
+                    </li>
                     <li class="mb-0">
-                      <strong>Только название</strong> — без SKU. Удобнее после прогона по артикулам. Промах не блокирует следующий прогон по SKU.
+                      <strong>По словам</strong> (<code>name_words</code>) — без SKU. Порядок слов не важен, окончания почти не снижают балл, числа и короткие коды — только точно. Порог <strong>75%</strong> (у «Только название» и «Общий» по-прежнему ~85%). Не заменяет «Только название».
                     </li>
                   </ul>
                   <p class="mb-2 fw-semibold text-body pt-1 border-top">Поле «Умный поиск»</p>
@@ -1753,7 +1764,7 @@
                     </li>
                   </ul>
                   <p class="mb-0 mt-3 pt-2 border-top text-muted" style="font-size: 0.75rem">
-                    Обход конкурентов и их прайсов идёт по очереди; для режима по названию на один ваш товар выбирается не более одной лучшей позиции конкурента среди кандидатов не ниже порога.
+                    Обход конкурентов и их прайсов идёт по очереди; для режимов по названию и по словам на один ваш товар выбирается не более одной лучшей позиции конкурента среди кандидатов не ниже порога.
                   </p>
                   </div>
                 </div>
@@ -3061,7 +3072,7 @@
         if (wrap.childNodes.length) host.appendChild(wrap);
       }
 
-      var MATCH_MODES_ALLOWED = { all: 1, name: 1, sku: 1, sku_norm: 1, sku_best: 1 };
+      var MATCH_MODES_ALLOWED = { all: 1, name: 1, name_words: 1, sku: 1, sku_norm: 1, sku_best: 1 };
 
       function parseArchiveCategoryIds(raw) {
         var seen = {};
@@ -3477,6 +3488,15 @@
         var js = state.jobStatus;
         var pct = js.total > 0 ? Math.round((js.processed / js.total) * 100) : 0;
         var hint = document.getElementById("dg-matches-job-hint");
+        var scriptBadge = document.getElementById("dg-matches-match-script");
+        if (scriptBadge) {
+          var ms = js.matchScript;
+          if (ms && ms.version) {
+            scriptBadge.textContent = "v" + ms.version + " · rev." + ms.revision;
+            scriptBadge.title = ms.notes || "";
+            scriptBadge.classList.remove("d-none");
+          }
+        }
         if (hint) {
           var msg = js.message || "Ожидание";
           var base = msg;
@@ -4563,7 +4583,7 @@
         if (n > 100) return 1;
         return n;
       }
-      function scoreUi(matchType, score01) {
+      function scoreUi(matchType, score01, matchingMode) {
         var mt = String(matchType || "").toLowerCase();
         if (mt === "manual") return { text: "Вручную", badge: "info" };
         if (mt === "sku") {
@@ -4576,7 +4596,8 @@
         var pct = Math.round(Number(score01 || 0) * 100);
         if (pct < 0) pct = 0;
         if (pct > 100) pct = 100;
-        var text = pct + "% по названию";
+        var wordMode = String(matchingMode || "").trim().toLowerCase() === "name_words";
+        var text = pct + (wordMode ? "% по словам" : "% по названию");
         if (pct >= 90) return { text: text, badge: "success" };
         if (pct >= 70) return { text: text, badge: "warning" };
         return { text: text, badge: "secondary" };
@@ -4601,6 +4622,7 @@
         if (mt === "manual") return "Вручную";
         if (mt === "name") {
           if (mm === "all") return "Название · из «все поля»";
+          if (mm === "name_words") return "По словам";
           return "По названию";
         }
         if (mt === "sku") {
@@ -4677,7 +4699,7 @@
         rows.forEach(function (m) {
           var score01 = normalizeConfidence01(m.confidence_score);
           var sUi = statusUi(String(m.status || "").toLowerCase());
-          var cUi = scoreUi(effectiveMatchTypeForScore(m, score01), score01);
+          var cUi = scoreUi(effectiveMatchTypeForScore(m, score01), score01, m.matching_mode);
           var myProductUrl =
             normalizeWebasystProductUrl(m.my_product_url || "", m.my_site_domain || "", m.my_site_cms_type || "") ||
             buildProductPageUrlFromSlug(m.my_site_domain || "", m.my_sku || "") ||
@@ -4721,7 +4743,7 @@
           tdConf.title =
             "confidence_score (0–1): " +
             (Number.isFinite(score01) ? score01.toFixed(4) : "—") +
-            ". Для «По названию» — доля схожести строк; для SKU — 1.0 при полном совпадении.";
+            ". Для «По названию» — доля схожести строки; для «По словам» — доля общих слов без учёта порядка; для SKU — 1.0 при полном совпадении.";
           tr.appendChild(tdConf);
 
           var tdMy = document.createElement("td");
@@ -5037,6 +5059,7 @@
               canRetry: !!json.canRetry,
               startedAt: json.startedAt != null ? json.startedAt : json.started_at != null ? json.started_at : null,
               finishedAt: json.finishedAt != null ? json.finishedAt : json.finished_at != null ? json.finished_at : null,
+              matchScript: json.match_script || null,
               stopPending:
                 json.stopPending === true ||
                 (!!json.active && /Остановка\s+задачи/i.test(String(json.message || ""))),

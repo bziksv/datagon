@@ -472,7 +472,7 @@
         if (wrap.childNodes.length) host.appendChild(wrap);
       }
 
-      var MATCH_MODES_ALLOWED = { all: 1, name: 1, sku: 1, sku_norm: 1, sku_best: 1 };
+      var MATCH_MODES_ALLOWED = { all: 1, name: 1, name_words: 1, sku: 1, sku_norm: 1, sku_best: 1 };
 
       function parseArchiveCategoryIds(raw) {
         var seen = {};
@@ -888,6 +888,15 @@
         var js = state.jobStatus;
         var pct = js.total > 0 ? Math.round((js.processed / js.total) * 100) : 0;
         var hint = document.getElementById("dg-matches-job-hint");
+        var scriptBadge = document.getElementById("dg-matches-match-script");
+        if (scriptBadge) {
+          var ms = js.matchScript;
+          if (ms && ms.version) {
+            scriptBadge.textContent = "v" + ms.version + " · rev." + ms.revision;
+            scriptBadge.title = ms.notes || "";
+            scriptBadge.classList.remove("d-none");
+          }
+        }
         if (hint) {
           var msg = js.message || "Ожидание";
           var base = msg;
@@ -1974,7 +1983,7 @@
         if (n > 100) return 1;
         return n;
       }
-      function scoreUi(matchType, score01) {
+      function scoreUi(matchType, score01, matchingMode) {
         var mt = String(matchType || "").toLowerCase();
         if (mt === "manual") return { text: "Вручную", badge: "info" };
         if (mt === "sku") {
@@ -1987,7 +1996,8 @@
         var pct = Math.round(Number(score01 || 0) * 100);
         if (pct < 0) pct = 0;
         if (pct > 100) pct = 100;
-        var text = pct + "% по названию";
+        var wordMode = String(matchingMode || "").trim().toLowerCase() === "name_words";
+        var text = pct + (wordMode ? "% по словам" : "% по названию");
         if (pct >= 90) return { text: text, badge: "success" };
         if (pct >= 70) return { text: text, badge: "warning" };
         return { text: text, badge: "secondary" };
@@ -2012,6 +2022,7 @@
         if (mt === "manual") return "Вручную";
         if (mt === "name") {
           if (mm === "all") return "Название · из «все поля»";
+          if (mm === "name_words") return "По словам";
           return "По названию";
         }
         if (mt === "sku") {
@@ -2088,7 +2099,7 @@
         rows.forEach(function (m) {
           var score01 = normalizeConfidence01(m.confidence_score);
           var sUi = statusUi(String(m.status || "").toLowerCase());
-          var cUi = scoreUi(effectiveMatchTypeForScore(m, score01), score01);
+          var cUi = scoreUi(effectiveMatchTypeForScore(m, score01), score01, m.matching_mode);
           var myProductUrl =
             normalizeWebasystProductUrl(m.my_product_url || "", m.my_site_domain || "", m.my_site_cms_type || "") ||
             buildProductPageUrlFromSlug(m.my_site_domain || "", m.my_sku || "") ||
@@ -2132,7 +2143,7 @@
           tdConf.title =
             "confidence_score (0–1): " +
             (Number.isFinite(score01) ? score01.toFixed(4) : "—") +
-            ". Для «По названию» — доля схожести строк; для SKU — 1.0 при полном совпадении.";
+            ". Для «По названию» — доля схожести строки; для «По словам» — доля общих слов без учёта порядка; для SKU — 1.0 при полном совпадении.";
           tr.appendChild(tdConf);
 
           var tdMy = document.createElement("td");
@@ -2448,6 +2459,7 @@
               canRetry: !!json.canRetry,
               startedAt: json.startedAt != null ? json.startedAt : json.started_at != null ? json.started_at : null,
               finishedAt: json.finishedAt != null ? json.finishedAt : json.finished_at != null ? json.finished_at : null,
+              matchScript: json.match_script || null,
               stopPending:
                 json.stopPending === true ||
                 (!!json.active && /Остановка\s+задачи/i.test(String(json.message || ""))),
