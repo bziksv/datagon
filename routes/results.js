@@ -17,6 +17,8 @@ function resultsListCacheKey(query, effectiveLimit, effectiveOffset) {
         project_id: query.project_id != null ? String(query.project_id) : '',
         page_status: query.page_status != null ? String(query.page_status) : '',
         page_type: query.page_type != null ? String(query.page_type) : '',
+        content_checked: query.content_checked != null ? String(query.content_checked) : '',
+        content_user: query.content_user != null ? String(query.content_user) : '',
         search: String(query.search ?? '').trim(),
         matched: query.matched != null ? String(query.matched) : '',
         availability: query.availability != null ? String(query.availability) : '',
@@ -41,6 +43,8 @@ function buildResultsWhere(query) {
         project_id,
         page_status,
         page_type,
+        content_checked,
+        content_user,
         search,
         matched,
         availability,
@@ -66,6 +70,26 @@ function buildResultsWhere(query) {
         needsPagesJoin = true;
         sql += ' AND COALESCE(pg.page_type, \'product\') = ?';
         params.push(pt);
+    }
+    const ccRaw = String(content_checked || '').trim().toLowerCase();
+    if (ccRaw === '1' || ccRaw === 'yes' || ccRaw === 'да' || ccRaw === 'true') {
+        needsPagesJoin = true;
+        sql += ' AND COALESCE(pg.content_checked, 0) = 1';
+    } else if (ccRaw === '0' || ccRaw === 'no' || ccRaw === 'нет' || ccRaw === 'false') {
+        needsPagesJoin = true;
+        sql += ' AND COALESCE(pg.content_checked, 0) = 0';
+    }
+    const cuRaw = String(content_user || '').trim().toLowerCase();
+    if (cuRaw === 'none' || cuRaw === 'unassigned' || cuRaw === '0') {
+        needsPagesJoin = true;
+        sql += ' AND pg.content_user_id IS NULL AND pr.page_id IS NOT NULL';
+    } else if (cuRaw && cuRaw !== 'all') {
+        const cuId = parseInt(cuRaw, 10);
+        if (Number.isFinite(cuId) && cuId > 0) {
+            needsPagesJoin = true;
+            sql += ' AND pg.content_user_id = ?';
+            params.push(cuId);
+        }
     }
     if (search && String(search).trim()) {
         needsPagesJoin = true;
@@ -335,6 +359,95 @@ async function runEnsureResultsListPerfOnce(db) {
         console.warn('[results] pages.page_type_manual column:', e.message);
     }
     try {
+        const contentCheckedCols = [
+            {
+                name: 'content_checked',
+                ddl: 'ALTER TABLE pages ADD COLUMN content_checked TINYINT(1) NOT NULL DEFAULT 0',
+            },
+            {
+                name: 'content_checked_at',
+                ddl: 'ALTER TABLE pages ADD COLUMN content_checked_at TIMESTAMP NULL DEFAULT NULL',
+            },
+            {
+                name: 'content_checked_by',
+                ddl: 'ALTER TABLE pages ADD COLUMN content_checked_by VARCHAR(255) NULL',
+            },
+            {
+                name: 'content_checked_by_user_id',
+                ddl: 'ALTER TABLE pages ADD COLUMN content_checked_by_user_id INT NULL',
+            },
+        ];
+        for (const c of contentCheckedCols) {
+            const [cols] = await db.query('SHOW COLUMNS FROM pages LIKE ?', [c.name]);
+            if (!cols.length) await db.query(c.ddl);
+        }
+        const [idx] = await db.query(
+            `SELECT 1
+             FROM information_schema.statistics
+             WHERE table_schema = DATABASE()
+               AND table_name = 'pages'
+               AND index_name = 'idx_pages_content_checked'
+             LIMIT 1`
+        );
+        if (!idx.length) {
+            await db.query(
+                'ALTER TABLE pages ADD INDEX idx_pages_content_checked (content_checked, id)'
+            );
+        }
+    } catch (e) {
+        console.warn('[results] pages.content_checked columns:', e.message);
+    }
+    try {
+        const contentUserCols = [
+            {
+                name: 'content_user_id',
+                ddl: 'ALTER TABLE pages ADD COLUMN content_user_id INT NULL',
+            },
+            {
+                name: 'content_user_name',
+                ddl: 'ALTER TABLE pages ADD COLUMN content_user_name VARCHAR(255) NULL',
+            },
+        ];
+        for (const c of contentUserCols) {
+            const [cols] = await db.query('SHOW COLUMNS FROM pages LIKE ?', [c.name]);
+            if (!cols.length) await db.query(c.ddl);
+        }
+        const [idxCu] = await db.query(
+            `SELECT 1
+             FROM information_schema.statistics
+             WHERE table_schema = DATABASE()
+               AND table_name = 'pages'
+               AND index_name = 'idx_pages_content_user'
+             LIMIT 1`
+        );
+        if (!idxCu.length) {
+            await db.query(
+                'ALTER TABLE pages ADD INDEX idx_pages_content_user (content_user_id, id)'
+            );
+        }
+        await db.query(`
+            CREATE TABLE IF NOT EXISTS dg_pages_content_user_log (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                page_id INT NOT NULL,
+                project_id INT NULL,
+                url VARCHAR(2048) NULL,
+                old_user_id INT NULL,
+                new_user_id INT NULL,
+                old_value VARCHAR(255) NULL,
+                new_value VARCHAR(255) NULL,
+                source VARCHAR(32) NOT NULL DEFAULT 'ui',
+                changed_by_user_id INT NULL,
+                changed_by_name VARCHAR(255) NULL,
+                note VARCHAR(500) NULL,
+                changed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_dg_pages_cuser_log_page (page_id, changed_at),
+                INDEX idx_dg_pages_cuser_log_user (changed_by_user_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        `);
+    } catch (e) {
+        console.warn('[results] pages.content_user columns:', e.message);
+    }
+    try {
         const [colRows] = await db.query(
             `SELECT COUNT(*) AS cnt
              FROM information_schema.COLUMNS
@@ -519,6 +632,9 @@ module.exports = (db, settings) => {
                 sku: 'pr.sku',
                 page_status: PAGE_STATUS_EXPR,
                 page_type: 'pg.page_type',
+                content_checked: 'pg.content_checked',
+                content_user_name: 'pg.content_user_name',
+                content_user_id: 'pg.content_user_id',
                 is_oos: 'pr.is_oos',
                 price: 'pr.price',
                 url: 'pr.url'
@@ -560,6 +676,11 @@ module.exports = (db, settings) => {
             const q = `SELECT pr.*, p.name as project_name, pg.url as page_url,
                            COALESCE(pg.page_type, 'product') AS page_type,
                            COALESCE(pg.page_type_manual, 0) AS page_type_manual,
+                           COALESCE(pg.content_checked, 0) AS content_checked,
+                           pg.content_checked_at AS content_checked_at,
+                           pg.content_checked_by AS content_checked_by,
+                           pg.content_user_id AS content_user_id,
+                           pg.content_user_name AS content_user_name,
                            ${PAGE_STATUS_EXPR} as page_status, pg.last_error as page_error, pg.parsed_at as page_parsed_at,
                            ${isMatchedExpr} AS is_matched
                      FROM prices pr 
@@ -635,6 +756,198 @@ module.exports = (db, settings) => {
         } catch (e) {
             console.error('Error fetching results stats:', e);
             res.status(500).json({ success: false, error: e.message });
+        }
+    });
+
+    /** Список контент-менеджеров для колонки «Контент» / раздачи. */
+    router.get('/content-assignees', async (_req, res) => {
+        try {
+            const [rows] = await db.query(
+                `SELECT u.id, u.username, u.full_name
+                   FROM users u
+                   INNER JOIN specialties s ON s.id = u.specialty_id
+                  WHERE COALESCE(u.is_archived, 0) = 0
+                    AND LOWER(TRIM(s.name)) = LOWER(?)
+                  ORDER BY COALESCE(NULLIF(TRIM(u.full_name), ''), u.username) ASC, u.id ASC`,
+                ['Контент-Менеджер']
+            );
+            const items = (rows || []).map((u) => ({
+                id: Number(u.id),
+                username: u.username != null ? String(u.username) : '',
+                full_name: u.full_name != null ? String(u.full_name) : '',
+                name:
+                    String(u.full_name || u.username || '').trim() ||
+                    String(u.username || ''),
+            }));
+            res.json({ success: true, items, responsibles: items });
+        } catch (e) {
+            res.status(500).json({ success: false, error: e.message });
+        }
+    });
+
+    /**
+     * Раздать URL без ответственного «Контент» по применённым фильтрам результатов
+     * (как на новых товарах: только unassigned, блоки подряд).
+     * Body: те же поля фильтров, что у GET /api/results + scope?: 'unassigned'.
+     */
+    router.post('/distribute-content', async (req, res) => {
+        const t0 = Date.now();
+        try {
+            await ensureResultsListPerf(db);
+            const body = req.body && typeof req.body === 'object' ? req.body : {};
+            const scope = String(body.scope || 'unassigned').trim().toLowerCase();
+            if (scope !== 'unassigned') {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Поддерживается только scope=unassigned (без ответственного)',
+                });
+            }
+
+            let users;
+            if (Array.isArray(body.user_ids) && body.user_ids.length) {
+                const ids = body.user_ids
+                    .map((x) => parseInt(x, 10))
+                    .filter((n) => Number.isFinite(n) && n > 0);
+                if (!ids.length) {
+                    return res.status(400).json({ success: false, error: 'Пустой список user_ids' });
+                }
+                const [rows] = await db.query(
+                    `SELECT id, username, full_name FROM users
+                      WHERE id IN (${ids.map(() => '?').join(',')}) AND COALESCE(is_archived, 0) = 0`,
+                    ids
+                );
+                users = rows || [];
+            } else {
+                const [rows] = await db.query(
+                    `SELECT u.id, u.username, u.full_name
+                       FROM users u
+                       INNER JOIN specialties s ON s.id = u.specialty_id
+                      WHERE COALESCE(u.is_archived, 0) = 0
+                        AND LOWER(TRIM(s.name)) = LOWER(?)
+                      ORDER BY u.id ASC`,
+                    ['Контент-Менеджер']
+                );
+                users = rows || [];
+            }
+            if (!users.length) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Нет активных контент-менеджеров для раздачи',
+                });
+            }
+
+            const filterQuery = {
+                project_id: body.project_id,
+                page_status: body.page_status,
+                page_type: body.page_type,
+                content_checked: body.content_checked,
+                content_user: 'none',
+                search: body.search,
+                matched: body.matched,
+                availability: body.availability,
+                project_name: body.project_name,
+                price_min: body.price_min,
+                price_max: body.price_max,
+            };
+            const whereBuilt = buildResultsWhere(filterQuery);
+            const [pageRows] = await db.query(
+                `SELECT pg.id AS page_id, pg.project_id, pg.url,
+                        pg.content_user_id, pg.content_user_name,
+                        MIN(pr.sku) AS sku
+                   FROM prices pr
+                   INNER JOIN pages pg ON pg.id = pr.page_id
+                  WHERE 1=1
+                    ${whereBuilt.sql}
+                    AND pg.content_user_id IS NULL
+                  GROUP BY pg.id, pg.project_id, pg.url, pg.content_user_id, pg.content_user_name
+                  ORDER BY pg.project_id ASC, MIN(pr.sku) ASC, pg.id ASC`,
+                whereBuilt.params
+            );
+            if (!pageRows.length) {
+                return res.json({
+                    success: true,
+                    assigned: 0,
+                    users: users.length,
+                    scope: 'unassigned',
+                    mode: 'contiguous_blocks',
+                    duration_sec: Math.round((Date.now() - t0) / 1000),
+                    message: 'Нечего раздавать',
+                });
+            }
+
+            const actor = req.datagonActor || null;
+            const actorUid = actor && actor.id != null ? Number(actor.id) : null;
+            const actorName = actor
+                ? String(actor.full_name || actor.username || '').trim() || null
+                : null;
+            const m = users.length;
+            const n = pageRows.length;
+            let assigned = 0;
+            let rowIdx = 0;
+            const logBatch = [];
+
+            for (let uIdx = 0; uIdx < m && rowIdx < n; uIdx++) {
+                const remainingRows = n - rowIdx;
+                const remainingUsers = m - uIdx;
+                const chunk = Math.ceil(remainingRows / remainingUsers);
+                const u = users[uIdx];
+                const name =
+                    String(u.full_name || u.username || '').trim() || String(u.username);
+                const chunkIds = [];
+                for (let k = 0; k < chunk && rowIdx < n; k++, rowIdx++) {
+                    const before = pageRows[rowIdx];
+                    chunkIds.push(Number(before.page_id));
+                    logBatch.push([
+                        Number(before.page_id),
+                        before.project_id != null ? Number(before.project_id) : null,
+                        before.url != null ? String(before.url).slice(0, 2048) : null,
+                        null,
+                        Number(u.id),
+                        null,
+                        name,
+                        'distribute',
+                        Number.isFinite(actorUid) ? actorUid : null,
+                        actorName,
+                        `раздача → ${name}`,
+                    ]);
+                }
+                if (chunkIds.length) {
+                    await db.query(
+                        `UPDATE pages
+                            SET content_user_id = ?, content_user_name = ?
+                          WHERE id IN (${chunkIds.map(() => '?').join(',')})
+                            AND content_user_id IS NULL`,
+                        [u.id, name, ...chunkIds]
+                    );
+                    assigned += chunkIds.length;
+                }
+            }
+
+            const LOG_CHUNK = 200;
+            for (let i = 0; i < logBatch.length; i += LOG_CHUNK) {
+                const slice = logBatch.slice(i, i + LOG_CHUNK);
+                const placeholders = slice.map(() => '(?,?,?,?,?,?,?,?,?,?,?)').join(',');
+                await db.query(
+                    `INSERT INTO dg_pages_content_user_log
+                        (page_id, project_id, url, old_user_id, new_user_id, old_value, new_value,
+                         source, changed_by_user_id, changed_by_name, note)
+                     VALUES ${placeholders}`,
+                    slice.flat()
+                );
+            }
+
+            invalidateResultsListCache();
+            res.json({
+                success: true,
+                assigned,
+                users: users.length,
+                scope: 'unassigned',
+                mode: 'contiguous_blocks',
+                duration_sec: Math.round((Date.now() - t0) / 1000),
+            });
+        } catch (e) {
+            console.error('[results] distribute-content', e);
+            res.status(500).json({ success: false, error: e.message || 'Ошибка раздачи' });
         }
     });
 

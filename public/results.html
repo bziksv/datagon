@@ -221,7 +221,9 @@
       box-shadow: inset 3px 0 0 #3f6ad8;
     }
     /* «лог» в углу ячейки типа — паритет с exports-new-products .dg-np-field-log-btn */
-    body.datagon-vanilla-body[data-dg-active-nav="results"] .dg-res-type-cell {
+    body.datagon-vanilla-body[data-dg-active-nav="results"] .dg-res-type-cell,
+    body.datagon-vanilla-body[data-dg-active-nav="results"] .dg-res-content-check-cell,
+    body.datagon-vanilla-body[data-dg-active-nav="results"] .dg-res-content-user-cell {
       position: relative;
       padding-right: 2.1rem !important;
     }
@@ -242,6 +244,8 @@
       box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
     }
     body.datagon-vanilla-body[data-dg-active-nav="results"] .dg-res-type-cell:hover .dg-res-field-log-btn,
+    body.datagon-vanilla-body[data-dg-active-nav="results"] .dg-res-content-check-cell:hover .dg-res-field-log-btn,
+    body.datagon-vanilla-body[data-dg-active-nav="results"] .dg-res-content-user-cell:hover .dg-res-field-log-btn,
     body.datagon-vanilla-body[data-dg-active-nav="results"] .dg-res-field-log-btn:focus {
       opacity: 1;
       pointer-events: auto;
@@ -1393,6 +1397,29 @@
                     <option value="oos">Под заказ</option>
                   </select>
                 </div>
+                <div class="col-md-2" data-dg-res-filter-field="content_checked">
+                  <label class="form-label" for="dg-res-f-content_checked">Проверил контент</label>
+                  <select
+                    class="form-select"
+                    id="dg-res-f-content_checked"
+                    title="Фильтр по галочке на URL (pages). Срабатывает после «Применить»."
+                  >
+                    <option value="all">Все</option>
+                    <option value="1">Да</option>
+                    <option value="0">Нет</option>
+                  </select>
+                </div>
+                <div class="col-md-2" data-dg-res-filter-field="content_user">
+                  <label class="form-label" for="dg-res-f-content_user">Контент</label>
+                  <select
+                    class="form-select"
+                    id="dg-res-f-content_user"
+                    title="Кто разбирает URL. Срабатывает после «Применить»."
+                  >
+                    <option value="all">Все</option>
+                    <option value="none">Без ответственного</option>
+                  </select>
+                </div>
               </div>
               <div class="row g-2 mt-1 align-items-end">
                 <div class="col-md-4" data-dg-res-filter-field="project_name">
@@ -1412,6 +1439,16 @@
                 <button type="button" class="btn btn-sm btn-primary" id="results-apply" data-dg-tooltip="Применить фильтры и обновить таблицу. Сохраняет выбранные значения для следующего визита." data-dg-notify-start="Применяем фильтры результатов…"><i class="pe-7s-search me-1"></i>Применить</button>
                 <button type="button" class="btn btn-sm btn-outline-secondary" id="results-default" data-dg-tooltip="Сбросить фильтры к значениям по умолчанию и очистить сохранённые настройки этой страницы." data-dg-notify-start="Сбрасываем фильтры результатов…"><i class="pe-7s-refresh me-1"></i>По умолчанию</button>
                 <button type="button" class="btn btn-sm btn-outline-success" id="results-reparse-all" title="Повторный парсинг по применённым фильтрам таблицы (тип, проект, поиск, сопоставление…)" data-dg-tooltip="Ставит в очередь URL из выборки после «Применить» — все активные фильтры, не только текущая страница пагинации." data-dg-notify-start="Ставим отфильтрованные в очередь перепарсинга…"><i class="pe-7s-refresh-2 me-1"></i>В очередь на перепарсинг (обновит артикула и цены)</button>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-primary"
+                  id="results-distribute-content"
+                  data-dg-notify-start="Раздаём без ответственного…"
+                  title="Поровну блоками подряд: URL без «Контент» по текущим фильтрам после «Применить»"
+                  data-dg-tooltip="Раздаёт URL без ответственного между контент-менеджерами поровну блоками подряд (как на «Новых товарах»). Учитывает применённые фильтры."
+                >
+                  Раздать поровну (без ответственного)
+                </button>
                 <button type="button" class="btn btn-sm btn-outline-danger" id="results-clear-history" title="Очистить историю результатов по текущему проекту" data-dg-notify-start="Очищаем историю результатов…"><i class="pe-7s-trash me-1"></i>Очистить историю</button>
               </div>
               </div>
@@ -1550,12 +1587,30 @@
                       <col class="dg-res-col-7" />
                       <col class="dg-res-col-8" />
                       <col class="dg-res-col-9" />
+                      <col class="dg-res-col-10" />
+                      <col class="dg-res-col-11" />
                     </colgroup>
                     <thead id="dg-res-thead">
                       <tr>
                         <th style="cursor:pointer" data-res-sort="parsed_at" data-res-col-label="Дата"><span class="dg-res-th-text">Дата</span></th>
                         <th style="cursor:pointer" data-res-sort="project_name" data-res-col-label="Проект"><span class="dg-res-th-text">Проект</span></th>
                         <th style="cursor:pointer" data-res-sort="page_type" data-res-col-label="Тип"><span class="dg-res-th-text">Тип</span></th>
+                        <th
+                          style="cursor:pointer"
+                          data-res-sort="content_checked"
+                          data-res-col-label="Проверил контент"
+                          title="Галочка на URL (pages): одна на все карточки цен этого адреса. Журнал — «лог» в углу ячейки."
+                        >
+                          <span class="dg-res-th-text">Проверил контент</span>
+                        </th>
+                        <th
+                          style="cursor:pointer"
+                          data-res-sort="content_user_name"
+                          data-res-col-label="Контент"
+                          title="Кто разбирает URL (pages). Раздача — кнопка в фильтрах. Журнал — «лог» в углу ячейки."
+                        >
+                          <span class="dg-res-th-text">Контент</span>
+                        </th>
                         <th style="cursor:pointer" data-res-sort="product_name" data-res-col-label="Товар"><span class="dg-res-th-text">Товар</span></th>
                         <th style="cursor:pointer" data-res-sort="sku" data-res-col-label="SKU"><span class="dg-res-th-text">SKU</span></th>
                         <th data-res-col-label="Сопоставление"><span class="dg-res-th-text">Сопоставление</span></th>
@@ -1636,6 +1691,37 @@
                 <div class="d-flex justify-content-end gap-2">
                   <button type="button" class="btn btn-outline-secondary" id="dg-res-type-confirm-cancel">Отмена</button>
                   <button type="button" class="btn btn-danger" id="dg-res-type-confirm-ok" data-dg-notify-start="Меняем тип страницы…">Сменить тип</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div
+            id="dg-res-distribute-confirm-overlay"
+            class="dg-res-confirm-overlay d-none"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="dg-res-distribute-confirm-title"
+            hidden
+          >
+            <div class="dg-res-confirm-backdrop" id="dg-res-distribute-confirm-backdrop"></div>
+            <div class="dg-res-confirm-panel card shadow-lg border-0">
+              <div class="card-body">
+                <h5 class="card-title mb-2" id="dg-res-distribute-confirm-title">Раздать ответственных?</h5>
+                <p class="card-text text-muted mb-3" id="dg-res-distribute-confirm-text">
+                  Раздать URL без ответственного «Контент» между контент-менеджерами поровну блоками подряд по текущим
+                  применённым фильтрам?
+                </p>
+                <div class="d-flex justify-content-end gap-2">
+                  <button type="button" class="btn btn-outline-secondary" id="dg-res-distribute-confirm-cancel">Отмена</button>
+                  <button
+                    type="button"
+                    class="btn btn-primary"
+                    id="dg-res-distribute-confirm-ok"
+                    data-dg-notify-start="Раздаём без ответственного…"
+                  >
+                    Раздать
+                  </button>
                 </div>
               </div>
             </div>
@@ -1764,10 +1850,10 @@
       var urlDebounce = null;
       var searchReloadTimer = null;
       var resultsFetchAbortController = null;
-      /* Дата, Проект, Тип, Товар, SKU, Сопоставление, Парсинг, Наличие, Цена, Действия */
-      var DEFAULT_VISIBLE_COLS = [true, true, true, true, true, true, true, true, true, true];
+      /* Дата, Проект, Тип, Проверил контент, Контент, Товар, SKU, Сопоставление, Парсинг, Наличие, Цена, Действия */
+      var DEFAULT_VISIBLE_COLS = [true, true, true, true, true, true, true, true, true, true, true, true];
       var visibleCols = DEFAULT_VISIBLE_COLS.slice();
-      var COL_COUNT = 10;
+      var COL_COUNT = 12;
       var PAGE_TYPE_OPTIONS = [
         { value: "product", label: "Товар" },
         { value: "category", label: "Категория" },
@@ -1775,8 +1861,9 @@
         { value: "junk", label: "Утиль" },
         { value: "unknown", label: "Неизвестно" },
       ];
+      var contentAssignees = [];
       var pendingTypeChange = null;
-      var typeLogState = { pageId: 0, label: "", limit: 50 };
+      var typeLogState = { pageId: 0, label: "", limit: 50, kind: "type" };
       var bulkMode = false;
       var bulkSelected = {};
       var bulkLastIdx = null;
@@ -1818,10 +1905,10 @@
         return "dg_results_sort_v" + SORT_STORAGE_VERSION + "_" + storageScope();
       }
       function userVisibleColsKey() {
-        return "dg_results_visible_cols_v5_" + storageScope();
+        return "dg_results_visible_cols_v7_" + storageScope();
       }
       function userColWidthKey() {
-        return "dg_results_col_widths_v6_" + storageScope();
+        return "dg_results_col_widths_v8_" + storageScope();
       }
 
       function fmtIntRu(n) {
@@ -1848,6 +1935,8 @@
           project_id: document.getElementById("dg-res-f-project").value,
           page_status: document.getElementById("dg-res-f-page_status").value,
           page_type: document.getElementById("dg-res-f-page_type").value,
+          content_checked: document.getElementById("dg-res-f-content_checked").value,
+          content_user: document.getElementById("dg-res-f-content_user").value,
           matched: document.getElementById("dg-res-f-matched").value,
           availability: document.getElementById("dg-res-f-availability").value,
           search: document.getElementById("dg-res-f-search").value.trim(),
@@ -1863,6 +1952,8 @@
           project_id: document.getElementById("dg-res-f-project").value,
           page_status: document.getElementById("dg-res-f-page_status").value,
           page_type: document.getElementById("dg-res-f-page_type").value,
+          content_checked: document.getElementById("dg-res-f-content_checked").value,
+          content_user: document.getElementById("dg-res-f-content_user").value,
           matched: document.getElementById("dg-res-f-matched").value,
           availability: document.getElementById("dg-res-f-availability").value,
           project_name: document.getElementById("dg-res-f-project_name").value,
@@ -1910,6 +2001,14 @@
           document.getElementById("dg-res-f-page_status").value = String(prefs.page_status);
         if (missing("page_type") && prefs.page_type != null)
           document.getElementById("dg-res-f-page_type").value = String(prefs.page_type);
+        if (missing("content_checked") && prefs.content_checked != null)
+          document.getElementById("dg-res-f-content_checked").value = String(prefs.content_checked);
+        if (missing("content_user") && prefs.content_user != null) {
+          var cuSel = document.getElementById("dg-res-f-content_user");
+          var cuWant = String(prefs.content_user);
+          if ([].some.call(cuSel.options, function (o) { return o.value === cuWant; }))
+            cuSel.value = cuWant;
+        }
         if (missing("matched") && prefs.matched != null)
           document.getElementById("dg-res-f-matched").value = String(prefs.matched);
         if (missing("availability") && prefs.availability != null)
@@ -1983,13 +2082,15 @@
 
       function parseUrlToForm() {
         var params = new URLSearchParams(window.location.search);
-        ["project_id", "page_status", "page_type", "matched", "availability", "search", "project_name", "price_min", "price_max"].forEach(function (k) {
+        ["project_id", "page_status", "page_type", "content_checked", "content_user", "matched", "availability", "search", "project_name", "price_min", "price_max"].forEach(function (k) {
           var v = params.get(k);
           if (v === null || v === "") return;
           if (k === "search") document.getElementById("dg-res-f-search").value = v;
           if (k === "project_id") document.getElementById("dg-res-f-project").value = v;
           if (k === "page_status") document.getElementById("dg-res-f-page_status").value = v;
           if (k === "page_type") document.getElementById("dg-res-f-page_type").value = v;
+          if (k === "content_checked") document.getElementById("dg-res-f-content_checked").value = v;
+          if (k === "content_user") document.getElementById("dg-res-f-content_user").value = v;
           if (k === "matched") document.getElementById("dg-res-f-matched").value = v;
           if (k === "availability") document.getElementById("dg-res-f-availability").value = v;
           if (k === "project_name") document.getElementById("dg-res-f-project_name").value = v;
@@ -2427,9 +2528,13 @@
           });
           tdAct.appendChild(btnRe);
           tdAct.appendChild(btnDel);
+          var tdContent = buildContentCheckCell(r);
+          var tdContentUser = buildContentUserCell(r);
           tr.appendChild(tdDate);
           tr.appendChild(tdProj);
           tr.appendChild(tdType);
+          tr.appendChild(tdContent);
+          tr.appendChild(tdContentUser);
           tr.appendChild(tdProd);
           tr.appendChild(tdSku);
           tr.appendChild(tdMat);
@@ -2475,13 +2580,26 @@
         overlay.setAttribute("aria-hidden", "true");
       }
 
-      function openResTypeLog(pageId, label) {
+      function openResTypeLog(pageId, label, kind) {
         typeLogState.pageId = Number(pageId) || 0;
         typeLogState.label = label || "#" + pageId;
+        typeLogState.kind =
+          kind === "content-check"
+            ? "content-check"
+            : kind === "content-user"
+              ? "content-user"
+              : "type";
         var overlay = document.getElementById("dg-res-type-log-overlay");
         var titleEl = document.getElementById("dg-res-type-log-title");
         var subEl = document.getElementById("dg-res-type-log-subtitle");
-        if (titleEl) titleEl.textContent = "Журнал: Тип";
+        if (titleEl) {
+          titleEl.textContent =
+            typeLogState.kind === "content-check"
+              ? "Журнал: Проверил контент"
+              : typeLogState.kind === "content-user"
+                ? "Журнал: Контент"
+                : "Журнал: Тип";
+        }
         if (subEl) subEl.textContent = "page #" + pageId + " · " + typeLogState.label;
         if (overlay) {
           overlay.style.display = "flex";
@@ -2494,10 +2612,17 @@
         var body = document.getElementById("dg-res-type-log-body");
         if (!body || !typeLogState.pageId) return;
         body.innerHTML = '<div class="text-muted small text-center py-4">Загрузка журнала…</div>';
+        var path =
+          typeLogState.kind === "content-check"
+            ? "/content-check-log"
+            : typeLogState.kind === "content-user"
+              ? "/content-user-log"
+              : "/type-log";
         fetch(
           "/api/pages/" +
             encodeURIComponent(String(typeLogState.pageId)) +
-            "/type-log?limit=" +
+            path +
+            "?limit=" +
             encodeURIComponent(String(typeLogState.limit || 50)),
           { credentials: "same-origin" }
         )
@@ -2517,7 +2642,13 @@
             var rows = Array.isArray(x.j.rows) ? x.j.rows : [];
             if (!rows.length) {
               body.innerHTML =
-                '<div class="text-muted small text-center py-4">Тип ещё не меняли вручную.</div>';
+                '<div class="text-muted small text-center py-4">' +
+                (typeLogState.kind === "content-check"
+                  ? "Галочку «Проверил контент» ещё не меняли."
+                  : typeLogState.kind === "content-user"
+                    ? "Ответственного «Контент» ещё не меняли."
+                    : "Тип ещё не меняли вручную.") +
+                "</div>";
               return;
             }
             var html =
@@ -2565,9 +2696,418 @@
           e.preventDefault();
           e.stopPropagation();
           var label = String(r.product_name || r.sku || r.page_url || r.url || "").trim() || "#" + pageId;
-          openResTypeLog(pageId, label);
+          openResTypeLog(pageId, label, "type");
         });
         td.appendChild(btn);
+      }
+
+      function attachContentCheckFieldLog(td, r) {
+        var pageId = Number(r.page_id);
+        if (!td || !Number.isFinite(pageId) || pageId <= 0) return;
+        var btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "dg-res-field-log-btn";
+        btn.textContent = "лог";
+        btn.title = "Журнал «Проверил контент»";
+        btn.setAttribute("data-dg-no-activity", "1");
+        btn.addEventListener("click", function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          var label = String(r.product_name || r.sku || r.page_url || r.url || "").trim() || "#" + pageId;
+          openResTypeLog(pageId, label, "content-check");
+        });
+        td.appendChild(btn);
+      }
+
+      function fillContentUserFilter() {
+        var sel = document.getElementById("dg-res-f-content_user");
+        if (!sel) return;
+        var keep = String(sel.value || "all");
+        sel.replaceChildren();
+        var optAll = document.createElement("option");
+        optAll.value = "all";
+        optAll.textContent = "Все";
+        sel.appendChild(optAll);
+        var optNone = document.createElement("option");
+        optNone.value = "none";
+        optNone.textContent = "Без ответственного";
+        sel.appendChild(optNone);
+        (contentAssignees || []).forEach(function (u) {
+          var o = document.createElement("option");
+          o.value = String(u.id);
+          o.textContent = u.name || u.full_name || u.username || "#" + u.id;
+          sel.appendChild(o);
+        });
+        if ([].some.call(sel.options, function (o) { return o.value === keep; })) {
+          sel.value = keep;
+        } else {
+          sel.value = "all";
+        }
+      }
+
+      function loadContentAssignees() {
+        return fetch("/api/results/content-assignees", { credentials: "same-origin" })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok) throw new Error((x.j && x.j.error) || "Не удалось загрузить контент-менеджеров");
+            contentAssignees = Array.isArray(x.j.items)
+              ? x.j.items
+              : Array.isArray(x.j.responsibles)
+                ? x.j.responsibles
+                : [];
+            fillContentUserFilter();
+          })
+          .catch(function () {
+            contentAssignees = [];
+            fillContentUserFilter();
+          });
+      }
+
+      function contentUserSelectOptions(selectedId) {
+        var frag = document.createDocumentFragment();
+        var empty = document.createElement("option");
+        empty.value = "";
+        empty.textContent = "— не назначен —";
+        frag.appendChild(empty);
+        var selId = selectedId != null && selectedId !== "" ? String(selectedId) : "";
+        var found = !selId;
+        (contentAssignees || []).forEach(function (u) {
+          var o = document.createElement("option");
+          o.value = String(u.id);
+          o.textContent = u.name || u.full_name || u.username || "#" + u.id;
+          if (String(u.id) === selId) {
+            o.selected = true;
+            found = true;
+          }
+          frag.appendChild(o);
+        });
+        if (!found && selId) {
+          var extra = document.createElement("option");
+          extra.value = selId;
+          extra.textContent = "user#" + selId;
+          extra.selected = true;
+          frag.appendChild(extra);
+        }
+        return frag;
+      }
+
+      function attachContentUserFieldLog(td, r) {
+        var pageId = Number(r.page_id);
+        if (!td || !Number.isFinite(pageId) || pageId <= 0) return;
+        var btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "dg-res-field-log-btn";
+        btn.textContent = "лог";
+        btn.title = "Журнал «Контент»";
+        btn.setAttribute("data-dg-no-activity", "1");
+        btn.addEventListener("click", function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          var label = String(r.product_name || r.sku || r.page_url || r.url || "").trim() || "#" + pageId;
+          openResTypeLog(pageId, label, "content-user");
+        });
+        td.appendChild(btn);
+      }
+
+      function buildContentUserCell(r) {
+        var td = document.createElement("td");
+        td.className = "dg-res-content-user-cell small";
+        var pageId = Number(r.page_id);
+        var sel = document.createElement("select");
+        sel.className = "form-select form-select-sm";
+        sel.setAttribute("data-dg-notify-start", "Сохраняем ответственного…");
+        sel.appendChild(contentUserSelectOptions(r.content_user_id));
+        if (!Number.isFinite(pageId) || pageId <= 0) {
+          sel.disabled = true;
+          sel.title = "Нет связи со страницей очереди";
+        } else {
+          sel.title = "Кто разбирает этот URL (одна запись на page_id)";
+          sel.addEventListener("change", function () {
+            setContentUser(r, sel.value || null, sel);
+          });
+        }
+        td.appendChild(sel);
+        attachContentUserFieldLog(td, r);
+        return td;
+      }
+
+      function setContentUser(r, nextRaw, selEl) {
+        var pageId = Number(r.page_id);
+        var prevId = r.content_user_id != null ? Number(r.content_user_id) : null;
+        var nextId =
+          nextRaw != null && String(nextRaw).trim() !== ""
+            ? parseInt(String(nextRaw), 10)
+            : null;
+        if (!Number.isFinite(nextId) || nextId <= 0) nextId = null;
+        if (!Number.isFinite(pageId) || pageId <= 0) {
+          if (selEl) selEl.value = prevId != null ? String(prevId) : "";
+          return Promise.resolve();
+        }
+        var run = function () {
+          return fetch("/api/pages/" + encodeURIComponent(String(pageId)) + "/content-user", {
+            method: "PATCH",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ content_user_id: nextId }),
+          })
+            .then(function (res) {
+              return res.json().then(function (j) {
+                return { res: res, j: j };
+              });
+            })
+            .then(function (x) {
+              if (!x.res.ok || !x.j.success) {
+                throw new Error((x.j && x.j.error) || "Не удалось сохранить");
+              }
+              var uid = x.j.content_user_id != null ? Number(x.j.content_user_id) : null;
+              var uname = x.j.content_user_name != null ? String(x.j.content_user_name) : null;
+              (rows || []).forEach(function (row) {
+                if (Number(row.page_id) === pageId) {
+                  row.content_user_id = uid;
+                  row.content_user_name = uname;
+                }
+              });
+              renderTable();
+              if (window.DatagonNotify && window.DatagonNotify.toast) {
+                window.DatagonNotify.toast({
+                  type: "success",
+                  message: uid ? "Контент: " + (uname || "#" + uid) : "Контент: снят",
+                });
+              }
+            })
+            .catch(function (e) {
+              if (selEl) selEl.value = prevId != null ? String(prevId) : "";
+              var err = e.message || String(e);
+              if (window.DatagonNotify && window.DatagonNotify.toast) {
+                window.DatagonNotify.toast({ type: "danger", message: err });
+              } else {
+                alert(err);
+              }
+            });
+        };
+        if (window.DatagonNotify && window.DatagonNotify.busyRun && selEl) {
+          return window.DatagonNotify.busyRun(selEl, run);
+        }
+        return run();
+      }
+
+      function contentUserFilterLabel(v) {
+        var s = String(v || "").trim();
+        if (!s || s === "all") return "";
+        if (s === "none") return "без ответственного";
+        var hit = (contentAssignees || []).find(function (u) {
+          return String(u.id) === s;
+        });
+        return hit ? hit.name || hit.full_name || hit.username || "#" + s : "user#" + s;
+      }
+
+      function closeDistributeConfirm() {
+        var ov = document.getElementById("dg-res-distribute-confirm-overlay");
+        if (!ov) return;
+        ov.classList.add("d-none");
+        ov.setAttribute("hidden", "");
+      }
+
+      function openDistributeConfirm() {
+        var ov = document.getElementById("dg-res-distribute-confirm-overlay");
+        var text = document.getElementById("dg-res-distribute-confirm-text");
+        var f = readApiFilters();
+        var filt = summarizeAppliedFiltersForConfirm(f);
+        if (text) {
+          text.textContent =
+            "Раздать URL без ответственного «Контент» между контент-менеджерами поровну блоками подряд?\n\nФильтры: " +
+            filt;
+        }
+        if (!ov) return;
+        ov.classList.remove("d-none");
+        ov.removeAttribute("hidden");
+      }
+
+      function distributeContentRun() {
+        var f = readApiFilters();
+        var t0 = Date.now();
+        var filt = summarizeAppliedFiltersForConfirm(f);
+        showActionLog(
+          "warning",
+          "Раздаём URL без ответственного «Контент»…<br>Фильтры: <b>" + escHtml(filt) + "</b>"
+        );
+        var btn = document.getElementById("results-distribute-content");
+        var run = function () {
+          return fetch("/api/results/distribute-content", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              scope: "unassigned",
+              project_id: f.project_id === "all" ? null : f.project_id,
+              page_status: f.page_status || null,
+              page_type: f.page_type === "all" ? null : f.page_type,
+              content_checked: f.content_checked === "all" ? null : f.content_checked,
+              matched: f.matched === "all" ? null : f.matched,
+              availability: f.availability === "all" ? null : f.availability,
+              search: f.search || null,
+              project_name: f.project_name || null,
+              price_min: f.price_min !== "" ? f.price_min : null,
+              price_max: f.price_max !== "" ? f.price_max : null,
+            }),
+          })
+            .then(function (r) {
+              return r.json().then(function (j) {
+                return { r: r, j: j };
+              });
+            })
+            .then(function (x) {
+              if (!x.r.ok || !x.j.success) {
+                throw new Error((x.j && x.j.error) || "Не удалось раздать");
+              }
+              var sec =
+                x.j.duration_sec != null
+                  ? Number(x.j.duration_sec)
+                  : Math.round((Date.now() - t0) / 1000);
+              var assigned = Number(x.j.assigned) || 0;
+              var usersN = Number(x.j.users) || 0;
+              var msg =
+                assigned === 0
+                  ? "Нечего раздавать (по фильтрам нет URL без ответственного).<br>Фильтры: <b>" +
+                    escHtml(filt) +
+                    "</b> · " +
+                    sec +
+                    " с"
+                  : "Раздано блоками подряд: <b>" +
+                    assigned +
+                    "</b> URL на <b>" +
+                    usersN +
+                    "</b> контент-менеджеров · " +
+                    sec +
+                    " с<br>Фильтры: <b>" +
+                    escHtml(filt) +
+                    "</b>";
+              showActionLog(assigned === 0 ? "warning" : "success", msg);
+              if (window.DatagonNotify && window.DatagonNotify.toast) {
+                window.DatagonNotify.toast({
+                  type: assigned === 0 ? "warning" : "success",
+                  message:
+                    assigned === 0
+                      ? "Нечего раздавать"
+                      : "Раздано " + assigned + " URL на " + usersN + " чел.",
+                });
+              }
+              return loadResults({ showSkeleton: false });
+            })
+            .catch(function (e) {
+              var err = e.message || String(e);
+              showActionLog("danger", "Ошибка раздачи: " + escHtml(err));
+              if (window.DatagonNotify && window.DatagonNotify.toast) {
+                window.DatagonNotify.toast({ type: "danger", message: err });
+              }
+            });
+        };
+        if (window.DatagonNotify && window.DatagonNotify.busyRun && btn) {
+          window.DatagonNotify.busyRun(btn, run);
+        } else {
+          run();
+        }
+      }
+
+      function buildContentCheckCell(r) {
+        var td = document.createElement("td");
+        td.className = "dg-res-content-check-cell small";
+        var pageId = Number(r.page_id);
+        var wrap = document.createElement("div");
+        wrap.className = "form-check mb-0";
+        var cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.className = "form-check-input";
+        cb.id = "dg-res-cc-" + String(r.id || pageId || Math.random());
+        cb.checked = Number(r.content_checked) === 1;
+        cb.setAttribute("data-dg-notify-start", "Сохраняем «Проверил контент»…");
+        if (!Number.isFinite(pageId) || pageId <= 0) {
+          cb.disabled = true;
+          cb.title = "Нет связи со страницей очереди";
+        } else {
+          cb.title = "Одна галочка на весь URL (все карточки цен этого адреса)";
+          cb.addEventListener("change", function () {
+            setContentChecked(r, cb.checked ? 1 : 0, cb);
+          });
+        }
+        var lab = document.createElement("label");
+        lab.className = "form-check-label";
+        lab.setAttribute("for", cb.id);
+        lab.textContent = "Да";
+        wrap.appendChild(cb);
+        wrap.appendChild(lab);
+        td.appendChild(wrap);
+        if (r.content_checked_by || r.content_checked_at) {
+          var meta = document.createElement("div");
+          meta.className = "text-muted small mt-1";
+          var who = String(r.content_checked_by || "").trim();
+          var when = r.content_checked_at ? formatResLogWhen(r.content_checked_at) : "";
+          meta.textContent = [who, when].filter(Boolean).join(" · ") || "";
+          if (meta.textContent) td.appendChild(meta);
+        }
+        attachContentCheckFieldLog(td, r);
+        return td;
+      }
+
+      function setContentChecked(r, nextVal, cbEl) {
+        var pageId = Number(r.page_id);
+        var prev = Number(r.content_checked) === 1 ? 1 : 0;
+        nextVal = nextVal ? 1 : 0;
+        if (!Number.isFinite(pageId) || pageId <= 0) {
+          if (cbEl) cbEl.checked = !!prev;
+          return Promise.resolve();
+        }
+        var run = function () {
+          return fetch("/api/pages/" + encodeURIComponent(String(pageId)) + "/content-check", {
+            method: "PATCH",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ content_checked: nextVal }),
+          })
+            .then(function (res) {
+              return res.json().then(function (j) {
+                return { res: res, j: j };
+              });
+            })
+            .then(function (x) {
+              if (!x.res.ok || !x.j.success) {
+                throw new Error((x.j && x.j.error) || "Не удалось сохранить");
+              }
+              var at = x.j.content_checked_at || null;
+              var by = x.j.content_checked_by || null;
+              (rows || []).forEach(function (row) {
+                if (Number(row.page_id) === pageId) {
+                  row.content_checked = nextVal;
+                  row.content_checked_at = at;
+                  row.content_checked_by = by;
+                }
+              });
+              renderTable();
+              if (window.DatagonNotify && window.DatagonNotify.toast) {
+                window.DatagonNotify.toast({
+                  type: "success",
+                  message: nextVal ? "Проверил контент: да" : "Проверил контент: нет",
+                });
+              }
+            })
+            .catch(function (e) {
+              if (cbEl) cbEl.checked = !!prev;
+              var err = e.message || String(e);
+              if (window.DatagonNotify && window.DatagonNotify.toast) {
+                window.DatagonNotify.toast({ type: "danger", message: err });
+              } else {
+                alert(err);
+              }
+            });
+        };
+        if (window.DatagonNotify && window.DatagonNotify.busyRun && cbEl) {
+          return window.DatagonNotify.busyRun(cbEl, run);
+        }
+        return run();
       }
 
       function buildPageTypeSelect(r) {
@@ -3145,6 +3685,7 @@
           fetch("/api/settings", { credentials: "same-origin" }).then(function (r) {
             return r.json();
           }),
+          loadContentAssignees(),
         ])
           .then(function (arr) {
             if (Array.isArray(arr[0])) {
@@ -3161,6 +3702,24 @@
               var limSel = document.getElementById("dg-res-limit");
               if (limSel) limSel.value = String(dl);
             }
+            /* После заполнения списка КМ — восстановить content_user из URL/prefs */
+            try {
+              var p = new URLSearchParams(window.location.search);
+              var cu = p.get("content_user");
+              var cuSel = document.getElementById("dg-res-f-content_user");
+              if (cu && cuSel && [].some.call(cuSel.options, function (o) { return o.value === cu; })) {
+                cuSel.value = cu;
+              } else if ((!cu || cu === "") && cuSel) {
+                var DF = window.DatagonFilters;
+                var prefs = DF && DF.load ? DF.load("results") : null;
+                if (prefs && prefs.content_user != null) {
+                  var want = String(prefs.content_user);
+                  if ([].some.call(cuSel.options, function (o) { return o.value === want; })) {
+                    cuSel.value = want;
+                  }
+                }
+              }
+            } catch (e3) {}
             return arr;
           })
           .catch(function () {});
@@ -3479,8 +4038,13 @@
           if (Array.isArray(parsedVisible) && parsedVisible.length === COL_COUNT) {
             visibleCols = parsedVisible.slice();
           } else if (Array.isArray(parsedVisible) && parsedVisible.length === 11) {
-            /* v4 с колонкой URL перед «Действия» — выкидываем URL (индекс 9) */
-            visibleCols = parsedVisible.slice(0, 9).concat(parsedVisible.slice(10));
+            /* v6 без «Контент» — вставляем после «Проверил контент» (индекс 4) */
+            visibleCols = parsedVisible.slice(0, 4).concat([true], parsedVisible.slice(4));
+          } else if (Array.isArray(parsedVisible) && parsedVisible.length === 10) {
+            /* v5 без «Проверил контент» и «Контент» */
+            visibleCols = parsedVisible
+              .slice(0, 3)
+              .concat([true, true], parsedVisible.slice(3));
           }
         } catch (e) {}
         var panel = document.getElementById("dg-res-columns-panel");
@@ -3622,6 +4186,12 @@
         var parts = [];
         if (f.project_id && f.project_id !== "all") parts.push("проект #" + f.project_id);
         if (f.page_type && f.page_type !== "all") parts.push("тип «" + pageTypeLabel(f.page_type) + "»");
+        if (f.content_checked === "1") parts.push("проверил контент: да");
+        if (f.content_checked === "0") parts.push("проверил контент: нет");
+        if (f.content_user && f.content_user !== "all") {
+          var cuLab = contentUserFilterLabel(f.content_user);
+          parts.push(cuLab ? "контент: " + cuLab : "контент: " + f.content_user);
+        }
         if (f.page_status) parts.push("статус «" + f.page_status + "»");
         if (f.matched === "1") parts.push("сопоставленные");
         if (f.matched === "0") parts.push("не сопоставленные");
@@ -3654,6 +4224,7 @@
               project_id: f.project_id === "all" ? null : f.project_id,
               page_status: f.page_status || null,
               page_type: f.page_type === "all" ? null : f.page_type,
+              content_checked: f.content_checked === "all" ? null : f.content_checked,
               matched: f.matched === "all" ? null : f.matched,
               availability: f.availability === "all" ? null : f.availability,
               search: f.search || null,
@@ -3753,6 +4324,8 @@
         document.getElementById("dg-res-f-project").value = "all";
         document.getElementById("dg-res-f-page_status").value = "";
         document.getElementById("dg-res-f-page_type").value = "all";
+        document.getElementById("dg-res-f-content_checked").value = "all";
+        document.getElementById("dg-res-f-content_user").value = "all";
         document.getElementById("dg-res-f-matched").value = "all";
         document.getElementById("dg-res-f-availability").value = "all";
         document.getElementById("dg-res-f-project_name").value = "";
@@ -3770,10 +4343,36 @@
         try {
           window.history.replaceState(null, "", window.location.pathname);
         } catch (e2) {}
+        hideActionLog();
         loadResults();
       });
       document.getElementById("results-reparse-all").addEventListener("click", reparseAll);
       document.getElementById("results-clear-history").addEventListener("click", clearResults);
+      document.getElementById("results-distribute-content").addEventListener("click", function () {
+        openDistributeConfirm();
+      });
+      (function bindDistributeConfirm() {
+        var ok = document.getElementById("dg-res-distribute-confirm-ok");
+        var cancel = document.getElementById("dg-res-distribute-confirm-cancel");
+        var backdrop = document.getElementById("dg-res-distribute-confirm-backdrop");
+        function onCancel() {
+          closeDistributeConfirm();
+        }
+        if (cancel) cancel.addEventListener("click", onCancel);
+        if (backdrop) backdrop.addEventListener("click", onCancel);
+        if (ok) {
+          ok.addEventListener("click", function () {
+            closeDistributeConfirm();
+            distributeContentRun();
+          });
+        }
+        document.addEventListener("keydown", function (e) {
+          if (e.key !== "Escape") return;
+          var ov = document.getElementById("dg-res-distribute-confirm-overlay");
+          if (!ov || ov.classList.contains("d-none")) return;
+          closeDistributeConfirm();
+        });
+      })();
 
       document.getElementById("dg-res-f-search").addEventListener("keydown", function (e) {
         if (e.key === "Enter") {
@@ -3790,7 +4389,7 @@
         scheduleSyncUrl();
       });
 
-      ["dg-res-f-project", "dg-res-f-matched", "dg-res-f-page_type", "dg-res-f-page_status", "dg-res-f-availability"].forEach(function (id) {
+      ["dg-res-f-project", "dg-res-f-matched", "dg-res-f-page_type", "dg-res-f-content_checked", "dg-res-f-content_user", "dg-res-f-page_status", "dg-res-f-availability"].forEach(function (id) {
         document.getElementById(id).addEventListener("change", function () {
           page = 1;
           scheduleSyncUrl();
@@ -4000,6 +4599,8 @@
               { key: "page_type", title: "Тип страницы", hint: "" },
               { key: "page_status", title: "Статус парсинга", hint: "" },
               { key: "availability", title: "Наличие", hint: "" },
+              { key: "content_checked", title: "Проверил контент", hint: "Фильтр по галочке на URL" },
+              { key: "content_user", title: "Контент", hint: "Кто разбирает URL" },
             ],
           },
           {
@@ -4019,7 +4620,7 @@
         ];
         if (window.DatagonFilterFieldsVisibility && window.DatagonFilterFieldsVisibility.init) {
           window.DatagonFilterFieldsVisibility.init({
-            storageKeyPrefix: "datagon_results_filter_fields_v2",
+            storageKeyPrefix: "datagon_results_filter_fields_v3",
             attr: "data-dg-res-filter-field",
             fieldGroups: FIELD_GROUPS,
             togglesRootId: "dg-res-filter-blocks-toggles",

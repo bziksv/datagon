@@ -420,7 +420,8 @@ Query:
 - `matched` — `1` только сопоставленные / `0` только без подтверждённого матча (фильтр через `IN`/`NOT IN` от подтверждённых `product_matches`, не построчный `EXISTS`)
 - `page_type` — `product` / `category` / `info` / `junk` / `unknown` (тип из `pages.page_type`)
 - `content_checked` — `1` / `0` (галочка «Проверил контент» на `pages`; пусто/`all` = без фильтра)
-- для строк ответа дополнительно: `page_type`, `page_type_manual`, `content_checked`, `content_checked_at`, `content_checked_by`, `match_partners[]` (`my_sku`, `my_product_name`, `my_site_name`, …), `match_my_sku` / `match_my_name` / `match_my_site` (первая пара)
+- `content_user` — id пользователя / `none` (без ответственного «Контент») / пусто/`all`
+- для строк ответа дополнительно: `page_type`, `page_type_manual`, `content_checked`, `content_checked_at`, `content_checked_by`, `content_user_id`, `content_user_name`, `match_partners[]` (`my_sku`, `my_product_name`, `my_site_name`, …), `match_my_sku` / `match_my_name` / `match_my_site` (первая пара)
 - `page_status`, `page_error` (`pages.last_error`) — в UI бейдж «Ошибка» показывает человекочитаемую подсказку по наведению
 - `limit` — максимум **1500** строк на запрос (сверху зажимается на сервере; раньше до 25000 можно было положить Node по памяти).
 - `offset`
@@ -447,6 +448,18 @@ Query:
 
 ### GET `/api/pages/:id/content-check-log`
 Журнал смен галочки. Query: `limit` (по умолчанию 8, макс. 50). Ответ как у type-log (`old_label`/`new_label` = «Нет»/«Да»).
+
+### PATCH `/api/pages/:id/content-user`
+Ответственный **«Контент»** на URL (`pages`). Body: `{ "content_user_id": number|null }` (пусто / `null` — снять). Пишет `pages.content_user_id` / `content_user_name` и строку в **`dg_pages_content_user_log`** (`source = ui`). На `/results.html` одна запись на `page_id`.
+
+### GET `/api/pages/:id/content-user-log`
+Журнал смен ответственного. Query: `limit` (по умолчанию 8, макс. 50). `old_label`/`new_label` — имена; `source_label`: «Вручную» / «Раздача».
+
+### GET `/api/results/content-assignees`
+Список активных пользователей со специальностью **«Контент-Менеджер»**: `{ success, items[{ id, name, username, full_name }], responsibles }`.
+
+### POST `/api/results/distribute-content`
+Раздать URL **без** ответственного «Контент» по фильтрам результатов (как раздача на новых товарах: блоки подряд). Body: `scope: "unassigned"` (единственный поддерживаемый) + те же поля фильтров, что у `GET /api/results` (`project_id`, `page_type`, `content_checked`, `matched`, …). Сервер всегда ограничивает выборку `content_user_id IS NULL`. Ответ: `{ success, assigned, users, scope, mode: "contiguous_blocks", duration_sec, message? }`. Журнал — `source = distribute`.
 
 ### POST `/api/results/clear`
 Очистить результаты по `project_id`. Wipe всей таблицы `prices` (`project_id` пуст/`all`) — только **admin** и тело `{ "confirm_all": true }` (F-PAR-02); иначе `403 CONFIRM_ALL_REQUIRED`.
@@ -723,9 +736,6 @@ Query:
 - `search`
 - `limit`
 - `offset`
-
-### GET `/api/matches/competitors`
-Список конкурентных проектов для сопоставления.
 
 ### POST `/api/matches/start-matching`
 Запустить фоновую задачу сопоставления. Прайс конкурента — строки `prices` с `pages.page_type` = **product** (или без типа / без `page_id`); инфо, категория, утиль в автомат **не** попадают.

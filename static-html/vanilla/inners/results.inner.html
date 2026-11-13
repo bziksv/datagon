@@ -108,6 +108,29 @@
                     <option value="oos">Под заказ</option>
                   </select>
                 </div>
+                <div class="col-md-2" data-dg-res-filter-field="content_checked">
+                  <label class="form-label" for="dg-res-f-content_checked">Проверил контент</label>
+                  <select
+                    class="form-select"
+                    id="dg-res-f-content_checked"
+                    title="Фильтр по галочке на URL (pages). Срабатывает после «Применить»."
+                  >
+                    <option value="all">Все</option>
+                    <option value="1">Да</option>
+                    <option value="0">Нет</option>
+                  </select>
+                </div>
+                <div class="col-md-2" data-dg-res-filter-field="content_user">
+                  <label class="form-label" for="dg-res-f-content_user">Контент</label>
+                  <select
+                    class="form-select"
+                    id="dg-res-f-content_user"
+                    title="Кто разбирает URL. Срабатывает после «Применить»."
+                  >
+                    <option value="all">Все</option>
+                    <option value="none">Без ответственного</option>
+                  </select>
+                </div>
               </div>
               <div class="row g-2 mt-1 align-items-end">
                 <div class="col-md-4" data-dg-res-filter-field="project_name">
@@ -127,6 +150,16 @@
                 <button type="button" class="btn btn-sm btn-primary" id="results-apply" data-dg-tooltip="Применить фильтры и обновить таблицу. Сохраняет выбранные значения для следующего визита." data-dg-notify-start="Применяем фильтры результатов…"><i class="pe-7s-search me-1"></i>Применить</button>
                 <button type="button" class="btn btn-sm btn-outline-secondary" id="results-default" data-dg-tooltip="Сбросить фильтры к значениям по умолчанию и очистить сохранённые настройки этой страницы." data-dg-notify-start="Сбрасываем фильтры результатов…"><i class="pe-7s-refresh me-1"></i>По умолчанию</button>
                 <button type="button" class="btn btn-sm btn-outline-success" id="results-reparse-all" title="Повторный парсинг по применённым фильтрам таблицы (тип, проект, поиск, сопоставление…)" data-dg-tooltip="Ставит в очередь URL из выборки после «Применить» — все активные фильтры, не только текущая страница пагинации." data-dg-notify-start="Ставим отфильтрованные в очередь перепарсинга…"><i class="pe-7s-refresh-2 me-1"></i>В очередь на перепарсинг (обновит артикула и цены)</button>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-primary"
+                  id="results-distribute-content"
+                  data-dg-notify-start="Раздаём без ответственного…"
+                  title="Поровну блоками подряд: URL без «Контент» по текущим фильтрам после «Применить»"
+                  data-dg-tooltip="Раздаёт URL без ответственного между контент-менеджерами поровну блоками подряд (как на «Новых товарах»). Учитывает применённые фильтры."
+                >
+                  Раздать поровну (без ответственного)
+                </button>
                 <button type="button" class="btn btn-sm btn-outline-danger" id="results-clear-history" title="Очистить историю результатов по текущему проекту" data-dg-notify-start="Очищаем историю результатов…"><i class="pe-7s-trash me-1"></i>Очистить историю</button>
               </div>
               </div>
@@ -265,12 +298,30 @@
                       <col class="dg-res-col-7" />
                       <col class="dg-res-col-8" />
                       <col class="dg-res-col-9" />
+                      <col class="dg-res-col-10" />
+                      <col class="dg-res-col-11" />
                     </colgroup>
                     <thead id="dg-res-thead">
                       <tr>
                         <th style="cursor:pointer" data-res-sort="parsed_at" data-res-col-label="Дата"><span class="dg-res-th-text">Дата</span></th>
                         <th style="cursor:pointer" data-res-sort="project_name" data-res-col-label="Проект"><span class="dg-res-th-text">Проект</span></th>
                         <th style="cursor:pointer" data-res-sort="page_type" data-res-col-label="Тип"><span class="dg-res-th-text">Тип</span></th>
+                        <th
+                          style="cursor:pointer"
+                          data-res-sort="content_checked"
+                          data-res-col-label="Проверил контент"
+                          title="Галочка на URL (pages): одна на все карточки цен этого адреса. Журнал — «лог» в углу ячейки."
+                        >
+                          <span class="dg-res-th-text">Проверил контент</span>
+                        </th>
+                        <th
+                          style="cursor:pointer"
+                          data-res-sort="content_user_name"
+                          data-res-col-label="Контент"
+                          title="Кто разбирает URL (pages). Раздача — кнопка в фильтрах. Журнал — «лог» в углу ячейки."
+                        >
+                          <span class="dg-res-th-text">Контент</span>
+                        </th>
                         <th style="cursor:pointer" data-res-sort="product_name" data-res-col-label="Товар"><span class="dg-res-th-text">Товар</span></th>
                         <th style="cursor:pointer" data-res-sort="sku" data-res-col-label="SKU"><span class="dg-res-th-text">SKU</span></th>
                         <th data-res-col-label="Сопоставление"><span class="dg-res-th-text">Сопоставление</span></th>
@@ -351,6 +402,37 @@
                 <div class="d-flex justify-content-end gap-2">
                   <button type="button" class="btn btn-outline-secondary" id="dg-res-type-confirm-cancel">Отмена</button>
                   <button type="button" class="btn btn-danger" id="dg-res-type-confirm-ok" data-dg-notify-start="Меняем тип страницы…">Сменить тип</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div
+            id="dg-res-distribute-confirm-overlay"
+            class="dg-res-confirm-overlay d-none"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="dg-res-distribute-confirm-title"
+            hidden
+          >
+            <div class="dg-res-confirm-backdrop" id="dg-res-distribute-confirm-backdrop"></div>
+            <div class="dg-res-confirm-panel card shadow-lg border-0">
+              <div class="card-body">
+                <h5 class="card-title mb-2" id="dg-res-distribute-confirm-title">Раздать ответственных?</h5>
+                <p class="card-text text-muted mb-3" id="dg-res-distribute-confirm-text">
+                  Раздать URL без ответственного «Контент» между контент-менеджерами поровну блоками подряд по текущим
+                  применённым фильтрам?
+                </p>
+                <div class="d-flex justify-content-end gap-2">
+                  <button type="button" class="btn btn-outline-secondary" id="dg-res-distribute-confirm-cancel">Отмена</button>
+                  <button
+                    type="button"
+                    class="btn btn-primary"
+                    id="dg-res-distribute-confirm-ok"
+                    data-dg-notify-start="Раздаём без ответственного…"
+                  >
+                    Раздать
+                  </button>
                 </div>
               </div>
             </div>

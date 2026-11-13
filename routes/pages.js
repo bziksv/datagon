@@ -50,6 +50,10 @@ module.exports = (db, settings) => {
     let pagesStatusReady = false;
     let pagesTypeManualReady = false;
     let pagesTypeLogReady = false;
+    let pagesContentCheckedReady = false;
+    let pagesContentCheckLogReady = false;
+    let pagesContentUserReady = false;
+    let pagesContentUserLogReady = false;
     /** Допустимые значения pages.page_type (в т.ч. ручной «утиль»). */
     const PAGE_TYPE_VALUES = new Set(['product', 'category', 'info', 'junk', 'unknown']);
     const PAGE_TYPE_LABELS = {
@@ -220,6 +224,205 @@ module.exports = (db, settings) => {
         } catch (e) {
             console.warn('[pages] dg_pages_type_log:', e && e.message ? e.message : e);
         }
+    }
+
+    /** Галочка «Проверил контент» на pages (одна на URL). */
+    async function ensurePagesContentCheckedColumns() {
+        if (pagesContentCheckedReady) return;
+        try {
+            const cols = [
+                {
+                    name: 'content_checked',
+                    ddl: 'ALTER TABLE pages ADD COLUMN content_checked TINYINT(1) NOT NULL DEFAULT 0',
+                },
+                {
+                    name: 'content_checked_at',
+                    ddl: 'ALTER TABLE pages ADD COLUMN content_checked_at TIMESTAMP NULL DEFAULT NULL',
+                },
+                {
+                    name: 'content_checked_by',
+                    ddl: 'ALTER TABLE pages ADD COLUMN content_checked_by VARCHAR(255) NULL',
+                },
+                {
+                    name: 'content_checked_by_user_id',
+                    ddl: 'ALTER TABLE pages ADD COLUMN content_checked_by_user_id INT NULL',
+                },
+            ];
+            for (const c of cols) {
+                const [rows] = await db.query('SHOW COLUMNS FROM pages LIKE ?', [c.name]);
+                if (!rows.length) await db.query(c.ddl);
+            }
+            const [idx] = await db.query(
+                `SELECT 1
+                 FROM information_schema.statistics
+                 WHERE table_schema = DATABASE()
+                   AND table_name = 'pages'
+                   AND index_name = 'idx_pages_content_checked'
+                 LIMIT 1`
+            );
+            if (!idx.length) {
+                await db.query(
+                    'ALTER TABLE pages ADD INDEX idx_pages_content_checked (content_checked, id)'
+                );
+            }
+            pagesContentCheckedReady = true;
+        } catch (e) {
+            console.warn('[pages] content_checked columns:', e && e.message ? e.message : e);
+        }
+    }
+
+    async function ensurePagesContentCheckLogTable() {
+        if (pagesContentCheckLogReady) return;
+        try {
+            await db.query(`
+                CREATE TABLE IF NOT EXISTS dg_pages_content_check_log (
+                    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                    page_id INT NOT NULL,
+                    project_id INT NULL,
+                    url VARCHAR(2048) NULL,
+                    old_value TINYINT(1) NULL,
+                    new_value TINYINT(1) NULL,
+                    source VARCHAR(32) NOT NULL DEFAULT 'ui',
+                    changed_by_user_id INT NULL,
+                    changed_by_name VARCHAR(255) NULL,
+                    note VARCHAR(500) NULL,
+                    changed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    INDEX idx_dg_pages_ccheck_log_page (page_id, changed_at),
+                    INDEX idx_dg_pages_ccheck_log_user (changed_by_user_id)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            `);
+            pagesContentCheckLogReady = true;
+        } catch (e) {
+            console.warn(
+                '[pages] dg_pages_content_check_log:',
+                e && e.message ? e.message : e
+            );
+        }
+    }
+
+    async function insertPageContentCheckLog(opts) {
+        await ensurePagesContentCheckLogTable();
+        const pageId = Number(opts.pageId);
+        if (!Number.isFinite(pageId) || pageId <= 0) return;
+        const actor = opts.actor || null;
+        const uid = actor && actor.id != null ? Number(actor.id) : null;
+        const uname = actorDisplayName(actor) || null;
+        await db.query(
+            `INSERT INTO dg_pages_content_check_log
+                (page_id, project_id, url, old_value, new_value, source, changed_by_user_id, changed_by_name, note)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+                pageId,
+                opts.projectId != null ? Number(opts.projectId) : null,
+                opts.url != null ? String(opts.url).slice(0, 2048) : null,
+                opts.oldVal != null ? (Number(opts.oldVal) ? 1 : 0) : null,
+                opts.newVal != null ? (Number(opts.newVal) ? 1 : 0) : null,
+                String(opts.source || 'ui').slice(0, 32),
+                Number.isFinite(uid) ? uid : null,
+                uname,
+                opts.note != null ? String(opts.note).slice(0, 500) : null,
+            ]
+        );
+    }
+
+    /** Ответственный «Контент» на URL (кто разбирает страницу) — как responsible на новых товарах. */
+    async function ensurePagesContentUserColumns() {
+        if (pagesContentUserReady) return;
+        try {
+            const cols = [
+                {
+                    name: 'content_user_id',
+                    ddl: 'ALTER TABLE pages ADD COLUMN content_user_id INT NULL',
+                },
+                {
+                    name: 'content_user_name',
+                    ddl: 'ALTER TABLE pages ADD COLUMN content_user_name VARCHAR(255) NULL',
+                },
+            ];
+            for (const c of cols) {
+                const [rows] = await db.query('SHOW COLUMNS FROM pages LIKE ?', [c.name]);
+                if (!rows.length) await db.query(c.ddl);
+            }
+            const [idx] = await db.query(
+                `SELECT 1
+                 FROM information_schema.statistics
+                 WHERE table_schema = DATABASE()
+                   AND table_name = 'pages'
+                   AND index_name = 'idx_pages_content_user'
+                 LIMIT 1`
+            );
+            if (!idx.length) {
+                await db.query(
+                    'ALTER TABLE pages ADD INDEX idx_pages_content_user (content_user_id, id)'
+                );
+            }
+            pagesContentUserReady = true;
+        } catch (e) {
+            console.warn('[pages] content_user columns:', e && e.message ? e.message : e);
+        }
+    }
+
+    async function ensurePagesContentUserLogTable() {
+        if (pagesContentUserLogReady) return;
+        try {
+            await db.query(`
+                CREATE TABLE IF NOT EXISTS dg_pages_content_user_log (
+                    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                    page_id INT NOT NULL,
+                    project_id INT NULL,
+                    url VARCHAR(2048) NULL,
+                    old_user_id INT NULL,
+                    new_user_id INT NULL,
+                    old_value VARCHAR(255) NULL,
+                    new_value VARCHAR(255) NULL,
+                    source VARCHAR(32) NOT NULL DEFAULT 'ui',
+                    changed_by_user_id INT NULL,
+                    changed_by_name VARCHAR(255) NULL,
+                    note VARCHAR(500) NULL,
+                    changed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    INDEX idx_dg_pages_cuser_log_page (page_id, changed_at),
+                    INDEX idx_dg_pages_cuser_log_user (changed_by_user_id)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            `);
+            pagesContentUserLogReady = true;
+        } catch (e) {
+            console.warn(
+                '[pages] dg_pages_content_user_log:',
+                e && e.message ? e.message : e
+            );
+        }
+    }
+
+    async function insertPageContentUserLog(opts) {
+        await ensurePagesContentUserLogTable();
+        const pageId = Number(opts.pageId);
+        if (!Number.isFinite(pageId) || pageId <= 0) return;
+        const actor = opts.actor || null;
+        const uid = actor && actor.id != null ? Number(actor.id) : null;
+        const uname = actorDisplayName(actor) || null;
+        await db.query(
+            `INSERT INTO dg_pages_content_user_log
+                (page_id, project_id, url, old_user_id, new_user_id, old_value, new_value,
+                 source, changed_by_user_id, changed_by_name, note)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+                pageId,
+                opts.projectId != null ? Number(opts.projectId) : null,
+                opts.url != null ? String(opts.url).slice(0, 2048) : null,
+                opts.oldUserId != null && Number.isFinite(Number(opts.oldUserId))
+                    ? Number(opts.oldUserId)
+                    : null,
+                opts.newUserId != null && Number.isFinite(Number(opts.newUserId))
+                    ? Number(opts.newUserId)
+                    : null,
+                opts.oldName != null ? String(opts.oldName).slice(0, 255) : null,
+                opts.newName != null ? String(opts.newName).slice(0, 255) : null,
+                String(opts.source || 'ui').slice(0, 32),
+                Number.isFinite(uid) ? uid : null,
+                uname,
+                opts.note != null ? String(opts.note).slice(0, 500) : null,
+            ]
+        );
     }
 
     async function insertPageTypeLog(opts) {
@@ -1802,6 +2005,290 @@ module.exports = (db, settings) => {
                             : String(r.source || '') === 'ui_bulk'
                               ? 'Массово'
                               : String(r.source || ''),
+                    changed_by_user_id:
+                        r.changed_by_user_id != null ? Number(r.changed_by_user_id) : null,
+                    changed_by_name: r.changed_by_name != null ? String(r.changed_by_name) : '',
+                    note: r.note != null ? String(r.note) : '',
+                    changed_at: r.changed_at,
+                })),
+            });
+        } catch (e) {
+            res.status(500).json({ success: false, error: e.message });
+        }
+    });
+
+    function contentCheckedLabel(v) {
+        return Number(v) ? 'Да' : 'Нет';
+    }
+
+    /**
+     * Галочка «Проверил контент» на URL (pages). Body: { content_checked: 0|1|true|false }.
+     * Пишет who/when на pages + строку в dg_pages_content_check_log. Перепарсинг не сбрасывает.
+     */
+    router.patch('/:id/content-check', async (req, res) => {
+        try {
+            await ensurePagesContentCheckedColumns();
+            await ensurePagesContentCheckLogTable();
+            const pageId = Number(req.params.id);
+            if (!Number.isFinite(pageId) || pageId <= 0) {
+                return res.status(400).json({ success: false, error: 'Некорректный id страницы' });
+            }
+            const raw = req.body && req.body.content_checked;
+            const next =
+                raw === true ||
+                raw === 1 ||
+                raw === '1' ||
+                String(raw || '')
+                    .trim()
+                    .toLowerCase() === 'true' ||
+                String(raw || '')
+                    .trim()
+                    .toLowerCase() === 'yes' ||
+                String(raw || '')
+                    .trim()
+                    .toLowerCase() === 'да'
+                    ? 1
+                    : 0;
+            const [rows] = await db.query(
+                `SELECT id, project_id, url, COALESCE(content_checked, 0) AS content_checked,
+                        content_checked_at, content_checked_by, content_checked_by_user_id
+                   FROM pages WHERE id = ? LIMIT 1`,
+                [pageId]
+            );
+            if (!rows.length) {
+                return res.status(404).json({ success: false, error: 'Страница не найдена' });
+            }
+            const prev = Number(rows[0].content_checked) ? 1 : 0;
+            const actor = req.datagonActor || null;
+            const uid = actor && actor.id != null ? Number(actor.id) : null;
+            const uname = actorDisplayName(actor) || null;
+            if (prev === next) {
+                return res.json({
+                    success: true,
+                    page_id: pageId,
+                    content_checked: next,
+                    content_checked_at: rows[0].content_checked_at || null,
+                    content_checked_by: rows[0].content_checked_by || null,
+                    unchanged: true,
+                });
+            }
+            await db.query(
+                `UPDATE pages
+                    SET content_checked = ?,
+                        content_checked_at = NOW(),
+                        content_checked_by = ?,
+                        content_checked_by_user_id = ?
+                  WHERE id = ?`,
+                [next, uname || null, Number.isFinite(uid) ? uid : null, pageId]
+            );
+            await insertPageContentCheckLog({
+                pageId,
+                projectId: rows[0].project_id,
+                url: rows[0].url,
+                oldVal: prev,
+                newVal: next,
+                source: 'ui',
+                actor,
+                note: next ? 'отметили «Проверил контент»' : 'сняли «Проверил контент»',
+            });
+            invalidateResultsListCacheSafe();
+            const [fresh] = await db.query(
+                `SELECT content_checked, content_checked_at, content_checked_by, content_checked_by_user_id
+                   FROM pages WHERE id = ? LIMIT 1`,
+                [pageId]
+            );
+            res.json({
+                success: true,
+                page_id: pageId,
+                content_checked: Number(fresh[0]?.content_checked) ? 1 : 0,
+                content_checked_at: fresh[0]?.content_checked_at || null,
+                content_checked_by: fresh[0]?.content_checked_by || null,
+                content_checked_by_user_id:
+                    fresh[0]?.content_checked_by_user_id != null
+                        ? Number(fresh[0].content_checked_by_user_id)
+                        : null,
+                unchanged: false,
+            });
+        } catch (e) {
+            res.status(500).json({ success: false, error: e.message });
+        }
+    });
+
+    router.get('/:id/content-check-log', async (req, res) => {
+        try {
+            await ensurePagesContentCheckLogTable();
+            const pageId = Number(req.params.id);
+            if (!Number.isFinite(pageId) || pageId <= 0) {
+                return res.status(400).json({ success: false, error: 'Некорректный id страницы' });
+            }
+            let limit = parseInt(String(req.query.limit || '8'), 10);
+            if (!Number.isFinite(limit) || limit < 1) limit = 8;
+            limit = Math.min(limit, 50);
+            const [rows] = await db.query(
+                `SELECT id, page_id, old_value, new_value, source,
+                        changed_by_user_id, changed_by_name, note, changed_at
+                   FROM dg_pages_content_check_log
+                  WHERE page_id = ?
+                  ORDER BY changed_at DESC, id DESC
+                  LIMIT ?`,
+                [pageId, limit]
+            );
+            res.json({
+                success: true,
+                page_id: pageId,
+                rows: (rows || []).map((r) => ({
+                    id: Number(r.id),
+                    page_id: Number(r.page_id),
+                    old_value: r.old_value != null ? Number(r.old_value) : null,
+                    new_value: r.new_value != null ? Number(r.new_value) : null,
+                    old_label: contentCheckedLabel(r.old_value),
+                    new_label: contentCheckedLabel(r.new_value),
+                    source: r.source != null ? String(r.source) : 'ui',
+                    source_label: String(r.source || 'ui') === 'ui' ? 'Вручную' : String(r.source || ''),
+                    changed_by_user_id:
+                        r.changed_by_user_id != null ? Number(r.changed_by_user_id) : null,
+                    changed_by_name: r.changed_by_name != null ? String(r.changed_by_name) : '',
+                    note: r.note != null ? String(r.note) : '',
+                    changed_at: r.changed_at,
+                })),
+            });
+        } catch (e) {
+            res.status(500).json({ success: false, error: e.message });
+        }
+    });
+
+    function contentUserSourceLabel(src) {
+        const s = String(src || 'ui');
+        if (s === 'ui') return 'Вручную';
+        if (s === 'distribute') return 'Раздача';
+        return s;
+    }
+
+    /**
+     * Ответственный «Контент» на URL (pages). Body: { content_user_id: number|null }.
+     * Пусто / null — снять. Пишет dg_pages_content_user_log.
+     */
+    router.patch('/:id/content-user', async (req, res) => {
+        try {
+            await ensurePagesContentUserColumns();
+            await ensurePagesContentUserLogTable();
+            const pageId = Number(req.params.id);
+            if (!Number.isFinite(pageId) || pageId <= 0) {
+                return res.status(400).json({ success: false, error: 'Некорректный id страницы' });
+            }
+            const raw = req.body && req.body.content_user_id;
+            let nextId = null;
+            let nextName = null;
+            if (raw != null && String(raw).trim() !== '' && String(raw).trim().toLowerCase() !== 'null') {
+                nextId = parseInt(String(raw), 10);
+                if (!Number.isFinite(nextId) || nextId <= 0) {
+                    return res.status(400).json({ success: false, error: 'Некорректный content_user_id' });
+                }
+                const [urows] = await db.query(
+                    `SELECT id, username, full_name FROM users
+                      WHERE id = ? AND COALESCE(is_archived, 0) = 0 LIMIT 1`,
+                    [nextId]
+                );
+                if (!urows.length) {
+                    return res.status(400).json({ success: false, error: 'Пользователь не найден' });
+                }
+                nextName =
+                    String(urows[0].full_name || urows[0].username || '').trim() ||
+                    String(urows[0].username || '');
+            }
+            const [rows] = await db.query(
+                `SELECT id, project_id, url, content_user_id, content_user_name
+                   FROM pages WHERE id = ? LIMIT 1`,
+                [pageId]
+            );
+            if (!rows.length) {
+                return res.status(404).json({ success: false, error: 'Страница не найдена' });
+            }
+            const prevId =
+                rows[0].content_user_id != null ? Number(rows[0].content_user_id) : null;
+            const prevName = rows[0].content_user_name != null ? String(rows[0].content_user_name) : '';
+            if ((prevId || null) === (nextId || null)) {
+                return res.json({
+                    success: true,
+                    page_id: pageId,
+                    content_user_id: prevId,
+                    content_user_name: prevName || null,
+                    unchanged: true,
+                });
+            }
+            const actor = req.datagonActor || null;
+            await db.query(
+                `UPDATE pages
+                    SET content_user_id = ?, content_user_name = ?
+                  WHERE id = ?`,
+                [nextId, nextName, pageId]
+            );
+            await insertPageContentUserLog({
+                pageId,
+                projectId: rows[0].project_id,
+                url: rows[0].url,
+                oldUserId: prevId,
+                newUserId: nextId,
+                oldName: prevName || null,
+                newName: nextName,
+                source: 'ui',
+                actor,
+                note: nextId
+                    ? `назначили: ${nextName}`
+                    : prevName
+                      ? `сняли: ${prevName}`
+                      : 'сняли ответственного',
+            });
+            invalidateResultsListCacheSafe();
+            res.json({
+                success: true,
+                page_id: pageId,
+                content_user_id: nextId,
+                content_user_name: nextName,
+                unchanged: false,
+            });
+        } catch (e) {
+            res.status(500).json({ success: false, error: e.message });
+        }
+    });
+
+    router.get('/:id/content-user-log', async (req, res) => {
+        try {
+            await ensurePagesContentUserLogTable();
+            const pageId = Number(req.params.id);
+            if (!Number.isFinite(pageId) || pageId <= 0) {
+                return res.status(400).json({ success: false, error: 'Некорректный id страницы' });
+            }
+            let limit = parseInt(String(req.query.limit || '8'), 10);
+            if (!Number.isFinite(limit) || limit < 1) limit = 8;
+            limit = Math.min(limit, 50);
+            const [rows] = await db.query(
+                `SELECT id, page_id, old_user_id, new_user_id, old_value, new_value, source,
+                        changed_by_user_id, changed_by_name, note, changed_at
+                   FROM dg_pages_content_user_log
+                  WHERE page_id = ?
+                  ORDER BY changed_at DESC, id DESC
+                  LIMIT ?`,
+                [pageId, limit]
+            );
+            res.json({
+                success: true,
+                page_id: pageId,
+                rows: (rows || []).map((r) => ({
+                    id: Number(r.id),
+                    page_id: Number(r.page_id),
+                    old_user_id: r.old_user_id != null ? Number(r.old_user_id) : null,
+                    new_user_id: r.new_user_id != null ? Number(r.new_user_id) : null,
+                    old_value: r.old_value != null ? String(r.old_value) : null,
+                    new_value: r.new_value != null ? String(r.new_value) : null,
+                    old_label: r.old_value != null && String(r.old_value).trim()
+                        ? String(r.old_value)
+                        : '—',
+                    new_label: r.new_value != null && String(r.new_value).trim()
+                        ? String(r.new_value)
+                        : '—',
+                    source: r.source != null ? String(r.source) : 'ui',
+                    source_label: contentUserSourceLabel(r.source),
                     changed_by_user_id:
                         r.changed_by_user_id != null ? Number(r.changed_by_user_id) : null,
                     changed_by_name: r.changed_by_name != null ? String(r.changed_by_name) : '',
