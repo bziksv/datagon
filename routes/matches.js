@@ -4,7 +4,8 @@ const { recordDatagonActivity } = require('../lib/datagonActivity');
 const {
     getArchiveParentCategoryIndex,
     summarizeParentCategories,
-    productIdsForRoot
+    productIdsForRoot,
+    parentCategoryLabelsForProduct,
 } = require('../lib/datagonMatchArchiveCategories');
 const router = express.Router();
 
@@ -3706,8 +3707,10 @@ module.exports = (db, settings) => {
                 )`;
                 p.push(v, v, v, v, v, v, v, v);
             }
+            let categoryIndex = null;
             if (parentCategoryIds.length) {
                 const ctx = await archiveCategoryContext(mySiteId, Number.isFinite(compId) && compId > 0 ? compId : null);
+                categoryIndex = ctx.index;
                 const idSet = new Set();
                 for (const rootId of parentCategoryIds) {
                     for (const pid of productIdsForRoot(ctx.index, rootId)) idSet.add(pid);
@@ -3733,8 +3736,38 @@ module.exports = (db, settings) => {
             const [data] = await db.query(q, [...p, limit, offset]);
             const qc = `SELECT COUNT(*) AS total ${fromSql} ${whereExtra}`;
             const [[cntRow]] = await db.query(qc, p);
+            const rows = data || [];
+            if (!categoryIndex && rows.length) {
+                const pageCmsIds = [
+                    ...new Set(
+                        rows
+                            .map((row) => Number(row.mp_cms_product_id))
+                            .filter((n) => Number.isFinite(n) && n > 0)
+                    ),
+                ];
+                if (pageCmsIds.length) {
+                    const [sites] = await db.query('SELECT * FROM my_sites WHERE id = ? LIMIT 1', [mySiteId]);
+                    if (sites.length) {
+                        categoryIndex = await getArchiveParentCategoryIndex(db, sites[0], pageCmsIds);
+                    }
+                }
+            }
+            if (categoryIndex) {
+                for (const row of rows) {
+                    const labels = parentCategoryLabelsForProduct(categoryIndex, row.mp_cms_product_id);
+                    row.parent_category_ids = labels.parent_category_ids;
+                    row.parent_category_names = labels.parent_category_names;
+                    row.parent_category_name = labels.parent_category_name;
+                }
+            } else {
+                for (const row of rows) {
+                    row.parent_category_ids = [];
+                    row.parent_category_names = [];
+                    row.parent_category_name = null;
+                }
+            }
             return res.json({
-                data,
+                data: rows,
                 total: Number(cntRow?.total || 0),
                 limit,
                 offset,

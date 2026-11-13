@@ -4282,7 +4282,7 @@
           if (!listSiteId()) {
             var tr0 = document.createElement("tr");
             var td0 = document.createElement("td");
-            td0.colSpan = 6;
+            td0.colSpan = 7;
             td0.className = "text-muted small";
             td0.textContent = "Выберите «Мой сайт (список)».";
             tr0.appendChild(td0);
@@ -4292,7 +4292,7 @@
           if (!rows || !rows.length) {
             var tr1 = document.createElement("tr");
             var td1 = document.createElement("td");
-            td1.colSpan = 6;
+            td1.colSpan = 7;
             td1.className = "text-muted small";
             td1.textContent = search
               ? "По поиску в архиве ничего не найдено. Очистите поле и нажмите «Применить»."
@@ -4337,6 +4337,15 @@
               else tdM.appendChild(edA);
             }
             tr.appendChild(tdM);
+            var tdCat = document.createElement("td");
+            tdCat.className = "small";
+            var catLabel = String(row.parent_category_name || "").trim();
+            if (!catLabel && row.parent_category_names && row.parent_category_names.length) {
+              catLabel = row.parent_category_names.join(", ");
+            }
+            tdCat.textContent = catLabel || "—";
+            if (catLabel) tdCat.title = catLabel;
+            tr.appendChild(tdCat);
             var tdCn = document.createElement("td");
             tdCn.className = "small";
             tdCn.textContent = (row.competitor_sku || "—") + " / " + (row.competitor_name || "—");
