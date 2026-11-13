@@ -632,6 +632,17 @@ function myProductsRouterFactory(db, settings) {
         );
     }
 
+    router.use((req, res, next) => {
+        const t0 = Date.now();
+        res.on('finish', () => {
+            const ms = Date.now() - t0;
+            if (ms >= 1500) {
+                console.warn(`[my-products] slow ${req.method} ${req.originalUrl.slice(0, 220)} → ${res.statusCode} ${ms}ms`);
+            }
+        });
+        next();
+    });
+
     router.get('/fx-rates', async (req, res) => {
         const force = String(req.query.force || '0') === '1';
         const fx = await getFxRates({ force });
