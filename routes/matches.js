@@ -9,6 +9,12 @@ const {
 } = require('../lib/datagonMatchArchiveCategories');
 const { getMatchesMatchMeta } = require('../lib/matchesMatchRevision');
 const {
+    SKU_V2_LEVEL_SCORE,
+    createSkuV2Index,
+    collectSkuV2Candidates,
+    pickSkuV2,
+} = require('../lib/matchSkuV2');
+const {
     NAME_WORDS_THRESHOLD,
     tokenizeNameWords,
     nameWordsSimilarity,
@@ -247,7 +253,7 @@ function computeMatchIdentityHash(mySiteId, compSiteId, mySku, myName, compSku, 
 }
 
 /** Режим `all` (SKU→название) снят с UI/новых запусков; старые строки matching_mode=all в БД остаются. */
-const MATCHING_MODES = new Set(['name', 'name_words', 'name_words_v2', 'sku', 'sku_norm', 'sku_best']);
+const MATCHING_MODES = new Set(['name', 'name_words', 'name_words_v2', 'sku', 'sku_v2', 'sku_norm', 'sku_best']);
 const NAME_MODES = new Set(['name', 'name_words', 'name_words_v2']);
 /** Сколько лучших карточек конкурента хранить в match_details (выбранная + альтернативы). */
 const NAME_WORDS_V2_TOP_N = 6;
@@ -558,7 +564,7 @@ module.exports = (db, settings) => {
                  SET match_type = CASE
                    WHEN LOWER(TRIM(COALESCE(matching_mode, ''))) = 'manual' THEN 'manual'
                    WHEN LOWER(TRIM(COALESCE(matching_mode, ''))) IN ('name', 'name_words', 'name_words_v2') THEN 'name'
-                   WHEN LOWER(TRIM(COALESCE(matching_mode, ''))) IN ('sku', 'sku_norm', 'sku_best') THEN 'sku'
+                   WHEN LOWER(TRIM(COALESCE(matching_mode, ''))) IN ('sku', 'sku_v2', 'sku_norm', 'sku_best') THEN 'sku'
                    WHEN LOWER(TRIM(COALESCE(matching_mode, ''))) = 'all'
                         AND COALESCE(confidence_score, 0) >= 0.9995 THEN 'sku'
                    WHEN LOWER(TRIM(COALESCE(matching_mode, ''))) = 'all' THEN 'name'
@@ -2276,7 +2282,9 @@ module.exports = (db, settings) => {
                 }
             }
             let nameWordsV2Index = null;
-            if (mode === 'name_words_v2') {
+            let skuV2Index = null;
+            if (mode === 'sku_v2') skuV2Index = createSkuV2Index(compPrices);
+            if (mode === 'name_words_v2' || mode === 'sku_v2') {
                 nameWordsV2Index = createNameWordsV2Index(compPrices.length);
                 const cnv = compPrices.length;
                 for (let ci = 0; ci < cnv; ci += 1) {
@@ -2322,6 +2330,8 @@ module.exports = (db, settings) => {
                             ? 'norm_first'
                             : mode === 'sku_best'
                                 ? 'norm_best'
+                                : mode === 'sku_v2'
+                                    ? 'sku_v2'
                                 : mode === 'name_words' || mode === 'name_words_v2'
                                     ? mode
                                     : 'none'
@@ -2439,6 +2449,66 @@ module.exports = (db, settings) => {
                         bestMatch = skuMatch;
                         bestScore = 1.0;
                         matchType = 'sku';
+                    }
+                    if (mode === 'sku_v2' && skuV2Index) {
+                        const skuLevels = collectSkuV2Candidates(skuV2Index, myProd.sku, myProd.name);
+                        if (skuLevels.length) {
+                            const myTokens = tokenizeV2(myProd.name);
+                            const myWeights = myTokens.length ? nameWordsV2Weights(nameWordsV2Index, myTokens) : null;
+                            const nameScoreOf = (i) =>
+                                myTokens.length
+                                    ? scoreNameWordsV2(
+                                          myTokens,
+                                          myWeights,
+                                          nameWordsV2Index.tokenLists[i] || [],
+                                          nameWordsV2Index.weightLists[i] || [],
+                                          0,
+                                          null
+                                      )
+                                    : { score: 0 };
+                            const pick = pickSkuV2(skuLevels, nameScoreOf, NAME_WORDS_V2_TOP_N);
+                            if (pick) {
+                                const bi = pick.best.i;
+                                bestMatch = compPrices[bi];
+                                bestScore = SKU_V2_LEVEL_SCORE[pick.best.level] || 0.9;
+                                matchType = 'sku';
+                                const ex = myTokens.length
+                                    ? scoreNameWordsV2(
+                                          myTokens,
+                                          myWeights,
+                                          nameWordsV2Index.tokenLists[bi] || [],
+                                          nameWordsV2Index.weightLists[bi] || [],
+                                          0,
+                                          null,
+                                          true
+                                      )
+                                    : {};
+                                matchDetails = {
+                                    v: 2,
+                                    kind: 'sku',
+                                    sku_how: pick.best.level,
+                                    name_score: Math.round(pick.best.name * 1000) / 1000,
+                                    name_doubt: pick.nameDoubt,
+                                    same_sku_cards: pick.sameSkuCards,
+                                    matched: ex.matched || [],
+                                    miss_my: ex.missMy || [],
+                                    miss_comp: ex.missComp || [],
+                                    ambiguous: pick.ambiguous,
+                                    cands: pick.cands.map((c) => {
+                                        const p = compPrices[c.i];
+                                        return {
+                                            name: p.product_name,
+                                            sku: p.sku || null,
+                                            score: Math.round(c.name * 1000) / 1000,
+                                            how: c.level,
+                                            url: p.url || null,
+                                            price: p.price != null ? Number(p.price) : null,
+                                            currency: p.currency || null,
+                                        };
+                                    }),
+                                };
+                            }
+                        }
                     }
                 }
 
@@ -2644,7 +2714,9 @@ module.exports = (db, settings) => {
                     const logKind =
                         (mode === 'name_words' || mode === 'name_words_v2') && matchType === 'name'
                             ? mode + (matchDetails && matchDetails.ambiguous ? ', спорно' : '')
-                            : matchType;
+                            : mode === 'sku_v2' && matchDetails
+                                ? `sku_v2: ${matchDetails.sku_how}${matchDetails.ambiguous ? ', спорно' : ''}${matchDetails.name_doubt ? ', названия расходятся' : ''}`
+                                : matchType;
                     jobLogBuffer.push(`${myProd.sku || myProd.name} -> ${bestMatch.sku || bestMatch.product_name} (${logKind})`);
                     if (jobLogBuffer.length >= 50) await flushJobLogs();
                     if (await bailIfCancelled(compPos, pIdx)) return { matches: [], count: totalMatchesSaved };
@@ -3761,6 +3833,7 @@ module.exports = (db, settings) => {
                 name: c.name,
                 sku: c.sku || null,
                 score: c.score != null ? Number(c.score) : null,
+                how: c.how || null,
                 url: c.url || (p && p.url) || null,
                 price: c.price != null ? c.price : p && p.price != null ? Number(p.price) : null,
                 currency: c.currency || (p && p.currency) || null,
@@ -3858,14 +3931,23 @@ module.exports = (db, settings) => {
             const chosen = oldCands.find(
                 (c) => String(c.name || '') === String(newName) && String(c.sku || '') === String(newSku || '')
             );
-            const newScore = chosen && Number.isFinite(Number(chosen.score))
-                ? Number(chosen.score)
-                : Number(row.confidence_score) || 0;
+            const isSkuKind = Boolean(details && details.kind === 'sku');
+            let newScore;
+            if (isSkuKind) {
+                newScore = (chosen && SKU_V2_LEVEL_SCORE[chosen.how]) || Number(row.confidence_score) || 0;
+            } else {
+                newScore = chosen && Number.isFinite(Number(chosen.score))
+                    ? Number(chosen.score)
+                    : Number(row.confidence_score) || 0;
+            }
             const [prevMain] = await enrichCandsFromPrices(row.competitor_site_id, [
                 {
                     name: row.competitor_name,
                     sku: row.competitor_sku || null,
-                    score: Math.round((Number(row.confidence_score) || 0) * 1000) / 1000,
+                    score: isSkuKind
+                        ? Number(details.name_score) || 0
+                        : Math.round((Number(row.confidence_score) || 0) * 1000) / 1000,
+                    how: isSkuKind ? details.sku_how : undefined,
                 },
             ]);
             const nextCands = [prevMain]
@@ -3879,6 +3961,15 @@ module.exports = (db, settings) => {
                 ambiguous: false,
                 switched: true,
                 cands: nextCands,
+                ...(isSkuKind
+                    ? {
+                          kind: 'sku',
+                          sku_how: chosen ? chosen.how : details.sku_how,
+                          name_score: chosen ? Number(chosen.score) || 0 : 0,
+                          name_doubt: false,
+                          same_sku_cards: details.same_sku_cards,
+                      }
+                    : {}),
             };
             await db.query(
                 `UPDATE product_matches

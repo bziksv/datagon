@@ -481,7 +481,7 @@
         if (wrap.childNodes.length) host.appendChild(wrap);
       }
 
-      var MATCH_MODES_ALLOWED = { name: 1, name_words: 1, name_words_v2: 1, sku: 1, sku_norm: 1, sku_best: 1 };
+      var MATCH_MODES_ALLOWED = { name: 1, name_words: 1, name_words_v2: 1, sku: 1, sku_v2: 1, sku_norm: 1, sku_best: 1 };
 
       function parseArchiveCategoryIds(raw) {
         var seen = {};
@@ -2006,6 +2006,9 @@
         if (mt === "manual") return { text: "Вручную", badge: "info" };
         if (mt === "sku") {
           var skuPct = Math.round(Number(score01 || 0) * 100);
+          if (String(matchingMode || "").trim().toLowerCase() === "sku_v2") {
+            return { text: skuPct + "% по SKU v2", badge: skuPct >= 99 ? "success" : skuPct >= 95 ? "info" : "warning" };
+          }
           if (skuPct >= 100) return { text: "100% по SKU", badge: "success" };
           if (skuPct >= 90) return { text: skuPct + "% по SKU", badge: "success" };
           if (skuPct >= 70) return { text: skuPct + "% по SKU", badge: "warning" };
@@ -2165,6 +2168,7 @@
         var sb = document.createElement("span");
         sb.className = "badge bg-" + (pct >= 90 ? "success" : pct >= 70 ? "warning" : "secondary");
         sb.textContent = pct + "%";
+        if (c.how) sb.title = "Похожесть названия";
         scoreBox.appendChild(sb);
         if (isCurrent) {
           var cur = document.createElement("div");
@@ -2184,6 +2188,7 @@
         meta.className = "small text-muted mt-1";
         var bits = [];
         bits.push("Артикул: " + (c.sku ? String(c.sku) : "—"));
+        if (c.how) bits.push(SKU_HOW_LABEL[c.how] || c.how);
         if (c.price != null && String(c.price).trim() !== "") bits.push("Цена: " + formatMatchesListPriceLine(c.price, c.currency));
         meta.textContent = bits.join(" · ");
         body.appendChild(meta);
@@ -2254,7 +2259,10 @@
         var cands = matchDetailsCands(details);
 
         var lead = document.getElementById("dg-matches-cands-lead");
-        lead.textContent = details && details.ambiguous
+        var isSku = details && details.kind === "sku";
+        lead.textContent = isSku
+          ? "Карточки конкурента, найденные по артикулу. Процент — похожесть названия; жёлтым — слова, которых нет в нашем названии. Откройте ссылки и выберите правильную."
+          : details && details.ambiguous
           ? "У конкурента несколько карточек почти с одинаковым процентом. Сравните названия (жёлтым — слова, которых нет в нашем названии), откройте ссылки и выберите правильную."
           : "Алгоритм выбрал верхнюю карточку. Ниже — другие карточки конкурента, тоже прошедшие порог.";
         if (!editable) lead.textContent += " Пара уже не в статусе «Ожидает» — выбор недоступен.";
@@ -2292,6 +2300,10 @@
           price: m.competitor_price,
           currency: m.competitor_currency,
         };
+        if (isSku) {
+          current.score = Number(details.name_score || 0);
+          current.how = details.sku_how;
+        }
         function renderCandsList(items) {
           list.replaceChildren();
           list.appendChild(buildCandItem(m, current, true, ctx && ctx.competitorUrl ? ctx.competitorUrl : ""));
@@ -2351,9 +2363,51 @@
       })();
 
       /** «По словам v2»: «спорно» / «варианты» под процентом + слова плашками. */
+      var SKU_HOW_LABEL = {
+        exact: "артикул совпал точно",
+        norm: "артикул совпал после очистки (пробелы, тире, «Арт.», А↔A)",
+        part: "совпала часть составного артикула",
+        comp_name: "наш артикул есть в названии конкурента",
+        my_name: "артикул конкурента есть в нашем названии"
+      };
+      var SKU_HOW_SHORT = {
+        exact: "точно",
+        norm: "после очистки",
+        part: "часть составного",
+        comp_name: "в названии конкурента",
+        my_name: "в нашем названии"
+      };
+
+      function appendSkuV2Line(td, d) {
+        var line = document.createElement("div");
+        line.className = "dg-mw-sku";
+        var how = document.createElement("span");
+        how.className = "dg-mw-sku-how dg-mw-sku-" + (d.sku_how || "exact");
+        how.textContent = "артикул: " + (SKU_HOW_SHORT[d.sku_how] || d.sku_how || "—");
+        how.title = SKU_HOW_LABEL[d.sku_how] || "";
+        line.appendChild(how);
+        var nm = document.createElement("span");
+        nm.className = "dg-mw-sku-name" + (d.name_doubt ? " is-doubt" : "");
+        var pct = Math.round(Number(d.name_score || 0) * 100);
+        nm.textContent = d.name_doubt ? "названия расходятся · " + pct + "%" : "название " + pct + "%";
+        nm.title = d.name_doubt
+          ? "Артикул совпал, но названия почти не похожи — проверьте, тот ли это товар"
+          : "Похожесть названий (как в «По словам v2»)";
+        line.appendChild(nm);
+        if (Number(d.same_sku_cards) > 1) {
+          var many = document.createElement("span");
+          many.className = "dg-mw-sku-many";
+          many.textContent = "карточек с этим артикулом: " + d.same_sku_cards;
+          many.title = "Выбрана карточка с самым похожим названием";
+          line.appendChild(many);
+        }
+        td.appendChild(line);
+      }
+
       function appendMatchWordsDetails(td, raw, onOpenCands) {
         var d = parseMatchDetails(raw);
         if (!d) return;
+        if (d.kind === "sku") appendSkuV2Line(td, d);
         var cands = matchDetailsCands(d);
         if (cands.length && typeof onOpenCands === "function") {
           var openBtn = document.createElement("button");
@@ -2425,7 +2479,7 @@
           .trim()
           .toLowerCase();
         if (mm === "name" || mm === "name_words" || mm === "name_words_v2") return "name";
-        if (mm === "sku" || mm === "sku_norm" || mm === "sku_best") return "sku";
+        if (mm === "sku" || mm === "sku_v2" || mm === "sku_norm" || mm === "sku_best") return "sku";
         if (mm === "manual") return "manual";
         return Math.abs(Number(score) - 1) < 1e-6 ? "sku" : "name";
       }
@@ -2449,6 +2503,7 @@
           return "По названию";
         }
         if (mt === "sku") {
+          if (mm === "sku_v2") return "По SKU v2";
           if (mm === "sku_norm") return "SKU · нормализация";
           if (mm === "sku_best") return "SKU · норм. + строка";
           if (mm === "all") return "SKU · строго («все поля»)";
