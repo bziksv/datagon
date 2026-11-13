@@ -41,6 +41,7 @@ let myProductsPerfReady = false;
 let myProductsSyncAuditReady = false;
 let myProductsPriceHoldReady = false;
 let myProductsSourceEnabledReady = false;
+let myProductsPackColsReady = false;
 const PRICE_HOLD_ALLOWED_DAYS = new Set([30, 60, 90, 180]);
 const MY_PRODUCTS_CACHE_TTL_MS = 120000;
 const MY_PRODUCTS_STATS_CACHE_TTL_MS = 15000;
@@ -274,6 +275,40 @@ function sqlMatchAuditJoinAndWhere(matchAuditFilter) {
     }
     return { joinSql: '', whereSql: '' };
 }
+
+
+/** Кандидаты для фильтра Δ: только товары с confirmed-парой Dealmed/Medkompleks (иначе Δ не посчитать). */
+function sqlGapEligibleJoin(gapCompetitor) {
+    const comp = String(gapCompetitor || 'all').toLowerCase();
+    let namePred = `(
+                LOWER(p.name) LIKE '%деалмед%'
+                OR LOWER(p.name) LIKE '%dealmed%'
+                OR LOWER(p.name) LIKE '%медкомплекс%'
+                OR LOWER(p.name) LIKE '%medkompleks%'
+            )`;
+    if (comp === 'dealmed') {
+        namePred = `(LOWER(p.name) LIKE '%деалмед%' OR LOWER(p.name) LIKE '%dealmed%')`;
+    } else if (comp === 'medkompleks') {
+        namePred = `(LOWER(p.name) LIKE '%медкомплекс%' OR LOWER(p.name) LIKE '%medkompleks%')`;
+    }
+    return `
+        INNER JOIN (
+            SELECT DISTINCT mp2.id AS mp_id
+            FROM product_matches pm
+            INNER JOIN projects p ON p.id = pm.competitor_site_id
+            INNER JOIN my_products mp2
+              ON mp2.site_id = pm.my_site_id
+             AND (
+                (TRIM(COALESCE(pm.my_sku, '')) <> '' AND mp2.sku = pm.my_sku)
+                OR mp2.name = pm.my_product_name
+             )
+            WHERE pm.status = 'confirmed'
+              AND ${namePred}
+        ) dg_gap ON dg_gap.mp_id = mp.id
+    `;
+}
+
+const GAP_LIST_ENRICH_CHUNK = 600;
 
 /** Контролы фонового sync цен — заполняются при первом вызове фабрики роутера. */
 let _priceCompSyncControls = null;
@@ -825,6 +860,11 @@ function myProductsRouterFactory(db, settings) {
                 q += ` AND ${cond}`;
                 qc += ` AND ${cond}`;
             }
+            if (isGapFilterEnabled) {
+                const gapJoin = sqlGapEligibleJoin(gap_competitor);
+                q += gapJoin;
+                qc += gapJoin;
+            }
             const qBase = q;
             // Наклейки: «Есть в наличии» (остаток МС) — в начале; снят/не поставляется — в конце.
             q += ` ORDER BY ${stickerBucket} ASC, ${sortField} ${sortDirection}`;
@@ -896,13 +936,23 @@ function myProductsRouterFactory(db, settings) {
                     gapRows = gapCached.rows.map((r) => ({ ...r }));
                 } else {
                     const dataRows = Array.isArray(rows) ? rows : [];
-                    await Promise.all([
-                        enrichWithMoyskladLinks(dataRows),
-                        enrichWithCompetitorPrices(dataRows),
-                        enrichRowsWithStickersAndMs(db, dataRows),
-                    ]);
-                    await applySiteWarehouseStockBySiteId(db, dataRows);
-                    gapRows = dataRows.filter((row) => rowMatchesGapFilter(row, gapCfg));
+                    gapRows = [];
+                    for (let gi = 0; gi < dataRows.length; gi += GAP_LIST_ENRICH_CHUNK) {
+                        const chunk = dataRows.slice(gi, gi + GAP_LIST_ENRICH_CHUNK);
+                        // eslint-disable-next-line no-await-in-loop
+                        await Promise.all([
+                            enrichWithMoyskladLinks(chunk),
+                            enrichWithCompetitorPrices(chunk),
+                            enrichRowsWithStickersAndMs(db, chunk),
+                        ]);
+                        // eslint-disable-next-line no-await-in-loop
+                        await applySiteWarehouseStockBySiteId(db, chunk);
+                        for (const row of chunk) {
+                            if (rowMatchesGapFilter(row, gapCfg)) gapRows.push(row);
+                        }
+                        // eslint-disable-next-line no-await-in-loop
+                        await new Promise((resolve) => setImmediate(resolve));
+                    }
                     myProductsGapSetCache.set(gapSetKey, {
                         ts: Date.now(),
                         rows: gapRows.map((r) => ({ ...r }))
@@ -1086,22 +1136,25 @@ function myProductsRouterFactory(db, settings) {
     async function enrichWithCompetitorPrices(rows) {
         if (!Array.isArray(rows) || !rows.length) return;
 
-        try {
-            const [cols] = await db.query(
-                `SELECT COLUMN_NAME AS c
-                 FROM information_schema.columns
-                 WHERE table_schema = DATABASE()
-                   AND table_name = 'product_matches'
-                   AND column_name IN ('pack_qty', 'pack_basis')`
-            );
-            const have = new Set((cols || []).map((r) => r.c));
-            if (!have.has('pack_qty')) {
-                await db.query('ALTER TABLE product_matches ADD COLUMN pack_qty INT NULL');
-            }
-            if (!have.has('pack_basis')) {
-                await db.query("ALTER TABLE product_matches ADD COLUMN pack_basis VARCHAR(16) NULL");
-            }
-        } catch (_) {}
+        if (!myProductsPackColsReady) {
+            try {
+                const [cols] = await db.query(
+                    `SELECT COLUMN_NAME AS c
+                     FROM information_schema.columns
+                     WHERE table_schema = DATABASE()
+                       AND table_name = 'product_matches'
+                       AND column_name IN ('pack_qty', 'pack_basis')`
+                );
+                const have = new Set((cols || []).map((r) => r.c));
+                if (!have.has('pack_qty')) {
+                    await db.query('ALTER TABLE product_matches ADD COLUMN pack_qty INT NULL');
+                }
+                if (!have.has('pack_basis')) {
+                    await db.query("ALTER TABLE product_matches ADD COLUMN pack_basis VARCHAR(16) NULL");
+                }
+                myProductsPackColsReady = true;
+            } catch (_) {}
+        }
 
         const mySiteIds = [...new Set(rows.map(r => Number(r.site_id)).filter(Number.isFinite))];
         const mySkus = [...new Set(rows.map(r => String(r.sku || '').trim()).filter(Boolean))];
@@ -1113,46 +1166,55 @@ function myProductsRouterFactory(db, settings) {
         )];
         if (!mySiteIds.length || (!mySkus.length && !myNamesNoSku.length)) return;
 
-        const whereParts = ['pm.status = "confirmed"'];
-        const params = [...mySiteIds];
-        whereParts.push(`pm.my_site_id IN (${mySiteIds.map(() => '?').join(',')})`);
-        if (mySkus.length && myNamesNoSku.length) {
-            whereParts.push(`(pm.my_sku IN (${mySkus.map(() => '?').join(',')}) OR pm.my_product_name IN (${myNamesNoSku.map(() => '?').join(',')}))`);
-            params.push(...mySkus, ...myNamesNoSku);
-        } else if (mySkus.length) {
-            whereParts.push(`pm.my_sku IN (${mySkus.map(() => '?').join(',')})`);
-            params.push(...mySkus);
-        } else {
-            whereParts.push(`pm.my_product_name IN (${myNamesNoSku.map(() => '?').join(',')})`);
-            params.push(...myNamesNoSku);
+        const matches = [];
+        const skuChunk = 800;
+        // Батчим IN по артикулам/именам — один гигантский IN на десятки тысяч ключей кладёт MySQL и Node.
+        if (mySkus.length) {
+            for (let i = 0; i < mySkus.length; i += skuChunk) {
+                const part = mySkus.slice(i, i + skuChunk);
+                const w = ['pm.status = "confirmed"', `pm.my_site_id IN (${mySiteIds.map(() => '?').join(',')})`, `pm.my_sku IN (${part.map(() => '?').join(',')})`];
+                const par = [...mySiteIds, ...part];
+                // eslint-disable-next-line no-await-in-loop
+                const [partRows] = await db.query(`
+                    SELECT
+                        pm.my_site_id, pm.my_sku, pm.my_product_name, pm.status,
+                        pm.confirmed_by, pm.confirmed_at, pm.unlinked_by, pm.unlinked_at,
+                        pm.competitor_site_id, pm.competitor_sku, pm.competitor_name,
+                        pm.pack_qty, pm.pack_basis, p.name AS competitor_project_name
+                    FROM product_matches pm
+                    JOIN projects p ON p.id = pm.competitor_site_id
+                    WHERE ${w.join(' AND ')}
+                      AND (
+                        LOWER(p.name) LIKE '%деалмед%' OR LOWER(p.name) LIKE '%dealmed%'
+                        OR LOWER(p.name) LIKE '%медкомплекс%' OR LOWER(p.name) LIKE '%medkompleks%'
+                      )
+                `, par);
+                if (partRows && partRows.length) matches.push(...partRows);
+            }
         }
-
-        const [matches] = await db.query(`
-            SELECT
-                pm.my_site_id,
-                pm.my_sku,
-                pm.my_product_name,
-                pm.status,
-                pm.confirmed_by,
-                pm.confirmed_at,
-                pm.unlinked_by,
-                pm.unlinked_at,
-                pm.competitor_site_id,
-                pm.competitor_sku,
-                pm.competitor_name,
-                pm.pack_qty,
-                pm.pack_basis,
-                p.name AS competitor_project_name
-            FROM product_matches pm
-            JOIN projects p ON p.id = pm.competitor_site_id
-            WHERE ${whereParts.join(' AND ')}
-              AND (
-                LOWER(p.name) LIKE '%деалмед%'
-                OR LOWER(p.name) LIKE '%dealmed%'
-                OR LOWER(p.name) LIKE '%медкомплекс%'
-                OR LOWER(p.name) LIKE '%medkompleks%'
-              )
-        `, params);
+        if (myNamesNoSku.length) {
+            for (let i = 0; i < myNamesNoSku.length; i += skuChunk) {
+                const part = myNamesNoSku.slice(i, i + skuChunk);
+                const w = ['pm.status = "confirmed"', `pm.my_site_id IN (${mySiteIds.map(() => '?').join(',')})`, `pm.my_product_name IN (${part.map(() => '?').join(',')})`];
+                const par = [...mySiteIds, ...part];
+                // eslint-disable-next-line no-await-in-loop
+                const [partRows] = await db.query(`
+                    SELECT
+                        pm.my_site_id, pm.my_sku, pm.my_product_name, pm.status,
+                        pm.confirmed_by, pm.confirmed_at, pm.unlinked_by, pm.unlinked_at,
+                        pm.competitor_site_id, pm.competitor_sku, pm.competitor_name,
+                        pm.pack_qty, pm.pack_basis, p.name AS competitor_project_name
+                    FROM product_matches pm
+                    JOIN projects p ON p.id = pm.competitor_site_id
+                    WHERE ${w.join(' AND ')}
+                      AND (
+                        LOWER(p.name) LIKE '%деалмед%' OR LOWER(p.name) LIKE '%dealmed%'
+                        OR LOWER(p.name) LIKE '%медкомплекс%' OR LOWER(p.name) LIKE '%medkompleks%'
+                      )
+                `, par);
+                if (partRows && partRows.length) matches.push(...partRows);
+            }
+        }
         if (!matches.length) return;
 
         const compSiteIds = [...new Set(matches.map(m => Number(m.competitor_site_id)).filter(Number.isFinite))];
@@ -1162,29 +1224,37 @@ function myProductsRouterFactory(db, settings) {
         const latestBySku = new Map();
         const latestByName = new Map();
         if (compSiteIds.length && compSkus.length) {
-            const [priceBySkuRows] = await db.query(`
-                SELECT project_id, sku, price, currency, url, parsed_at
-                FROM prices
-                WHERE project_id IN (${compSiteIds.map(() => '?').join(',')})
-                  AND sku IN (${compSkus.map(() => '?').join(',')})
-                ORDER BY parsed_at DESC
-            `, [...compSiteIds, ...compSkus]);
-            for (const pr of priceBySkuRows) {
-                const key = `${pr.project_id}::${String(pr.sku || '').trim()}`;
-                if (!latestBySku.has(key)) latestBySku.set(key, { price: pr.price, currency: pr.currency || 'RUB', url: pr.url || '' });
+            for (let i = 0; i < compSkus.length; i += skuChunk) {
+                const part = compSkus.slice(i, i + skuChunk);
+                // eslint-disable-next-line no-await-in-loop
+                const [priceBySkuRows] = await db.query(`
+                    SELECT project_id, sku, price, currency, url, parsed_at
+                    FROM prices
+                    WHERE project_id IN (${compSiteIds.map(() => '?').join(',')})
+                      AND sku IN (${part.map(() => '?').join(',')})
+                    ORDER BY parsed_at DESC
+                `, [...compSiteIds, ...part]);
+                for (const pr of priceBySkuRows || []) {
+                    const key = `${pr.project_id}::${String(pr.sku || '').trim()}`;
+                    if (!latestBySku.has(key)) latestBySku.set(key, { price: pr.price, currency: pr.currency || 'RUB', url: pr.url || '' });
+                }
             }
         }
         if (compSiteIds.length && compNames.length) {
-            const [priceByNameRows] = await db.query(`
-                SELECT project_id, product_name, price, currency, url, parsed_at
-                FROM prices
-                WHERE project_id IN (${compSiteIds.map(() => '?').join(',')})
-                  AND product_name IN (${compNames.map(() => '?').join(',')})
-                ORDER BY parsed_at DESC
-            `, [...compSiteIds, ...compNames]);
-            for (const pr of priceByNameRows) {
-                const key = `${pr.project_id}::${String(pr.product_name || '').trim()}`;
-                if (!latestByName.has(key)) latestByName.set(key, { price: pr.price, currency: pr.currency || 'RUB', url: pr.url || '' });
+            for (let i = 0; i < compNames.length; i += skuChunk) {
+                const part = compNames.slice(i, i + skuChunk);
+                // eslint-disable-next-line no-await-in-loop
+                const [priceByNameRows] = await db.query(`
+                    SELECT project_id, product_name, price, currency, url, parsed_at
+                    FROM prices
+                    WHERE project_id IN (${compSiteIds.map(() => '?').join(',')})
+                      AND product_name IN (${part.map(() => '?').join(',')})
+                    ORDER BY parsed_at DESC
+                `, [...compSiteIds, ...part]);
+                for (const pr of priceByNameRows || []) {
+                    const key = `${pr.project_id}::${String(pr.product_name || '').trim()}`;
+                    if (!latestByName.has(key)) latestByName.set(key, { price: pr.price, currency: pr.currency || 'RUB', url: pr.url || '' });
+                }
             }
         }
 
@@ -1772,6 +1842,10 @@ function myProductsRouterFactory(db, settings) {
 
         const matchAuditSql = sqlMatchAuditJoinAndWhere(matchAuditFilter);
         const priceHoldSql = sqlPriceHoldWhere(priceHoldFilter);
+        let joinSql = matchAuditSql.joinSql;
+        if (isGapFilterEnabled) {
+            joinSql += sqlGapEligibleJoin(gap_competitor);
+        }
         let whereSql = `WHERE 1=1${matchAuditSql.whereSql}${priceHoldSql}`;
         const params = [];
 
@@ -1843,7 +1917,7 @@ function myProductsRouterFactory(db, settings) {
         };
 
         return {
-            joinSql: matchAuditSql.joinSql,
+            joinSql,
             whereSql,
             params,
             applied_filters,
@@ -1937,8 +2011,17 @@ function myProductsRouterFactory(db, settings) {
             return { matchedIds: [], scannedSql: 0, cancelled: true, from_cache: false };
         }
         const dataRows = Array.isArray(rows) ? rows : [];
-        await enrichWithCompetitorPrices(dataRows);
-        const gapRows = dataRows.filter((product) => rowMatchesGapFilter(product, ctx.gapCfg));
+        const gapRows = [];
+        for (let gi = 0; gi < dataRows.length; gi += GAP_LIST_ENRICH_CHUNK) {
+            const chunk = dataRows.slice(gi, gi + GAP_LIST_ENRICH_CHUNK);
+            // eslint-disable-next-line no-await-in-loop
+            await enrichWithCompetitorPrices(chunk);
+            for (const product of chunk) {
+                if (rowMatchesGapFilter(product, ctx.gapCfg)) gapRows.push(product);
+            }
+            // eslint-disable-next-line no-await-in-loop
+            await new Promise((resolve) => setImmediate(resolve));
+        }
         myProductsGapSetCache.set(gapSetKey, {
             ts: Date.now(),
             rows: gapRows.map((r) => ({ ...r }))
