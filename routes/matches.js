@@ -2101,7 +2101,7 @@ module.exports = (db, settings) => {
                     m.comp_name
                 ),
             ]);
-            await db.query(
+            const [upsertRes] = await db.query(
                 `
                 INSERT INTO product_matches
                 (my_site_id, my_sku, my_product_name, competitor_site_id, competitor_sku, competitor_name,
@@ -2122,7 +2122,12 @@ module.exports = (db, settings) => {
             `,
                 [values]
             );
-            totalMatchesSaved += pendingMatches.length;
+            // affectedRows: новая строка = 1, обновлённая = 2 (updated_at меняется всегда)
+            const nRows = pendingMatches.length;
+            const affected = Number(upsertRes && upsertRes.affectedRows);
+            totalMatchesSaved += Number.isFinite(affected)
+                ? Math.max(0, Math.min(nRows, 2 * nRows - affected))
+                : nRows;
             pendingMatches.length = 0;
             await clearNoMatchExclusions(savedRows);
         }
@@ -2345,6 +2350,7 @@ module.exports = (db, settings) => {
             });
 
             const confirmedSkus = new Set();
+            const confirmedSkusNorm = new Set();
             const confirmedNames = new Set();
             try {
                 const [confRows] = await db.query(
@@ -2356,13 +2362,15 @@ module.exports = (db, settings) => {
                 for (const row of confRows || []) {
                     const s = String(row.my_sku || '').trim();
                     if (s) confirmedSkus.add(s);
+                    const sn = normalizeSkuForMatch(s);
+                    if (sn) confirmedSkusNorm.add(sn);
                     const n = String(row.my_product_name || '').trim();
                     if (n) confirmedNames.add(n);
                 }
             } catch (_) {}
             function productHasConfirmedMatch(prod) {
                 const s = String(prod?.sku || '').trim();
-                if (s && confirmedSkus.has(s)) return true;
+                if (s && (confirmedSkus.has(s) || confirmedSkusNorm.has(normalizeSkuForMatch(s)))) return true;
                 const n = String(prod?.name || '').trim();
                 return Boolean(n && confirmedNames.has(n));
             }
