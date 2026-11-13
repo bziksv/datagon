@@ -14,6 +14,7 @@
       var urlDebounce = null;
       var searchReloadTimer = null;
       var resultsFetchAbortController = null;
+      var resultsStatsAbortController = null;
       /* Дата, Проект, Тип, Проверил контент, Контент, Товар, SKU, Сопоставление, Парсинг, Наличие, Цена, Действия */
       var DEFAULT_VISIBLE_COLS = [true, true, true, true, true, true, true, true, true, true, true, true];
       var visibleCols = DEFAULT_VISIBLE_COLS.slice();
@@ -38,6 +39,7 @@
       var resultsFloatingHeaderRaf = 0;
       var resultsFloatingLastScrollTs = 0;
       var loadResultsGeneration = 0;
+      var loadResultsStatsGeneration = 0;
 
       function humanizePageError(raw) {
         var msg = String(raw || "").trim();
@@ -309,6 +311,12 @@
       function fillProjects(list) {
         var sel = document.getElementById("dg-res-f-project");
         var prev = sel.value;
+        var urlWant = "";
+        try {
+          urlWant = String(new URLSearchParams(window.location.search).get("project_id") || "");
+        } catch (eUrl) {
+          urlWant = "";
+        }
         sel.innerHTML = '<option value="all">Все проекты</option>';
         (list || []).forEach(function (p) {
           var o = document.createElement("option");
@@ -316,7 +324,17 @@
           o.textContent = p.name || "#" + p.id;
           sel.appendChild(o);
         });
-        if ([].some.call(sel.options, function (o) { return o.value === prev; })) sel.value = prev;
+        /* URL → предыдущее значение → prefs. До загрузки опций parseUrlToForm
+           не мог выставить project_id (опции ещё не было) — без этого сводка
+           уходит без проекта (все сайты ≈ 37k), а таблица потом с проектом. */
+        var pick = "";
+        if (urlWant && [].some.call(sel.options, function (o) { return o.value === urlWant; })) {
+          pick = urlWant;
+        } else if (prev && [].some.call(sel.options, function (o) { return o.value === prev; })) {
+          pick = prev;
+        }
+        if (pick) sel.value = pick;
+        else sel.value = "all";
         mergeResultsPrefsFromStorage();
       }
 
@@ -1757,18 +1775,36 @@
       }
 
       function loadResultsStats() {
-        return fetch(buildStatsUrl(), { credentials: "same-origin" })
+        var gen = ++loadResultsStatsGeneration;
+        var statsUrl = buildStatsUrl();
+        if (resultsStatsAbortController) {
+          try {
+            resultsStatsAbortController.abort();
+          } catch (eAbort) {}
+        }
+        var controller = new AbortController();
+        resultsStatsAbortController = controller;
+        return fetch(statsUrl, { credentials: "same-origin", signal: controller.signal })
           .then(function (r) {
             return r.json().then(function (j) {
               return { r: r, j: j };
             });
           })
           .then(function (x) {
+            if (gen !== loadResultsStatsGeneration) return;
+            if (statsUrl !== buildStatsUrl()) return;
             if (!x.r.ok || x.j.success === false) throw new Error(x.j.error || "Ошибка сводки");
             paintResultsStats(x.j);
           })
-          .catch(function () {
+          .catch(function (e) {
+            if (e && e.name === "AbortError") return;
+            if (gen !== loadResultsStatsGeneration) return;
             paintResultsStats(null);
+          })
+          .finally(function () {
+            if (resultsStatsAbortController === controller) {
+              resultsStatsAbortController = null;
+            }
           });
       }
 
@@ -1806,8 +1842,9 @@
         }
         page = 1;
         persistResultsFilterForm();
-        loadResults();
+        /* Сводку обновляем сразу; list — параллельно. Старый /stats abort'ится в loadResultsStats. */
         loadResultsStats();
+        loadResults();
       }
 
       function setResultsListBusy(dis) {
