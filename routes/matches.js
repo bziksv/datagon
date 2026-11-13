@@ -2463,7 +2463,9 @@ module.exports = (db, settings) => {
                                           nameWordsV2Index.tokenLists[i] || [],
                                           nameWordsV2Index.weightLists[i] || [],
                                           0,
-                                          null
+                                          null,
+                                          false,
+                                          true
                                       )
                                     : { score: 0 };
                             const pick = pickSkuV2(skuLevels, nameScoreOf, NAME_WORDS_V2_TOP_N);
@@ -2480,6 +2482,7 @@ module.exports = (db, settings) => {
                                           nameWordsV2Index.weightLists[bi] || [],
                                           0,
                                           null,
+                                          true,
                                           true
                                       )
                                     : {};
