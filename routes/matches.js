@@ -270,6 +270,33 @@ function pushTopCandidate(top, entry, compPrices) {
     if (top.length > NAME_WORDS_V2_TOP_N) top.length = NAME_WORDS_V2_TOP_N;
 }
 
+const NAME_WORDS_V2_TIE_EPS = 0.01;
+
+function skuTieKey(raw) {
+    return String(raw || '')
+        .toLowerCase()
+        .replace(/^\s*(арт(икул)?|art|sku|код)\b\.?\s*:?\s*/i, '')
+        .replace(/[^a-zа-яё0-9]+/g, '')
+        .replace(/^0+(?=\d)/, '');
+}
+
+/** Почти равный балл: выше карточка с тем же артикулом, что у нашего товара. */
+function reorderTopBySku(top, compPrices, mySku) {
+    const my = skuTieKey(mySku);
+    if (!my || top.length < 2) return;
+    const lead = top[0].score;
+    let n = 0;
+    while (n < top.length && lead - top[n].score < NAME_WORDS_V2_TIE_EPS) n += 1;
+    if (n < 2) return;
+    const head = top.slice(0, n);
+    head.sort((a, b) => {
+        const ea = skuTieKey(compPrices[a.ni].sku) === my ? 1 : 0;
+        const eb = skuTieKey(compPrices[b.ni].sku) === my ? 1 : 0;
+        return eb - ea || b.score - a.score;
+    });
+    for (let i = 0; i < n; i += 1) top[i] = head[i];
+}
+
 function sanitizeMatchingMode(mode) {
     const m = String(mode || '').trim();
     return MATCHING_MODES.has(m) ? m : 'sku';
@@ -2560,6 +2587,7 @@ module.exports = (db, settings) => {
                             if (res.reject || res.score < threshold) continue;
                             pushTopCandidate(top, { ni, score: res.score }, compPrices);
                         }
+                        reorderTopBySku(top, compPrices, myProd.sku);
                         const best = top[0] || null;
                         const second = top[1] || null;
                         if (best) {
