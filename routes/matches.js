@@ -3087,6 +3087,9 @@ module.exports = (db, settings) => {
             const mySiteMeta = new Map();
 
             const enrichJobs = [];
+            // SKU и имя — независимые выборки (не else-if): иначе при наличии любых
+            // competitor_sku на странице совпадения «только по названию» (sku NULL)
+            // остаются без competitor_url / цены, хотя строка есть в Результатах.
             if (compSiteIds.length && compSkus.length) {
                 enrichJobs.push(
                     (async () => {
@@ -3111,7 +3114,8 @@ module.exports = (db, settings) => {
                         }
                     })()
                 );
-            } else if (compSiteIds.length && compNames.length) {
+            }
+            if (compSiteIds.length && compNames.length) {
                 enrichJobs.push(
                     (async () => {
                         const params = [...compSiteIds, ...compNames];
