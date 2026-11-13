@@ -724,11 +724,19 @@ module.exports = (db, settings) => {
             await ensureResultsListPerf(db);
             const whereBuilt = buildResultsWhere(req.query);
             const matchedSub = matchedPriceIdsSubquerySql();
+            const unmatchedCond = `pr.id NOT IN ${matchedSub}`;
+            const pageTypeExpr = `COALESCE(pg.page_type, 'product')`;
             const sql = `
                 SELECT
                   COUNT(*) AS total,
                   SUM(CASE WHEN pr.id IN ${matchedSub} THEN 1 ELSE 0 END) AS matched,
-                  SUM(CASE WHEN pr.id NOT IN ${matchedSub} THEN 1 ELSE 0 END) AS unmatched,
+                  SUM(CASE WHEN ${unmatchedCond} THEN 1 ELSE 0 END) AS unmatched,
+                  SUM(CASE WHEN ${unmatchedCond} AND ${pageTypeExpr} = 'product' THEN 1 ELSE 0 END) AS unmatched_product,
+                  SUM(CASE WHEN ${unmatchedCond} AND ${pageTypeExpr} = 'info' THEN 1 ELSE 0 END) AS unmatched_info,
+                  SUM(CASE WHEN ${unmatchedCond} AND ${pageTypeExpr} = 'category' THEN 1 ELSE 0 END) AS unmatched_category,
+                  SUM(CASE WHEN ${unmatchedCond} AND ${pageTypeExpr} = 'junk' THEN 1 ELSE 0 END) AS unmatched_junk,
+                  SUM(CASE WHEN ${unmatchedCond} AND ${pageTypeExpr} = 'unknown' THEN 1 ELSE 0 END) AS unmatched_unknown,
+                  SUM(CASE WHEN ${unmatchedCond} AND ${pageTypeExpr} NOT IN ('product','info','category','junk','unknown') THEN 1 ELSE 0 END) AS unmatched_other_raw,
                   SUM(CASE WHEN COALESCE(pr.is_oos, 0) = 0 THEN 1 ELSE 0 END) AS in_stock,
                   SUM(CASE WHEN COALESCE(pr.is_oos, 0) = 1 THEN 1 ELSE 0 END) AS oos,
                   SUM(CASE WHEN ${PAGE_STATUS_EXPR} = 'error' THEN 1 ELSE 0 END) AS parse_error,
@@ -742,11 +750,26 @@ module.exports = (db, settings) => {
             const [rows] = await db.query(sql, whereBuilt.params);
             const r = rows[0] || {};
             const num = (v) => Number(v) || 0;
+            const umProduct = num(r.unmatched_product);
+            const umInfo = num(r.unmatched_info);
+            const umOther =
+                num(r.unmatched_category) +
+                num(r.unmatched_junk) +
+                num(r.unmatched_unknown) +
+                num(r.unmatched_other_raw);
             res.json({
                 success: true,
                 total: num(r.total),
                 matched: num(r.matched),
                 unmatched: num(r.unmatched),
+                unmatched_by_type: {
+                    product: umProduct,
+                    info: umInfo,
+                    other: umOther,
+                    category: num(r.unmatched_category),
+                    junk: num(r.unmatched_junk),
+                    unknown: num(r.unmatched_unknown),
+                },
                 in_stock: num(r.in_stock),
                 oos: num(r.oos),
                 parse_error: num(r.parse_error),

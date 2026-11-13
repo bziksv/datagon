@@ -1669,6 +1669,55 @@
         return "/api/results/stats?" + s.toString();
       }
 
+      function paintUnmatchedBreakdown(byType) {
+        var host = document.getElementById("dg-res-st-unmatched-by-type");
+        if (!host) return;
+        var bt = byType && typeof byType === "object" ? byType : {};
+        var product = Number(bt.product) || 0;
+        var info = Number(bt.info) || 0;
+        var other = Number(bt.other) || 0;
+        if (!product && !info && !other) {
+          host.replaceChildren();
+          host.classList.add("is-empty");
+          host.removeAttribute("data-dg-tooltip");
+          return;
+        }
+        host.classList.remove("is-empty");
+        var rows = [
+          { label: "товар", n: product },
+          { label: "инфо", n: info },
+          { label: "прочее", n: other },
+        ];
+        host.replaceChildren();
+        rows.forEach(function (row) {
+          var line = document.createElement("div");
+          line.className = "dg-res-stat-breakdown-row";
+          var lab = document.createElement("span");
+          lab.textContent = row.label;
+          var num = document.createElement("span");
+          num.className = "dg-res-stat-bd-n";
+          num.textContent = fmtIntRu(row.n);
+          line.appendChild(lab);
+          line.appendChild(num);
+          host.appendChild(line);
+        });
+        var tipParts = [];
+        tipParts.push("товар: " + fmtIntRu(product));
+        tipParts.push("инфо: " + fmtIntRu(info));
+        tipParts.push(
+          "прочее: " +
+            fmtIntRu(other) +
+            " (категория " +
+            fmtIntRu(Number(bt.category) || 0) +
+            ", утиль " +
+            fmtIntRu(Number(bt.junk) || 0) +
+            ", неизв. " +
+            fmtIntRu(Number(bt.unknown) || 0) +
+            ")"
+        );
+        host.setAttribute("data-dg-tooltip", tipParts.join(" · "));
+      }
+
       function paintResultsStats(st) {
         st = st || {};
         var map = {
@@ -1685,6 +1734,7 @@
           var el = document.getElementById("dg-res-st-" + k + "-v");
           if (el) el.textContent = map[k] == null ? "—" : fmtIntRu(map[k]);
         });
+        paintUnmatchedBreakdown(st.unmatched_by_type);
         syncStatsActive();
       }
 

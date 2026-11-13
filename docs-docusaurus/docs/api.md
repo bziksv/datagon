@@ -429,7 +429,9 @@ Query:
 Кэш ответа в памяти процесса используется только при `limit` ≤ **400** (и `limit=0` для count-only).
 
 ### GET `/api/results/stats`
-Сводка по тем же фильтрам, что `GET /api/results` (без limit/offset): `{ success, total, matched, unmatched, in_stock, oos, parse_error, no_sku, no_price }`.
+Сводка по тем же фильтрам, что `GET /api/results` (без limit/offset): `{ success, total, matched, unmatched, unmatched_by_type, in_stock, oos, parse_error, no_sku, no_price }`.
+
+`unmatched_by_type`: `{ product, info, other, category, junk, unknown }` — разбивка **несопоставленных** по `pages.page_type` (`other` = category + junk + unknown + прочее). На `/results.html` в карточке «Не сопоставлено» справа: товар / инфо / прочее.
 
 ### PATCH `/api/pages/:id/type`
 Ручная смена типа страницы очереди. Body: `{ "page_type": "product"|"category"|"info"|"junk"|"unknown" }`. Ставит `pages.page_type_manual = 1` (парсер не перезаписывает тип). При типе ≠ `product` страница → `done`, строка **`prices` сохраняется** (фильтр «Тип» и поиск на `/results.html` продолжают её находить). Журнал — **`dg_pages_type_log`**.
