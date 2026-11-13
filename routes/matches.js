@@ -206,50 +206,6 @@ function collectNameLenCandidateIndices(nameIndex, myLen, threshold) {
     return out;
 }
 
-/**
- * Кандидаты для режима `name` (Левенштейн): пересечение длины с токенами / prefix4.
- * Иначе на длинных названиях остаётся 5–8k LD на товар — часы на 40k.
- */
-function collectNameModeCandidateIndices(nameIndex, nameWordsIndex, myRawName, myNorm, threshold) {
-    if (!myNorm || myNorm.length < 3) return [];
-    const thr = Math.max(0.01, Math.min(1, Number(threshold) || 0.85));
-    const myLen = myNorm.length;
-    const minComp = Math.ceil(myLen * thr - 1e-12);
-    const maxComp = Math.floor(myLen / thr + 1e-12);
-    const lenOk = (idx) => {
-        // длина проверяется снаружи через compNormNames; здесь только фильтр по индексу длины
-        return true;
-    };
-    const lenSet = new Set(collectNameLenCandidateIndices(nameIndex, myLen, thr));
-    const out = [];
-    const seen = new Set();
-    const push = (i) => {
-        if (seen.has(i) || !lenSet.has(i)) return;
-        seen.add(i);
-        out.push(i);
-    };
-
-    const myTokens = tokenizeNameWords(myRawName);
-    if (nameWordsIndex && myTokens.length) {
-        const tokenCands = collectNameWordCandidates(nameWordsIndex, myTokens);
-        for (let t = 0; t < tokenCands.length; t += 1) push(tokenCands[t]);
-    }
-    if (out.length > 0) return out;
-
-    // Fallback: длина ∩ первые 4 символа нормализованной строки
-    const pref = myNorm.slice(0, 4);
-    const prefArr = nameIndex && nameIndex.byPrefix4 ? nameIndex.byPrefix4.get(pref) : null;
-    if (prefArr && prefArr.length) {
-        for (let k = 0; k < prefArr.length; k += 1) push(prefArr[k]);
-        if (out.length > 0) return out;
-    }
-    // Последний запасной — только бакеты длины (медленно, но полно)
-    void minComp;
-    void maxComp;
-    void lenOk;
-    return collectNameLenCandidateIndices(nameIndex, myLen, thr);
-}
-
 /** Ключ для сопоставления SKU: NFKC, верхний регистр, Unicode-пробелы и тире унифицированы. */
 function normalizeSkuForMatch(raw) {
     if (raw == null || raw === '') return '';
@@ -2232,15 +2188,12 @@ module.exports = (db, settings) => {
             if (mode === 'all' || mode === 'name') {
                 const cn = compPrices.length;
                 compNormNames = new Array(cn);
-                // Индекс токенов — только для сужения кандидатов; балл всё равно Левенштейн.
-                nameWordsIndex = createNameWordsIndex(cn);
                 for (let ci = 0; ci < cn; ci += 1) {
                     if ((ci & 4095) === 0 && cancelledJobs.has(jobId)) {
                         await completeCancellation(compPos, productStart);
                         return { matches: [], count: totalMatchesSaved };
                     }
                     compNormNames[ci] = normalizeText(compPrices[ci].product_name);
-                    indexNameWordsRow(nameWordsIndex, ci, compPrices[ci].product_name);
                     if (ci > 0 && (ci & 4095) === 0) {
                         await new Promise((r) => setImmediate(r));
                     }
@@ -2387,13 +2340,7 @@ module.exports = (db, settings) => {
                         matchType = 'name';
                     } else {
                         const candIdx = nameMatchIndex
-                            ? collectNameModeCandidateIndices(
-                                  nameMatchIndex,
-                                  nameWordsIndex,
-                                  myProd.name,
-                                  normMyName,
-                                  threshold
-                              )
+                            ? collectNameLenCandidateIndices(nameMatchIndex, normMyName.length, threshold)
                             : null;
                         const nCand = candIdx ? candIdx.length : compNormNames.length;
                         for (let ci = 0; ci < nCand; ci += 1) {
