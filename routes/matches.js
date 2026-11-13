@@ -157,6 +157,47 @@ function normalizeText(text) {
         .trim();
 }
 
+/**
+ * Индекс для режима `name`: точные имена + бакеты по длине.
+ * Кандидаты только с |L1-L2| совместимым с порогом (min/max ≥ threshold) —
+ * без полного прохода по 30–40k строк прайса на каждый наш товар.
+ */
+function buildNameMatchIndex(compNormNames) {
+    const exact = new Map();
+    const byLen = new Map();
+    const n = compNormNames ? compNormNames.length : 0;
+    for (let i = 0; i < n; i += 1) {
+        const s = compNormNames[i];
+        if (!s || s.length < 3) continue;
+        if (!exact.has(s)) exact.set(s, i);
+        const L = s.length;
+        let arr = byLen.get(L);
+        if (!arr) {
+            arr = [];
+            byLen.set(L, arr);
+        }
+        arr.push(i);
+    }
+    return { exact, byLen };
+}
+
+/** Индексы строк прайса, у которых длина совместима с порогом схожести к myLen. */
+function collectNameLenCandidateIndices(nameIndex, myLen, threshold) {
+    if (!nameIndex || myLen < 3) return [];
+    const thr = Math.max(0.01, Math.min(1, Number(threshold) || 0.85));
+    const minComp = Math.ceil(myLen * thr - 1e-12);
+    const maxComp = Math.floor(myLen / thr + 1e-12);
+    if (maxComp < minComp) return [];
+    const out = [];
+    const { byLen } = nameIndex;
+    for (let L = minComp; L <= maxComp; L += 1) {
+        const arr = byLen.get(L);
+        if (!arr || !arr.length) continue;
+        for (let k = 0; k < arr.length; k += 1) out.push(arr[k]);
+    }
+    return out;
+}
+
 /** Ключ для сопоставления SKU: NFKC, верхний регистр, Unicode-пробелы и тире унифицированы. */
 function normalizeSkuForMatch(raw) {
     if (raw == null || raw === '') return '';
@@ -2120,6 +2161,7 @@ module.exports = (db, settings) => {
             }
 
             let compNormNames = null;
+            let nameMatchIndex = null;
             let nameWordsIndex = null;
             if (mode === 'name_words') {
                 nameWordsIndex = createNameWordsIndex(compPrices.length);
@@ -2148,11 +2190,13 @@ module.exports = (db, settings) => {
                         await new Promise((r) => setImmediate(r));
                     }
                 }
+                nameMatchIndex = buildNameMatchIndex(compNormNames);
             }
 
             await phaseEnd({
                 normNameRows: compNormNames ? compNormNames.length : 0,
                 nameWordRows: nameWordsIndex ? nameWordsIndex.tokenLists.length : 0,
+                nameLenBuckets: nameMatchIndex && nameMatchIndex.byLen ? nameMatchIndex.byLen.size : 0,
                 skuMap:
                     mode === 'all' || mode === 'sku'
                         ? 'strict'
@@ -2280,39 +2324,58 @@ module.exports = (db, settings) => {
                 }
 
                 if ((mode === 'all' || mode === 'name') && matchType !== 'sku' && normMyName.length > 3 && compNormNames) {
-                    const nComp = compNormNames.length;
-                    for (let ni = 0; ni < nComp; ni += 1) {
-                        // Отмена на каждой строке: иначе до 128× тяжёлого Levenshtein без проверки — «Остановить» висит.
-                        if (cancelledJobs.has(jobId)) {
-                            await completeCancellation(compPos, pIdx);
-                            return { matches: [], count: totalMatchesSaved };
-                        }
-                        if ((ni & 31) === 0) {
-                            await new Promise((r) => setImmediate(r));
-                            const now = Date.now();
-                            if (now - lastNameInnerHeartbeatMs >= NAME_MATCH_INNER_HEARTBEAT_MS) {
-                                lastNameInnerHeartbeatMs = now;
-                                await addJobLog(
-                                    jobId,
-                                    `По названию: товар ${pIdx + 1}/${myProducts.length}, строк прайса ${ni}/${nComp} (конк. ${compId})`
-                                );
-                                await updateJob(
-                                    jobId,
-                                    withRunningCounters({
-                                        message: `Сопоставление по названию: товар ${pIdx + 1}/${myProducts.length}, прайс ${ni}/${nComp}`
-                                    })
-                                );
+                    // Exact hit без скана прайса.
+                    if (nameMatchIndex && nameMatchIndex.exact.has(normMyName)) {
+                        const ei = nameMatchIndex.exact.get(normMyName);
+                        bestMatch = compPrices[ei];
+                        bestScore = 1;
+                        matchType = 'name';
+                    } else {
+                        const candIdx = nameMatchIndex
+                            ? collectNameLenCandidateIndices(nameMatchIndex, normMyName.length, threshold)
+                            : null;
+                        const nCand = candIdx ? candIdx.length : compNormNames.length;
+                        for (let ci = 0; ci < nCand; ci += 1) {
+                            const ni = candIdx ? candIdx[ci] : ci;
+                            // Отмена/yield реже: раньше setImmediate каждые 32 строки × 37k прайса
+                            // убивали скорость режима «Только название».
+                            if ((ci & 255) === 0) {
+                                if (cancelledJobs.has(jobId)) {
+                                    await completeCancellation(compPos, pIdx);
+                                    return { matches: [], count: totalMatchesSaved };
+                                }
                             }
-                        }
-                        const normCompName = compNormNames[ni];
-                        if (normCompName.length < 3) continue;
-                        const compProd = compPrices[ni];
-                        const score = nameSimilarityThresholded(normMyName, normCompName, threshold, bestScore);
-                        if (score >= threshold && score > bestScore) {
-                            bestMatch = compProd;
-                            bestScore = score;
-                            matchType = 'name';
-                            if (score >= 1) break;
+                            if ((ci & 2047) === 0) {
+                                await new Promise((r) => setImmediate(r));
+                                const now = Date.now();
+                                if (now - lastNameInnerHeartbeatMs >= NAME_MATCH_INNER_HEARTBEAT_MS) {
+                                    lastNameInnerHeartbeatMs = now;
+                                    await addJobLog(
+                                        jobId,
+                                        `По названию: товар ${pIdx + 1}/${myProducts.length}, кандидатов ${ci}/${nCand} (конк. ${compId})`
+                                    );
+                                    await updateJob(
+                                        jobId,
+                                        withRunningCounters({
+                                            message: `Сопоставление по названию: товар ${pIdx + 1}/${myProducts.length}, кандидатов ${ci}/${nCand}`
+                                        })
+                                    );
+                                }
+                            }
+                            const normCompName = compNormNames[ni];
+                            if (!normCompName || normCompName.length < 3) continue;
+                            const score = nameSimilarityThresholded(
+                                normMyName,
+                                normCompName,
+                                threshold,
+                                bestScore
+                            );
+                            if (score >= threshold && score > bestScore) {
+                                bestMatch = compPrices[ni];
+                                bestScore = score;
+                                matchType = 'name';
+                                if (score >= 1) break;
+                            }
                         }
                     }
                 }
