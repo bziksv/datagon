@@ -3023,28 +3023,47 @@
       }
 
       /**
-       * Две вкладки без модалки: Chrome/Opera дают один window.open на жест.
-       * pointerdown открывает «наш» сайт, click — конкурента (два жеста подряд).
-       * Клавиатура (только click) — обе попытки в одном обработчике.
+       * «Оба» — настоящая <a target=_blank> на наш товар (Opera всегда пускает
+       * переход по ссылке) + на pointerdown window.open(конкурент). Два жеста:
+       * pointerdown и click — в Chromium/Opera обычно открываются обе вкладки.
+       * Нельзя два window.open подряд: Opera режет второй молча.
        */
-      function bindOpenPairButton(btn, myUrl, compUrl) {
-        if (!btn) return;
+      function createOpenPairAnchor(myUrl, compUrl, className) {
         var a = String(myUrl || "").trim();
         var b = String(compUrl || "").trim();
-        var openedMyOnPointer = false;
-        btn.addEventListener("pointerdown", function (ev) {
+        if (!a || !b) return null;
+        var el = document.createElement("a");
+        el.href = a;
+        el.target = "_blank";
+        el.rel = "noopener noreferrer";
+        el.className = className || "btn btn-sm btn-outline-secondary";
+        el.setAttribute("data-dg-no-activity", "1");
+        el.setAttribute("data-dg-tooltip", "Открыть наш товар и конкурента в двух вкладках");
+        el.innerHTML = '<i class="pe-7s-browser me-1"></i>Оба';
+        var openedComp = false;
+        el.addEventListener("pointerdown", function (ev) {
           if (ev.pointerType === "mouse" && ev.button !== 0) return;
-          openedMyOnPointer = false;
-          if (!a) return;
-          var w = tryOpenMatchesTab(a);
-          openedMyOnPointer = !!(w && !w.closed);
+          openedComp = false;
+          var w = tryOpenMatchesTab(b);
+          openedComp = !!(w && !w.closed);
         });
-        btn.addEventListener("click", function (ev) {
-          ev.preventDefault();
-          if (b) tryOpenMatchesTab(b);
-          if (a && !openedMyOnPointer) tryOpenMatchesTab(a);
-          openedMyOnPointer = false;
+        el.addEventListener("click", function () {
+          /* Не preventDefault: браузер сам откроет href (наш товар) новой вкладкой.
+             Если конкурент на pointerdown не открылся — ещё одна попытка. */
+          if (!openedComp) {
+            var w2 = tryOpenMatchesTab(b);
+            if (!(w2 && !w2.closed) && window.DatagonNotify && window.DatagonNotify.toast) {
+              window.DatagonNotify.toast({
+                type: "warning",
+                duration: 12000,
+                message:
+                  "Вкладка конкурента заблокирована браузером. В адресной строке: значок блокировки окон → Разрешить для p.datagon.ru — после этого «Оба» откроет сразу две вкладки.",
+              });
+            }
+          }
+          openedComp = false;
         });
+        return el;
       }
 
       function appendProductOpenLinks(host, myUrl, compUrl, opts) {
@@ -3071,14 +3090,8 @@
           wrap.appendChild(a2);
         }
         if (myUrl && compUrl) {
-          var both = document.createElement("button");
-          both.type = "button";
-          both.className = "btn btn-sm btn-outline-secondary";
-          both.setAttribute("data-dg-no-activity", "1");
-          both.innerHTML = '<i class="pe-7s-browser me-1"></i>Оба';
-          both.setAttribute("data-dg-tooltip", "Открыть наш товар и конкурента в двух вкладках");
-          bindOpenPairButton(both, myUrl, compUrl);
-          wrap.appendChild(both);
+          var both = createOpenPairAnchor(myUrl, compUrl, "btn btn-sm btn-outline-secondary");
+          if (both) wrap.appendChild(both);
         }
         if (wrap.childNodes.length) host.appendChild(wrap);
       }
@@ -4812,14 +4825,8 @@
             clinks.appendChild(ac);
           }
           if (myProductUrl && competitorUrl) {
-            var both = document.createElement("button");
-            both.type = "button";
-            both.className = "btn btn-link btn-sm p-0";
-            both.setAttribute("data-dg-no-activity", "1");
-            both.setAttribute("data-dg-tooltip", "Открыть наш товар и конкурента в двух вкладках");
-            both.innerHTML = '<i class="pe-7s-browser me-1"></i>Оба';
-            bindOpenPairButton(both, myProductUrl, competitorUrl);
-            clinks.appendChild(both);
+            var both = createOpenPairAnchor(myProductUrl, competitorUrl, "btn btn-link btn-sm p-0");
+            if (both) clinks.appendChild(both);
           }
           tdComp.appendChild(clinks);
           tr.appendChild(tdComp);
