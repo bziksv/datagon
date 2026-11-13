@@ -2022,35 +2022,345 @@
         return { text: text, badge: "secondary" };
       }
 
-      /** «По словам v2»: какие слова совпали / каких не хватило, флаг «спорно». */
-      function appendMatchWordsDetails(td, raw) {
-        if (!raw) return;
-        var d = raw;
-        if (typeof raw === "string") {
-          try {
-            d = JSON.parse(raw);
-          } catch (e) {
-            return;
-          }
+      function parseMatchDetails(raw) {
+        if (!raw) return null;
+        if (typeof raw === "object") return raw;
+        try {
+          var d = JSON.parse(raw);
+          return d && typeof d === "object" ? d : null;
+        } catch (e) {
+          return null;
         }
-        if (!d || typeof d !== "object") return;
+      }
+
+      /** Альтернативные карточки конкурента (новый формат cands, старый — одиночный alt). */
+      function matchDetailsCands(d) {
+        if (!d) return [];
+        if (Array.isArray(d.cands)) return d.cands;
+        return d.alt && d.alt.name ? [d.alt] : [];
+      }
+
+      function pluralVariants(n) {
+        var m10 = n % 10;
+        var m100 = n % 100;
+        var w = m10 === 1 && m100 !== 11 ? "вариант" : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? "варианта" : "вариантов";
+        return n + " " + w;
+      }
+
+      var MATCH_WORD_RE = /[a-zа-яё0-9]+/gi;
+      function matchWordStem(w) {
+        var s = String(w || "").toLowerCase().replace(/ё/g, "е");
+        return s.length >= 5 ? s.slice(0, 5) : s;
+      }
+
+      /** Название конкурента, где слова, которых нет в нашем названии, подсвечены. */
+      function renderNameWithDiff(container, name, ourName) {
+        var ours = {};
+        (String(ourName || "").match(MATCH_WORD_RE) || []).forEach(function (w) {
+          ours[matchWordStem(w)] = 1;
+        });
+        var s = String(name || "");
+        var last = 0;
+        var mm;
+        MATCH_WORD_RE.lastIndex = 0;
+        while ((mm = MATCH_WORD_RE.exec(s))) {
+          if (mm.index > last) container.appendChild(document.createTextNode(s.slice(last, mm.index)));
+          if (ours[matchWordStem(mm[0])]) {
+            container.appendChild(document.createTextNode(mm[0]));
+          } else {
+            var sp = document.createElement("span");
+            sp.className = "dg-cands-diff";
+            sp.title = "Этого слова нет в нашем названии";
+            sp.textContent = mm[0];
+            container.appendChild(sp);
+          }
+          last = mm.index + mm[0].length;
+        }
+        if (last < s.length) container.appendChild(document.createTextNode(s.slice(last)));
+      }
+
+      function postMatchesJson(url, body) {
+        return fetch(url, {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body || {}),
+        }).then(function (r) {
+          return r
+            .json()
+            .catch(function () {
+              return {};
+            })
+            .then(function (j) {
+              if (!r.ok || !j.success) throw new Error(j.error || "HTTP " + r.status);
+              return j;
+            });
+        });
+      }
+
+      var matchCandsModalState = null;
+
+      function closeMatchCandsModal() {
+        var ov = document.getElementById("dg-matches-cands-overlay");
+        if (!ov) return;
+        ov.style.display = "none";
+        ov.setAttribute("aria-hidden", "true");
+        matchCandsModalState = null;
+      }
+
+      function matchCandsShowErr(msg) {
+        var el = document.getElementById("dg-matches-cands-err");
+        if (!el) return;
+        el.textContent = msg || "";
+        el.classList.toggle("d-none", !msg);
+      }
+
+      function matchCandsRun(btn, work, okMsg) {
+        if (matchesRowMutationBusy) return;
+        matchesRowMutationBusy = true;
+        matchCandsShowErr("");
+        var p = function () {
+          return work()
+            .then(function () {
+              closeMatchCandsModal();
+              loadMatches(true);
+              if (window.__dgMatchesRefreshManualLanes) window.__dgMatchesRefreshManualLanes();
+              if (window.DatagonNotify && window.DatagonNotify.toast) {
+                window.DatagonNotify.toast({ type: "success", message: okMsg });
+              }
+            })
+            .catch(function (e) {
+              matchCandsShowErr(e.message || "Ошибка");
+              if (window.DatagonNotify && window.DatagonNotify.toast) {
+                window.DatagonNotify.toast({ type: "danger", message: e.message || "Ошибка" });
+              }
+            })
+            .finally(function () {
+              matchesRowMutationBusy = false;
+            });
+        };
+        if (window.DatagonNotify && window.DatagonNotify.busyRun) window.DatagonNotify.busyRun(btn, p);
+        else p();
+      }
+
+      function matchCandsConfirmBody(id) {
+        var st = matchCandsModalState;
+        var body = { id: id };
+        if (st && st.packUi) {
+          var pack = readPackFromControls(st.packUi.basisSel, st.packUi.qtyInp);
+          if (pack.error) throw new Error(pack.error);
+          body.pack_qty = pack.pack_qty;
+          body.pack_basis = pack.pack_basis;
+        }
+        return body;
+      }
+
+      function buildCandItem(m, c, isCurrent, url) {
+        var item = document.createElement("div");
+        item.className = "dg-cands-item" + (isCurrent ? " is-current" : "");
+
+        var scoreBox = document.createElement("div");
+        scoreBox.className = "dg-cands-score";
+        var pct = Math.round(Number(c.score || 0) * 100);
+        var sb = document.createElement("span");
+        sb.className = "badge bg-" + (pct >= 90 ? "success" : pct >= 70 ? "warning" : "secondary");
+        sb.textContent = pct + "%";
+        scoreBox.appendChild(sb);
+        if (isCurrent) {
+          var cur = document.createElement("div");
+          cur.className = "small text-success fw-semibold mt-1";
+          cur.textContent = "выбрал алгоритм";
+          scoreBox.appendChild(cur);
+        }
+        item.appendChild(scoreBox);
+
+        var body = document.createElement("div");
+        body.className = "dg-cands-body";
+        var nm = document.createElement("div");
+        nm.className = "dg-cands-name";
+        renderNameWithDiff(nm, c.name, m.my_product_name);
+        body.appendChild(nm);
+        var meta = document.createElement("div");
+        meta.className = "small text-muted mt-1";
+        var bits = [];
+        bits.push("Артикул: " + (c.sku ? String(c.sku) : "—"));
+        if (c.price != null && String(c.price).trim() !== "") bits.push("Цена: " + formatMatchesListPriceLine(c.price, c.currency));
+        meta.textContent = bits.join(" · ");
+        body.appendChild(meta);
+        if (url) {
+          var a = document.createElement("a");
+          a.href = url;
+          a.target = "_blank";
+          a.rel = "noopener noreferrer";
+          a.className = "small d-inline-block mt-1";
+          a.innerHTML = '<i class="pe-7s-link me-1"></i>Открыть у конкурента';
+          body.appendChild(a);
+        }
+        item.appendChild(body);
+
+        var acts = document.createElement("div");
+        acts.className = "dg-cands-actions";
+        var b = document.createElement("button");
+        b.type = "button";
+        b.className = isCurrent ? "btn btn-sm btn-success" : "btn btn-sm btn-outline-success";
+        b.innerHTML = isCurrent
+          ? '<i class="pe-7s-check me-1"></i>Подтвердить эту'
+          : '<i class="pe-7s-check me-1"></i>Выбрать эту и подтвердить';
+        b.setAttribute("data-dg-notify-start", isCurrent ? "Подтверждаем пару…" : "Меняем карточку конкурента и подтверждаем…");
+        b.addEventListener("click", function () {
+          if (isCurrent) {
+            matchCandsRun(
+              b,
+              function () {
+                return Promise.resolve().then(function () {
+                  return postMatchesJson("/api/matches/confirm", matchCandsConfirmBody(m.id));
+                });
+              },
+              "Пара подтверждена"
+            );
+          } else {
+            matchCandsRun(
+              b,
+              function () {
+                return Promise.resolve()
+                  .then(function () {
+                    return matchCandsConfirmBody(m.id);
+                  })
+                  .then(function (confirmBody) {
+                    return postMatchesJson("/api/matches/" + encodeURIComponent(m.id) + "/switch-candidate", {
+                      competitor_sku: c.sku || "",
+                      competitor_name: c.name || "",
+                    }).then(function () {
+                      return postMatchesJson("/api/matches/confirm", confirmBody);
+                    });
+                  });
+              },
+              "Подтверждена другая карточка: " + String(c.name || "")
+            );
+          }
+        });
+        acts.appendChild(b);
+        item.appendChild(acts);
+        return item;
+      }
+
+      function openMatchCandsModal(m, details, ctx) {
+        var ov = document.getElementById("dg-matches-cands-overlay");
+        if (!ov) return;
+        matchCandsModalState = { m: m, packUi: ctx && ctx.packUi ? ctx.packUi : null };
+        matchCandsShowErr("");
+        var st = String(m.status || "pending").toLowerCase();
+        var editable = st === "pending" || st === "";
+        var cands = matchDetailsCands(details);
+
+        var lead = document.getElementById("dg-matches-cands-lead");
+        lead.textContent = details && details.ambiguous
+          ? "У конкурента несколько карточек почти с одинаковым процентом. Сравните названия (жёлтым — слова, которых нет в нашем названии), откройте ссылки и выберите правильную."
+          : "Алгоритм выбрал верхнюю карточку. Ниже — другие карточки конкурента, тоже прошедшие порог.";
+        if (!editable) lead.textContent += " Пара уже не в статусе «Ожидает» — выбор недоступен.";
+
+        var my = document.getElementById("dg-matches-cands-my");
+        my.replaceChildren();
+        var myLab = document.createElement("div");
+        myLab.className = "small text-uppercase text-muted fw-semibold mb-1";
+        myLab.textContent = "Наш товар";
+        my.appendChild(myLab);
+        var myName = document.createElement("div");
+        myName.className = "dg-cands-name";
+        myName.textContent = String(m.my_product_name || "—");
+        my.appendChild(myName);
+        var myMeta = document.createElement("div");
+        myMeta.className = "small text-muted mt-1";
+        myMeta.textContent =
+          "Артикул: " + (m.my_sku ? String(m.my_sku) : "—") + " · Цена: " + formatMatchesListPriceLine(m.my_price, m.my_currency);
+        my.appendChild(myMeta);
+        if (ctx && ctx.myProductUrl) {
+          var ma = document.createElement("a");
+          ma.href = ctx.myProductUrl;
+          ma.target = "_blank";
+          ma.rel = "noopener noreferrer";
+          ma.className = "small d-inline-block mt-1";
+          ma.innerHTML = '<i class="pe-7s-home me-1"></i>Открыть наш товар';
+          my.appendChild(ma);
+        }
+
+        var list = document.getElementById("dg-matches-cands-list");
+        list.replaceChildren();
+        var current = {
+          name: m.competitor_name,
+          sku: m.competitor_sku,
+          score: normalizeConfidence01(m.confidence_score),
+          price: m.competitor_price,
+          currency: m.competitor_currency,
+        };
+        list.appendChild(buildCandItem(m, current, true, ctx && ctx.competitorUrl ? ctx.competitorUrl : ""));
+        cands.forEach(function (c) {
+          list.appendChild(buildCandItem(m, c, false, buildSiteUrl(c.url || "")));
+        });
+        if (!editable) {
+          list.querySelectorAll("button").forEach(function (b) {
+            b.disabled = true;
+          });
+        }
+        var rej = document.getElementById("dg-matches-cands-reject");
+        rej.disabled = !editable;
+
+        ov.style.display = "flex";
+        ov.setAttribute("aria-hidden", "false");
+      }
+
+      (function bindMatchCandsModal() {
+        var ov = document.getElementById("dg-matches-cands-overlay");
+        if (!ov) return;
+        ["dg-matches-cands-backdrop", "dg-matches-cands-x", "dg-matches-cands-close"].forEach(function (id) {
+          var el = document.getElementById(id);
+          if (el) el.addEventListener("click", closeMatchCandsModal);
+        });
+        document.addEventListener("keydown", function (ev) {
+          if (ev.key === "Escape" && ov.style.display !== "none") closeMatchCandsModal();
+        });
+        var rej = document.getElementById("dg-matches-cands-reject");
+        if (rej) {
+          rej.addEventListener("click", function () {
+            var st = matchCandsModalState;
+            if (!st || !st.m) return;
+            matchCandsRun(
+              rej,
+              function () {
+                return postMatchesJson("/api/matches/reject", { id: st.m.id });
+              },
+              "Пара отклонена"
+            );
+          });
+        }
+      })();
+
+      /** «По словам v2»: «спорно» / «варианты» под процентом + слова плашками. */
+      function appendMatchWordsDetails(td, raw, onOpenCands) {
+        var d = parseMatchDetails(raw);
+        if (!d) return;
+        var cands = matchDetailsCands(d);
+        if (cands.length && typeof onOpenCands === "function") {
+          var openBtn = document.createElement("button");
+          openBtn.type = "button";
+          openBtn.setAttribute("data-dg-no-activity", "1");
+          if (d.ambiguous) {
+            openBtn.className = "dg-mw-open dg-mw-open-amb";
+            openBtn.textContent = "спорно · " + pluralVariants(cands.length + 1);
+            openBtn.title = "Есть другая карточка конкурента почти с тем же процентом — сравнить и выбрать";
+          } else {
+            openBtn.className = "dg-mw-open dg-mw-open-alt";
+            openBtn.textContent = "ещё вариантов: " + cands.length;
+            openBtn.title = "Другие карточки конкурента, тоже прошедшие порог";
+          }
+          openBtn.addEventListener("click", function (ev) {
+            ev.preventDefault();
+            onOpenCands(d);
+          });
+          td.appendChild(openBtn);
+        }
         var box = document.createElement("div");
         box.className = "dg-mw";
-        if (d.ambiguous) {
-          var amb = document.createElement("span");
-          amb.className = "badge bg-warning text-dark dg-mw-amb";
-          amb.textContent = "спорно";
-          if (d.alt && d.alt.name) {
-            amb.title =
-              "Второй кандидат почти с тем же баллом: " +
-              d.alt.name +
-              (d.alt.sku ? " (" + d.alt.sku + ")" : "") +
-              " — " +
-              Math.round(Number(d.alt.score || 0) * 100) +
-              "%";
-          }
-          box.appendChild(amb);
-        }
         var HOW_TITLE = {
           ending: "другое окончание",
           translit: "латиница ↔ кириллица",
@@ -2061,7 +2371,7 @@
           var row = document.createElement("div");
           row.className = "dg-mw-row";
           var lab = document.createElement("span");
-          lab.className = "dg-mw-label";
+          lab.className = "dg-mw-label dg-mw-label-" + kind;
           lab.textContent = label;
           row.appendChild(lab);
           items.forEach(function (it) {
@@ -2242,7 +2552,13 @@
             "confidence_score (0–1): " +
             (Number.isFinite(score01) ? score01.toFixed(4) : "—") +
             ". Для «По названию» — доля схожести строки; для «По словам» — доля общих слов без учёта порядка; для SKU — 1.0 при полном совпадении.";
-          appendMatchWordsDetails(tdConf, m.match_details);
+          appendMatchWordsDetails(tdConf, m.match_details, function (details) {
+            openMatchCandsModal(m, details, {
+              myProductUrl: myProductUrl,
+              competitorUrl: competitorUrl,
+              packUi: packUi,
+            });
+          });
           tr.appendChild(tdConf);
 
           var tdMy = document.createElement("td");

@@ -249,6 +249,26 @@ function computeMatchIdentityHash(mySiteId, compSiteId, mySku, myName, compSku, 
 /** Режим `all` (SKU→название) снят с UI/новых запусков; старые строки matching_mode=all в БД остаются. */
 const MATCHING_MODES = new Set(['name', 'name_words', 'name_words_v2', 'sku', 'sku_norm', 'sku_best']);
 const NAME_MODES = new Set(['name', 'name_words', 'name_words_v2']);
+/** Сколько лучших карточек конкурента хранить в match_details (выбранная + альтернативы). */
+const NAME_WORDS_V2_TOP_N = 6;
+
+/** Топ кандидатов по убыванию балла; одна позиция прайса (sku + название) — один раз. */
+function pushTopCandidate(top, entry, compPrices) {
+    const p = compPrices[entry.ni];
+    const key = `${p.sku || ''}\u0001${p.product_name || ''}`;
+    for (let i = 0; i < top.length; i += 1) {
+        if (top[i].key === key) {
+            if (entry.score <= top[i].score) return;
+            top.splice(i, 1);
+            break;
+        }
+    }
+    if (top.length >= NAME_WORDS_V2_TOP_N && entry.score <= top[top.length - 1].score) return;
+    let pos = top.length;
+    while (pos > 0 && top[pos - 1].score < entry.score) pos -= 1;
+    top.splice(pos, 0, { ni: entry.ni, score: entry.score, key });
+    if (top.length > NAME_WORDS_V2_TOP_N) top.length = NAME_WORDS_V2_TOP_N;
+}
 
 function sanitizeMatchingMode(mode) {
     const m = String(mode || '').trim();
@@ -2503,8 +2523,7 @@ module.exports = (db, settings) => {
                             nameWordsV2Learned
                         );
                         const nCand = cands.length;
-                        let best = null;
-                        let second = null;
+                        const top = [];
                         for (let ci = 0; ci < nCand; ci += 1) {
                             if ((ci & 31) === 0 && cancelledJobs.has(jobId)) {
                                 await completeCancellation(compPos, pIdx);
@@ -2539,22 +2558,15 @@ module.exports = (db, settings) => {
                                 nameWordsV2Learned
                             );
                             if (res.reject || res.score < threshold) continue;
-                            const entry = { ni, res };
-                            if (!best || res.score > best.res.score) {
-                                if (best && compPrices[best.ni].product_name !== compPrices[ni].product_name) second = best;
-                                best = entry;
-                            } else if (
-                                (!second || res.score > second.res.score) &&
-                                compPrices[best.ni].product_name !== compPrices[ni].product_name
-                            ) {
-                                second = entry;
-                            }
+                            pushTopCandidate(top, { ni, score: res.score }, compPrices);
                         }
+                        const best = top[0] || null;
+                        const second = top[1] || null;
                         if (best) {
                             bestMatch = compPrices[best.ni];
-                            bestScore = Math.min(1, best.res.score);
+                            bestScore = Math.min(1, best.score);
                             matchType = 'name';
-                            const ambiguous = Boolean(second && best.res.score - second.res.score < AMBIGUOUS_DELTA);
+                            const ambiguous = Boolean(second && best.score - second.score < AMBIGUOUS_DELTA);
                             const ex = scoreNameWordsV2(
                                 myTokens,
                                 myWeights,
@@ -2570,15 +2582,18 @@ module.exports = (db, settings) => {
                                 miss_my: ex.missMy || [],
                                 miss_comp: ex.missComp || [],
                                 ambiguous,
+                                cands: top.slice(1).map((c) => {
+                                    const p = compPrices[c.ni];
+                                    return {
+                                        name: p.product_name,
+                                        sku: p.sku || null,
+                                        score: Math.round(c.score * 1000) / 1000,
+                                        url: p.url || null,
+                                        price: p.price != null ? Number(p.price) : null,
+                                        currency: p.currency || null,
+                                    };
+                                }),
                             };
-                            if (ambiguous) {
-                                const alt = compPrices[second.ni];
-                                matchDetails.alt = {
-                                    name: alt.product_name,
-                                    sku: alt.sku || null,
-                                    score: Math.round(second.res.score * 1000) / 1000,
-                                };
-                            }
                         }
                     }
                 }
@@ -3689,6 +3704,111 @@ module.exports = (db, settings) => {
             });
             res.json({ success: true, exclusion_created: !!mpId });
         } catch (e) { res.status(500).json({ error: e.message }); }
+    });
+
+    /**
+     * Ожидающая пара → другая карточка того же конкурента из match_details.cands
+     * (окно «спорно»). Статус не меняется; подтверждение — отдельным POST /confirm.
+     */
+    router.post('/:id/switch-candidate', async (req, res) => {
+        const id = parseInt(String(req.params.id || '').trim(), 10);
+        if (!Number.isFinite(id) || id < 1) return res.status(400).json({ error: 'Некорректный id' });
+        const candName = String((req.body && req.body.competitor_name) || '').trim();
+        const candSku = String((req.body && req.body.competitor_sku) || '').trim();
+        if (!candName) return res.status(400).json({ error: 'Не передано название карточки конкурента' });
+        try {
+            await ensureProductMatchesOptionalCols();
+            await ensureProductMatchIdentitySchema();
+            const [rows] = await db.query(
+                `SELECT id, my_site_id, competitor_site_id, my_sku, my_product_name,
+                        competitor_sku, competitor_name, confidence_score, status, match_details
+                 FROM product_matches WHERE id = ? LIMIT 1`,
+                [id]
+            );
+            const row = rows && rows[0];
+            if (!row) return res.status(404).json({ error: 'Запись не найдена' });
+            const st = String(row.status || 'pending').toLowerCase();
+            if (st !== 'pending' && st !== '') {
+                return res.status(409).json({ error: 'Сменить карточку можно только у ожидающей пары' });
+            }
+            const [priceRows] = await db.query(
+                `SELECT sku, product_name FROM prices
+                 WHERE project_id = ? AND product_name = ? AND COALESCE(sku, '') = ?
+                 LIMIT 1`,
+                [row.competitor_site_id, candName, candSku]
+            );
+            if (!priceRows || !priceRows.length) {
+                return res.status(404).json({ error: 'Такой карточки нет в прайсе конкурента' });
+            }
+            const newSku = priceRows[0].sku || null;
+            const newName = priceRows[0].product_name;
+            const newHash = computeMatchIdentityHash(
+                row.my_site_id,
+                row.competitor_site_id,
+                row.my_sku,
+                row.my_product_name,
+                newSku,
+                newName
+            );
+            const [dupRows] = await db.query(
+                `SELECT id, status FROM product_matches
+                 WHERE my_site_id = ? AND competitor_site_id = ? AND match_identity_hash = ? AND id <> ?`,
+                [row.my_site_id, row.competitor_site_id, newHash, id]
+            );
+            if ((dupRows || []).some((d) => String(d.status || '').toLowerCase() === 'confirmed')) {
+                return res.status(409).json({ error: 'Эта пара уже подтверждена отдельной записью' });
+            }
+            if (dupRows && dupRows.length) {
+                await db.query(
+                    `DELETE FROM product_matches WHERE id IN (${dupRows.map(() => '?').join(',')})`,
+                    dupRows.map((d) => d.id)
+                );
+            }
+
+            let details = null;
+            try {
+                details = row.match_details ? JSON.parse(row.match_details) : null;
+            } catch (_) {
+                details = null;
+            }
+            const oldCands = details && Array.isArray(details.cands) ? details.cands : [];
+            const chosen = oldCands.find(
+                (c) => String(c.name || '') === String(newName) && String(c.sku || '') === String(newSku || '')
+            );
+            const newScore = chosen && Number.isFinite(Number(chosen.score))
+                ? Number(chosen.score)
+                : Number(row.confidence_score) || 0;
+            const prevMain = {
+                name: row.competitor_name,
+                sku: row.competitor_sku || null,
+                score: Math.round((Number(row.confidence_score) || 0) * 1000) / 1000,
+                url: null,
+                price: null,
+                currency: null,
+            };
+            const nextCands = [prevMain]
+                .concat(oldCands.filter((c) => c !== chosen))
+                .sort((a, b) => Number(b.score || 0) - Number(a.score || 0));
+            const nextDetails = {
+                v: details && details.v ? details.v : 2,
+                matched: [],
+                miss_my: [],
+                miss_comp: [],
+                ambiguous: false,
+                switched: true,
+                cands: nextCands,
+            };
+            await db.query(
+                `UPDATE product_matches
+                 SET competitor_sku = ?, competitor_name = ?, confidence_score = ?,
+                     match_identity_hash = ?, match_details = ?, updated_at = CURRENT_TIMESTAMP
+                 WHERE id = ?`,
+                [newSku, newName, newScore, newHash, JSON.stringify(nextDetails), id]
+            );
+            return res.json({ success: true, id, competitor_sku: newSku, competitor_name: newName, confidence_score: newScore });
+        } catch (e) {
+            return res.status(500).json({ error: e.message });
+        }
     });
 
     router.post('/unlink', async (req, res) => {
