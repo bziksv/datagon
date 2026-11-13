@@ -1350,27 +1350,27 @@ module.exports = (db, settings) => {
 
     async function getFreshRunningJob(mySiteId, staleAfterSec = 600) {
         try {
+            // idle только в SQL: round-trip Date через prepared params ломает TZ и даёт ложный orphan
+            // («нет живого воркера») прямо во время чанков загрузки.
             const [jobs] = await db.query(
-                `SELECT id, my_site_id, status, message, processed, total, started_at, finished_at
-                 FROM matching_jobs
-                 WHERE my_site_id = ? AND status = "running"
-                 ORDER BY id DESC
+                `SELECT j.id, j.my_site_id, j.status, j.message, j.processed, j.total, j.started_at, j.finished_at,
+                        TIMESTAMPDIFF(
+                          SECOND,
+                          COALESCE((SELECT MAX(l.created_at) FROM matching_job_logs l WHERE l.job_id = j.id), j.started_at),
+                          NOW()
+                        ) AS idle_sec
+                 FROM matching_jobs j
+                 WHERE j.my_site_id = ? AND j.status = "running"
+                 ORDER BY j.id DESC
                  LIMIT 1`,
                 [mySiteId]
             );
             if (!jobs.length) return null;
             const job = jobs[0];
-            const [[agg]] = await db.query(
-                'SELECT MAX(created_at) AS max_at FROM matching_job_logs WHERE job_id = ?',
-                [job.id]
-            );
-            const [[idler]] = await db.query(
-                'SELECT TIMESTAMPDIFF(SECOND, COALESCE(?, ?), NOW()) AS idle_sec',
-                [agg?.max_at || null, job.started_at]
-            );
-            const idleSec = Number(idler?.idle_sec || 0);
+            const idleRaw = Number(job.idle_sec);
+            const idleSec = Number.isFinite(idleRaw) ? Math.max(0, idleRaw) : 0;
             // После kill/рестарта Node задача остаётся running, а cancelledJobs пустой.
-            // Но если логи свежие — воркер ещё жив (другой процесс / graceful shutdown): не режем.
+            // Свежие логи (≤120с) = воркер жив — даже если Set в этом процессе пуст.
             if (!activeMatchingJobs.has(job.id)) {
                 if (idleSec <= 120) {
                     return job;
@@ -1707,6 +1707,17 @@ module.exports = (db, settings) => {
                 const chunkSize = 2000;
                 let offset = 0;
                 while (offset < totalProducts) {
+                    if (!(await isMatchingJobStillRunning(jobId))) {
+                        cancelledJobs.add(jobId);
+                        await updateJob(jobId, {
+                            status: 'cancelled',
+                            message: 'Остановлено пользователем',
+                            finished_at: new Date(),
+                            processed: 0
+                        });
+                        await addJobLog(jobId, 'Остановка на загрузке моих товаров');
+                        return { matches: [], count: 0 };
+                    }
                     const [rows] = await db.query(
                         'SELECT id, sku, name, price, currency FROM my_products WHERE site_id = ? AND is_active = 1 AND (sku LIKE ? OR name LIKE ?) ORDER BY id DESC LIMIT ? OFFSET ?',
                         [mySiteId, val, val, chunkSize, offset]
@@ -1729,6 +1740,17 @@ module.exports = (db, settings) => {
                 const chunkSize = 2000;
                 let offset = 0;
                 while (offset < totalProducts) {
+                    if (!(await isMatchingJobStillRunning(jobId))) {
+                        cancelledJobs.add(jobId);
+                        await updateJob(jobId, {
+                            status: 'cancelled',
+                            message: 'Остановлено пользователем',
+                            finished_at: new Date(),
+                            processed: 0
+                        });
+                        await addJobLog(jobId, 'Остановка на загрузке моих товаров');
+                        return { matches: [], count: 0 };
+                    }
                     const [rows] = await db.query(
                         'SELECT id, sku, name, price, currency FROM my_products WHERE site_id = ? AND is_active = 1 ORDER BY id DESC LIMIT ? OFFSET ?',
                         [mySiteId, chunkSize, offset]
@@ -2660,16 +2682,19 @@ module.exports = (db, settings) => {
              ORDER BY id DESC LIMIT 1`,
             [mySiteId]
         );
-        // Зомби: в БД уже cancelled после orphan-finish, но воркер ещё пишет логи — Stop должен сработать.
+        // Зомби: orphan-cancel в БД, но логи ещё пишутся после finished_at — Stop должен сработать.
+        // Обычное «Остановлено пользователем» без логов после finished_at — не зомби.
         if (!jobs.length) {
             const [zombies] = await db.query(
                 `SELECT j.id, j.status, j.message
                  FROM matching_jobs j
                  WHERE j.my_site_id = ?
                    AND j.status IN ('cancelled', 'failed')
+                   AND j.finished_at IS NOT NULL
                    AND EXISTS (
                      SELECT 1 FROM matching_job_logs l
                      WHERE l.job_id = j.id
+                       AND l.created_at > DATE_ADD(j.finished_at, INTERVAL 2 SECOND)
                        AND l.created_at >= DATE_SUB(NOW(), INTERVAL 3 MINUTE)
                    )
                  ORDER BY j.id DESC
@@ -2789,9 +2814,26 @@ module.exports = (db, settings) => {
                     if (!Number.isFinite(lastLogAgeSec)) lastLogAgeSec = null;
                 }
             } catch (_) {}
+            // Зомби = отмена/сбой в БД, но логи продолжают писаться ПОСЛЕ finished_at.
+            // Не путать с нормальным «Остановлено пользователем»: последняя строка лога
+            // свежая, но воркер уже вышел — иначе UI держит active и «выполняется…».
+            let logsAfterFinish = false;
+            try {
+                if (job.finished_at && lastLogAt) {
+                    const finMs = new Date(job.finished_at).getTime();
+                    const logMs = Date.parse(lastLogAt);
+                    if (Number.isFinite(finMs) && Number.isFinite(logMs)) {
+                        logsAfterFinish = logMs > finMs + 1500;
+                    }
+                }
+            } catch (_) {
+                logsAfterFinish = false;
+            }
             const zombieLive =
                 (job.status === 'cancelled' || job.status === 'failed') &&
+                logsAfterFinish &&
                 lastLogAgeSec != null &&
+                Number.isFinite(lastLogAgeSec) &&
                 lastLogAgeSec <= 90;
             const active = job.status === 'running' || zombieLive;
             const stopPending =
