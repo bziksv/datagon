@@ -2285,7 +2285,6 @@
         }
 
         var list = document.getElementById("dg-matches-cands-list");
-        list.replaceChildren();
         var current = {
           name: m.competitor_name,
           sku: m.competitor_sku,
@@ -2293,14 +2292,30 @@
           price: m.competitor_price,
           currency: m.competitor_currency,
         };
-        list.appendChild(buildCandItem(m, current, true, ctx && ctx.competitorUrl ? ctx.competitorUrl : ""));
-        cands.forEach(function (c) {
-          list.appendChild(buildCandItem(m, c, false, buildSiteUrl(c.url || "")));
-        });
-        if (!editable) {
-          list.querySelectorAll("button").forEach(function (b) {
-            b.disabled = true;
+        function renderCandsList(items) {
+          list.replaceChildren();
+          list.appendChild(buildCandItem(m, current, true, ctx && ctx.competitorUrl ? ctx.competitorUrl : ""));
+          items.forEach(function (c) {
+            list.appendChild(buildCandItem(m, c, false, buildSiteUrl(c.url || "")));
           });
+          if (!editable) {
+            list.querySelectorAll("button").forEach(function (b) {
+              b.disabled = true;
+            });
+          }
+        }
+        renderCandsList(cands);
+        if (cands.some(function (c) { return !c.url; })) {
+          var openedFor = matchCandsModalState;
+          fetch("/api/matches/" + encodeURIComponent(m.id) + "/cands-info", { credentials: "same-origin" })
+            .then(function (r) {
+              return r.ok ? r.json() : null;
+            })
+            .then(function (j) {
+              if (!j || !j.success || !Array.isArray(j.cands) || matchCandsModalState !== openedFor) return;
+              renderCandsList(j.cands);
+            })
+            .catch(function () {});
         }
         var rej = document.getElementById("dg-matches-cands-reject");
         rej.disabled = !editable;

@@ -3710,6 +3710,61 @@ module.exports = (db, settings) => {
      * Ожидающая пара → другая карточка того же конкурента из match_details.cands
      * (окно «спорно»). Статус не меняется; подтверждение — отдельным POST /confirm.
      */
+    async function enrichCandsFromPrices(projectId, cands) {
+        const list = (cands || []).filter((c) => c && c.name);
+        if (!list.length) return [];
+        const names = [...new Set(list.map((c) => String(c.name)))];
+        const [rows] = await db.query(
+            `SELECT sku, product_name, price, currency, url FROM prices
+             WHERE project_id = ? AND product_name IN (${names.map(() => '?').join(',')})
+             ORDER BY parsed_at DESC, id DESC
+             LIMIT 200`,
+            [projectId, ...names]
+        );
+        const byKey = new Map();
+        for (const r of rows || []) {
+            const k = `${r.product_name}\u0001${r.sku || ''}`;
+            if (!byKey.has(k)) byKey.set(k, r);
+            if (!byKey.has(`${r.product_name}\u0001*`)) byKey.set(`${r.product_name}\u0001*`, r);
+        }
+        return list.map((c) => {
+            const p = byKey.get(`${c.name}\u0001${c.sku || ''}`) || byKey.get(`${c.name}\u0001*`);
+            return {
+                name: c.name,
+                sku: c.sku || null,
+                score: c.score != null ? Number(c.score) : null,
+                url: c.url || (p && p.url) || null,
+                price: c.price != null ? c.price : p && p.price != null ? Number(p.price) : null,
+                currency: c.currency || (p && p.currency) || null,
+            };
+        });
+    }
+
+    router.get('/:id/cands-info', async (req, res) => {
+        const id = parseInt(String(req.params.id || '').trim(), 10);
+        if (!Number.isFinite(id) || id < 1) return res.status(400).json({ error: 'Некорректный id' });
+        try {
+            await ensureProductMatchesOptionalCols();
+            const [rows] = await db.query(
+                'SELECT competitor_site_id, match_details FROM product_matches WHERE id = ? LIMIT 1',
+                [id]
+            );
+            const row = rows && rows[0];
+            if (!row) return res.status(404).json({ error: 'Запись не найдена' });
+            let d = null;
+            try {
+                d = row.match_details ? JSON.parse(row.match_details) : null;
+            } catch (_) {
+                d = null;
+            }
+            const raw = d && Array.isArray(d.cands) ? d.cands : d && d.alt ? [d.alt] : [];
+            const cands = await enrichCandsFromPrices(row.competitor_site_id, raw);
+            return res.json({ success: true, id, cands });
+        } catch (e) {
+            return res.status(500).json({ error: e.message });
+        }
+    });
+
     router.post('/:id/switch-candidate', async (req, res) => {
         const id = parseInt(String(req.params.id || '').trim(), 10);
         if (!Number.isFinite(id) || id < 1) return res.status(400).json({ error: 'Некорректный id' });
@@ -3778,14 +3833,13 @@ module.exports = (db, settings) => {
             const newScore = chosen && Number.isFinite(Number(chosen.score))
                 ? Number(chosen.score)
                 : Number(row.confidence_score) || 0;
-            const prevMain = {
-                name: row.competitor_name,
-                sku: row.competitor_sku || null,
-                score: Math.round((Number(row.confidence_score) || 0) * 1000) / 1000,
-                url: null,
-                price: null,
-                currency: null,
-            };
+            const [prevMain] = await enrichCandsFromPrices(row.competitor_site_id, [
+                {
+                    name: row.competitor_name,
+                    sku: row.competitor_sku || null,
+                    score: Math.round((Number(row.confidence_score) || 0) * 1000) / 1000,
+                },
+            ]);
             const nextCands = [prevMain]
                 .concat(oldCands.filter((c) => c !== chosen))
                 .sort((a, b) => Number(b.score || 0) - Number(a.score || 0));
