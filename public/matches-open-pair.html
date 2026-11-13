@@ -130,40 +130,8 @@
           goMy();
         }
 
-        /* Попытка сразу после перехода с «Оба» (иногда жест ещё действует). */
-        var wAuto = openComp();
-        if (wAuto && my) {
-          goMy();
-          return;
-        }
-
-        if (!box) return;
-        box.innerHTML =
-          "<h1>Открыть обе карточки</h1>" +
-          "<p>Браузер блокирует вторую вкладку с одного клика. Нажмите кнопку ниже — откроются конкурент и наш товар.</p>" +
-          '<button type="button" class="btn" id="go">Открыть обе</button>' +
-          '<div class="links">' +
-          (my
-            ? '<a href="' +
-              my.replace(/"/g, "&quot;") +
-              '" target="_blank" rel="noopener noreferrer">Только наш товар</a>'
-            : "") +
-          (comp
-            ? '<a href="' +
-              comp.replace(/"/g, "&quot;") +
-              '" target="_blank" rel="noopener noreferrer">Только конкурент</a>'
-            : "") +
-          "</div>" +
-          '<p class="muted">Чтобы «Оба» на сопоставлении открывало сразу две вкладки без этой страницы: в Opera разрешите всплывающие окна для p.datagon.ru.</p>';
-
-        var go = document.getElementById("go");
-        if (go) {
-          go.focus();
-          go.addEventListener("click", function (ev) {
-            ev.preventDefault();
-            openBothFromGesture();
-          });
-        }
+        /* Сразу обе: вкладка конкурента + эта → наш товар. Без промежуточной кнопки. */
+        openBothFromGesture();
       })();
     </script>
   </body>

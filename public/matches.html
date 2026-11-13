@@ -3016,29 +3016,38 @@
           buildProductSearchUrl(domain, row.mp_sku || "", row.mp_name || "")
         );
       }
-      /**
-       * «Оба» ведёт на /matches-open-pair.html — одна вкладка всегда открывается.
-       * Там: window.open(конкурент) + location → наш товар (location Opera не режет).
-       * Если авто-открытие конкурента сработало — обе сразу; иначе кнопка «Открыть обе».
-       */
+      /** «Оба» — сразу две вкладки в жесте клика (без промежуточной страницы). */
       function createOpenPairAnchor(myUrl, compUrl, className) {
         var a = String(myUrl || "").trim();
         var b = String(compUrl || "").trim();
         if (!a || !b) return null;
         var el = document.createElement("a");
-        var q = new URLSearchParams();
-        q.set("my", a);
-        q.set("comp", b);
-        el.href = "/matches-open-pair.html?" + q.toString();
+        el.href = a;
         el.target = "_blank";
         el.rel = "noopener noreferrer";
         el.className = className || "btn btn-sm btn-outline-secondary";
         el.setAttribute("data-dg-no-activity", "1");
-        el.setAttribute(
-          "data-dg-tooltip",
-          "Открыть наш товар и конкурента (через служебную вкладку — так Opera не режет вторую)"
-        );
+        el.setAttribute("data-dg-tooltip", "Открыть наш товар и конкурента в двух вкладках");
         el.innerHTML = '<i class="pe-7s-browser me-1"></i>Оба';
+        el.addEventListener("click", function (ev) {
+          ev.preventDefault();
+          function openTab(url) {
+            var w = null;
+            try {
+              w = window.open(url, "_blank");
+            } catch (e) {
+              w = null;
+            }
+            if (w) {
+              try {
+                w.opener = null;
+              } catch (e2) {}
+            }
+            return w;
+          }
+          openTab(b);
+          openTab(a);
+        });
         return el;
       }
 
