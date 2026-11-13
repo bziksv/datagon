@@ -970,16 +970,15 @@ function myProductsRouterFactory(db, settings) {
                         if (!chunk || !chunk.length) break;
                         const ids = chunk.map((r) => Number(r.id)).filter(Number.isFinite);
                         cursorId = Math.min(...ids);
+                        // Для Δ нужны только цены конкурентов; стикеры/МС (payload_json ~3 с на 600 строк) — ниже, только для страницы.
                         // eslint-disable-next-line no-await-in-loop
-                        await Promise.all([
-                            enrichWithMoyskladLinks(chunk),
-                            enrichWithCompetitorPrices(chunk),
-                            enrichRowsWithStickersAndMs(db, chunk),
-                        ]);
-                        // eslint-disable-next-line no-await-in-loop
-                        await applySiteWarehouseStockBySiteId(db, chunk);
+                        await enrichWithCompetitorPrices(chunk);
                         for (const row of chunk) {
-                            if (rowMatchesGapFilter(row, gapCfg)) gapRows.push(row);
+                            if (!rowMatchesGapFilter(row, gapCfg)) continue;
+                            if (row.sticker_ms_stock == null && row.sticker_ms_stock_sql != null) {
+                                row.sticker_ms_stock = row.sticker_ms_stock_sql;
+                            }
+                            gapRows.push(row);
                         }
                         // eslint-disable-next-line no-await-in-loop
                         await new Promise((resolve) => setImmediate(resolve));
@@ -992,6 +991,11 @@ function myProductsRouterFactory(db, settings) {
                 sortProductRows(gapRows, customCompetitorSort, sortDirection);
                 count = [{ total: gapRows.length }];
                 finalRows = gapRows.slice(o, o + l);
+                await Promise.all([
+                    enrichWithMoyskladLinks(finalRows),
+                    enrichRowsWithStickersAndMs(db, finalRows),
+                ]);
+                await applySiteWarehouseStockBySiteId(db, finalRows);
             } else {
                 const dataRows = Array.isArray(rows) ? rows : [];
                 await Promise.all([
