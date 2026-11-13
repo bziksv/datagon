@@ -249,7 +249,6 @@
                       <option value="sku_norm">По SKU — нормализация артикула</option>
                     </optgroup>
                     <optgroup label="2. Потом (после прогона по SKU)">
-                      <option value="all">Общий — SKU, затем название (не вместо SKU)</option>
                       <option value="name">Только название (запускать после SKU)</option>
                       <option value="name_words">По названию — слова, порядок не важен</option>
                     </optgroup>
@@ -276,7 +275,7 @@
                   <div class="px-3 py-2 border-bottom bg-light small fw-semibold text-body">Описание режимов сопоставления</div>
                   <div class="px-3 py-3 small text-body-secondary lh-base">
                     <p class="mb-2 text-muted" style="font-size: 0.75rem">
-                      В селекте по умолчанию выбран <strong>«По SKU — строгий отбор»</strong> (<code>sku</code>). Сначала закрывайте артикулы одним из режимов SKU; «Общий», «Только название» и «По словам» — отдельно, после SKU.
+                      В селекте по умолчанию выбран <strong>«По SKU — строгий отбор»</strong> (<code>sku</code>). Сначала закрывайте артикулы одним из режимов SKU; «Только название» и «По словам» — отдельно, после SKU.
                     </p>
                     <dl class="row mb-0">
                       <dt class="col-md-4 col-lg-3 mb-2 text-body fw-semibold">
@@ -296,12 +295,6 @@
                       </dt>
                       <dd class="col-md-8 col-lg-9 mb-2">
                         Ключ: NFKC, верхний регистр, без пробелов/NBSP, тире → ASCII <code>-</code>. Берётся <strong>первая</strong> строка прайса с этим ключом в порядке выборки (не обязательно та же при повторном запуске, если порядок строк меняется).
-                      </dd>
-                      <dt class="col-md-4 col-lg-3 mb-2 text-body fw-semibold">
-                        <code class="small">all</code> · Общий — SKU, затем название
-                      </dt>
-                      <dd class="col-md-8 col-lg-9 mb-2">
-                        Сначала строгий SKU, если нет — схожесть названий (~85%). Не замена первому прогону по SKU. В селекте: «Общий — SKU, затем название (не вместо SKU)».
                       </dd>
                       <dt class="col-md-4 col-lg-3 mb-2 text-body fw-semibold">
                         <code class="small">name</code> · Только название
@@ -341,13 +334,10 @@
                       <strong>SKU нормализация</strong> — NFKC, верхний регистр, без пробелов/NBSP, тире → <code>-</code>; первое совпадение в прайсе.
                     </li>
                     <li class="mb-2">
-                      <strong>Общий</strong> — сначала строгий SKU, если нет — название (~85%). Запускать <strong>после</strong> отдельного прогона по SKU, не вместо него.
-                    </li>
-                    <li class="mb-2">
                       <strong>Только название</strong> — без SKU, Левенштейн всей строки. Удобнее после прогона по артикулам. Промах не блокирует следующий прогон по SKU.
                     </li>
                     <li class="mb-0">
-                      <strong>По словам</strong> (<code>name_words</code>) — без SKU. Порядок слов не важен, окончания почти не снижают балл; цифры/версии обязаны совпасть (3≠2). Порог <strong>75%</strong> (у «Только название» и «Общий» по-прежнему ~85%). Не заменяет «Только название».
+                      <strong>По словам</strong> (<code>name_words</code>) — без SKU. Порядок слов не важен, окончания почти не снижают балл; цифры/версии обязаны совпасть (3≠2). Порог <strong>75%</strong> (у «Только название» по-прежнему ~85%). Не заменяет «Только название».
                     </li>
                   </ul>
                   <p class="mb-2 fw-semibold text-body pt-1 border-top">Поле «Умный поиск»</p>

@@ -185,7 +185,8 @@ function computeMatchIdentityHash(mySiteId, compSiteId, mySku, myName, compSku, 
     return crypto.createHash('sha256').update(`name|${sid}|${cid}|${nn}|${cn}`).digest('hex');
 }
 
-const MATCHING_MODES = new Set(['all', 'name', 'name_words', 'sku', 'sku_norm', 'sku_best']);
+/** Режим `all` (SKU→название) снят с UI/новых запусков; старые строки matching_mode=all в БД остаются. */
+const MATCHING_MODES = new Set(['name', 'name_words', 'sku', 'sku_norm', 'sku_best']);
 
 function sanitizeMatchingMode(mode) {
     const m = String(mode || '').trim();
