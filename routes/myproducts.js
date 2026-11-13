@@ -277,7 +277,7 @@ function sqlMatchAuditJoinAndWhere(matchAuditFilter) {
 }
 
 
-/** Кандидаты для фильтра Δ: только товары с confirmed-парой Dealmed/Medkompleks (иначе Δ не посчитать). */
+/** Кандидаты для фильтра Δ: confirmed Dealmed/Medkompleks. OR по sku|name разбит на UNION — иначе MySQL не использует индексы и зависает на минуты. */
 function sqlGapEligibleJoin(gapCompetitor) {
     const comp = String(gapCompetitor || 'all').toLowerCase();
     let namePred = `(
@@ -293,16 +293,22 @@ function sqlGapEligibleJoin(gapCompetitor) {
     }
     return `
         INNER JOIN (
-            SELECT DISTINCT mp2.id AS mp_id
+            SELECT mp2.id AS mp_id
             FROM product_matches pm
             INNER JOIN projects p ON p.id = pm.competitor_site_id
             INNER JOIN my_products mp2
-              ON mp2.site_id = pm.my_site_id
-             AND (
-                (TRIM(COALESCE(pm.my_sku, '')) <> '' AND mp2.sku = pm.my_sku)
-                OR mp2.name = pm.my_product_name
-             )
+              ON mp2.site_id = pm.my_site_id AND mp2.sku = pm.my_sku
             WHERE pm.status = 'confirmed'
+              AND TRIM(COALESCE(pm.my_sku, '')) <> ''
+              AND ${namePred}
+            UNION
+            SELECT mp2.id AS mp_id
+            FROM product_matches pm
+            INNER JOIN projects p ON p.id = pm.competitor_site_id
+            INNER JOIN my_products mp2
+              ON mp2.site_id = pm.my_site_id AND mp2.name = pm.my_product_name
+            WHERE pm.status = 'confirmed'
+              AND TRIM(COALESCE(pm.my_sku, '')) = ''
               AND ${namePred}
         ) dg_gap ON dg_gap.mp_id = mp.id
     `;
@@ -874,7 +880,11 @@ function myProductsRouterFactory(db, settings) {
             let rows;
             let count;
             try {
-                if (needsPostFilter) {
+                if (isGapFilterEnabled) {
+                    // Полный набор для Δ собираем курсором ниже — не грузим все строки разом.
+                    rows = [];
+                    count = [{ total: 0 }];
+                } else if (needsPostFilter) {
                     [rows] = await db.query(`${qBase} ORDER BY mp.id DESC`, p);
                     count = [{ total: rows.length }];
                 } else {
@@ -886,8 +896,10 @@ function myProductsRouterFactory(db, settings) {
             } catch (queryErr) {
                 const isConnectionLost = queryErr && (queryErr.code === 'PROTOCOL_CONNECTION_LOST' || queryErr.fatal);
                 if (!isConnectionLost) throw queryErr;
-                // One retry is enough: pool usually restores connection immediately.
-                if (needsPostFilter) {
+                if (isGapFilterEnabled) {
+                    rows = [];
+                    count = [{ total: 0 }];
+                } else if (needsPostFilter) {
                     [rows] = await db.query(`${qBase} ORDER BY mp.id DESC`, p);
                     count = [{ total: rows.length }];
                 } else {
@@ -935,10 +947,21 @@ function myProductsRouterFactory(db, settings) {
                 if (gapCached && (Date.now() - gapCached.ts) < MY_PRODUCTS_CACHE_TTL_MS) {
                     gapRows = gapCached.rows.map((r) => ({ ...r }));
                 } else {
-                    const dataRows = Array.isArray(rows) ? rows : [];
                     gapRows = [];
-                    for (let gi = 0; gi < dataRows.length; gi += GAP_LIST_ENRICH_CHUNK) {
-                        const chunk = dataRows.slice(gi, gi + GAP_LIST_ENRICH_CHUNK);
+                    let cursorId = null;
+                    while (true) {
+                        const paramsChunk = [...p];
+                        let sqlChunk = `${qBase}`;
+                        if (cursorId != null) {
+                            sqlChunk += ' AND mp.id < ?';
+                            paramsChunk.push(cursorId);
+                        }
+                        sqlChunk += ` ORDER BY mp.id DESC LIMIT ${GAP_LIST_ENRICH_CHUNK}`;
+                        // eslint-disable-next-line no-await-in-loop
+                        const [chunk] = await db.query(sqlChunk, paramsChunk);
+                        if (!chunk || !chunk.length) break;
+                        const ids = chunk.map((r) => Number(r.id)).filter(Number.isFinite);
+                        cursorId = Math.min(...ids);
                         // eslint-disable-next-line no-await-in-loop
                         await Promise.all([
                             enrichWithMoyskladLinks(chunk),
@@ -1999,21 +2022,26 @@ function myProductsRouterFactory(db, settings) {
             onProgress({ scannedSql: 0, matched: 0, from_cache: false, loading: true });
         }
 
-        const [rows] = await db.query(
-            `SELECT mp.*
-             FROM my_products mp
-             ${ctx.joinSql}
-             ${ctx.whereSql}
-             ORDER BY mp.id DESC`,
-            ctx.params
-        );
-        if (shouldCancel && shouldCancel()) {
-            return { matchedIds: [], scannedSql: 0, cancelled: true, from_cache: false };
-        }
-        const dataRows = Array.isArray(rows) ? rows : [];
         const gapRows = [];
-        for (let gi = 0; gi < dataRows.length; gi += GAP_LIST_ENRICH_CHUNK) {
-            const chunk = dataRows.slice(gi, gi + GAP_LIST_ENRICH_CHUNK);
+        let scannedSql = 0;
+        let cursorId = null;
+        while (true) {
+            if (shouldCancel && shouldCancel()) {
+                return { matchedIds: [], scannedSql, cancelled: true, from_cache: false };
+            }
+            const paramsChunk = [...ctx.params];
+            let sqlChunk = `SELECT mp.* FROM my_products mp ${ctx.joinSql} ${ctx.whereSql}`;
+            if (cursorId != null) {
+                sqlChunk += ' AND mp.id < ?';
+                paramsChunk.push(cursorId);
+            }
+            sqlChunk += ` ORDER BY mp.id DESC LIMIT ${GAP_LIST_ENRICH_CHUNK}`;
+            // eslint-disable-next-line no-await-in-loop
+            const [chunk] = await db.query(sqlChunk, paramsChunk);
+            if (!chunk || !chunk.length) break;
+            scannedSql += chunk.length;
+            const ids = chunk.map((r) => Number(r.id)).filter(Number.isFinite);
+            cursorId = Math.min(...ids);
             // eslint-disable-next-line no-await-in-loop
             await enrichWithCompetitorPrices(chunk);
             for (const product of chunk) {
@@ -2033,19 +2061,19 @@ function myProductsRouterFactory(db, settings) {
             );
             err.code = 'SELECTION_TOO_LARGE';
             err.matched = matchedIds.length;
-            err.scannedSql = dataRows.length;
+            err.scannedSql = scannedSql;
             throw err;
         }
         if (onProgress) {
             onProgress({
-                scannedSql: dataRows.length,
+                scannedSql,
                 matched: matchedIds.length,
                 from_cache: false
             });
         }
         return {
             matchedIds,
-            scannedSql: dataRows.length,
+            scannedSql,
             cancelled: false,
             from_cache: false
         };
