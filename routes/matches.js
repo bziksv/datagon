@@ -3645,9 +3645,17 @@ module.exports = (db, settings) => {
                     my_source_id: myMatch?.source_id || null,
                     my_cms_product_id: myMatch?.cms_product_id || null,
                     my_site_domain: siteMeta?.domain || null,
-                    my_site_cms_type: siteMeta?.cms_type || null
+                    my_site_cms_type: siteMeta?.cms_type || null,
+                    mp_cms_product_id: myMatch?.cms_product_id || null,
+                    mp_source_id: myMatch?.source_id || null,
+                    mp_sku: myMatch?.sku || m.my_sku || null
                 };
             });
+            try {
+                await enrichRowsWithMsExportStock(db, merged);
+            } catch (eMs) {
+                console.error('[matches] list ms_export', eMs && eMs.message ? eMs.message : eMs);
+            }
 
             res.json({ data: merged, total: Number(count?.[0]?.total || 0) });
         } catch (e) {
@@ -4300,7 +4308,7 @@ module.exports = (db, settings) => {
         for (let i = 0; i < list.length; i += 400) {
             const chunk = list.slice(i, i + 400);
             const [msRows] = await dbConn.query(
-                `SELECT code, stock, stock_position
+                `SELECT code, stock, stock_position, buy_price, sale_price, automation_price
                    FROM ms_export
                   WHERE code IN (${chunk.map(() => '?').join(',')})`,
                 chunk
@@ -4321,6 +4329,9 @@ module.exports = (db, settings) => {
             const stockNum = hit && hit.stock != null ? Number(hit.stock) : NaN;
             row.ms_stock = Number.isFinite(stockNum) ? stockNum : null;
             row.ms_stock_position = hit ? String(hit.stock_position || '').trim() || null : null;
+            row.ms_buy_price = hit ? String(hit.buy_price || '').trim() || null : null;
+            row.ms_sale_price = hit ? String(hit.sale_price || '').trim() || null : null;
+            row.ms_automation_price = hit ? String(hit.automation_price || '').trim() || null : null;
         }
     }
 

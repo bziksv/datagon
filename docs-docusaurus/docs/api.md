@@ -831,6 +831,8 @@ Body:
 
 В `GET /api/matches/list` у строки: `pack_qty`, `pack_basis`, `competitor_price` (лист), `competitor_price_comparable`.
 
+Также из `ms_export` (код = `cms_product_id` / `source_id` / `sku` нашего товара): `ms_stock_position`, `ms_stock`, `ms_buy_price`, `ms_sale_price`, `ms_automation_price` (`null`, если товара нет в МС). UI колонки «Действия» показывает их над «Упаковкой» и для `pending` без сохранённой упаковки подставляет коэффициент, если наша цена × N ≈ цена конкурента (N из «№50», «уп/50 шт», «50 шт» в названиях, допуск ×0,5…×2, только при одинаковой валюте).
+
 ### PATCH `/api/matches/:id/pack`
 Сохранить/сбросить упаковку без смены статуса. Body: `{ "pack_qty", "pack_basis" }` (пусто — сброс).
 

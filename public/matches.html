@@ -3869,6 +3869,122 @@
         return { wrap: wrap, basisSel: basisSel, qtyInp: qtyInp };
       }
 
+      function msMoneyLabel(raw) {
+        var t = String(raw || "").replace(/₽/g, "").trim();
+        if (!t) return "";
+        var F = window.DatagonFmt;
+        var n = F && F.parseNumberInput ? F.parseNumberInput(t) : Number(t.replace(/\s/g, "").replace(",", "."));
+        if (Number.isFinite(n) && F && F.formatMoney) return F.formatMoney(n);
+        return String(raw).trim();
+      }
+
+      /** Кол-во в упаковке из названия: «№50», «уп/50 шт», «50 шт». */
+      function packQtyCandidatesFromName(name) {
+        var out = [];
+        var t = String(name || "").toLowerCase();
+        var re = /(?:№\s*(\d{1,4})(?![\d.,])|(\d{1,4})\s*(?:шт|штук|пар|амп|фл|пак)\.?)/g;
+        var mm;
+        while ((mm = re.exec(t))) {
+          var n = parseInt(mm[1] || mm[2], 10);
+          if (n >= 2 && n <= 2000 && out.indexOf(n) < 0) out.push(n);
+        }
+        return out;
+      }
+
+      /**
+       * Подсказка коэффициента: наша цена × N ≈ цена конкурента (у нас поштучно)
+       * или наоборот (у нас упаковка). N — из названий; допуск по цене ×0,5…×2.
+       */
+      function suggestMatchPack(m) {
+        var myP = Number(m && m.my_price);
+        var compP = Number(m && m.competitor_price);
+        if (!(myP > 0) || !(compP > 0)) return null;
+        var curNorm = function (c) {
+          var t = String(c || "").trim().toUpperCase();
+          return t === "₽" || t === "РУБ" || t === "RUR" || t === "" ? "RUB" : t;
+        };
+        if (curNorm(m.my_currency) !== curNorm(m.competitor_currency)) return null;
+        var ns = packQtyCandidatesFromName(m.competitor_name).concat(packQtyCandidatesFromName(m.my_product_name));
+        var best = null;
+        ns.forEach(function (n) {
+          [
+            ["competitor", compP / myP],
+            ["ours", myP / compP],
+          ].forEach(function (pair) {
+            var k = pair[1] / n;
+            if (k < 0.5 || k > 2) return;
+            var dist = Math.abs(Math.log(k));
+            if (!best || dist < best.dist) best = { basis: pair[0], qty: n, dist: dist };
+          });
+        });
+        if (best) return best;
+        var ratio = compP / myP;
+        if (ratio >= 5 || ratio <= 0.2) return { basis: null, qty: null, ratio: ratio };
+        return null;
+      }
+
+      function buildMatchMsInfoBox(m, suggestion) {
+        var box = document.createElement("div");
+        box.className = "dg-matches-ms-info small mb-2";
+        var posRaw = String(m.ms_stock_position || "").trim();
+        var hasMs = posRaw || m.ms_stock != null || m.ms_buy_price || m.ms_sale_price;
+        function line(parts) {
+          var d = document.createElement("div");
+          d.className = "text-muted";
+          parts.forEach(function (p, i) {
+            if (i) d.appendChild(document.createTextNode(" · "));
+            d.appendChild(document.createTextNode(p[0] + ": "));
+            var b = document.createElement("strong");
+            b.className = p[2] || "text-body";
+            b.textContent = p[1];
+            d.appendChild(b);
+          });
+          box.appendChild(d);
+        }
+        if (hasMs) {
+          var posLow = posRaw.toLowerCase();
+          var isStock = posLow === "да" || posLow === "yes" || posLow === "1";
+          var stockNum = m.ms_stock != null ? Number(m.ms_stock) : NaN;
+          line([
+            ["Складская позиция", isStock ? "Да" : posRaw || "—", isStock ? "text-success" : "text-body"],
+            ["Остаток", Number.isFinite(stockNum) ? formatNumber(stockNum) : "—", stockNum > 0 ? "text-success" : "text-danger"],
+          ]);
+          var pr = [];
+          if (m.ms_buy_price) pr.push(["Закупка", msMoneyLabel(m.ms_buy_price)]);
+          if (m.ms_sale_price) pr.push(["Цена МС", msMoneyLabel(m.ms_sale_price)]);
+          if (pr.length) line(pr);
+          if (m.ms_automation_price) line([["Автоцена", String(m.ms_automation_price)]]);
+        } else {
+          var none = document.createElement("div");
+          none.className = "text-muted";
+          none.textContent = "В МойСклад товар не найден";
+          box.appendChild(none);
+        }
+        if (suggestion) {
+          var hint = document.createElement("div");
+          hint.className = "alert alert-warning py-1 px-2 mt-1 mb-0 small";
+          var myP = Number(m.my_price);
+          var compP = Number(m.competitor_price);
+          if (suggestion.basis === "competitor") {
+            hint.textContent =
+              "Наша " + msMoneyLabel(myP) + " × " + suggestion.qty + " = " + msMoneyLabel(myP * suggestion.qty) +
+              " ≈ конкурент " + msMoneyLabel(compP) + ": у нас поштучно, у конкурента упаковка. " +
+              "При подтверждении применится «÷ " + suggestion.qty + "».";
+          } else if (suggestion.basis === "ours") {
+            hint.textContent =
+              "Конкурент " + msMoneyLabel(compP) + " × " + suggestion.qty + " = " + msMoneyLabel(compP * suggestion.qty) +
+              " ≈ наша " + msMoneyLabel(myP) + ": у нас упаковка. " +
+              "При подтверждении применится «× " + suggestion.qty + "».";
+          } else {
+            hint.textContent =
+              "Цены отличаются в " + formatNumber(Math.round(Math.max(suggestion.ratio, 1 / suggestion.ratio))) +
+              " раз — проверьте упаковку и укажите коэффициент.";
+          }
+          box.appendChild(hint);
+        }
+        return box;
+      }
+
       function formatPackBadge(packQty, packBasis) {
         var q = Number(packQty);
         if (!Number.isFinite(q) || q < 2) return "";
@@ -5452,8 +5568,17 @@
           var tdAct = document.createElement("td");
           tdAct.className = "dg-matches-act-cell";
           var st = String(m.status || "").toLowerCase();
+          var hasSavedPack = m.pack_basis === "ours" || m.pack_basis === "competitor";
+          var packSuggest = st === "pending" && !hasSavedPack ? suggestMatchPack(m) : null;
+          var packInit =
+            packSuggest && packSuggest.basis
+              ? { pack_qty: packSuggest.qty, pack_basis: packSuggest.basis }
+              : { pack_qty: m.pack_qty, pack_basis: m.pack_basis };
+          if (st === "pending" || st === "confirmed") {
+            tdAct.appendChild(buildMatchMsInfoBox(m, packSuggest));
+          }
           var packUi = buildPackControls(
-            { pack_qty: m.pack_qty, pack_basis: m.pack_basis },
+            packInit,
             st === "confirmed"
               ? {
                   showSave: true,
