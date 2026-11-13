@@ -421,6 +421,109 @@ module.exports = (db, settings) => {
         matchJobPhasesColReady = true;
     }
 
+    /**
+     * В старых БД match_type был ENUM('auto_sku','auto_name','manual'), а код пишет sku/name/manual.
+     * Невалидное значение при sql_mode без STRICT превращается в '' → UI рисует «100% по SKU» при score=1.
+     */
+    async function ensureMatchTypeColumnWritable() {
+        try {
+            const [cols] = await db.query(
+                `SELECT DATA_TYPE AS data_type, COLUMN_TYPE AS column_type
+                 FROM information_schema.columns
+                 WHERE table_schema = DATABASE()
+                   AND table_name = 'product_matches'
+                   AND column_name = 'match_type'
+                 LIMIT 1`
+            );
+            const col = cols && cols[0];
+            if (!col) return;
+            const dtype = String(col.data_type || '').toLowerCase();
+            if (dtype === 'enum') {
+                await db.query(
+                    "ALTER TABLE product_matches MODIFY COLUMN match_type VARCHAR(24) NULL DEFAULT NULL"
+                );
+            }
+            await db.query(
+                `UPDATE product_matches
+                 SET match_type = CASE
+                   WHEN LOWER(TRIM(COALESCE(matching_mode, ''))) = 'manual' THEN 'manual'
+                   WHEN LOWER(TRIM(COALESCE(matching_mode, ''))) IN ('name', 'name_words') THEN 'name'
+                   WHEN LOWER(TRIM(COALESCE(matching_mode, ''))) IN ('sku', 'sku_norm', 'sku_best') THEN 'sku'
+                   WHEN LOWER(TRIM(COALESCE(matching_mode, ''))) = 'all'
+                        AND COALESCE(confidence_score, 0) >= 0.9995 THEN 'sku'
+                   WHEN LOWER(TRIM(COALESCE(matching_mode, ''))) = 'all' THEN 'name'
+                   WHEN COALESCE(confidence_score, 0) >= 0.9995 THEN 'sku'
+                   ELSE 'name'
+                 END
+                 WHERE TRIM(COALESCE(match_type, '')) = ''
+                    OR LOWER(TRIM(COALESCE(match_type, ''))) IN ('auto_sku', 'auto_name')`
+            );
+        } catch (e) {
+            console.error('[matches] ensureMatchTypeColumnWritable', e && e.message ? e.message : e);
+        }
+    }
+
+    /** Убрать pending у товаров, которые уже confirmed с этим конкурентом (тот же my_sku / название). */
+    async function clearPendingWhereConfirmed(mySiteId, competitorIds) {
+        const sid = Number(mySiteId);
+        const comps = (competitorIds || [])
+            .map((x) => parseInt(String(x).trim(), 10))
+            .filter((n) => Number.isFinite(n) && n > 0);
+        if (!Number.isFinite(sid) || sid <= 0 || !comps.length) return 0;
+        let deleted = 0;
+        async function deleteIds(rows) {
+            const list = (rows || []).map((r) => Number(r.id)).filter((n) => Number.isFinite(n) && n > 0);
+            for (let i = 0; i < list.length; i += 500) {
+                const chunk = list.slice(i, i + 500);
+                const [r] = await db.query(
+                    `DELETE FROM product_matches WHERE id IN (${chunk.map(() => '?').join(',')})`,
+                    chunk
+                );
+                deleted += Number(r && r.affectedRows) || 0;
+            }
+        }
+        for (const cid of comps) {
+            const [bySku] = await db.query(
+                `SELECT pm.id
+                 FROM product_matches pm
+                 INNER JOIN product_matches c
+                   ON c.my_site_id = pm.my_site_id
+                  AND c.competitor_site_id = pm.competitor_site_id
+                  AND c.status = 'confirmed'
+                  AND c.id <> pm.id
+                  AND c.my_sku = pm.my_sku
+                  AND c.my_sku IS NOT NULL
+                  AND c.my_sku <> ''
+                 WHERE pm.my_site_id = ?
+                   AND pm.competitor_site_id = ?
+                   AND pm.status = 'pending'
+                 LIMIT 50000`,
+                [sid, cid]
+            );
+            await deleteIds(bySku);
+            const [byName] = await db.query(
+                `SELECT pm.id
+                 FROM product_matches pm
+                 INNER JOIN product_matches c
+                   ON c.my_site_id = pm.my_site_id
+                  AND c.competitor_site_id = pm.competitor_site_id
+                  AND c.status = 'confirmed'
+                  AND c.id <> pm.id
+                  AND c.my_product_name = pm.my_product_name
+                  AND c.my_product_name IS NOT NULL
+                  AND c.my_product_name <> ''
+                  AND (pm.my_sku IS NULL OR pm.my_sku = '' OR c.my_sku IS NULL OR c.my_sku = '' OR c.my_sku <> pm.my_sku)
+                 WHERE pm.my_site_id = ?
+                   AND pm.competitor_site_id = ?
+                   AND pm.status = 'pending'
+                 LIMIT 50000`,
+                [sid, cid]
+            );
+            await deleteIds(byName);
+        }
+        return deleted;
+    }
+
     async function ensureProductMatchesOptionalCols() {
         if (productMatchesOptionalColsReady) return;
         const cols = [
@@ -455,6 +558,7 @@ module.exports = (db, settings) => {
                 console.error('[matches] ensureProductMatchesOptionalCols', c.name, e.message || e);
             }
         }
+        await ensureMatchTypeColumnWritable();
         // Не кэшируем успех, пока pack_* не на месте — иначе confirm молча ломается.
         if (allOk) {
             try {
@@ -1493,6 +1597,17 @@ module.exports = (db, settings) => {
         );
         await addJobLog(jobId, 'Подготовка данных');
         await phaseStart('prepare', 'Подготовка данных', { mode, threshold, resumeMode, mySiteId });
+        try {
+            const clearedDup = await clearPendingWhereConfirmed(mySiteId, competitorIds);
+            if (clearedDup > 0) {
+                await addJobLog(
+                    jobId,
+                    `Снято pending у уже подтверждённых с выбранными конкурентами: ${clearedDup}`
+                );
+            }
+        } catch (eClear) {
+            console.error('[matches] clearPendingWhereConfirmed', eClear && eClear.message ? eClear.message : eClear);
+        }
         if (!resumeMode) {
             const modeNorm = sanitizeMatchingMode(mode);
             const compIds = (competitorIds || [])
@@ -2051,6 +2166,18 @@ module.exports = (db, settings) => {
                     batchProcessedForCompetitor += 1;
                     loopCounter += 1;
                     // Пропуск (отклонено / архив): без sleep и без UPDATE/лога на каждый батч.
+                    if ((loopCounter & 255) === 0) {
+                        if (await bailIfCancelled(compPos, pIdx)) return { matches: [], count: totalMatchesSaved };
+                        await new Promise((resolve) => setImmediate(resolve));
+                        await tickMatchProgress(pIdx, false);
+                    }
+                    continue;
+                }
+                // Уже подтверждена пара с этим конкурентом — не предлагать вторую (в т.ч. «6 каналов» ↔ «8 каналов»).
+                if (productHasConfirmedMatch(myProd)) {
+                    processed += 1;
+                    batchProcessedForCompetitor += 1;
+                    loopCounter += 1;
                     if ((loopCounter & 255) === 0) {
                         if (await bailIfCancelled(compPos, pIdx)) return { matches: [], count: totalMatchesSaved };
                         await new Promise((resolve) => setImmediate(resolve));

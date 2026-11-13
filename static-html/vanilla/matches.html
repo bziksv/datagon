@@ -4583,8 +4583,17 @@
         if (n > 100) return 1;
         return n;
       }
+      function normalizeMatchTypeKey(raw) {
+        var mt = String(raw || "")
+          .trim()
+          .toLowerCase();
+        if (mt === "auto_sku") return "sku";
+        if (mt === "auto_name") return "name";
+        return mt;
+      }
+
       function scoreUi(matchType, score01, matchingMode) {
-        var mt = String(matchType || "").toLowerCase();
+        var mt = normalizeMatchTypeKey(matchType);
         if (mt === "manual") return { text: "Вручную", badge: "info" };
         if (mt === "sku") {
           var skuPct = Math.round(Number(score01 || 0) * 100);
@@ -4604,21 +4613,28 @@
       }
 
       function effectiveMatchTypeForScore(m, score) {
-        var t = String(m.match_type || "")
+        var t = normalizeMatchTypeKey(m.match_type);
+        if (t) return t;
+        // Пустой match_type: не гадать «SKU» только по score=1 — смотрим matching_mode.
+        var mm = String(m.matching_mode || "")
           .trim()
           .toLowerCase();
-        if (t) return t;
+        if (mm === "name" || mm === "name_words") return "name";
+        if (mm === "sku" || mm === "sku_norm" || mm === "sku_best") return "sku";
+        if (mm === "manual") return "manual";
         return Math.abs(Number(score) - 1) < 1e-6 ? "sku" : "name";
       }
 
       function matchTypeLabel(m) {
-        var mt = String(m.match_type || "")
-          .trim()
-          .toLowerCase();
+        var mt = normalizeMatchTypeKey(m.match_type);
         var mm = String(m.matching_mode || "")
           .trim()
           .toLowerCase();
-        if (!mt) return "—";
+        if (!mt) {
+          if (mm === "name_words") return "По словам";
+          if (mm === "name" || mm === "all") return "По названию";
+          return "—";
+        }
         if (mt === "manual") return "Вручную";
         if (mt === "name") {
           if (mm === "all") return "Название · из «все поля»";
