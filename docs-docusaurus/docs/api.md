@@ -390,7 +390,7 @@ Body:
 ```
 
 ### POST `/api/parse/refresh-results`
-Вернуть в очередь URL из **результатов по применённым фильтрам** — тот же `buildResultsWhere`, что у `GET /api/results` / сводки: `project_id`, `page_status`, `page_type`, `matched`, `availability`, `search`, `project_name`, `price_min`, `price_max`. Обновляет `pages.status=pending` и `prices.page_status_cached`.
+Вернуть в очередь URL из **результатов по применённым фильтрам** — тот же `buildResultsWhere`, что у `GET /api/results` / сводки: `project_id`, `page_status`, `page_type`, `content_checked`, `matched`, `availability`, `search`, `project_name`, `price_min`, `price_max`. Обновляет `pages.status=pending` и `prices.page_status_cached` (галочку `content_checked` **не** сбрасывает).
 
 Body (пример):
 ```json
@@ -419,7 +419,8 @@ Query:
 - `search` — подстрока по `sku`, `product_name`, `url` (и `pages.url` при join)
 - `matched` — `1` только сопоставленные / `0` только без подтверждённого матча (фильтр через `IN`/`NOT IN` от подтверждённых `product_matches`, не построчный `EXISTS`)
 - `page_type` — `product` / `category` / `info` / `junk` / `unknown` (тип из `pages.page_type`)
-- для строк ответа дополнительно: `page_type`, `page_type_manual`, `match_partners[]` (`my_sku`, `my_product_name`, `my_site_name`, …), `match_my_sku` / `match_my_name` / `match_my_site` (первая пара)
+- `content_checked` — `1` / `0` (галочка «Проверил контент» на `pages`; пусто/`all` = без фильтра)
+- для строк ответа дополнительно: `page_type`, `page_type_manual`, `content_checked`, `content_checked_at`, `content_checked_by`, `match_partners[]` (`my_sku`, `my_product_name`, `my_site_name`, …), `match_my_sku` / `match_my_name` / `match_my_site` (первая пара)
 - `page_status`, `page_error` (`pages.last_error`) — в UI бейдж «Ошибка» показывает человекочитаемую подсказку по наведению
 - `limit` — максимум **1500** строк на запрос (сверху зажимается на сервере; раньше до 25000 можно было положить Node по памяти).
 - `offset`
@@ -440,6 +441,12 @@ Query:
 
 ### GET `/api/pages/:id/type-log`
 Журнал ручных смен типа. Query: `limit` (по умолчанию 8, макс. 50). Ответ: `{ success, page_id, rows: [{ old_value, new_value, old_label, new_label, source, source_label, changed_by_name, note, changed_at, … }] }`. UI «Результаты» — микрокнопка **«лог»** в правом верхнем углу ячейки «Тип» (как на `/exports-new-products.html` → маркеты), открывает модалку.
+
+### PATCH `/api/pages/:id/content-check`
+Галочка **«Проверил контент»** на URL (`pages`). Body: `{ "content_checked": 0|1|true|false }`. Пишет `pages.content_checked` / `content_checked_at` / `content_checked_by` (+ `content_checked_by_user_id`) и строку в **`dg_pages_content_check_log`**. Перепарсинг флаг **не сбрасывает**. На `/results.html` одна галочка на `page_id` (все карточки цен этого URL синхронизируются).
+
+### GET `/api/pages/:id/content-check-log`
+Журнал смен галочки. Query: `limit` (по умолчанию 8, макс. 50). Ответ как у type-log (`old_label`/`new_label` = «Нет»/«Да»).
 
 ### POST `/api/results/clear`
 Очистить результаты по `project_id`. Wipe всей таблицы `prices` (`project_id` пуст/`all`) — только **admin** и тело `{ "confirm_all": true }` (F-PAR-02); иначе `403 CONFIRM_ALL_REQUIRED`.
@@ -703,7 +710,10 @@ UI: `/my-products.html` → **«Синх. цены по фильтрам»** + *
 ## Matches
 
 ### GET `/api/matches/my-sites`
-Справочник "моих сайтов" для сопоставления.
+Справочник «моих сайтов» для сопоставления (ACL **`matches`**, не `my-sites`). UI `/matches.html` обязан брать сайты отсюда — иначе при `hidden` у «Мои сайты» селект «Мой сайт (запуск)» пустой.
+
+### GET `/api/matches/competitors`
+Список конкурентов (`projects`) для сопоставления (ACL **`matches`**, не `projects`). UI — этот путь, не `GET /api/projects`.
 
 ### GET `/api/matches/my-products`
 Список моих активных товаров для выбора перед запуском.

@@ -5789,20 +5789,22 @@
       })();
 
       Promise.all([
-        fetch("/api/my-sites", { credentials: "same-origin" }).then(function (r) {
+        // Справочники под ACL «matches», не «my-sites» / «projects» —
+        // иначе при hidden у «Мои сайты»/«Конкуренты» селекты пустые (как у Ирины Емец).
+        fetch("/api/matches/my-sites", { credentials: "same-origin" }).then(function (r) {
           return r.json().then(function (j) {
             return { r: r, j: j };
           });
         }),
-        fetch("/api/projects", { credentials: "same-origin" }).then(function (r) {
+        fetch("/api/matches/competitors", { credentials: "same-origin" }).then(function (r) {
           return r.json().then(function (j) {
             return { r: r, j: j };
           });
         }),
       ])
         .then(function (arr) {
-          if (!arr[0].r.ok) throw new Error("Не удалось загрузить мои сайты");
-          if (!arr[1].r.ok) throw new Error("Не удалось загрузить конкурентов");
+          if (!arr[0].r.ok) throw new Error((arr[0].j && arr[0].j.error) || "Не удалось загрузить мои сайты");
+          if (!arr[1].r.ok) throw new Error((arr[1].j && arr[1].j.error) || "Не удалось загрузить конкурентов");
           state.mySites = Array.isArray(arr[0].j) ? arr[0].j : [];
           state.competitors = Array.isArray(arr[1].j) ? arr[1].j : [];
           fillMySitesSelect();

@@ -16,6 +16,8 @@ description: Матчинг мой товар ↔ конкурент — пар�
 | **`view`** | Списки / status / log — GET |
 | **`full`** | start/stop, confirm/reject/unlink, manual-queue, archive (с **confirm-модалкой**, не `window.confirm`) |
 
+Справочники «Мой сайт» / «Конкуренты» на экране идут через **`GET /api/matches/my-sites`** и **`GET /api/matches/competitors`** (ключ **`matches`**). Не через `/api/my-sites` / `/api/projects`: иначе при `hidden` у «Мои сайты» или «Конкуренты» селекты пустые при открытом сопоставлении.
+
 ## Шаги экрана (гайд)
 
 1. **Автомат** — сайт + конкуренты, порог, start / stop / retry; кандидаты **pending**.
