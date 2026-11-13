@@ -1690,14 +1690,12 @@
         ];
         host.replaceChildren();
         rows.forEach(function (row) {
-          var line = document.createElement("div");
+          var line = document.createElement("span");
           line.className = "dg-res-stat-breakdown-row";
-          var lab = document.createElement("span");
-          lab.textContent = row.label;
+          line.appendChild(document.createTextNode(row.label + " "));
           var num = document.createElement("span");
           num.className = "dg-res-stat-bd-n";
           num.textContent = fmtIntRu(row.n);
-          line.appendChild(lab);
           line.appendChild(num);
           host.appendChild(line);
         });

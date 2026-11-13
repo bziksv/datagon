@@ -336,52 +336,39 @@
       line-height: 1.2;
       font-variant-numeric: tabular-nums;
     }
-    body.datagon-vanilla-body[data-dg-active-nav="results"] .dg-res-stat-card--unmatched {
-      padding-top: 0.75rem;
-      padding-bottom: 0.75rem;
-    }
-    body.datagon-vanilla-body[data-dg-active-nav="results"] .dg-res-stat-unmatched-inner {
-      display: flex;
-      align-items: stretch;
-      justify-content: space-between;
-      gap: 0.75rem 1rem;
-      width: 100%;
-      min-width: 0;
-    }
-    body.datagon-vanilla-body[data-dg-active-nav="results"] .dg-res-stat-unmatched-main {
-      display: flex;
-      flex-direction: column;
-      min-width: 0;
-      flex: 1 1 auto;
-    }
-    body.datagon-vanilla-body[data-dg-active-nav="results"] .dg-res-stat-unmatched-main .dg-res-stat-label {
-      min-height: 0;
-      margin-bottom: 0.15rem;
+    /*
+      Разбивка под цифрой в той же сетке 8 колонок.
+      У соседних KPI — пустой «подвал» той же высоты, чтобы h4 не прыгал.
+    */
+    body.datagon-vanilla-body[data-dg-active-nav="results"] .dg-res-stat-card:not(.dg-res-stat-card--unmatched)::after {
+      content: "";
+      display: block;
+      min-height: 2.15em;
+      margin-top: 0.3rem;
     }
     body.datagon-vanilla-body[data-dg-active-nav="results"] .dg-res-stat-breakdown {
-      flex: 0 0 auto;
-      align-self: center;
-      border-left: 1px solid #e9ecef;
-      padding-left: 0.75rem;
-      font-size: 0.72rem;
-      line-height: 1.35;
+      margin-top: 0.3rem;
+      min-height: 2.15em;
+      font-size: 0.68rem;
+      line-height: 1.25;
       color: #6c757d;
       font-variant-numeric: tabular-nums;
-      white-space: nowrap;
+      word-break: break-word;
     }
     body.datagon-vanilla-body[data-dg-active-nav="results"] .dg-res-stat-breakdown-row {
-      display: flex;
-      justify-content: space-between;
-      gap: 0.65rem;
+      display: inline;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="results"] .dg-res-stat-breakdown-row + .dg-res-stat-breakdown-row::before {
+      content: " · ";
+      color: #adb5bd;
+      font-weight: 400;
     }
     body.datagon-vanilla-body[data-dg-active-nav="results"] .dg-res-stat-breakdown-row .dg-res-stat-bd-n {
       font-weight: 600;
       color: #495057;
-      min-width: 3.25rem;
-      text-align: right;
     }
     body.datagon-vanilla-body[data-dg-active-nav="results"] .dg-res-stat-breakdown.is-empty {
-      display: none;
+      visibility: hidden;
     }
     body.datagon-vanilla-body[data-dg-active-nav="results"] .dg-res-type-select {
       min-width: 7.5rem;
@@ -1503,66 +1490,62 @@
             </div>
           </div>
 
-          <div class="row g-2 dg-res-stats-row align-items-stretch mb-3">
-            <div class="col-6 col-md-4 col-xl d-flex">
+          <div class="row row-cols-2 row-cols-md-4 row-cols-xl-8 g-2 dg-res-stats-row align-items-stretch mb-3">
+            <div class="col d-flex">
               <button type="button" class="card mb-0 card-body dg-res-stat-card w-100 text-start border" id="dg-res-st-total" data-dg-res-stat="total" data-dg-notify-start="Фильтр: все по текущим условиям…">
                 <div class="text-muted dg-res-stat-label"><i class="pe-7s-box2 me-1"></i>Всего</div>
                 <div class="h4 mb-0 dg-res-stat-value" id="dg-res-st-total-v">—</div>
               </button>
             </div>
-            <div class="col-6 col-md-4 col-xl d-flex">
+            <div class="col d-flex">
               <button type="button" class="card mb-0 card-body dg-res-stat-card w-100 text-start border" id="dg-res-st-matched" data-dg-res-stat="matched" data-dg-notify-start="Фильтр: сопоставленные…">
                 <div class="text-muted dg-res-stat-label"><i class="pe-7s-link me-1"></i>Сопоставлено</div>
                 <div class="h4 mb-0 dg-res-stat-value text-success" id="dg-res-st-matched-v">—</div>
               </button>
             </div>
-            <div class="col-12 col-md-8 col-xl-3 d-flex">
+            <div class="col d-flex">
               <button
                 type="button"
                 class="card mb-0 card-body dg-res-stat-card dg-res-stat-card--unmatched w-100 text-start border"
                 id="dg-res-st-unmatched"
                 data-dg-res-stat="unmatched"
                 data-dg-notify-start="Фильтр: не сопоставлено…"
-                title="Справа — из чего складывается: товар / инфо / прочее (категория, утиль, неизвестно)"
+                title="Под цифрой — из чего складывается: товар / инфо / прочее (категория, утиль, неизвестно)"
               >
-                <div class="dg-res-stat-unmatched-inner">
-                  <div class="dg-res-stat-unmatched-main">
-                    <div class="text-muted dg-res-stat-label"><i class="pe-7s-unlink me-1"></i>Не сопоставлено</div>
-                    <div class="h4 mb-0 dg-res-stat-value text-warning" id="dg-res-st-unmatched-v">—</div>
-                  </div>
-                  <div
-                    class="dg-res-stat-breakdown"
-                    id="dg-res-st-unmatched-by-type"
-                    aria-label="Разбивка несопоставленных по типу страницы"
-                  ></div>
-                </div>
+                <div class="text-muted dg-res-stat-label"><i class="pe-7s-unlink me-1"></i>Не сопоставлено</div>
+                <div class="h4 mb-0 dg-res-stat-value text-warning" id="dg-res-st-unmatched-v">—</div>
+                <div
+                  class="dg-res-stat-breakdown"
+                  id="dg-res-st-unmatched-by-type"
+                  aria-label="Разбивка несопоставленных по типу страницы"
+                ></div>
               </button>
             </div>
-            <div class="col-6 col-md-4 col-xl d-flex">
+            <div class="col d-flex">
               <button type="button" class="card mb-0 card-body dg-res-stat-card w-100 text-start border" id="dg-res-st-in_stock" data-dg-res-stat="in_stock" data-dg-notify-start="Фильтр: в наличии…">
                 <div class="text-muted dg-res-stat-label"><i class="pe-7s-check me-1"></i>В наличии</div>
                 <div class="h4 mb-0 dg-res-stat-value" id="dg-res-st-in_stock-v">—</div>
               </button>
             </div>
-            <div class="col-6 col-md-4 col-xl d-flex">
+            <div class="col d-flex">
               <button type="button" class="card mb-0 card-body dg-res-stat-card w-100 text-start border" id="dg-res-st-oos" data-dg-res-stat="oos" data-dg-notify-start="Фильтр: под заказ…">
                 <div class="text-muted dg-res-stat-label"><i class="pe-7s-less me-1"></i>Под заказ</div>
                 <div class="h4 mb-0 dg-res-stat-value" id="dg-res-st-oos-v">—</div>
               </button>
             </div>
-            <div class="col-6 col-md-4 col-xl d-flex">
+            <div class="col d-flex">
               <button type="button" class="card mb-0 card-body dg-res-stat-card w-100 text-start border" id="dg-res-st-parse_error" data-dg-res-stat="parse_error" data-dg-notify-start="Фильтр: ошибки парсинга…">
                 <div class="text-muted dg-res-stat-label"><i class="pe-7s-close-circle me-1"></i>Ошибки парсинга</div>
                 <div class="h4 mb-0 dg-res-stat-value text-danger" id="dg-res-st-parse_error-v">—</div>
               </button>
             </div>
-            <div class="col-6 col-md-4 col-xl d-flex">
+            <div class="col d-flex">
               <button type="button" class="card mb-0 card-body dg-res-stat-card w-100 text-start border" id="dg-res-st-no_sku" data-dg-res-stat="no_sku" data-dg-tooltip="Товары без SKU в текущей выборке (клик не меняет фильтр — смотрите таблицу или поиск)">
                 <div class="text-muted dg-res-stat-label"><i class="pe-7s-ticket me-1"></i>Без SKU</div>
-                <div class="h4 mb-0 dg-res-stat-value" id="dg-res-st-no_sku-v">—</div>
+                <div class="h4 mb-0 dg-res-stat-value" id="dg-res-st-no-sku-v">—</div>
               </button>
             </div>
-            <div class="col-6 col-md-4 col-xl d-flex">
+            <div class="col d-flex">
               <button type="button" class="card mb-0 card-body dg-res-stat-card w-100 text-start border" id="dg-res-st-no_price" data-dg-res-stat="no_price" data-dg-tooltip="В наличии, но цена пустая или 0 — часто промах селектора">
                 <div class="text-muted dg-res-stat-label"><i class="pe-7s-cash me-1"></i>Без цены</div>
                 <div class="h4 mb-0 dg-res-stat-value" id="dg-res-st-no_price-v">—</div>
@@ -3589,14 +3572,12 @@
         ];
         host.replaceChildren();
         rows.forEach(function (row) {
-          var line = document.createElement("div");
+          var line = document.createElement("span");
           line.className = "dg-res-stat-breakdown-row";
-          var lab = document.createElement("span");
-          lab.textContent = row.label;
+          line.appendChild(document.createTextNode(row.label + " "));
           var num = document.createElement("span");
           num.className = "dg-res-stat-bd-n";
           num.textContent = fmtIntRu(row.n);
-          line.appendChild(lab);
           line.appendChild(num);
           host.appendChild(line);
         });
