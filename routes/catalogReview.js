@@ -14,6 +14,7 @@ const {
 const DECISIONS = new Set(['keep', 'keep_as_is', 'discontinued', 'not_supplied', 'deactivate']);
 const SALES_SPECIALTY = 'Менеджер по продажам';
 const CONTENT_SPECIALTY = 'Контент-Менеджер';
+const CONTENT_HEAD_SPECIALTY = 'Руководитель контент отдела';
 
 module.exports = function catalogReviewRouter(db) {
     const router = express.Router();
@@ -84,11 +85,18 @@ module.exports = function catalogReviewRouter(db) {
 
     function actor(req) {
         const a = req.datagonActor || {};
+        const specialtyName = String(a.specialty_name || '').trim();
+        const isAdmin = String(a.username || '') === 'admin'
+            || specialtyName.toLowerCase() === 'полный доступ';
+        const isContentHead = specialtyName.toLowerCase() === CONTENT_HEAD_SPECIALTY.toLowerCase();
         return {
             id: Number(a.id) || 0,
             username: String(a.username || '').trim(),
             full_name: String(a.full_name || '').trim(),
-            isAdmin: String(a.username || '') === 'admin',
+            specialty_name: specialtyName || null,
+            isAdmin,
+            isContentHead,
+            can_decide_any: isAdmin || isContentHead,
         };
     }
 
@@ -160,13 +168,14 @@ module.exports = function catalogReviewRouter(db) {
     }
 
     function canSales(row, who) {
-        return who.isAdmin || Number(row.sales_user_id) === who.id;
+        return who.isAdmin || who.isContentHead || Number(row.sales_user_id) === who.id;
     }
     function canContent(row, who) {
-        return who.isAdmin || Number(row.content_user_id) === who.id;
+        return who.isAdmin || who.isContentHead || Number(row.content_user_id) === who.id;
     }
     function canDecide(row, who) {
-        return canSales(row, who);
+        // Решение: менеджер продаж строки или руководитель контент-отдела (все строки)
+        return who.isAdmin || who.isContentHead || Number(row.sales_user_id) === who.id;
     }
 
     const REVIEW_LOG_LABELS = {
@@ -579,6 +588,24 @@ module.exports = function catalogReviewRouter(db) {
             } else if (mine === 'unassigned') {
                 where.push("r.status = 'unassigned'");
             }
+            const managerIds = parseIds(
+                req.query.manager != null && String(req.query.manager).trim() !== ''
+                    ? req.query.manager
+                    : req.query.sales_user_id
+            ).slice(0, 80);
+            const managerNone = String(req.query.manager || req.query.sales_user_id || '')
+                .split(',')
+                .map((part) => part.trim().toLowerCase())
+                .includes('none');
+            if (managerIds.length || managerNone) {
+                const parts = [];
+                if (managerIds.length) {
+                    parts.push(`r.sales_user_id IN (${managerIds.map(() => '?').join(',')})`);
+                    params.push(...managerIds);
+                }
+                if (managerNone) parts.push('r.sales_user_id IS NULL');
+                where.push(`(${parts.join(' OR ')})`);
+            }
             if (search) {
                 where.push('(mp.sku LIKE ? OR mp.name LIKE ? OR r.parent_category_name LIKE ?)');
                 const v = `%${search}%`;
@@ -821,7 +848,11 @@ module.exports = function catalogReviewRouter(db) {
                     continue;
                 }
                 if (!canDecide(row, who)) {
-                    skipped.push({ id: row.id, sku, reason: 'решение ставит менеджер по продажам этой строки' });
+                    skipped.push({
+                        id: row.id,
+                        sku,
+                        reason: 'решение ставит менеджер по продажам этой строки или руководитель контент-отдела',
+                    });
                     continue;
                 }
                 if (clearing) {

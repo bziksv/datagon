@@ -1,6 +1,23 @@
 <script>
 (function () {
-  var state = { lane: "out", page: 1, pages: 1, total: 0, limit: 100, rows: [], people: null, pending: null, decisions: [], site: "all", categoryIds: [], categoryOptions: [] };
+  var state = {
+    lane: "out",
+    page: 1,
+    pages: 1,
+    total: 0,
+    limit: 100,
+    rows: [],
+    people: null,
+    pending: null,
+    decisions: [],
+    site: "all",
+    categoryIds: [],
+    categoryOptions: [],
+    managerIds: [],
+    managerNone: false,
+    me: null
+  };
+  var urlSyncTimer = null;
   var STATUS = {
     unassigned: "Не распределено",
     with_sales: "У менеджера",
@@ -57,6 +74,7 @@
     var parts = [];
     parts.push("решение: " + decisionButtonText(state.decisions));
     parts.push("чьи: " + (mine && mine.selectedOptions[0] ? mine.selectedOptions[0].textContent : "Все"));
+    parts.push("менеджер: " + managerButtonText(state.managerIds, state.managerNone));
     parts.push("на Альмамеде: " + (state.site === "on" ? "Включён" : state.site === "off" ? "Выключен" : "Все"));
     parts.push("категории: " + categoryButtonText(state.categoryIds));
     if (search) parts.push("поиск: «" + escHtml(search) + "»");
@@ -215,13 +233,16 @@
     });
   }
 
-  function isSales(row) {
+  function canDecideUi(row) {
     var me = state.me || {};
-    return !!me.isAdmin || Number(me.id) === Number(row.sales_user_id);
+    return !!(me.isAdmin || me.isContentHead || me.can_decide_any || Number(me.id) === Number(row.sales_user_id));
+  }
+  function isSales(row) {
+    return canDecideUi(row);
   }
   function isContent(row) {
     var me = state.me || {};
-    return !!me.isAdmin || Number(me.id) === Number(row.content_user_id);
+    return !!(me.isAdmin || me.isContentHead || me.can_decide_any || Number(me.id) === Number(row.content_user_id));
   }
   function rowStatusText(row) {
     if (row.status === "with_content") return CONTENT_STATUS[row.content_status] || "Новая";
@@ -277,9 +298,9 @@
   function decisionSelect(row) {
     var select = document.createElement("select");
     select.className = "form-select form-select-sm dg-cr-decision";
-    select.disabled = !isSales(row);
+    select.disabled = !canDecideUi(row);
     if (select.disabled) {
-      select.title = "Решение ставит менеджер по продажам этой строки";
+      select.title = "Решение ставит менеджер по продажам этой строки или руководитель контент-отдела";
     } else {
       select.title = "«Оставить включенным» — включить на Альмамеде. «Оставить тек. состояние» — сайт не трогать. «Деактивировать» — выключить";
     }
@@ -483,6 +504,11 @@
     });
   }
 
+  function managerParamValue() {
+    var parts = (state.managerIds || []).map(function (id) { return String(id); });
+    if (state.managerNone) parts.push("none");
+    return parts.join(",");
+  }
   function load() {
     if (state.lane !== "out") return;
     var params = new URLSearchParams();
@@ -500,6 +526,8 @@
     if (state.categoryIds && state.categoryIds.length && state.categoryOptions.length && state.categoryIds.length < state.categoryOptions.length) {
       params.set("category", state.categoryIds.join(","));
     }
+    var mgr = managerParamValue();
+    if (mgr) params.set("manager", mgr);
     fetch("/api/catalog-review?" + params.toString(), { credentials: "same-origin" })
       .then(function (r) { return r.json().then(function (j) { return { r: r, j: j }; }); })
       .then(function (x) {
@@ -516,6 +544,7 @@
         document.getElementById("dg-cr-count").textContent = "Найдено: " + fmtInt(state.total);
         document.getElementById("dg-cr-page").textContent = "Страница " + state.page + "/" + state.pages;
         render(state.rows);
+        scheduleSyncUrl();
       })
       .catch(function (e) { toast("danger", e.message || "Ошибка очереди"); });
   }
@@ -1102,30 +1131,179 @@
     });
     paintCategoryButton();
   }
+  function managerButtonText(ids, includeNone) {
+    var list = ids || [];
+    var people = (state.people && state.people.sales) || [];
+    var names = [];
+    if (includeNone) names.push("Без менеджера");
+    list.forEach(function (id) {
+      var found = people.filter(function (p) { return Number(p.id) === Number(id); })[0];
+      names.push(found ? (found.label || found.username || ("#" + id)) : ("#" + id));
+    });
+    if (!names.length) return "Все";
+    if (names.length === 1) return names[0];
+    return names[0] + " и ещё " + (names.length - 1);
+  }
+  function readDraftManagers() {
+    var ids = [];
+    var none = false;
+    document.querySelectorAll("#dg-cr-manager-list input[type=checkbox]").forEach(function (el) {
+      if (!el.checked) return;
+      if (el.value === "none") none = true;
+      else {
+        var n = Number(el.value);
+        if (n > 0) ids.push(n);
+      }
+    });
+    return { ids: ids, none: none };
+  }
+  function paintManagerButton() {
+    var label = document.getElementById("dg-cr-manager-label");
+    if (!label) return;
+    var draft = document.querySelector("#dg-cr-manager-list input")
+      ? readDraftManagers()
+      : { ids: state.managerIds || [], none: !!state.managerNone };
+    label.textContent = managerButtonText(draft.ids, draft.none);
+  }
+  function buildManagerFilter() {
+    var list = document.getElementById("dg-cr-manager-list");
+    if (!list) return;
+    var chosen = {};
+    (state.managerIds || []).forEach(function (id) { chosen[String(id)] = true; });
+    var rows = ((state.people && state.people.sales) || []).slice().sort(function (a, b) {
+      return String(a.label || a.username || "").localeCompare(String(b.label || b.username || ""), "ru");
+    });
+    list.replaceChildren();
+    function addRow(value, title, checked) {
+      var label = document.createElement("label");
+      label.className = "d-flex align-items-start gap-2 mb-1";
+      label.setAttribute("data-dg-cr-manager-name", String(title || "").toLowerCase());
+      var cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.className = "form-check-input mt-1";
+      cb.value = String(value);
+      cb.checked = !!checked;
+      cb.addEventListener("change", paintManagerButton);
+      var text = document.createElement("span");
+      text.textContent = title;
+      label.appendChild(cb);
+      label.appendChild(text);
+      list.appendChild(label);
+    }
+    addRow("none", "Без менеджера", !!state.managerNone);
+    rows.forEach(function (p) {
+      addRow(p.id, p.label || p.username || ("#" + p.id), !!chosen[String(p.id)]);
+    });
+    paintManagerButton();
+  }
+  function scheduleSyncUrl() {
+    if (urlSyncTimer) clearTimeout(urlSyncTimer);
+    urlSyncTimer = setTimeout(syncUrlFromState, 80);
+  }
+  function syncUrlFromState() {
+    var params = new URLSearchParams();
+    var search = document.getElementById("dg-cr-search");
+    var mine = document.getElementById("dg-cr-mine");
+    var q = search ? String(search.value || "").trim() : "";
+    if (q) params.set("search", q);
+    var picked = (state.decisions || []).filter(function (id) { return DECISION_FILTER[id]; });
+    if (picked.length && picked.length < Object.keys(DECISION_FILTER).length) params.set("decision", picked.join(","));
+    if (state.site === "on" || state.site === "off") params.set("site", state.site === "on" ? "1" : "0");
+    if (mine && mine.value && mine.value !== "all") params.set("mine", mine.value);
+    if (state.categoryIds && state.categoryIds.length && state.categoryOptions.length && state.categoryIds.length < state.categoryOptions.length) {
+      params.set("category", state.categoryIds.join(","));
+    }
+    var mgr = managerParamValue();
+    if (mgr) params.set("manager", mgr);
+    if (state.page > 1) params.set("page", String(state.page));
+    if (state.limit !== 100) params.set("limit", String(state.limit));
+    var qs = params.toString();
+    var hash = location.hash || "";
+    var next = location.pathname + (qs ? "?" + qs : "") + hash;
+    if (location.pathname + location.search + location.hash !== next) {
+      history.replaceState(null, "", next);
+    }
+  }
+  function readFiltersFromUrl() {
+    var p = new URLSearchParams(location.search || "");
+    var has =
+      p.has("search") || p.has("decision") || p.has("site") || p.has("mine") ||
+      p.has("category") || p.has("manager") || p.has("page") || p.has("limit");
+    if (!has) return null;
+    var out = {};
+    out.search = String(p.get("search") || "").trim();
+    out.decisions = String(p.get("decision") || "")
+      .split(",")
+      .map(function (x) { return x.trim(); })
+      .filter(function (id) { return DECISION_FILTER[id]; });
+    var site = String(p.get("site") || "").trim();
+    out.site = site === "1" || site === "on" ? "on" : (site === "0" || site === "off" ? "off" : "all");
+    var mine = String(p.get("mine") || "").trim();
+    out.mine = mine === "mine" || mine === "unassigned" ? mine : "all";
+    out.categoryIds = String(p.get("category") || "")
+      .split(",")
+      .map(function (x) { return Number(x); })
+      .filter(function (id) { return id > 0; });
+    var mgrParts = String(p.get("manager") || "").split(",").map(function (x) { return x.trim(); }).filter(Boolean);
+    out.managerNone = mgrParts.indexOf("none") !== -1;
+    out.managerIds = mgrParts
+      .filter(function (x) { return x !== "none"; })
+      .map(function (x) { return Number(x); })
+      .filter(function (id) { return id > 0; });
+    out.page = Math.max(1, parseInt(String(p.get("page") || "1"), 10) || 1);
+    var lim = parseInt(String(p.get("limit") || "100"), 10) || 100;
+    out.limit = [50, 100, 200].indexOf(lim) !== -1 ? lim : 100;
+    return out;
+  }
   function commitStatuses() {
     state.decisions = readDraftDecisions();
     var site = document.getElementById("dg-cr-site");
     state.site = site && (site.value === "on" || site.value === "off") ? site.value : "all";
     if (document.querySelector("#dg-cr-queue-cat-list input")) state.categoryIds = readDraftCategories();
+    if (document.querySelector("#dg-cr-manager-list input")) {
+      var mgr = readDraftManagers();
+      state.managerIds = mgr.ids;
+      state.managerNone = mgr.none;
+    }
     if (window.DatagonFilters) {
       var prev = window.DatagonFilters.load("catalog-review") || {};
       prev.decisions = state.decisions;
       prev.site = state.site;
       prev.categoryIds = state.categoryIds;
+      prev.managerIds = state.managerIds;
+      prev.managerNone = state.managerNone;
+      var mineEl = document.getElementById("dg-cr-mine");
+      prev.mine = mineEl ? mineEl.value : "all";
+      var searchEl = document.getElementById("dg-cr-search");
+      prev.search = searchEl ? String(searchEl.value || "").trim() : "";
       window.DatagonFilters.save("catalog-review", prev);
     }
+    scheduleSyncUrl();
   }
   (function restoreStatuses() {
+    var fromUrl = readFiltersFromUrl();
     var saved = window.DatagonFilters ? window.DatagonFilters.load("catalog-review") : null;
-    var initial = saved && Array.isArray(saved.decisions) ? saved.decisions : [];
-    state.decisions = initial.filter(function (id) { return DECISION_FILTER[id]; });
-    state.site = saved && (saved.site === "on" || saved.site === "off") ? saved.site : "all";
-    state.categoryIds = saved && Array.isArray(saved.categoryIds)
-      ? saved.categoryIds.map(function (id) { return Number(id); }).filter(function (id) { return id > 0; })
+    var src = fromUrl || saved || {};
+    state.decisions = (Array.isArray(src.decisions) ? src.decisions : []).filter(function (id) { return DECISION_FILTER[id]; });
+    state.site = src.site === "on" || src.site === "off" ? src.site : "all";
+    state.categoryIds = Array.isArray(src.categoryIds)
+      ? src.categoryIds.map(function (id) { return Number(id); }).filter(function (id) { return id > 0; })
       : [];
+    state.managerIds = Array.isArray(src.managerIds)
+      ? src.managerIds.map(function (id) { return Number(id); }).filter(function (id) { return id > 0; })
+      : [];
+    state.managerNone = !!src.managerNone;
+    if (fromUrl) {
+      state.page = fromUrl.page || 1;
+      state.limit = fromUrl.limit || 100;
+    }
     buildDecisionFilter(state.decisions);
     var site = document.getElementById("dg-cr-site");
     if (site) site.value = state.site;
+    var mine = document.getElementById("dg-cr-mine");
+    if (mine) mine.value = src.mine === "mine" || src.mine === "unassigned" ? src.mine : "all";
+    var search = document.getElementById("dg-cr-search");
+    if (search && src.search) search.value = String(src.search);
   })();
   (function bindCategorySearch() {
     var catQ = document.getElementById("dg-cr-queue-cat-q");
@@ -1139,6 +1317,22 @@
       var needle = String(this.value || "").trim().toLowerCase();
       document.querySelectorAll("#dg-cr-queue-cat-list label").forEach(function (row) {
         var name = row.getAttribute("data-dg-cr-queue-cat-name") || "";
+        row.classList.toggle("d-none", !!(needle && name.indexOf(needle) === -1));
+      });
+    });
+  })();
+  (function bindManagerSearch() {
+    var q = document.getElementById("dg-cr-manager-q");
+    if (!q) return;
+    q.addEventListener("click", function (ev) { ev.stopPropagation(); });
+    q.addEventListener("keydown", function (ev) {
+      ev.stopPropagation();
+      if (ev.key === "Enter") ev.preventDefault();
+    });
+    q.addEventListener("input", function () {
+      var needle = String(this.value || "").trim().toLowerCase();
+      document.querySelectorAll("#dg-cr-manager-list label").forEach(function (row) {
+        var name = row.getAttribute("data-dg-cr-manager-name") || "";
         row.classList.toggle("d-none", !!(needle && name.indexOf(needle) === -1));
       });
     });
@@ -1168,6 +1362,9 @@
     openCrLog(id, btn.getAttribute("data-dg-cr-log-label") || "", btn.getAttribute("data-dg-cr-log-field") || "");
   });
 
-  loadPeople().then(function () { return loadOwners(); }).then(load);
+  loadPeople().then(function () {
+    buildManagerFilter();
+    return loadOwners();
+  }).then(load);
 })();
 </script>
