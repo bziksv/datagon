@@ -16,6 +16,18 @@ const {
     indexNameWordsRow,
     collectNameWordCandidates,
 } = require('../lib/matchNameWords');
+const {
+    NAME_WORDS_V2_THRESHOLD,
+    AMBIGUOUS_DELTA,
+    tokenizeV2,
+    scoreNameWordsV2,
+    createNameWordsV2Index,
+    indexNameWordsV2Row,
+    finalizeNameWordsV2Index,
+    weightsFor: nameWordsV2Weights,
+    collectNameWordsV2Candidates,
+    learnFromReviewedPairs,
+} = require('../lib/matchNameWordsV2');
 const router = express.Router();
 
 // Функция расстояния Левенштейна для умного поиска
@@ -235,7 +247,8 @@ function computeMatchIdentityHash(mySiteId, compSiteId, mySku, myName, compSku, 
 }
 
 /** Режим `all` (SKU→название) снят с UI/новых запусков; старые строки matching_mode=all в БД остаются. */
-const MATCHING_MODES = new Set(['name', 'name_words', 'sku', 'sku_norm', 'sku_best']);
+const MATCHING_MODES = new Set(['name', 'name_words', 'name_words_v2', 'sku', 'sku_norm', 'sku_best']);
+const NAME_MODES = new Set(['name', 'name_words', 'name_words_v2']);
 
 function sanitizeMatchingMode(mode) {
     const m = String(mode || '').trim();
@@ -497,7 +510,7 @@ module.exports = (db, settings) => {
                 `UPDATE product_matches
                  SET match_type = CASE
                    WHEN LOWER(TRIM(COALESCE(matching_mode, ''))) = 'manual' THEN 'manual'
-                   WHEN LOWER(TRIM(COALESCE(matching_mode, ''))) IN ('name', 'name_words') THEN 'name'
+                   WHEN LOWER(TRIM(COALESCE(matching_mode, ''))) IN ('name', 'name_words', 'name_words_v2') THEN 'name'
                    WHEN LOWER(TRIM(COALESCE(matching_mode, ''))) IN ('sku', 'sku_norm', 'sku_best') THEN 'sku'
                    WHEN LOWER(TRIM(COALESCE(matching_mode, ''))) = 'all'
                         AND COALESCE(confidence_score, 0) >= 0.9995 THEN 'sku'
@@ -588,6 +601,10 @@ module.exports = (db, settings) => {
             {
                 name: 'pack_basis',
                 ddl: "ALTER TABLE product_matches ADD COLUMN pack_basis VARCHAR(16) NULL"
+            },
+            {
+                name: 'match_details',
+                ddl: 'ALTER TABLE product_matches ADD COLUMN match_details TEXT NULL'
             }
         ];
         let allOk = true;
@@ -1625,6 +1642,7 @@ module.exports = (db, settings) => {
     }) {
         mode = sanitizeMatchingMode(mode);
         if (mode === 'name_words') threshold = NAME_WORDS_THRESHOLD;
+        if (mode === 'name_words_v2') threshold = NAME_WORDS_V2_THRESHOLD;
         /** Счётчики «по SKU / по названию» сразу из seed (продолжение), чтобы UI не показывал 0 на фазе загрузки товаров. */
         let foundSku = Math.max(0, Math.floor(Number(seedFoundSku) || 0));
         let foundName = Math.max(0, Math.floor(Number(seedFoundName) || 0));
@@ -2019,6 +2037,7 @@ module.exports = (db, settings) => {
                 m.match_type,
                 m.matching_mode,
                 m.confidence,
+                m.details ? JSON.stringify(m.details) : null,
                 'pending',
                 computeMatchIdentityHash(
                     mySiteId,
@@ -2033,13 +2052,14 @@ module.exports = (db, settings) => {
                 `
                 INSERT INTO product_matches
                 (my_site_id, my_sku, my_product_name, competitor_site_id, competitor_sku, competitor_name,
-                 match_type, matching_mode, confidence_score, status, match_identity_hash)
+                 match_type, matching_mode, confidence_score, match_details, status, match_identity_hash)
                 VALUES ?
                 ON DUPLICATE KEY UPDATE
                   confidence_score = IF(status = 'confirmed', confidence_score,
                     GREATEST(COALESCE(confidence_score, 0), VALUES(confidence_score))),
                   match_type = IF(status = 'confirmed', match_type, VALUES(match_type)),
                   matching_mode = IF(status = 'confirmed', matching_mode, VALUES(matching_mode)),
+                  match_details = IF(status = 'confirmed', match_details, VALUES(match_details)),
                   my_sku = IF(status = 'confirmed', my_sku, VALUES(my_sku)),
                   my_product_name = IF(status = 'confirmed', my_product_name, VALUES(my_product_name)),
                   competitor_sku = IF(status = 'confirmed', competitor_sku, VALUES(competitor_sku)),
@@ -2105,6 +2125,29 @@ module.exports = (db, settings) => {
             if (!(await syncCancelFromDb())) return false;
             await completeCancellation(compPos, pIdx);
             return true;
+        }
+
+        let nameWordsV2Learned = null;
+        if (mode === 'name_words_v2') {
+            try {
+                const [revRows] = await db.query(
+                    `SELECT my_product_name AS my, competitor_name AS comp, status
+                     FROM product_matches
+                     WHERE my_site_id = ? AND status IN ('confirmed', 'rejected')
+                       AND my_product_name IS NOT NULL AND competitor_name IS NOT NULL
+                     ORDER BY id DESC
+                     LIMIT 60000`,
+                    [mySiteId]
+                );
+                nameWordsV2Learned = learnFromReviewedPairs(revRows || []);
+                await addJobLog(
+                    jobId,
+                    `По словам v2: из ${(revRows || []).length} проверенных пар выучено синонимов ${nameWordsV2Learned.synonyms.size}, конфликтов ${nameWordsV2Learned.conflicts.size}`
+                );
+            } catch (e) {
+                nameWordsV2Learned = null;
+                await addJobLog(jobId, `По словам v2: обучение на парах пропущено (${e.message || e})`);
+            }
         }
 
         for (let compPos = startCompIndex; compPos < competitorIds.length; compPos += 1) {
@@ -2185,6 +2228,22 @@ module.exports = (db, settings) => {
                     }
                 }
             }
+            let nameWordsV2Index = null;
+            if (mode === 'name_words_v2') {
+                nameWordsV2Index = createNameWordsV2Index(compPrices.length);
+                const cnv = compPrices.length;
+                for (let ci = 0; ci < cnv; ci += 1) {
+                    if ((ci & 4095) === 0 && cancelledJobs.has(jobId)) {
+                        await completeCancellation(compPos, productStart);
+                        return { matches: [], count: totalMatchesSaved };
+                    }
+                    indexNameWordsV2Row(nameWordsV2Index, ci, compPrices[ci].product_name);
+                    if (ci > 0 && (ci & 4095) === 0) {
+                        await new Promise((r) => setImmediate(r));
+                    }
+                }
+                finalizeNameWordsV2Index(nameWordsV2Index);
+            }
             if (mode === 'all' || mode === 'name') {
                 const cn = compPrices.length;
                 compNormNames = new Array(cn);
@@ -2203,7 +2262,11 @@ module.exports = (db, settings) => {
 
             await phaseEnd({
                 normNameRows: compNormNames ? compNormNames.length : 0,
-                nameWordRows: nameWordsIndex ? nameWordsIndex.tokenLists.length : 0,
+                nameWordRows: nameWordsIndex
+                    ? nameWordsIndex.tokenLists.length
+                    : nameWordsV2Index
+                        ? nameWordsV2Index.n
+                        : 0,
                 nameLenBuckets: nameMatchIndex && nameMatchIndex.byLen ? nameMatchIndex.byLen.size : 0,
                 skuMap:
                     mode === 'all' || mode === 'sku'
@@ -2212,8 +2275,8 @@ module.exports = (db, settings) => {
                             ? 'norm_first'
                             : mode === 'sku_best'
                                 ? 'norm_best'
-                                : mode === 'name_words'
-                                    ? 'name_words'
+                                : mode === 'name_words' || mode === 'name_words_v2'
+                                    ? mode
                                     : 'none'
             });
 
@@ -2310,12 +2373,13 @@ module.exports = (db, settings) => {
                 let bestMatch = null;
                 let bestScore = 0;
                 let matchType = 'none';
+                let matchDetails = null;
 
                 const normMySkuStrict = strictSkuKey(myProd.sku);
                 const normMySkuNorm = normalizeSkuForMatch(myProd.sku);
                 const normMyName = normalizeText(myProd.name);
 
-                if (mode !== 'name' && mode !== 'name_words') {
+                if (!NAME_MODES.has(mode)) {
                     let skuMatch = null;
                     if (mode === 'all' || mode === 'sku') {
                         if (normMySkuStrict && skuLookupStrict) skuMatch = skuLookupStrict.get(normMySkuStrict) || null;
@@ -2427,6 +2491,98 @@ module.exports = (db, settings) => {
                     }
                 }
 
+                if (mode === 'name_words_v2' && nameWordsV2Index && normMyName.length > 3) {
+                    const myTokens = tokenizeV2(myProd.name);
+                    if (myTokens.length) {
+                        const myWeights = nameWordsV2Weights(nameWordsV2Index, myTokens);
+                        const cands = collectNameWordsV2Candidates(
+                            nameWordsV2Index,
+                            myTokens,
+                            myWeights,
+                            threshold,
+                            nameWordsV2Learned
+                        );
+                        const nCand = cands.length;
+                        let best = null;
+                        let second = null;
+                        for (let ci = 0; ci < nCand; ci += 1) {
+                            if ((ci & 31) === 0 && cancelledJobs.has(jobId)) {
+                                await completeCancellation(compPos, pIdx);
+                                return { matches: [], count: totalMatchesSaved };
+                            }
+                            if (ci > 0 && (ci & 511) === 0) {
+                                await new Promise((r) => setImmediate(r));
+                                const now = Date.now();
+                                if (now - lastNameInnerHeartbeatMs >= NAME_MATCH_INNER_HEARTBEAT_MS) {
+                                    lastNameInnerHeartbeatMs = now;
+                                    await addJobLog(
+                                        jobId,
+                                        `По словам v2: товар ${pIdx + 1}/${myProducts.length}, кандидатов ${ci}/${nCand} (конк. ${compId})`
+                                    );
+                                    await updateJob(
+                                        jobId,
+                                        withRunningCounters({
+                                            message: `Сопоставление по словам v2: товар ${pIdx + 1}/${myProducts.length}, кандидатов ${ci}/${nCand}`
+                                        })
+                                    );
+                                }
+                            }
+                            const ni = cands[ci];
+                            const compTokens = nameWordsV2Index.tokenLists[ni];
+                            if (!compTokens || !compTokens.length) continue;
+                            const res = scoreNameWordsV2(
+                                myTokens,
+                                myWeights,
+                                compTokens,
+                                nameWordsV2Index.weightLists[ni],
+                                threshold,
+                                nameWordsV2Learned
+                            );
+                            if (res.reject || res.score < threshold) continue;
+                            const entry = { ni, res };
+                            if (!best || res.score > best.res.score) {
+                                if (best && compPrices[best.ni].product_name !== compPrices[ni].product_name) second = best;
+                                best = entry;
+                            } else if (
+                                (!second || res.score > second.res.score) &&
+                                compPrices[best.ni].product_name !== compPrices[ni].product_name
+                            ) {
+                                second = entry;
+                            }
+                        }
+                        if (best) {
+                            bestMatch = compPrices[best.ni];
+                            bestScore = Math.min(1, best.res.score);
+                            matchType = 'name';
+                            const ambiguous = Boolean(second && best.res.score - second.res.score < AMBIGUOUS_DELTA);
+                            const ex = scoreNameWordsV2(
+                                myTokens,
+                                myWeights,
+                                nameWordsV2Index.tokenLists[best.ni],
+                                nameWordsV2Index.weightLists[best.ni],
+                                0,
+                                nameWordsV2Learned,
+                                true
+                            );
+                            matchDetails = {
+                                v: 2,
+                                matched: ex.matched || [],
+                                miss_my: ex.missMy || [],
+                                miss_comp: ex.missComp || [],
+                                ambiguous,
+                            };
+                            if (ambiguous) {
+                                const alt = compPrices[second.ni];
+                                matchDetails.alt = {
+                                    name: alt.product_name,
+                                    sku: alt.sku || null,
+                                    score: Math.round(second.res.score * 1000) / 1000,
+                                };
+                            }
+                        }
+                    }
+                }
+
                 if (bestMatch) {
                     pendingMatches.push({
                         my_product_id: myProd.id,
@@ -2437,11 +2593,15 @@ module.exports = (db, settings) => {
                         comp_project_id: compId,
                         match_type: matchType,
                         matching_mode: mode,
-                        confidence: bestScore
+                        confidence: bestScore,
+                        details: matchDetails
                     });
                     if (matchType === 'sku') foundSku += 1;
                     if (matchType === 'name') foundName += 1;
-                    const logKind = mode === 'name_words' && matchType === 'name' ? 'name_words' : matchType;
+                    const logKind =
+                        (mode === 'name_words' || mode === 'name_words_v2') && matchType === 'name'
+                            ? mode + (matchDetails && matchDetails.ambiguous ? ', спорно' : '')
+                            : matchType;
                     jobLogBuffer.push(`${myProd.sku || myProd.name} -> ${bestMatch.sku || bestMatch.product_name} (${logKind})`);
                     if (jobLogBuffer.length >= 50) await flushJobLogs();
                     if (await bailIfCancelled(compPos, pIdx)) return { matches: [], count: totalMatchesSaved };
@@ -2591,6 +2751,7 @@ module.exports = (db, settings) => {
         let { mySiteId, competitorIds, threshold = 0.85, mode = 'sku', productIds = null, productSearch = '', batchSize = 200, batchPauseMs = 0, microPauseMs = 0, microPauseEvery = 20, resumeMode = false } = req.body;
         mode = sanitizeMatchingMode(mode);
         if (mode === 'name_words') threshold = NAME_WORDS_THRESHOLD;
+        if (mode === 'name_words_v2') threshold = NAME_WORDS_V2_THRESHOLD;
         if (!mySiteId || !competitorIds || competitorIds.length === 0) {
             return res.status(400).json({ error: 'Не выбраны сайты' });
         }
@@ -3596,7 +3757,7 @@ module.exports = (db, settings) => {
             } else if (matchType === 'name') {
                 whereSql += ` AND (
                     LOWER(TRIM(COALESCE(match_type, ''))) = 'name'
-                    OR LOWER(TRIM(COALESCE(matching_mode, ''))) IN ('name', 'name_words')
+                    OR LOWER(TRIM(COALESCE(matching_mode, ''))) IN ('name', 'name_words', 'name_words_v2')
                 )
                   AND LOWER(TRIM(COALESCE(matching_mode, ''))) <> 'manual'`;
             }

@@ -481,7 +481,7 @@
         if (wrap.childNodes.length) host.appendChild(wrap);
       }
 
-      var MATCH_MODES_ALLOWED = { name: 1, name_words: 1, sku: 1, sku_norm: 1, sku_best: 1 };
+      var MATCH_MODES_ALLOWED = { name: 1, name_words: 1, name_words_v2: 1, sku: 1, sku_norm: 1, sku_best: 1 };
 
       function parseArchiveCategoryIds(raw) {
         var seen = {};
@@ -2014,11 +2014,61 @@
         var pct = Math.round(Number(score01 || 0) * 100);
         if (pct < 0) pct = 0;
         if (pct > 100) pct = 100;
-        var wordMode = String(matchingMode || "").trim().toLowerCase() === "name_words";
-        var text = pct + (wordMode ? "% по словам" : "% по названию");
+        var mmKey = String(matchingMode || "").trim().toLowerCase();
+        var text =
+          pct + (mmKey === "name_words_v2" ? "% по словам v2" : mmKey === "name_words" ? "% по словам" : "% по названию");
         if (pct >= 90) return { text: text, badge: "success" };
         if (pct >= 70) return { text: text, badge: "warning" };
         return { text: text, badge: "secondary" };
+      }
+
+      /** «По словам v2»: какие слова совпали / каких не хватило, флаг «спорно». */
+      function appendMatchWordsDetails(td, raw) {
+        if (!raw) return;
+        var d = raw;
+        if (typeof raw === "string") {
+          try {
+            d = JSON.parse(raw);
+          } catch (e) {
+            return;
+          }
+        }
+        if (!d || typeof d !== "object") return;
+        var box = document.createElement("div");
+        box.className = "small text-muted mt-1";
+        box.style.whiteSpace = "normal";
+        box.style.lineHeight = "1.25";
+        if (d.ambiguous) {
+          var amb = document.createElement("span");
+          amb.className = "badge bg-warning text-dark me-1";
+          amb.textContent = "спорно";
+          if (d.alt && d.alt.name) {
+            amb.title =
+              "Второй кандидат почти с тем же баллом: " +
+              d.alt.name +
+              (d.alt.sku ? " (" + d.alt.sku + ")" : "") +
+              " — " +
+              Math.round(Number(d.alt.score || 0) * 100) +
+              "%";
+          }
+          box.appendChild(amb);
+        }
+        var parts = [];
+        var matched = Array.isArray(d.matched) ? d.matched : [];
+        if (matched.length) {
+          parts.push(
+            "совпало: " +
+              matched
+                .map(function (p) {
+                  return p[0] === p[1] ? p[0] : p[0] + "≈" + p[1];
+                })
+                .join(", ")
+          );
+        }
+        if (Array.isArray(d.miss_comp) && d.miss_comp.length) parts.push("нет у нас: " + d.miss_comp.join(", "));
+        if (Array.isArray(d.miss_my) && d.miss_my.length) parts.push("нет у конкурента: " + d.miss_my.join(", "));
+        if (parts.length) box.appendChild(document.createTextNode(parts.join(" · ")));
+        if (box.childNodes.length) td.appendChild(box);
       }
 
       function effectiveMatchTypeForScore(m, score) {
@@ -2028,7 +2078,7 @@
         var mm = String(m.matching_mode || "")
           .trim()
           .toLowerCase();
-        if (mm === "name" || mm === "name_words") return "name";
+        if (mm === "name" || mm === "name_words" || mm === "name_words_v2") return "name";
         if (mm === "sku" || mm === "sku_norm" || mm === "sku_best") return "sku";
         if (mm === "manual") return "manual";
         return Math.abs(Number(score) - 1) < 1e-6 ? "sku" : "name";
@@ -2040,6 +2090,7 @@
           .trim()
           .toLowerCase();
         if (!mt) {
+          if (mm === "name_words_v2") return "По словам v2";
           if (mm === "name_words") return "По словам";
           if (mm === "name" || mm === "all") return "По названию";
           return "—";
@@ -2047,6 +2098,7 @@
         if (mt === "manual") return "Вручную";
         if (mt === "name") {
           if (mm === "all") return "Название · из «все поля»";
+          if (mm === "name_words_v2") return "По словам v2";
           if (mm === "name_words") return "По словам";
           return "По названию";
         }
@@ -2169,6 +2221,7 @@
             "confidence_score (0–1): " +
             (Number.isFinite(score01) ? score01.toFixed(4) : "—") +
             ". Для «По названию» — доля схожести строки; для «По словам» — доля общих слов без учёта порядка; для SKU — 1.0 при полном совпадении.";
+          appendMatchWordsDetails(tdConf, m.match_details);
           tr.appendChild(tdConf);
 
           var tdMy = document.createElement("td");

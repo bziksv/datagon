@@ -1653,6 +1653,7 @@
                       <option value="sku_norm">По SKU — нормализация артикула</option>
                     </optgroup>
                     <optgroup label="2. Потом (после прогона по SKU)">
+                      <option value="name_words_v2">По словам v2 — вес слов, бренды, транслит</option>
                       <option value="name_words">По словам — порядок не важен</option>
                       <option value="name">Только название (запускать после SKU)</option>
                     </optgroup>
@@ -1712,6 +1713,12 @@
                       <dd class="col-md-8 col-lg-9 mb-0">
                         Режим <strong>«По словам»</strong> (<code>name_words</code>) — <em>не</em> Левенштейн строки: слова в любом порядке, окончания почти не режут балл. Числа/версии обязательны (МикроТимп-3 ≠ -2). Порог 75%. Это отдельный пункт селекта, не «Только название».
                       </dd>
+                      <dt class="col-md-4 col-lg-3 mb-2 text-body fw-semibold">
+                        <code class="small">name_words_v2</code> · По словам v2
+                      </dt>
+                      <dd class="col-md-8 col-lg-9 mb-0">
+                        Как «По словам», плюс: редкие слова (бренд, модель) весят больше частых («насос», «перчатки»); пустышки (для, с, шт, набор) не считаются; <code>МикроТимп3</code> = <code>МикроТимп-3</code>, <code>25мм</code> = <code>25 mm</code>; <code>Grundfos</code> ≈ <code>Грундфос</code>; разные латинские бренды → пары нет; лишнее число с одной стороны — штраф, а не отказ (3 ↔ 2 — отказ). В «Совпадениях» видно, какие слова совпали, и метка «спорно», если второй кандидат почти такой же. Синонимы и конфликты слов учатся на ваших подтверждённых и отклонённых парах. Порог 75%.
+                      </dd>
                     </dl>
                   </div>
                 </div>
@@ -1740,8 +1747,11 @@
                     <li class="mb-2">
                       <strong>Только название</strong> — без SKU, Левенштейн всей строки. Удобнее после прогона по артикулам. Промах не блокирует следующий прогон по SKU.
                     </li>
-                    <li class="mb-0">
+                    <li class="mb-2">
                       <strong>По словам</strong> (<code>name_words</code>) — без SKU. Порядок слов не важен, окончания почти не снижают балл; цифры/версии обязаны совпасть (3≠2). Порог <strong>75%</strong> (у «Только название» по-прежнему ~85%). Не заменяет «Только название».
+                    </li>
+                    <li class="mb-0">
+                      <strong>По словам v2</strong> (<code>name_words_v2</code>) — без SKU. Вес слова по редкости в прайсе конкурента, слова-пустышки не считаются, буквы/цифры и единицы разделяются, латиница ↔ кириллица и транслит, разные латинские бренды — отказ, лишнее число с одной стороны — штраф (3↔2 — отказ). Пишет в пару, какие слова совпали, и метку «спорно». Учится на подтверждённых/отклонённых парах. Порог <strong>75%</strong>. Режим «По словам» (v1) не изменён.
                     </li>
                   </ul>
                   <p class="mb-2 fw-semibold text-body pt-1 border-top">Поле «Умный поиск»</p>
@@ -3117,7 +3127,7 @@
         if (wrap.childNodes.length) host.appendChild(wrap);
       }
 
-      var MATCH_MODES_ALLOWED = { name: 1, name_words: 1, sku: 1, sku_norm: 1, sku_best: 1 };
+      var MATCH_MODES_ALLOWED = { name: 1, name_words: 1, name_words_v2: 1, sku: 1, sku_norm: 1, sku_best: 1 };
 
       function parseArchiveCategoryIds(raw) {
         var seen = {};
@@ -4650,11 +4660,61 @@
         var pct = Math.round(Number(score01 || 0) * 100);
         if (pct < 0) pct = 0;
         if (pct > 100) pct = 100;
-        var wordMode = String(matchingMode || "").trim().toLowerCase() === "name_words";
-        var text = pct + (wordMode ? "% по словам" : "% по названию");
+        var mmKey = String(matchingMode || "").trim().toLowerCase();
+        var text =
+          pct + (mmKey === "name_words_v2" ? "% по словам v2" : mmKey === "name_words" ? "% по словам" : "% по названию");
         if (pct >= 90) return { text: text, badge: "success" };
         if (pct >= 70) return { text: text, badge: "warning" };
         return { text: text, badge: "secondary" };
+      }
+
+      /** «По словам v2»: какие слова совпали / каких не хватило, флаг «спорно». */
+      function appendMatchWordsDetails(td, raw) {
+        if (!raw) return;
+        var d = raw;
+        if (typeof raw === "string") {
+          try {
+            d = JSON.parse(raw);
+          } catch (e) {
+            return;
+          }
+        }
+        if (!d || typeof d !== "object") return;
+        var box = document.createElement("div");
+        box.className = "small text-muted mt-1";
+        box.style.whiteSpace = "normal";
+        box.style.lineHeight = "1.25";
+        if (d.ambiguous) {
+          var amb = document.createElement("span");
+          amb.className = "badge bg-warning text-dark me-1";
+          amb.textContent = "спорно";
+          if (d.alt && d.alt.name) {
+            amb.title =
+              "Второй кандидат почти с тем же баллом: " +
+              d.alt.name +
+              (d.alt.sku ? " (" + d.alt.sku + ")" : "") +
+              " — " +
+              Math.round(Number(d.alt.score || 0) * 100) +
+              "%";
+          }
+          box.appendChild(amb);
+        }
+        var parts = [];
+        var matched = Array.isArray(d.matched) ? d.matched : [];
+        if (matched.length) {
+          parts.push(
+            "совпало: " +
+              matched
+                .map(function (p) {
+                  return p[0] === p[1] ? p[0] : p[0] + "≈" + p[1];
+                })
+                .join(", ")
+          );
+        }
+        if (Array.isArray(d.miss_comp) && d.miss_comp.length) parts.push("нет у нас: " + d.miss_comp.join(", "));
+        if (Array.isArray(d.miss_my) && d.miss_my.length) parts.push("нет у конкурента: " + d.miss_my.join(", "));
+        if (parts.length) box.appendChild(document.createTextNode(parts.join(" · ")));
+        if (box.childNodes.length) td.appendChild(box);
       }
 
       function effectiveMatchTypeForScore(m, score) {
@@ -4664,7 +4724,7 @@
         var mm = String(m.matching_mode || "")
           .trim()
           .toLowerCase();
-        if (mm === "name" || mm === "name_words") return "name";
+        if (mm === "name" || mm === "name_words" || mm === "name_words_v2") return "name";
         if (mm === "sku" || mm === "sku_norm" || mm === "sku_best") return "sku";
         if (mm === "manual") return "manual";
         return Math.abs(Number(score) - 1) < 1e-6 ? "sku" : "name";
@@ -4676,6 +4736,7 @@
           .trim()
           .toLowerCase();
         if (!mt) {
+          if (mm === "name_words_v2") return "По словам v2";
           if (mm === "name_words") return "По словам";
           if (mm === "name" || mm === "all") return "По названию";
           return "—";
@@ -4683,6 +4744,7 @@
         if (mt === "manual") return "Вручную";
         if (mt === "name") {
           if (mm === "all") return "Название · из «все поля»";
+          if (mm === "name_words_v2") return "По словам v2";
           if (mm === "name_words") return "По словам";
           return "По названию";
         }
@@ -4805,6 +4867,7 @@
             "confidence_score (0–1): " +
             (Number.isFinite(score01) ? score01.toFixed(4) : "—") +
             ". Для «По названию» — доля схожести строки; для «По словам» — доля общих слов без учёта порядка; для SKU — 1.0 при полном совпадении.";
+          appendMatchWordsDetails(tdConf, m.match_details);
           tr.appendChild(tdConf);
 
           var tdMy = document.createElement("td");
