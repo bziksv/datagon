@@ -783,6 +783,7 @@ function myProductsRouterFactory(db, settings) {
             const priceHoldSql = sqlPriceHoldWhere(price_hold);
             const msJoins = sqlMyProductsMsExportJoins('mp');
             const stickerBucket = sqlStickerSortBucket('mp');
+            const gapJoinSql = isGapFilterEnabled ? sqlGapEligibleJoin(gap_competitor) : '';
             let q = `
                 SELECT 
                     mp.*,
@@ -790,11 +791,12 @@ function myProductsRouterFactory(db, settings) {
                 FROM my_products mp
                 ${msJoins}
                 ${matchAuditSql.joinSql}
+                ${gapJoinSql}
                 WHERE 1=1
                 ${matchAuditSql.whereSql}
                 ${priceHoldSql}
             `;
-            let qc = `SELECT COUNT(*) as total FROM my_products mp ${msJoins} ${matchAuditSql.joinSql} WHERE 1=1${matchAuditSql.whereSql}${priceHoldSql}`;
+            let qc = `SELECT COUNT(*) as total FROM my_products mp ${msJoins} ${matchAuditSql.joinSql}${gapJoinSql} WHERE 1=1${matchAuditSql.whereSql}${priceHoldSql}`;
             let p = [], pc = [];
 
             if (site_id && site_id !== 'all') { 
@@ -865,11 +867,6 @@ function myProductsRouterFactory(db, settings) {
                 const cond = `NOT EXISTS (SELECT 1 FROM ms_export ms WHERE ${sqlMsExportMatchesProduct('ms', 'mp')} LIMIT 1)`;
                 q += ` AND ${cond}`;
                 qc += ` AND ${cond}`;
-            }
-            if (isGapFilterEnabled) {
-                const gapJoin = sqlGapEligibleJoin(gap_competitor);
-                q += gapJoin;
-                qc += gapJoin;
             }
             const qBase = q;
             // Наклейки: «Есть в наличии» (остаток МС) — в начале; снят/не поставляется — в конце.
