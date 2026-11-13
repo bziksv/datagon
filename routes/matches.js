@@ -1195,7 +1195,27 @@ module.exports = (db, settings) => {
         if (!keys.length) return;
         const setClause = keys.map((k) => `${k} = ?`).join(', ');
         const values = keys.map((k) => fields[k]);
+        const nextStatus = fields.status != null ? String(fields.status) : '';
+        const terminal = nextStatus === 'cancelled' || nextStatus === 'failed' || nextStatus === 'completed';
+        // Прогресс не должен «оживлять» уже отменённую задачу (после рестарта Node / orphan-finish).
+        if (!terminal) {
+            await db.query(
+                `UPDATE matching_jobs SET ${setClause} WHERE id = ? AND status = 'running'`,
+                [...values, jobId]
+            );
+            return;
+        }
         await db.query(`UPDATE matching_jobs SET ${setClause} WHERE id = ?`, [...values, jobId]);
+    }
+
+    /** Воркер жив, если в БД ещё running. После orphan-cancel / Stop — выходим. */
+    async function isMatchingJobStillRunning(jobId) {
+        try {
+            const [rows] = await db.query('SELECT status FROM matching_jobs WHERE id = ? LIMIT 1', [jobId]);
+            return Boolean(rows.length && String(rows[0].status) === 'running');
+        } catch (_) {
+            return true;
+        }
     }
 
     async function addJobLog(jobId, message) {
@@ -1339,15 +1359,6 @@ module.exports = (db, settings) => {
             );
             if (!jobs.length) return null;
             const job = jobs[0];
-            // После kill/рестарта Node задача остаётся running, а cancelledJobs пустой —
-            // «Остановить» только пишет лог и вечно «ждём шаг БД». Режем сироту сразу.
-            if (!activeMatchingJobs.has(job.id)) {
-                await forceFinishOrphanJob(
-                    job.id,
-                    'Остановлено: нет живого воркера (процесс Node перезапущен или задача зависла)'
-                );
-                return null;
-            }
             const [[agg]] = await db.query(
                 'SELECT MAX(created_at) AS max_at FROM matching_job_logs WHERE job_id = ?',
                 [job.id]
@@ -1357,6 +1368,18 @@ module.exports = (db, settings) => {
                 [agg?.max_at || null, job.started_at]
             );
             const idleSec = Number(idler?.idle_sec || 0);
+            // После kill/рестарта Node задача остаётся running, а cancelledJobs пустой.
+            // Но если логи свежие — воркер ещё жив (другой процесс / graceful shutdown): не режем.
+            if (!activeMatchingJobs.has(job.id)) {
+                if (idleSec <= 120) {
+                    return job;
+                }
+                await forceFinishOrphanJob(
+                    job.id,
+                    'Остановлено: нет живого воркера (процесс Node перезапущен или задача зависла)'
+                );
+                return null;
+            }
             const stopping = /Остановка\s+задачи/i.test(String(job.message || ''));
             const limitSec = stopping ? Math.min(90, staleAfterSec) : staleAfterSec;
             if (idleSec <= limitSec) return job;
@@ -1983,8 +2006,19 @@ module.exports = (db, settings) => {
             cancelledJobs.delete(jobId);
         }
 
+        let lastDbCancelCheckMs = 0;
+        async function syncCancelFromDb() {
+            const now = Date.now();
+            if (now - lastDbCancelCheckMs < 2000) return cancelledJobs.has(jobId);
+            lastDbCancelCheckMs = now;
+            if (!(await isMatchingJobStillRunning(jobId))) {
+                cancelledJobs.add(jobId);
+            }
+            return cancelledJobs.has(jobId);
+        }
+
         async function bailIfCancelled(compPos, pIdx) {
-            if (!cancelledJobs.has(jobId)) return false;
+            if (!(await syncCancelFromDb())) return false;
             await completeCancellation(compPos, pIdx);
             return true;
         }
@@ -2619,22 +2653,47 @@ module.exports = (db, settings) => {
     router.post('/stop', async (req, res) => {
         const { mySiteId } = req.body;
         if (!mySiteId) return res.status(400).json({ error: 'mySiteId required' });
-        const [jobs] = await db.query(
-            `SELECT id, message FROM matching_jobs
+        let [jobs] = await db.query(
+            `SELECT id, status, message FROM matching_jobs
              WHERE my_site_id = ? AND status = "running"
              ORDER BY id DESC LIMIT 1`,
             [mySiteId]
         );
+        // Зомби: в БД уже cancelled после orphan-finish, но воркер ещё пишет логи — Stop должен сработать.
+        if (!jobs.length) {
+            const [zombies] = await db.query(
+                `SELECT j.id, j.status, j.message
+                 FROM matching_jobs j
+                 WHERE j.my_site_id = ?
+                   AND j.status IN ('cancelled', 'failed')
+                   AND EXISTS (
+                     SELECT 1 FROM matching_job_logs l
+                     WHERE l.job_id = j.id
+                       AND l.created_at >= DATE_SUB(NOW(), INTERVAL 3 MINUTE)
+                   )
+                 ORDER BY j.id DESC
+                 LIMIT 1`,
+                [mySiteId]
+            );
+            jobs = zombies;
+        }
         if (!jobs.length) return res.status(404).json({ error: 'Активная задача не найдена' });
         const jobId = jobs[0].id;
         cancelledJobs.add(jobId);
         await addJobLog(jobId, 'Запрошена остановка задачи');
-        await updateJob(jobId, { message: 'Остановка задачи...' });
+        if (String(jobs[0].status) === 'running') {
+            await updateJob(jobId, { message: 'Остановка задачи...' });
+        } else {
+            await addJobLog(jobId, 'Остановка зомби-задачи (в БД уже не running — ждём выход воркера)');
+        }
         if (!activeMatchingJobs.has(jobId)) {
-            await forceFinishOrphanJob(
-                jobId,
-                'Остановлено: воркер уже не работал (рестарт Node или сбой)'
-            );
+            // Воркер в другом процессе: статус уже не running — только сигнал в лог; он выйдет по проверке БД.
+            if (String(jobs[0].status) === 'running') {
+                await forceFinishOrphanJob(
+                    jobId,
+                    'Остановлено: воркер уже не работал (рестарт Node или сбой)'
+                );
+            }
             return res.json({ success: true, jobId, forced: true });
         }
         return res.json({ success: true, jobId });
@@ -2712,8 +2771,30 @@ module.exports = (db, settings) => {
                 isoFromDbDate(job.job_first_log_at) ||
                 startedFromPhase;
             const jobMsg = String(job.message || '');
+            let lastLogAt = null;
+            let lastLogAgeSec = null;
+            try {
+                const [[logMax]] = await db.query(
+                    'SELECT MAX(created_at) AS max_at FROM matching_job_logs WHERE job_id = ?',
+                    [job.id]
+                );
+                lastLogAt = isoFromDbDate(logMax && logMax.max_at);
+                if (logMax && logMax.max_at) {
+                    const [[age]] = await db.query(
+                        'SELECT TIMESTAMPDIFF(SECOND, ?, NOW()) AS age_sec',
+                        [logMax.max_at]
+                    );
+                    lastLogAgeSec = Number(age && age.age_sec);
+                    if (!Number.isFinite(lastLogAgeSec)) lastLogAgeSec = null;
+                }
+            } catch (_) {}
+            const zombieLive =
+                (job.status === 'cancelled' || job.status === 'failed') &&
+                lastLogAgeSec != null &&
+                lastLogAgeSec <= 90;
+            const active = job.status === 'running' || zombieLive;
             const stopPending =
-                job.status === 'running' && /Остановка\s+задачи/i.test(jobMsg);
+                (job.status === 'running' || zombieLive) && /Остановка\s+задачи/i.test(jobMsg);
             /** Сколько строк уже лежит в «Совпадениях» по конкурентам из params_json (не путать со счётчиками самой задачи). */
             let dbFoundSku = 0;
             let dbFoundName = 0;
@@ -2757,8 +2838,11 @@ module.exports = (db, settings) => {
             }
             return res.json({
                 id: job.id,
-                active: job.status === 'running',
-                done: job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled',
+                active,
+                zombie: zombieLive,
+                done:
+                    !active &&
+                    (job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled'),
                 status: job.status,
                 processed: job.processed || 0,
                 total: job.total || 0,
@@ -2768,16 +2852,22 @@ module.exports = (db, settings) => {
                 dbFoundSku,
                 dbFoundName,
                 dbMatchCountsAvailable,
-                message: job.message || '',
+                message: zombieLive
+                    ? `${jobMsg || 'Идёт сопоставление'} · воркер ещё пишет логи после отмены в БД`
+                    : job.message || '',
                 phases,
                 startedAt: startedAtResolved,
-                finishedAt: isoFromDbDate(job.finished_at),
+                finishedAt: active ? null : isoFromDbDate(job.finished_at),
+                lastLogAt,
+                lastLogAgeSec,
                 stopPending,
                 logs: logs.map((l) => {
                     const t = new Date(l.created_at).toLocaleTimeString('ru-RU');
                     return `[${t}] ${l.message}`;
                 }),
-                canRetry: job.status === 'failed' || job.status === 'completed' || job.status === 'cancelled',
+                canRetry:
+                    !active &&
+                    (job.status === 'failed' || job.status === 'completed' || job.status === 'cancelled'),
                 match_script: getMatchesMatchMeta()
             });
         } catch (e) {
