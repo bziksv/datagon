@@ -3477,6 +3477,111 @@ module.exports = (db, settings) => {
         } catch (e) { res.status(500).json({ error: e.message }); }
     });
 
+    /**
+     * Сброс ожидающих строк списка «Совпадения» перед новым прогоном.
+     * Только status pending (и пустой status); confirmed / rejected не трогаем.
+     * Body: { my_site_id, confirm?, dry_run?, competitor_site_id?, match_type? (sku|name|manual) }
+     */
+    router.post('/clear-pending', async (req, res) => {
+        const body = req.body && typeof req.body === 'object' ? req.body : {};
+        const mySiteId = parseInt(String(body.my_site_id || body.mySiteId || '').trim(), 10);
+        if (!Number.isFinite(mySiteId) || mySiteId < 1) {
+            return res.status(400).json({ error: 'my_site_id required' });
+        }
+        const dryRun =
+            body.dry_run === true ||
+            body.dry_run === 1 ||
+            String(body.dry_run || '').trim() === '1' ||
+            !body.confirm;
+        const compRaw = String(body.competitor_site_id || body.competitorSiteId || '').trim();
+        const compId = compRaw === '' ? null : parseInt(compRaw, 10);
+        const matchTypeRaw = String(body.match_type || body.matchType || '')
+            .trim()
+            .toLowerCase();
+        const matchType =
+            matchTypeRaw === 'sku' || matchTypeRaw === 'name' || matchTypeRaw === 'manual'
+                ? matchTypeRaw
+                : null;
+        const t0 = Date.now();
+        try {
+            let whereSql = `
+                WHERE my_site_id = ?
+                  AND (
+                    status = 'pending'
+                    OR status IS NULL
+                    OR TRIM(COALESCE(status, '')) = ''
+                  )`;
+            const params = [mySiteId];
+            if (Number.isFinite(compId) && compId > 0) {
+                whereSql += ' AND competitor_site_id = ?';
+                params.push(compId);
+            }
+            if (matchType === 'manual') {
+                whereSql += ` AND (
+                    LOWER(TRIM(COALESCE(match_type, ''))) = 'manual'
+                    OR LOWER(TRIM(COALESCE(matching_mode, ''))) = 'manual'
+                )`;
+            } else if (matchType === 'sku') {
+                whereSql += ` AND LOWER(TRIM(COALESCE(match_type, ''))) = 'sku'
+                  AND LOWER(TRIM(COALESCE(matching_mode, ''))) <> 'manual'`;
+            } else if (matchType === 'name') {
+                whereSql += ` AND (
+                    LOWER(TRIM(COALESCE(match_type, ''))) = 'name'
+                    OR LOWER(TRIM(COALESCE(matching_mode, ''))) IN ('name', 'name_words')
+                )
+                  AND LOWER(TRIM(COALESCE(matching_mode, ''))) <> 'manual'`;
+            }
+            const [[cntRow]] = await db.query(
+                `SELECT COUNT(*) AS cnt FROM product_matches ${whereSql}`,
+                params
+            );
+            const wouldDelete = Math.max(0, Number(cntRow?.cnt || 0));
+            const filters = {
+                my_site_id: mySiteId,
+                competitor_site_id: Number.isFinite(compId) && compId > 0 ? compId : null,
+                match_type: matchType,
+            };
+            if (dryRun) {
+                return res.json({
+                    success: true,
+                    dry_run: true,
+                    would_delete: wouldDelete,
+                    deleted: 0,
+                    filters,
+                    duration_sec: Math.round((Date.now() - t0) / 1000),
+                });
+            }
+            const [delResult] = await db.query(`DELETE FROM product_matches ${whereSql}`, params);
+            const deleted = Math.max(0, Number(delResult?.affectedRows || 0));
+            const actorUser = req.datagonActor;
+            if (actorUser && actorUser.id) {
+                try {
+                    await recordDatagonActivity(db, {
+                        userId: actorUser.id,
+                        kind: 'ui',
+                        section: 'matches',
+                        label: 'clear_pending',
+                        detail: JSON.stringify({
+                            deleted,
+                            filters,
+                            actor: (await resolveActorDisplayName(req)) || null,
+                        }),
+                    });
+                } catch (_) {}
+            }
+            return res.json({
+                success: true,
+                dry_run: false,
+                would_delete: wouldDelete,
+                deleted,
+                filters,
+                duration_sec: Math.round((Date.now() - t0) / 1000),
+            });
+        } catch (e) {
+            return res.status(500).json({ error: e.message });
+        }
+    });
+
     function parseManualQueueFilters(src) {
         const srcObj = src && typeof src === 'object' ? src : {};
         const mySiteId = parseInt(String(srcObj.my_site_id || '').trim(), 10);

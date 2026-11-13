@@ -3121,6 +3121,224 @@
         persistMatchesListFilterForm();
         loadMatches();
       });
+
+      (function bindClearPendingMatches() {
+        var clearConfirmState = { resolve: null, payload: null };
+        function showClearPendingLog(kind, html) {
+          var el = document.getElementById("dg-matches-clear-pending-log");
+          if (!el) return;
+          el.classList.remove("d-none", "text-muted", "text-danger", "text-success", "text-warning");
+          if (kind === "danger") el.classList.add("text-danger");
+          else if (kind === "success") el.classList.add("text-success");
+          else if (kind === "warning") el.classList.add("text-warning");
+          else el.classList.add("text-muted");
+          el.innerHTML = html || "";
+        }
+        function closeClearPendingConfirm(ok) {
+          var overlay = document.getElementById("dg-matches-clear-pending-overlay");
+          if (overlay) {
+            overlay.style.display = "none";
+            overlay.setAttribute("aria-hidden", "true");
+          }
+          var resolve = clearConfirmState.resolve;
+          clearConfirmState.resolve = null;
+          if (typeof resolve === "function") resolve(!!ok);
+        }
+        function openClearPendingConfirm(message) {
+          return new Promise(function (resolve) {
+            if (clearConfirmState.resolve) closeClearPendingConfirm(false);
+            clearConfirmState.resolve = resolve;
+            var textEl = document.getElementById("dg-matches-clear-pending-text");
+            if (textEl) textEl.textContent = message || "";
+            var overlay = document.getElementById("dg-matches-clear-pending-overlay");
+            var okBtn = document.getElementById("dg-matches-clear-pending-ok");
+            if (!overlay) {
+              resolve(window.confirm(message || "Сбросить ожидающие?"));
+              return;
+            }
+            overlay.style.display = "flex";
+            overlay.setAttribute("aria-hidden", "false");
+            if (okBtn) {
+              try {
+                okBtn.focus();
+              } catch (_) {}
+            }
+          });
+        }
+        function fmtIntClear(n) {
+          if (window.DatagonFmt && window.DatagonFmt.formatInteger) {
+            return window.DatagonFmt.formatInteger(n);
+          }
+          return String(n);
+        }
+        function buildClearPendingPayload() {
+          var sidEl = document.getElementById("dg-matches-list-my-site");
+          var sid = sidEl ? String(sidEl.value || "").trim() : "";
+          if (!sid) return null;
+          var payload = { my_site_id: Number(sid) };
+          var cidEl = document.getElementById("dg-matches-list-competitor");
+          var cid = cidEl ? String(cidEl.value || "").trim() : "";
+          if (cid) payload.competitor_site_id = Number(cid);
+          var mtEl = document.getElementById("dg-matches-tf-match-type");
+          var mt = mtEl ? String(mtEl.value || "").trim().toLowerCase() : "";
+          if (mt === "sku" || mt === "name" || mt === "manual") payload.match_type = mt;
+          return payload;
+        }
+        function filterBitsForClear(payload) {
+          var bits = ["мой сайт #" + payload.my_site_id];
+          if (payload.competitor_site_id) bits.push("конкурент #" + payload.competitor_site_id);
+          else bits.push("все конкуренты");
+          if (payload.match_type === "sku") bits.push("тип: по SKU");
+          else if (payload.match_type === "name") bits.push("тип: по названию / словам");
+          else if (payload.match_type === "manual") bits.push("тип: вручную");
+          else bits.push("тип: все");
+          return bits.join("; ");
+        }
+        function runClearPending() {
+          var payload = buildClearPendingPayload();
+          if (!payload) {
+            if (window.DatagonNotify && window.DatagonNotify.toast) {
+              window.DatagonNotify.toast({
+                type: "warning",
+                message: "Выберите «Мой сайт (список)»."
+              });
+            }
+            return;
+          }
+          var btn = document.getElementById("dg-matches-clear-pending");
+          var filtersLabel = filterBitsForClear(payload);
+          showClearPendingLog(
+            "warning",
+            "Считаем ожидающие…<br><span class=\"text-muted\">Фильтры: " + filtersLabel + "</span>"
+          );
+          var preflight = Object.assign({}, payload, { dry_run: true });
+          var doPreflight = function () {
+            return fetch("/api/matches/clear-pending", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Accept: "application/json" },
+              credentials: "same-origin",
+              body: JSON.stringify(preflight)
+            }).then(function (r) {
+              return r.json().then(function (j) {
+                return { r: r, j: j };
+              });
+            });
+          };
+          var run = function () {
+            return doPreflight()
+              .then(function (x) {
+                if (!x.r.ok || !x.j || x.j.success === false) {
+                  throw new Error((x.j && x.j.error) || "HTTP " + x.r.status);
+                }
+                var n = Math.max(0, Number(x.j.would_delete) || 0);
+                showClearPendingLog(
+                  "warning",
+                  "К удалению: <strong>" +
+                    fmtIntClear(n) +
+                    "</strong> ожидающих<br><span class=\"text-muted\">Фильтры: " +
+                    filtersLabel +
+                    "</span>"
+                );
+                if (n < 1) {
+                  if (window.DatagonNotify && window.DatagonNotify.toast) {
+                    window.DatagonNotify.toast({
+                      type: "info",
+                      message: "Нет ожидающих строк по текущим фильтрам."
+                    });
+                  }
+                  showClearPendingLog(
+                    "success",
+                    "Нечего удалять (0 ожидающих по фильтрам: " + filtersLabel + ")."
+                  );
+                  return null;
+                }
+                clearConfirmState.payload = payload;
+                var msg =
+                  "Будет удалено " +
+                  fmtIntClear(n) +
+                  " ожидающих совпадений (" +
+                  filtersLabel +
+                  "). Подтверждённые и отклонённые останутся. Действие нельзя отменить.";
+                return openClearPendingConfirm(msg).then(function (ok) {
+                  if (!ok) return null;
+                  var delPayload = Object.assign({}, payload, { confirm: true });
+                  return fetch("/api/matches/clear-pending", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", Accept: "application/json" },
+                    credentials: "same-origin",
+                    body: JSON.stringify(delPayload)
+                  }).then(function (r) {
+                    return r.json().then(function (j) {
+                      return { r: r, j: j };
+                    });
+                  });
+                });
+              })
+              .then(function (x) {
+                if (!x) return;
+                if (!x.r.ok || !x.j || x.j.success === false) {
+                  throw new Error((x.j && x.j.error) || "HTTP " + x.r.status);
+                }
+                var deleted = Math.max(0, Number(x.j.deleted) || 0);
+                var sec = Number(x.j.duration_sec);
+                showClearPendingLog(
+                  "success",
+                  "Удалено ожидающих: <strong>" +
+                    fmtIntClear(deleted) +
+                    "</strong>" +
+                    (Number.isFinite(sec) ? " · " + sec + " с" : "") +
+                    "<br><span class=\"text-muted\">Фильтры: " +
+                    filtersLabel +
+                    "</span>"
+                );
+                if (window.DatagonNotify && window.DatagonNotify.toast) {
+                  window.DatagonNotify.toast({
+                    type: "success",
+                    message: "Удалено ожидающих: " + fmtIntClear(deleted)
+                  });
+                }
+                state.matchesPage = 1;
+                loadMatches();
+              })
+              .catch(function (e) {
+                showClearPendingLog("danger", "Ошибка сброса: " + (e.message || String(e)));
+                if (window.DatagonNotify && window.DatagonNotify.toast) {
+                  window.DatagonNotify.toast({
+                    type: "danger",
+                    message: e.message || "Ошибка сброса ожидающих"
+                  });
+                }
+              });
+          };
+          if (window.DatagonNotify && window.DatagonNotify.busyRun && btn) {
+            window.DatagonNotify.busyRun(btn, run);
+          } else {
+            run();
+          }
+        }
+        var bClear = document.getElementById("dg-matches-clear-pending");
+        if (bClear) bClear.addEventListener("click", runClearPending);
+        var bCancel = document.getElementById("dg-matches-clear-pending-cancel");
+        if (bCancel) bCancel.addEventListener("click", function () {
+          closeClearPendingConfirm(false);
+        });
+        var bOk = document.getElementById("dg-matches-clear-pending-ok");
+        if (bOk)
+          bOk.addEventListener("click", function () {
+            closeClearPendingConfirm(true);
+          });
+        var bBackdrop = document.getElementById("dg-matches-clear-pending-backdrop");
+        if (bBackdrop)
+          bBackdrop.addEventListener("click", function () {
+            closeClearPendingConfirm(false);
+          });
+        document.addEventListener("keydown", function (ev) {
+          if (ev.key !== "Escape") return;
+          var ov = document.getElementById("dg-matches-clear-pending-overlay");
+          if (ov && ov.style.display === "flex") closeClearPendingConfirm(false);
+        });
+      })();
+
         document.getElementById("dg-matches-filters-default").addEventListener("click", function () {
         if (window.DatagonMatchesListFilterBlocks && window.DatagonMatchesListFilterBlocks.reset) window.DatagonMatchesListFilterBlocks.reset();
         if (window.DatagonFilters) window.DatagonFilters.clear("matches_list");

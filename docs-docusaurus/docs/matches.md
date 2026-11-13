@@ -84,7 +84,7 @@ description: Матчинг мой товар ↔ конкурент — пар�
 
 ## API (основное)
 
-- Авто: `POST /start-matching`, `/stop`, `/retry-last`; `GET /status`, `/list`; `POST /confirm` / `/reject` / `/unlink`.
+- Авто: `POST /start-matching`, `/stop`, `/retry-last`; `GET /status`, `/list`; `POST /confirm` / `/reject` / `/unlink`; `POST /clear-pending` (кнопка «Сбросить ожидающие» — только pending по сайту/конкуренту/типу, с модалкой).
 - Ручное: `GET/DELETE /manual-queue`, `POST …/return-to-auto`, `…/archive-all` (`archive_kind`); `GET/DELETE /manual-archive` (`archive_kind`); `POST /manual-match/confirm|relink|archive` (`archive_kind`).
 - Вспомогательные: `/prices-search`, `/prices-resolve-sku`, `/product-match-log` (прайс конкурента — только `pages.page_type` = product / без типа).
 

@@ -846,6 +846,29 @@ Body:
 
 Снять подтверждённое сопоставление (разорвать пару). Тело — идентификаторы записи матчинга (см. `routes/matches.js`).
 
+### POST `/api/matches/clear-pending`
+
+Удалить **ожидающие** строки `product_matches` перед новым прогоном. Только `status=pending` (и пустой status); `confirmed` / `rejected` не трогает.
+
+Body:
+```json
+{
+  "my_site_id": 2,
+  "competitor_site_id": 4,
+  "match_type": "name",
+  "dry_run": true,
+  "confirm": true
+}
+```
+
+- `my_site_id` — обязателен
+- `competitor_site_id` — опционально (иначе все конкуренты сайта)
+- `match_type` — опционально `sku` | `name` | `manual` (`name` включает `matching_mode=name_words`)
+- без `confirm: true` (или с `dry_run: true`) — только счётчик `would_delete`, без DELETE
+- ответ: `{ success, dry_run, would_delete, deleted, filters, duration_sec }`
+
+UI: кнопка «Сбросить ожидающие» на `/matches.html` (модалка подтверждения).
+
 `POST /api/matches/manual-match/confirm` принимает те же опциональные `pack_qty` / `pack_basis` и тоже снимает лишние confirmed с того же конкурента.
 ## Расширенные маршруты матчинга
 

@@ -539,8 +539,9 @@
               </div>
               <p class="small text-muted mb-2">
                 Ниже — только просмотр и фильтры списка совпадений. Режим «Параметры запуска» и «Мой сайт (запуск)» на состав строк в таблице не влияют.
-                Новый прогон сопоставления <strong>не стирает</strong> ожидающие результаты другого режима (например, после прогона по названию по-прежнему видны строки «По SKU» при фильтре «Все» или «По SKU»), кроме режима
-                <strong>«все поля»</strong> — он заново очищает ожидающие только по <em>выбранным в задаче</em> конкурентам. Фильтр <strong>«Тип совпадения»</strong> «По SKU» / «По названию» отсекает строки другого типа (в т.ч. <strong>ручные</strong>): для пар из шага&nbsp;3 выберите «Вручную» или «Все» и нажмите «Применить».
+                Новый прогон сопоставления <strong>не стирает</strong> ожидающие результаты другого режима (SKU / название / слова) — только pending того же режима запуска.
+                Кнопка <strong>«Сбросить ожидающие»</strong> удаляет pending по сайту списка (и конкуренту/типу, если заданы); confirmed и rejected не трогает.
+                Фильтр <strong>«Тип совпадения»</strong> «По SKU» / «По названию» отсекает строки другого типа (в т.ч. <strong>ручные</strong>): для пар из шага&nbsp;3 выберите «Вручную» или «Все» и нажмите «Применить».
               </p>
               <div class="dg-matches-list-filters">
                 <div class="row g-3 align-items-end">
@@ -643,9 +644,21 @@
                   </div>
                 </div>
                 <div class="row align-items-center mt-2 pt-1 border-top border-light" data-dg-matches-list-field="list_actions">
-                  <div class="col-12 d-flex flex-wrap gap-2">
+                  <div class="col-12 d-flex flex-wrap gap-2 align-items-center">
                     <button type="button" class="btn btn-sm btn-primary" id="dg-matches-filters-apply" data-dg-tooltip="Применить фильтры списка совпадений и обновить данные. Сохраняет введённое для следующего визита." data-dg-notify-start="Применяем фильтры совпадений…"><i class="pe-7s-search me-1"></i>Применить</button>
                     <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-matches-filters-default" data-dg-tooltip="Сбросить фильтры списка к значениям по умолчанию и очистить сохранённые настройки." data-dg-notify-start="Сбрасываем фильтры совпадений…"><i class="pe-7s-refresh me-1"></i>По умолчанию</button>
+                    <button
+                      type="button"
+                      class="btn btn-sm btn-outline-danger"
+                      id="dg-matches-clear-pending"
+                      data-dg-tooltip="Удалить ожидающие (pending) строки по «Мой сайт (список)» и фильтру конкурента/типа. Подтверждённые и отклонённые не трогает. Удобно перед новым прогоном."
+                      data-dg-notify-start="Считаем ожидающие для сброса…"
+                    >
+                      <i class="pe-7s-trash me-1"></i>Сбросить ожидающие
+                    </button>
+                  </div>
+                  <div class="col-12 mt-2">
+                    <div id="dg-matches-clear-pending-log" class="small text-muted d-none" role="status"></div>
                   </div>
                 </div>
               </div>
@@ -964,6 +977,39 @@
                   </tbody>
                 </table>
               </div>
+              </div>
+            </div>
+          </div>
+
+          <div
+            id="dg-matches-clear-pending-overlay"
+            class="dg-matches-confirm-overlay"
+            style="display: none"
+            aria-hidden="true"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="dg-matches-clear-pending-title"
+          >
+            <div class="dg-matches-confirm-backdrop" id="dg-matches-clear-pending-backdrop"></div>
+            <div class="dg-matches-confirm-panel card shadow-lg border-0">
+              <div class="card-header">
+                <div class="fw-semibold" id="dg-matches-clear-pending-title">Сбросить ожидающие?</div>
+              </div>
+              <div class="card-body">
+                <p class="mb-0" id="dg-matches-clear-pending-text"></p>
+              </div>
+              <div class="card-footer d-flex justify-content-end gap-2 flex-wrap bg-white border-top-0">
+                <button type="button" class="btn btn-outline-secondary" id="dg-matches-clear-pending-cancel" data-dg-no-activity="1">
+                  Отмена
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-danger"
+                  id="dg-matches-clear-pending-ok"
+                  data-dg-notify-start="Удаляем ожидающие совпадения…"
+                >
+                  Удалить ожидающие
+                </button>
               </div>
             </div>
           </div>
