@@ -165,6 +165,7 @@ function normalizeText(text) {
 function buildNameMatchIndex(compNormNames) {
     const exact = new Map();
     const byLen = new Map();
+    const byPrefix4 = new Map();
     const n = compNormNames ? compNormNames.length : 0;
     for (let i = 0; i < n; i += 1) {
         const s = compNormNames[i];
@@ -177,8 +178,15 @@ function buildNameMatchIndex(compNormNames) {
             byLen.set(L, arr);
         }
         arr.push(i);
+        const pref = s.slice(0, 4);
+        let parr = byPrefix4.get(pref);
+        if (!parr) {
+            parr = [];
+            byPrefix4.set(pref, parr);
+        }
+        parr.push(i);
     }
-    return { exact, byLen };
+    return { exact, byLen, byPrefix4 };
 }
 
 /** Индексы строк прайса, у которых длина совместима с порогом схожести к myLen. */
@@ -196,6 +204,50 @@ function collectNameLenCandidateIndices(nameIndex, myLen, threshold) {
         for (let k = 0; k < arr.length; k += 1) out.push(arr[k]);
     }
     return out;
+}
+
+/**
+ * Кандидаты для режима `name` (Левенштейн): пересечение длины с токенами / prefix4.
+ * Иначе на длинных названиях остаётся 5–8k LD на товар — часы на 40k.
+ */
+function collectNameModeCandidateIndices(nameIndex, nameWordsIndex, myRawName, myNorm, threshold) {
+    if (!myNorm || myNorm.length < 3) return [];
+    const thr = Math.max(0.01, Math.min(1, Number(threshold) || 0.85));
+    const myLen = myNorm.length;
+    const minComp = Math.ceil(myLen * thr - 1e-12);
+    const maxComp = Math.floor(myLen / thr + 1e-12);
+    const lenOk = (idx) => {
+        // длина проверяется снаружи через compNormNames; здесь только фильтр по индексу длины
+        return true;
+    };
+    const lenSet = new Set(collectNameLenCandidateIndices(nameIndex, myLen, thr));
+    const out = [];
+    const seen = new Set();
+    const push = (i) => {
+        if (seen.has(i) || !lenSet.has(i)) return;
+        seen.add(i);
+        out.push(i);
+    };
+
+    const myTokens = tokenizeNameWords(myRawName);
+    if (nameWordsIndex && myTokens.length) {
+        const tokenCands = collectNameWordCandidates(nameWordsIndex, myTokens);
+        for (let t = 0; t < tokenCands.length; t += 1) push(tokenCands[t]);
+    }
+    if (out.length > 0) return out;
+
+    // Fallback: длина ∩ первые 4 символа нормализованной строки
+    const pref = myNorm.slice(0, 4);
+    const prefArr = nameIndex && nameIndex.byPrefix4 ? nameIndex.byPrefix4.get(pref) : null;
+    if (prefArr && prefArr.length) {
+        for (let k = 0; k < prefArr.length; k += 1) push(prefArr[k]);
+        if (out.length > 0) return out;
+    }
+    // Последний запасной — только бакеты длины (медленно, но полно)
+    void minComp;
+    void maxComp;
+    void lenOk;
+    return collectNameLenCandidateIndices(nameIndex, myLen, thr);
 }
 
 /** Ключ для сопоставления SKU: NFKC, верхний регистр, Unicode-пробелы и тире унифицированы. */
@@ -2180,12 +2232,15 @@ module.exports = (db, settings) => {
             if (mode === 'all' || mode === 'name') {
                 const cn = compPrices.length;
                 compNormNames = new Array(cn);
+                // Индекс токенов — только для сужения кандидатов; балл всё равно Левенштейн.
+                nameWordsIndex = createNameWordsIndex(cn);
                 for (let ci = 0; ci < cn; ci += 1) {
                     if ((ci & 4095) === 0 && cancelledJobs.has(jobId)) {
                         await completeCancellation(compPos, productStart);
                         return { matches: [], count: totalMatchesSaved };
                     }
                     compNormNames[ci] = normalizeText(compPrices[ci].product_name);
+                    indexNameWordsRow(nameWordsIndex, ci, compPrices[ci].product_name);
                     if (ci > 0 && (ci & 4095) === 0) {
                         await new Promise((r) => setImmediate(r));
                     }
@@ -2332,13 +2387,17 @@ module.exports = (db, settings) => {
                         matchType = 'name';
                     } else {
                         const candIdx = nameMatchIndex
-                            ? collectNameLenCandidateIndices(nameMatchIndex, normMyName.length, threshold)
+                            ? collectNameModeCandidateIndices(
+                                  nameMatchIndex,
+                                  nameWordsIndex,
+                                  myProd.name,
+                                  normMyName,
+                                  threshold
+                              )
                             : null;
                         const nCand = candIdx ? candIdx.length : compNormNames.length;
                         for (let ci = 0; ci < nCand; ci += 1) {
                             const ni = candIdx ? candIdx[ci] : ci;
-                            // Отмена/yield реже: раньше setImmediate каждые 32 строки × 37k прайса
-                            // убивали скорость режима «Только название».
                             if ((ci & 255) === 0) {
                                 if (cancelledJobs.has(jobId)) {
                                     await completeCancellation(compPos, pIdx);
