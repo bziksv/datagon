@@ -9,15 +9,15 @@ export default [
   },
   {
     path: '/docs/',
-    component: ComponentCreator('/docs/', '2a4'),
+    component: ComponentCreator('/docs/', '8e6'),
     routes: [
       {
         path: '/docs/',
-        component: ComponentCreator('/docs/', '04c'),
+        component: ComponentCreator('/docs/', '460'),
         routes: [
           {
             path: '/docs/',
-            component: ComponentCreator('/docs/', '07a'),
+            component: ComponentCreator('/docs/', 'b6c'),
             routes: [
               {
                 path: '/docs/api/',
@@ -34,6 +34,12 @@ export default [
               {
                 path: '/docs/capture-screenshots/',
                 component: ComponentCreator('/docs/capture-screenshots/', '0ba'),
+                exact: true,
+                sidebar: "docsSidebar"
+              },
+              {
+                path: '/docs/catalog-review/',
+                component: ComponentCreator('/docs/catalog-review/', '0d2'),
                 exact: true,
                 sidebar: "docsSidebar"
               },
@@ -106,6 +112,12 @@ export default [
               {
                 path: '/docs/ms-orders/',
                 component: ComponentCreator('/docs/ms-orders/', '04b'),
+                exact: true,
+                sidebar: "docsSidebar"
+              },
+              {
+                path: '/docs/ms-purchase-orders/',
+                component: ComponentCreator('/docs/ms-purchase-orders/', 'd6a'),
                 exact: true,
                 sidebar: "docsSidebar"
               },

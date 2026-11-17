@@ -501,6 +501,84 @@
       max-width: 520px;
       width: 100%;
     }
+    .dg-pa-playbook-reset-overlay { z-index: 2400; }
+    .dg-pa-playbook-chip {
+      display: inline-flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 1px;
+      border: 0;
+      border-radius: 8px;
+      padding: 4px 8px;
+      font-size: 12px;
+      line-height: 1.25;
+      text-align: left;
+      cursor: pointer;
+      max-width: 100%;
+    }
+    .dg-pa-playbook-chip .dg-pa-pb-line { white-space: nowrap; }
+    .dg-pa-playbook-chip .dg-pa-pb-meta { font-size: 11px; opacity: 0.8; }
+    .dg-pa-playbook-chip.tone-muted { background: #eef1f4; color: #52606d; }
+    .dg-pa-playbook-chip.tone-info { background: #e7f1ff; color: #1d4f91; }
+    .dg-pa-playbook-chip.tone-danger { background: #fde8e8; color: #9b1c1c; }
+    .dg-pa-playbook-chip.tone-success { background: #e3f9e5; color: #146c2e; }
+    .dg-pa-pb-kicker { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+    .dg-pa-pb-stepno {
+      display: inline-block;
+      background: #e7f1ff;
+      color: #1d4f91;
+      border-radius: 999px;
+      padding: 2px 8px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .dg-pa-playbook-step { font-size: 20px; font-weight: 600; line-height: 1.3; margin-bottom: 8px; }
+    .dg-pa-pb-hint {
+      background: #f8fafc;
+      border-radius: 8px;
+      padding: 10px 12px;
+      color: #52606d;
+      margin-bottom: 0;
+    }
+    .dg-pa-pb-note { display: block; margin-top: 14px; }
+    .dg-pa-pb-note span { display: block; font-size: 12px; font-weight: 600; margin-bottom: 6px; color: #374151; }
+    .dg-pa-pb-note textarea {
+      width: 100%;
+      min-height: 72px;
+      border: 1px solid #d8dee6;
+      border-radius: 8px;
+      padding: 8px 10px;
+      resize: vertical;
+    }
+    .dg-pa-pb-who { margin-top: 4px; font-size: 12px; color: #6b7280; }
+    .dg-pa-pb-foot {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      margin-top: 16px;
+      padding-top: 12px;
+      border-top: 1px solid #e6e9ee;
+    }
+    .dg-pa-pb-choice {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      border: 1px solid #e6e9ee;
+      border-radius: 10px;
+      padding: 12px 14px;
+      margin-bottom: 8px;
+    }
+    .dg-pa-pb-choice.is-suggested { border-color: #1d4f91; background: #f4f8ff; }
+    .dg-pa-pb-choice-title { font-weight: 600; }
+    .dg-pa-pb-done-list { margin-top: 16px; }
+    .dg-pa-pb-done-title { font-size: 12px; font-weight: 600; color: #6b7280; margin-bottom: 8px; }
+    .dg-pa-pb-done-item { border: 1px solid #e6e9ee; border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; }
+    .dg-pa-pb-done-head { display: flex; gap: 8px; align-items: flex-start; font-weight: 600; }
+    .dg-pa-pb-done-note { margin-top: 8px; background: #f8fafc; border-radius: 6px; padding: 6px 8px; white-space: pre-wrap; }
+    .dg-pa-pb-done-note > span { display: block; font-size: 11px; font-weight: 600; color: #6b7280; margin-bottom: 2px; }
+    .dg-pa-preset-chip-due.is-active { background: #9b1c1c; border-color: #9b1c1c; color: #fff; }
     .dg-pa-header-search { flex: 0 1 380px; min-width: 220px; }
   </style>
 
@@ -1546,28 +1624,32 @@
                   <div class="dg-pa-block-label mb-1">Пресеты</div>
                   <div class="dg-pa-presets" id="dg-pa-presets" role="group" aria-label="Пресеты фильтрации"></div>
                 </div>
+                <div class="col-12" data-dg-pa-filter-field="decision">
+                  <div class="dg-pa-block-label mb-1">Решение</div>
+                  <div class="dg-pa-presets" id="dg-pa-decisions" role="group" aria-label="Фильтр по решению"></div>
+                </div>
                 <div class="col-12">
                   <div class="dg-pa-block-label mb-1">Массовые решения</div>
                   <div class="dg-pa-actions-bar" role="group" aria-label="Массовые решения по SKU">
-                    <button type="button" class="btn btn-sm btn-outline-primary" id="dg-pa-act-boost"
+                    <button type="button" class="btn btn-sm btn-outline-primary d-none" id="dg-pa-act-boost"
                       data-dg-notify-start="Ставим в буст…"
                       data-dg-tooltip="Этап «Буст»: товар в рекламе/продвижении. Пишет lifecycle=boost (срок буста по умолчанию). Неснижаемый и закупки не трогает.">Буст (реклама)</button>
-                    <button type="button" class="btn btn-sm btn-outline-warning" id="dg-pa-act-boost-failed"
+                    <button type="button" class="btn btn-sm btn-outline-warning d-none" id="dg-pa-act-boost-failed"
                       data-dg-notify-start="Отмечаем: буст не сработал…"
                       data-dg-tooltip="Этап «Буст не сработал»: реклама уже была, эффекта нет. Кандидаты дальше на распродажу или вывод. Только метка lifecycle.">Буст не сработал</button>
-                    <button type="button" class="btn btn-sm btn-outline-info" id="dg-pa-act-infographic"
+                    <button type="button" class="btn btn-sm btn-outline-info d-none" id="dg-pa-act-infographic"
                       data-dg-notify-start="Ставим: обновление инфографики…"
                       data-dg-tooltip="Этап «Обновление инфографики»: нужна новая инфографика/креативы на витрине. Только lifecycle=infographic, НС и закупки не трогает.">Обновление инфографики</button>
-                    <button type="button" class="btn btn-sm btn-outline-danger" id="dg-pa-act-clearance"
+                    <button type="button" class="btn btn-sm btn-outline-danger d-none" id="dg-pa-act-clearance"
                       data-dg-notify-start="Переводим в распродажу…"
                       data-dg-tooltip="Этап «Распродажа»: сливаем остаток. Ставит lifecycle=clearance, флаг «не заказывать» и цель НС = 0. Сам неснижаемый в ms_export не меняет — для этого «Обнулить неснижаемый».">Распродажа (слить остаток)</button>
-                    <button type="button" class="btn btn-sm btn-danger" id="dg-pa-act-exit"
+                    <button type="button" class="btn btn-sm btn-danger d-none" id="dg-pa-act-exit"
                       data-dg-notify-start="Выводим из ассортимента…"
                       data-dg-tooltip="Этап «Вывод из ассортимента»: больше не ведём. lifecycle=exit + «не заказывать» + цель НС = 0. Неснижаемый в таблице меняется только через «Обнулить неснижаемый».">Вывод из ассортимента</button>
-                    <button type="button" class="btn btn-sm btn-outline-success" id="dg-pa-act-top"
+                    <button type="button" class="btn btn-sm btn-outline-success d-none" id="dg-pa-act-top"
                       data-dg-notify-start="Помечаем как топ…"
                       data-dg-tooltip="Метка «Топ-товар»: решение держать в ассортименте как приоритетный. Только lifecycle=top, без смены НС и флага заказа.">Топ-товар</button>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-pa-act-hold"
+                    <button type="button" class="btn btn-sm btn-outline-secondary d-none" id="dg-pa-act-hold"
                       data-dg-notify-start="Помечаем: держать…"
                       data-dg-tooltip="Метка «Держать»: оставляем в ассортименте без буста и без вывода. Только lifecycle=hold.">Держать в ассортименте</button>
                     <button type="button" class="btn btn-sm btn-warning" id="dg-pa-act-zero-ms"
@@ -1742,6 +1824,32 @@
                   <button type="button" class="btn btn-outline-secondary" id="dg-pa-prev" disabled>Назад</button>
                   <button type="button" class="btn btn-outline-secondary" id="dg-pa-next" disabled>Вперёд</button>
                 </div>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-pa-playbook-overlay" class="dg-pa-confirm-overlay" style="display:none" aria-hidden="true">
+            <div class="dg-pa-confirm-backdrop" id="dg-pa-playbook-backdrop"></div>
+            <div class="dg-pa-confirm-panel dg-pa-playbook-panel card shadow-lg border-0" role="dialog" aria-modal="true" aria-labelledby="dg-pa-playbook-title">
+              <div class="card-header d-flex align-items-center justify-content-between gap-2">
+                <div class="fw-semibold" id="dg-pa-playbook-title">Что делать с товаром</div>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-pa-playbook-close" data-dg-no-activity="1">Закрыть</button>
+              </div>
+              <div class="card-body" id="dg-pa-playbook-body"></div>
+            </div>
+          </div>
+          <div id="dg-pa-playbook-reset-overlay" class="dg-pa-confirm-overlay dg-pa-playbook-reset-overlay" style="display:none" aria-hidden="true">
+            <div class="dg-pa-confirm-backdrop" id="dg-pa-playbook-reset-backdrop"></div>
+            <div class="dg-pa-confirm-panel card shadow-lg border-0" role="dialog" aria-modal="true">
+              <div class="card-header">
+                <div class="fw-semibold">Сбросить сценарий</div>
+              </div>
+              <div class="card-body">
+                <p class="mb-0">Выбранный сценарий и отметки шагов по этому товару сотрутся. Остановка закупок, если она уже стоит, останется.</p>
+              </div>
+              <div class="card-footer d-flex justify-content-end gap-2 bg-white border-top-0">
+                <button type="button" class="btn btn-outline-secondary" id="dg-pa-playbook-reset-cancel" data-dg-no-activity="1">Отмена</button>
+                <button type="button" class="btn btn-danger" id="dg-pa-playbook-reset-ok">Сбросить</button>
               </div>
             </div>
           </div>
@@ -1948,7 +2056,7 @@
         ["margin_pct", "Маржа % (оценка)", { tip: "Грубая оценка: не точная маржа. По умолчанию скрыта." }],
         ["days_without_sales", "Дней без продаж", { tip: "Дней с последней отгрузки в периоде; пусто — продаж не было" }],
         ["decision_note", "Комментарий", { tip: "Комментарии к SKU: «+» — новый, карандаш — свой. Как на «Менеджер продаж»." }],
-        ["lifecycle", "Решение", { tip: "Выберите этап прямо в строке: топ / держать / буст / распродажа / вывод. Массовые кнопки сверху — для пачек." }],
+        ["lifecycle", "Решение", { tip: "Сценарий по зависшему товару: что сделать сегодня и когда проверить." }],
       ];
       var PA_DEFAULT_VISIBLE = PA_COLS.map(function (c) { return c[0]; }).filter(function (k) {
         return k !== "margin_pct";
@@ -1957,7 +2065,7 @@
         _expand: 32, _sel: 36, code: 110, name: 220, supplier_name: 140, manager: 140, stock_qty: 90,
         stock_value_rub: 100, days_on_stock: 100, min_stock: 120, formula_proposed: 160,
         sales_qty: 100, sales_revenue: 110, margin_pct: 90,
-        days_without_sales: 110, decision_note: 220, lifecycle: 180,
+        days_without_sales: 110, decision_note: 220, lifecycle: 220,
       };
 
       var PRESETS_FALLBACK = [
@@ -2184,6 +2292,7 @@
         project_mode: "selected",
         project_uuids: [],
         manager: "",
+        playbook: "",
         limit: 100,
         offset: 0,
         total: 0,
@@ -2204,6 +2313,7 @@
           project_mode: "selected",
           project_uuids: [],
           manager: "",
+          playbook: "",
         },
       };
 
@@ -2244,6 +2354,37 @@
         var radioAll = document.getElementById("dg-pa-project-mode-all");
         if (radioSel) radioSel.checked = modeSelected;
         if (radioAll) radioAll.checked = !modeSelected;
+        syncDueChip();
+      }
+
+      var DECISION_CHIPS = [
+        { key: "", label: "Все" },
+        { key: "none", label: "Нет сценария" },
+        { key: "had_sales", label: "Были продажи" },
+        { key: "never_sold", label: "Не продавался" },
+        { key: "slow", label: "Медленно" },
+        { key: "expiry", label: "Срок" },
+        { key: "due", label: "Пора проверить" },
+      ];
+
+      function normalizePlaybook(value) {
+        var s = String(value || "");
+        return DECISION_CHIPS.some(function (c) { return c.key === s; }) ? s : "";
+      }
+
+      function syncDueChip() {
+        renderDecisionChips();
+      }
+
+      function renderDecisionChips() {
+        var host = document.getElementById("dg-pa-decisions");
+        if (!host) return;
+        var cur = normalizePlaybook(state.pending.playbook);
+        host.innerHTML = DECISION_CHIPS.map(function (c) {
+          var active = c.key === cur ? " is-active" : "";
+          var danger = c.key === "due" ? " dg-pa-preset-chip-due" : "";
+          return '<button type="button" class="dg-pa-preset-chip' + danger + active + '" data-dg-decision="' + esc(c.key) + '">' + esc(c.label) + "</button>";
+        }).join("");
       }
 
       function applyPendingProjectCheckboxes() {
@@ -2292,6 +2433,7 @@
         if (String(state.sort_dir || "") !== PA_URL_DEFAULTS.sort_dir) {
           params.set("sort_dir", state.sort_dir);
         }
+        if (state.playbook) params.set("playbook", state.playbook);
         var qs = params.toString();
         var next = qs
           ? window.location.pathname + "?" + qs
@@ -2357,6 +2499,10 @@
           info.fromUrl = true;
           state.pending.preset = String(params.get("preset") || "all").trim() || "all";
         }
+        if (has("playbook")) {
+          info.fromUrl = true;
+          state.pending.playbook = normalizePlaybook(params.get("playbook"));
+        }
         if (has("project_mode")) {
           info.fromUrl = true;
           info.touchedProjects = true;
@@ -2419,6 +2565,35 @@
         });
       }
 
+      function formatPlaybookStamp(raw) {
+        if (!raw) return "";
+        var s = String(raw);
+        var ymd = s.slice(0, 10);
+        var hm = s.length >= 16 ? s.slice(11, 16) : "";
+        var d = window.DatagonFmt && DatagonFmt.formatDate ? DatagonFmt.formatDate(ymd) : ymd;
+        return hm ? d + " " + hm : d;
+      }
+
+      function formatPlaybookWho(name, stamp) {
+        var bits = [];
+        if (name) bits.push(esc(name));
+        var when = formatPlaybookStamp(stamp);
+        if (when) bits.push(esc(when));
+        return bits.join(" · ");
+      }
+
+      function playbookChipInner(text) {
+        var raw = String(text || "Нет сценария").replace(/\d{4}-\d{2}-\d{2}/g, function (ymd) {
+          return window.DatagonFmt && DatagonFmt.formatDate ? DatagonFmt.formatDate(ymd) : ymd;
+        });
+        var parts = raw.split(" · ");
+        if (parts.length < 2) return '<span class="dg-pa-pb-line">' + esc(raw) + "</span>";
+        return (
+          '<span class="dg-pa-pb-line">' + esc(parts[0]) + "</span>" +
+          '<span class="dg-pa-pb-line dg-pa-pb-meta">' + esc(parts.slice(1).join(" · ")) + "</span>"
+        );
+      }
+
       function esc(s) {
         return String(s == null ? "" : s)
           .replace(/&/g, "&amp;")
@@ -2471,6 +2646,7 @@
         if (state.search) p.set("search", state.search);
         if (state.supplier) p.set("supplier", state.supplier);
         if (state.manager) p.set("manager", state.manager);
+        if (state.playbook) p.set("playbook", state.playbook);
         if (state._presetSortOnce) {
           p.set("preset_sort", "1");
           state._presetSortOnce = false;
@@ -2493,6 +2669,7 @@
           search: state.search,
           supplier: state.supplier,
           manager: state.manager,
+          playbook: state.playbook || "",
           limit: 2000,
         };
       }
@@ -2508,7 +2685,8 @@
           String(state.pending.preset || "") !== String(state.preset || "") ||
           state.pending.project_mode !== state.project_mode ||
           JSON.stringify(state.pending.project_uuids || []) !==
-            JSON.stringify(state.project_uuids || []);
+            JSON.stringify(state.project_uuids || []) ||
+          String(state.pending.playbook || "") !== String(state.playbook || "");
         var btn = document.getElementById("dg-pa-apply");
         if (!btn) return;
         btn.textContent = dirty ? "Применить •" : "Применить";
@@ -2568,6 +2746,7 @@
         state.supplier = String(state.pending.supplier || "").trim();
         state.manager = String(state.pending.manager || "").trim();
         state.preset = state.pending.preset || "all";
+        state.playbook = normalizePlaybook(state.pending.playbook);
         state.project_mode = state.pending.project_mode === "selected" ? "selected" : "all";
         state.project_uuids =
           state.project_mode === "selected" ? readPendingProjectUuids() : [];
@@ -3173,7 +3352,9 @@
         var host = document.getElementById("dg-pa-presets");
         if (!host) return;
         var cur = state.pending.preset || "all";
-        host.innerHTML = presetsList.map(function (p) {
+        host.innerHTML = presetsList.filter(function (p) {
+          return String(p.key || "").indexOf("lifecycle_") !== 0;
+        }).map(function (p) {
           var active = p.key === cur ? " is-active" : "";
           var tip = p.tip || p.description || "";
           return (
@@ -3188,6 +3369,7 @@
             "</button>"
           );
         }).join("");
+        renderDecisionChips();
       }
 
       function buildThead() {
@@ -3287,32 +3469,16 @@
           return renderCommentsCell(r);
         }
         if (key === "lifecycle") {
-          var lc = r.lifecycle || "none";
-          var opts = LC_ROW_OPTIONS.map(function (o) {
-            return (
-              '<option value="' +
-              esc(o.value) +
-              '"' +
-              (o.value === lc ? " selected" : "") +
-              ">" +
-              esc(LC_LABEL[o.value] || o.value) +
-              "</option>"
-            );
-          }).join("");
+          var cell = r.playbook_cell || { text: "Нет сценария", tone: "muted" };
           return (
             '<span class="dg-pa-lc-wrap">' +
-            '<select class="form-select form-select-sm dg-pa-lc-select dg-pa-lc-' +
-            esc(lc) +
-            '" data-code="' +
-            esc(r.code) +
-            '" data-prev="' +
-            esc(lc) +
-            '" data-dg-tooltip="Сменить решение для этой SKU">' +
-            opts +
-            "</select>" +
+            '<button type="button" class="dg-pa-playbook-chip tone-' + esc(cell.tone || "muted") +
+            '" data-code="' + esc(r.code) + '" data-dg-playbook="1" data-dg-notify-start="Открываю сценарий…">' +
+            playbookChipInner(cell.text) +
+            "</button>" +
             '<button type="button" class="btn btn-sm btn-outline-secondary dg-pa-lc-log" data-dg-code="' +
             esc(r.code) +
-            '" data-dg-field="lifecycle" aria-label="Журнал решений" data-dg-no-activity="1">лог</button>' +
+            '" data-dg-field="playbook" aria-label="Журнал решений" data-dg-no-activity="1">лог</button>' +
             "</span>"
           );
         }
@@ -3816,6 +3982,299 @@
             scheduleUrlSync();
             return j;
           });
+      }
+
+      function bindPlaybook() {
+        var meta = null;
+        var currentCode = "";
+        var pack = null;
+        var openSeq = 0;
+        var confirmReset = false;
+
+        function overlay(id, open) {
+          var el = document.getElementById(id);
+          if (!el) return;
+          el.classList.toggle("is-open", !!open);
+          el.style.display = open ? "flex" : "none";
+          el.setAttribute("aria-hidden", open ? "false" : "true");
+        }
+
+        function post(action, extra) {
+          var body = Object.assign({ action: action }, extra || {});
+          return fetch("/api/product-analysis/playbook/" + encodeURIComponent(currentCode), {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          }).then(function (r) {
+            return r.json().then(function (j) { return { status: r.status, j: j }; });
+          });
+        }
+
+        function paintRow(cell) {
+          var btn = document.querySelector('[data-dg-playbook][data-code="' + String(currentCode).replace(/"/g, "") + '"]');
+          if (!btn || !cell) return;
+          btn.innerHTML = playbookChipInner(cell.text);
+          btn.className = "dg-pa-playbook-chip tone-" + (cell.tone || "muted");
+        }
+
+        function scenarioByKey(key) {
+          return (meta && meta.scenarios ? meta.scenarios : []).filter(function (s) { return s.key === key; })[0] || null;
+        }
+
+        function render() {
+          var body = document.getElementById("dg-pa-playbook-body");
+          if (!body) return;
+          var st = (pack && pack.state) || {};
+          var write = pack && pack.can_write;
+          if (confirmReset && st.scenario) {
+            body.innerHTML =
+              '<p class="mb-3">Сбросить сценарий по этому товару? Отметки шагов и комментарии к ним сотрутся. Остановка закупок, если она уже стоит, останется.</p>' +
+              '<div class="d-flex justify-content-end gap-2">' +
+              '<button type="button" class="btn btn-outline-secondary" data-dg-pb-reset-no="1">Отмена</button>' +
+              '<button type="button" class="btn btn-danger" data-dg-pb-reset-yes="1">Сбросить</button>' +
+              "</div>";
+            return;
+          }
+          if (!st.scenario || st.phase === "pick") {
+            body.innerHTML = (meta.scenarios || []).map(function (s) {
+              var suggested = pack.suggestion === s.key;
+              var date = s.key === "expiry"
+                ? '<label class="d-block small mt-2 mb-0">Годен до <input type="date" class="form-control form-control-sm mt-1" id="dg-pa-pb-expiry"></label>'
+                : "";
+              return '<div class="dg-pa-pb-choice' + (suggested ? " is-suggested" : "") + '">' +
+                '<div><div class="dg-pa-pb-choice-title">' + esc(s.title) +
+                (suggested ? ' <span class="badge bg-primary">Похоже на это</span>' : "") +
+                '</div><div class="text-muted small">' + esc(s.blurb) + "</div>" + date + "</div>" +
+                (write ? '<button type="button" class="btn btn-primary flex-shrink-0" data-dg-pb-start="' + esc(s.key) + '" data-dg-notify-start="Начинаю сценарий…">Начать</button>' : "") +
+                "</div>";
+            }).join("");
+            return;
+          }
+          var sc = scenarioByKey(st.scenario);
+          var step = sc && sc.steps[st.step_index];
+          var n = (Number(st.step_index) || 0) + 1;
+          var m = (st.steps && st.steps.length) || (sc && sc.steps.length) || 0;
+          var html = '<div class="dg-pa-pb-kicker"><span class="dg-pa-pb-stepno">Шаг ' + n + " из " + m + "</span><span class=\"text-muted\">" + esc(sc ? sc.title : "") + "</span>";
+          if (write && n > 1) {
+            html += '<button type="button" class="btn btn-sm btn-outline-secondary ms-auto" data-dg-pb-act="back_step">Назад</button>';
+          }
+          html += "</div>";
+          if (st.scenario === "expiry") {
+            html += '<label class="d-block mb-3">Годен до <input type="date" class="form-control form-control-sm mt-1" id="dg-pa-pb-expiry" value="' + esc(st.expiry_date || "") + '"></label>';
+          }
+          if (st.phase === "too_early") {
+            html += '<p class="dg-pa-pb-hint">До срока ещё больше полугода. Сценарий срока годности рано начинать.</p>';
+          } else if (step) {
+            html += '<div class="dg-pa-playbook-step">' + esc(step.title) + "</div>";
+            html += '<p class="dg-pa-pb-hint">' + esc(step.hint || "") + "</p>";
+            if (step.id === "slow_windows" && pack.sales) {
+              var avg = Math.round((Number(pack.sales.d90) || 0) / 3);
+              html += "<p class=\"mt-2 mb-0\">30 дней: " + fmt(pack.sales.d30, 0) + "; 60 дней: " + fmt(pack.sales.d60, 0) +
+                "; 90 дней: " + fmt(pack.sales.d90, 0) + ". В месяц около " + fmt(avg, 0) + ".</p>";
+            }
+            var stepRow = st.steps[st.step_index] || {};
+            var stepNote = stepRow.note || "";
+            var who = formatPlaybookWho(stepRow.note_by, stepRow.note_at);
+            html += '<label class="dg-pa-pb-note"><span>Комментарий к этому шагу</span>' +
+              '<textarea id="dg-pa-pb-note" maxlength="1000" placeholder="Что проверили и что изменили"' +
+              (write ? "" : " readonly") + ">" + esc(stepNote) + "</textarea></label>";
+            if (who) html += '<div class="dg-pa-pb-who">Автор: ' + who + "</div>";
+          }
+          html += '<div class="dg-pa-pb-actions">';
+          if (write && st.phase === "step" && step && step.id !== "ex_decide") {
+            html += '<button type="button" class="btn btn-primary" data-dg-pb-act="complete_step" data-dg-notify-start="Записываю шаг…">Готово, дальше</button>';
+            html += '<button type="button" class="btn btn-outline-secondary" data-dg-pb-act="skip_step">Пропустить</button>';
+          }
+          if (write && st.phase === "wait") {
+            var due = window.DatagonFmt && DatagonFmt.formatDate ? DatagonFmt.formatDate(st.review_due) : st.review_due;
+            if (pack.cell && pack.cell.tone === "danger") {
+              html += '<button type="button" class="btn btn-primary" data-dg-pb-act="advance_after_review" data-dg-notify-start="Перехожу дальше…">Не помогло, дальше</button>';
+            } else {
+              html += "<span class=\"align-self-center\">Следующая проверка " + esc(due) + "</span>";
+              html += '<button type="button" class="btn btn-outline-secondary" data-dg-pb-force="1">Не ждать</button>';
+            }
+          }
+          if (write && step && step.id === "ex_decide") {
+            html += '<button type="button" class="btn btn-primary" data-dg-pb-act="finish_done" data-dg-notify-start="Закрываю сценарий…">Допродать и больше не работать</button>';
+            html += '<button type="button" class="btn btn-outline-primary" data-dg-pb-act="close_sales">Вернуть прежнюю маржу</button>';
+          }
+          if (write && st.early_exit && sc && st.step_index !== sc.steps.length - 1) {
+            html += '<button type="button" class="btn btn-danger" data-dg-pb-act="open_expiry_exit">Продать в ноль</button>';
+          }
+          html += "</div>";
+          html += '<div class="dg-pa-pb-foot">';
+          if (write && st.status === "active" && step && step.id !== "ex_decide") {
+            html += '<button type="button" class="btn btn-sm btn-outline-success" data-dg-pb-act="close_sales">Продажи пошли, закрыть</button>';
+          }
+          if (write && st.scenario) {
+            html += '<button type="button" class="btn btn-sm btn-outline-danger" data-dg-pb-reset="1">Сбросить сценарий</button>';
+          }
+          html += "</div>";
+          var done = (st.steps || []).filter(function (s) { return s.status === "done" || s.status === "skipped"; });
+          if (done.length && sc) {
+            html += '<div class="dg-pa-pb-done-list"><div class="dg-pa-pb-done-title">Уже сделано</div>';
+            (st.steps || []).forEach(function (s, idx) {
+              if (s.status !== "done" && s.status !== "skipped") return;
+              var def = sc.steps.filter(function (x) { return x.id === s.id; })[0];
+              var whoDone = formatPlaybookWho(s.done_by, s.done_at);
+              var whoNote = formatPlaybookWho(s.note_by, s.note_at);
+              html += '<div class="dg-pa-pb-done-item">';
+              html += '<div class="dg-pa-pb-done-head"><span class="dg-pa-pb-stepno">' + (idx + 1) + "</span><span>" + esc(def ? def.title : s.id) + "</span></div>";
+              if (s.status === "skipped") {
+                html += '<div class="dg-pa-pb-who">Пропущен' + (whoDone ? " · " + whoDone : "") + "</div>";
+              } else if (whoDone) {
+                html += '<div class="dg-pa-pb-who">Готово · ' + whoDone + "</div>";
+              }
+              if (s.note) {
+                html += '<div class="dg-pa-pb-done-note"><span>Комментарий</span>' + esc(s.note);
+                if (whoNote && whoNote !== whoDone) html += '<div class="dg-pa-pb-who">' + whoNote + "</div>";
+                html += "</div>";
+              }
+              html += "</div>";
+            });
+            html += "</div>";
+          }
+          body.innerHTML = html;
+        }
+
+        function afterPost(res) {
+          openSeq += 1;
+          if (!res.j || res.j.success === false) {
+            toastPa("danger", (res.j && res.j.error) || "Ошибка");
+            return;
+          }
+          pack.state = res.j.state;
+          pack.cell = res.j.cell;
+          paintRow(res.j.cell);
+          render();
+        }
+
+        document.getElementById("dg-pa-playbook-body").addEventListener("click", function (ev) {
+          var start = ev.target.closest("[data-dg-pb-start]");
+          var act = ev.target.closest("[data-dg-pb-act]");
+          var force = ev.target.closest("[data-dg-pb-force]");
+          var reset = ev.target.closest("[data-dg-pb-reset]");
+          if (start) {
+            var extra = { scenario: start.getAttribute("data-dg-pb-start") };
+            if (extra.scenario === "expiry") {
+              var dateEl = document.getElementById("dg-pa-pb-expiry");
+              extra.expiry_date = dateEl ? dateEl.value : "";
+              if (!extra.expiry_date) {
+                toastPa("danger", "Сначала укажите, до какой даты годен");
+                return;
+              }
+            }
+            post("start", extra).then(afterPost);
+          } else if (act) {
+            var noteEl = document.getElementById("dg-pa-pb-note");
+            var actExtra = noteEl ? { note: noteEl.value } : {};
+            post(act.getAttribute("data-dg-pb-act"), actExtra).then(afterPost);
+          } else if (force) {
+            post("advance_after_review", { force: true }).then(afterPost);
+          } else if (reset) {
+            confirmReset = true;
+            render();
+          } else if (ev.target.closest("[data-dg-pb-reset-no]")) {
+            confirmReset = false;
+            render();
+          } else if (ev.target.closest("[data-dg-pb-reset-yes]")) {
+            confirmReset = false;
+            post("reset").then(function (res) {
+              afterPost(res);
+              return fetch("/api/product-analysis/playbook/" + encodeURIComponent(currentCode) + "?days=" + encodeURIComponent(state.days || 90), { credentials: "same-origin" })
+                .then(function (r) { return r.json(); })
+                .then(function (j) {
+                  pack = j;
+                  render();
+                });
+            });
+          }
+        });
+
+        document.getElementById("dg-pa-playbook-body").addEventListener("focusout", function (ev) {
+          if (ev.target.id !== "dg-pa-pb-note") return;
+          if (!pack || !pack.state || !pack.state.scenario) return;
+          var nextFocus = ev.relatedTarget;
+          if (nextFocus && nextFocus.closest && nextFocus.closest("[data-dg-pb-act], [data-dg-pb-force], [data-dg-pb-reset]")) return;
+          var saved = (pack.state.steps[pack.state.step_index] && pack.state.steps[pack.state.step_index].note) || "";
+          var next = String(ev.target.value || "").trim();
+          if (next === String(saved || "").trim()) return;
+          post("set_step_note", { note: next }).then(afterPost);
+        });
+
+        document.getElementById("dg-pa-playbook-body").addEventListener("change", function (ev) {
+          if (ev.target.id !== "dg-pa-pb-expiry") return;
+          if (!pack || !pack.state || !pack.state.scenario) return;
+          post("set_expiry", { expiry_date: ev.target.value }).then(afterPost);
+        });
+
+        document.getElementById("dg-pa-playbook-reset-ok").addEventListener("click", function () {
+          overlay("dg-pa-playbook-reset-overlay", false);
+          post("reset").then(function (res) {
+            afterPost(res);
+            return fetch("/api/product-analysis/playbook/" + encodeURIComponent(currentCode) + "?days=" + encodeURIComponent(state.days || 90), { credentials: "same-origin" })
+              .then(function (r) { return r.json(); })
+              .then(function (j) { pack = j; render(); });
+          });
+        });
+        document.getElementById("dg-pa-playbook-reset-cancel").addEventListener("click", function () {
+          overlay("dg-pa-playbook-reset-overlay", false);
+        });
+        document.getElementById("dg-pa-playbook-close").addEventListener("click", function () {
+          overlay("dg-pa-playbook-overlay", false);
+        });
+        document.getElementById("dg-pa-playbook-overlay").addEventListener("click", function (ev) {
+          if (ev.target.id === "dg-pa-playbook-overlay" || ev.target.id === "dg-pa-playbook-backdrop") {
+            overlay("dg-pa-playbook-overlay", false);
+          }
+        });
+        document.getElementById("dg-pa-playbook-reset-overlay").addEventListener("click", function (ev) {
+          if (ev.target.id === "dg-pa-playbook-reset-overlay" || ev.target.id === "dg-pa-playbook-reset-backdrop") {
+            overlay("dg-pa-playbook-reset-overlay", false);
+          }
+        });
+
+        document.addEventListener("keydown", function (ev) {
+          if (ev.key !== "Escape") return;
+          var ov = document.getElementById("dg-pa-playbook-overlay");
+          if (!ov || !ov.classList.contains("is-open")) return;
+          if (confirmReset) {
+            confirmReset = false;
+            render();
+            return;
+          }
+          overlay("dg-pa-playbook-overlay", false);
+        });
+
+        document.addEventListener("click", function (ev) {
+          var chip = ev.target.closest("[data-dg-playbook]");
+          if (!chip) return;
+          var seq = ++openSeq;
+          currentCode = chip.getAttribute("data-code");
+          confirmReset = false;
+          var metaP = meta
+            ? Promise.resolve(meta)
+            : fetch("/api/product-analysis/playbook/meta", { credentials: "same-origin" }).then(function (r) { return r.json(); });
+          metaP.then(function (m) {
+            if (seq !== openSeq) return null;
+            meta = m;
+            return fetch("/api/product-analysis/playbook/" + encodeURIComponent(currentCode) + "?days=" + encodeURIComponent(state.days || 90), { credentials: "same-origin" });
+          }).then(function (r) {
+            if (!r || seq !== openSeq) return null;
+            return r.json();
+          }).then(function (j) {
+            if (!j || seq !== openSeq) return;
+            pack = j;
+            var title = document.getElementById("dg-pa-playbook-title");
+            if (title) title.textContent = "Что делать с товаром " + currentCode;
+            render();
+            overlay("dg-pa-playbook-overlay", true);
+          }).catch(function (e) {
+            if (seq !== openSeq) return;
+            toastPa("danger", (e && e.message) || "Не удалось открыть сценарий");
+          });
+        });
       }
 
       var cmtEditState = { code: null, commentId: null };
@@ -4523,6 +4982,22 @@
           syncDirtyApply();
         });
 
+        var decisions = document.getElementById("dg-pa-decisions");
+        if (decisions) {
+          decisions.addEventListener("click", function (ev) {
+            var btn = ev.target.closest("[data-dg-decision]");
+            if (!btn) return;
+            state.pending.playbook = normalizePlaybook(btn.getAttribute("data-dg-decision"));
+            renderDecisionChips();
+            var run = function () { return commitFilters(); };
+            if (window.DatagonNotify && window.DatagonNotify.busyRun) {
+              window.DatagonNotify.busyRun(btn, run);
+            } else {
+              run();
+            }
+          });
+        }
+
         document.getElementById("dg-pa-presets").addEventListener("click", function (ev) {
           var btn = ev.target.closest("[data-preset]");
           if (!btn) return;
@@ -4556,6 +5031,7 @@
             preset: "all",
             project_mode: "selected",
             project_uuids: [],
+            playbook: "",
           };
           state.limit = 100;
           state.offset = 0;
@@ -4659,6 +5135,7 @@
             ev.target.closest(".dg-pa-row-sel") ||
             ev.target.closest(".dg-pa-detail-row") ||
             ev.target.closest(".dg-pa-lc-select") ||
+            ev.target.closest("[data-dg-playbook]") ||
             ev.target.closest(".dg-pa-comments") ||
             ev.target.closest(".dg-pa-comments-wrap")
           ) {
@@ -4798,6 +5275,7 @@
         })();
 
         loadPresetsMeta();
+        bindPlaybook();
         loadManagersList();
         var urlInfo = parseUrlToPending();
         syncProjectModeUi();

@@ -2866,15 +2866,33 @@ Query: `days`, `search`, `project_mode`, `project_uuids` (как в ranking). О
 
 Страница `/product-analysis.html` (меню сразу после «Анализ поставщиков», ключ матрицы `product-analysis`, `sortOrder` 45.56). Роутер `routes/productAnalysis.js`, SQL — `lib/datagonProductAnalysisSql.js`. Каталог — складские SKU (`sqlProductAnalysisCatalogWhere`: не архив, складская «Да», не комплект; **включая** «перестали сотрудничать» — остаток ещё может лежать). Продажи — те же join'ы, что у анализа поставщиков (`salesJoinSql` с тем же catalog-where), агрегат **по `code`**.
 
-**Шаринг фильтров через URL:** после «Применить» / пресета / сортировки / страницы адрес обновляется (`history.replaceState`). Параметры (не-дефолтные): `days`, `new_stock_days`, `exclude_new_on_stock`, `search`, `supplier`, `manager`, `preset`, `project_mode` (`all`|`selected`), `project_uuids` (через запятую), `limit`, `page`, `sort_by`, `sort_dir`. Открытие ссылки восстанавливает форму и сразу грузит выборку.
+**Шаринг фильтров через URL:** после «Применить» / пресета / сортировки / страницы адрес обновляется (`history.replaceState`). Параметры (не-дефолтные): `days`, `new_stock_days`, `exclude_new_on_stock`, `search`, `supplier`, `manager`, `preset`, `project_mode` (`all`|`selected`), `project_uuids` (через запятую), `limit`, `page`, `sort_by`, `sort_dir`, `playbook`: `due` (пора проверить), `none` (нет сценария), `had_sales`, `never_sold`, `slow`, `expiry`. Открытие ссылки восстанавливает форму и сразу грузит выборку.
 
-**Производительность ranking/overview:** тяжёлый join к `dg_product_stock_snapshot` (~миллионы строк) **не** выполняется на каждом запросе (как в анализе поставщиков). Snap включается только для пресетов «Новые на складе» / «исключать новые» из мёртвых·зависших·НС>0 и при сортировке по `days_on_stock`. Для обычных списков `days_on_stock` догружается точечно по кодам текущей страницы. Окно «прошлый период» продаж в ranking строится только при сортировке по `revenue_change_pct` (в overview — всегда, для KPI Δ%).
+**Производительность ranking/overview:** тяжёлый join к `dg_product_stock_snapshot` (~10M строк) **не** выполняется на каждом запросе (как в анализе поставщиков). Полный snap-join в SQL — **только** при сортировке по `days_on_stock` / `first_positive_date`. Пресет `new_on_stock` и `exclude_new_on_stock` для `dead`/`stuck`/`dead_min_stock` идут **без** join: сначала кандидаты по каталогу/продажам, затем post-filter через точечный hydrate по кодам (`hydrateDaysOnStockForCodesChunked`, кэш `pa9`). Иначе запрос «Зависшие» с «исключать новые» зависал на минуты, а кнопка «Применить» оставалась disabled в `busyRun`. Для обычных списков `days_on_stock` догружается по кодам текущей страницы. Окно «прошлый период» продаж в ranking — только при сортировке по `revenue_change_pct` (в overview — всегда, для KPI Δ%). Список делает `LEFT JOIN dg_product_analysis_playbook` и отдаёт в строке `playbook_cell: { text, tone }`.
 
 Решения хранятся в **`dg_product_analysis_decisions`** (не в `dg_purchase_overrides`): `lifecycle` (`none`|`top`|`hold`|`boost`|`boost_failed`|`infographic`|`clearance`|`exit`), `do_not_order`, `min_stock_target`, `lock_proposed_min_stock`, поля буста (`boost_started_at`, `boost_days`), `decision_note` (снимок **последнего** комментария для CSV/экспорта).
 
 Комментарии к SKU — таблица **`dg_product_analysis_comments`** (как на manager-sales): несколько записей на код, автор, правка/удаление только своих. UI: список + «+» + модалка. При первом старте непустые старые `decision_note` мигрируют в первый комментарий.
 
-Каждое реальное изменение поля решения пишется в **`dg_product_analysis_decisions_log`** (`field`, `old_value`/`new_value` человекочитаемо, `source`: `row`|`bulk`|`min_stock`|`purchase`|`ui`). В UI у «Решение» и «Комментарий» — кнопка **лог**.
+Каждое реальное изменение поля решения пишется в **`dg_product_analysis_decisions_log`** (`field`, `old_value`/`new_value` человекочитаемо, `source`: `row`|`bulk`|`min_stock`|`purchase`|`ui`|`playbook`). Журнал сценария: `field=playbook` (сразу `playbook_scenario`, `playbook_step`, `playbook_status`).
+
+Колонка «Решение» — плашка `playbook_cell`, не список lifecycle. Шаги лежат в **`dg_product_analysis_playbook`**.
+
+### GET `/api/product-analysis/playbook/meta`
+
+Каталог четырёх сценариев: `{ success, scenarios: [{ key, title, short, blurb, steps }] }`. Ключи: `had_sales`, `never_sold`, `slow`, `expiry`.
+
+### GET `/api/product-analysis/playbook/:code`
+
+Query: `days` (7–365, default 90) — окно для подсказки. Ответ: `{ success, can_write, suggestion, sales: { d30, d60, d90 }, state, cell }`. `suggestion` — ключ или `null`; сценарий сам не стартует. `state.phase`: `pick` | `too_early` | `wait` | `step` | `done` | `closed_sales`.
+
+### POST `/api/product-analysis/playbook/:code`
+
+Только режим `full`, иначе 403. Body: `{ action, scenario?, expiry_date?, force? }`.
+
+`action`: `start` | `complete_step` | `skip_step` | `back_step` | `advance_after_review` | `close_sales` | `finish_done` | `open_expiry_exit` | `reset` | `set_expiry` | `set_step_note`.
+
+`complete_step` на шаге с контролем 14 или 30 дней ставит `review_due` и не двигает индекс. `advance_after_review` двигает индекс, если дата наступила или передан `force: true`. Старт `never_sold` ставит `do_not_order` и `lock_proposed_min_stock`. Шаг «Остановить закупки» ставит `do_not_order`. `reset` стирает шаги и не снимает эти флаги. `set_step_note` пишет комментарий в текущий шаг вместе с именем сотрудника (`full_name`) и временем по Москве. `back_step` возвращает на предыдущий шаг и оставляет комментарий. В журнале `field=playbook` есть и `playbook_note`. Ответ: `{ success, state, cell }`. Без даты срока годности: «Сначала укажите, до какой даты годен».
 
 Пресеты query `preset`: `all`, `top_revenue`, `top_qty`, `dead`, `stuck`, `new_on_stock`, `dead_min_stock`, `min_vs_proposed`, `lifecycle_*`, `do_not_order`. Фильтр проектов отгрузок — как у supplier-analysis (`project_mode` / `project_uuids`).
 
@@ -2898,7 +2916,7 @@ Query: `days`, `new_stock_days` (7–180, default 30), `exclude_new_on_stock` (`
 
 ### GET `/api/product-analysis/ranking`
 
-Query: как overview + `limit` (default 100), `offset`, `sort_by`, `sort_dir`. Ответ: `{ total, rows[], can_write, actor_user_id }` — метрики продаж/остатка + `manager` + `days_on_stock` / `first_positive_date` + поля решения + **`comments[]`** (`id`, `body`, `author_short`, `created_at_label`, `can_edit`) и `decision_note` (текст последнего комментария).
+Query: как overview + `limit` (default 100), `offset`, `sort_by`, `sort_dir`, `playbook=due`. Ответ: `{ total, rows[], can_write, actor_user_id }` — метрики продаж/остатка + `manager` + `days_on_stock` / `first_positive_date` + поля решения + **`playbook_cell`** `{ text, tone }` + **`comments[]`** (`id`, `body`, `author_short`, `created_at_label`, `can_edit`) и `decision_note` (текст последнего комментария).
 
 ### GET `/api/product-analysis/sku-detail`
 
@@ -2906,7 +2924,7 @@ Query: `code` (обяз.), `days`, `project_mode`, `project_uuids`. Детали
 
 ### GET `/api/product-analysis/log`
 
-Query: **`code`** (обяз.), **`field`** (опц.: `lifecycle`|`do_not_order`|`min_stock_target`|`lock_proposed_min_stock`|`boost_days`|`decision_note`), `limit` (default 100, max 500), `offset`. Ответ: `{ success, code, total, rows: [{ id, field, field_label, old_value, new_value, source, source_label, changed_by_name, changed_at }] }`.
+Query: **`code`** (обяз.), **`field`** (опц.: `lifecycle`|`do_not_order`|`min_stock_target`|`lock_proposed_min_stock`|`boost_days`|`decision_note`|`playbook`|`playbook_scenario`|`playbook_step`|`playbook_status`), `limit` (default 100, max 500), `offset`. `playbook` возвращает три поля сценария сразу. Ответ: `{ success, code, total, rows: [{ id, field, field_label, old_value, new_value, source, source_label, changed_by_name, changed_at }] }`.
 
 ### GET `/api/product-analysis/export`
 

@@ -13,6 +13,9 @@
  * POST /api/product-analysis/decision
  * POST /api/product-analysis/decision/bulk
  * POST /api/product-analysis/min-stock/apply
+ * GET  /api/product-analysis/playbook/meta
+ * GET  /api/product-analysis/playbook/:code
+ * POST /api/product-analysis/playbook/:code
  * POST /api/product-analysis/:code/comments
  * PATCH /api/product-analysis/:code/comments/:commentId
  * DELETE /api/product-analysis/:code/comments/:commentId
@@ -26,6 +29,8 @@ const {
     productRankingSelectSql,
     productSalesQueryParams,
     hydrateDaysOnStockForCodes,
+    hydrateDaysOnStockForCodesChunked,
+    keepCodeForNewStockPostFilter,
     rankingNeedsSnapJoin,
     PRESETS,
     PRESET_KEYS,
@@ -57,10 +62,59 @@ const {
     loadCommentsByCodes,
     DEFAULT_BOOST_DAYS,
 } = require('../lib/datagonProductAnalysisDecisions');
+const {
+    playbookMeta,
+    handlePlaybookAction,
+    loadPlaybook,
+    cellModel,
+    suggestScenario,
+    todayYmdMoscow,
+    withPhase,
+    salesWindowsSql,
+    lifetimeSalesSql,
+    periodSalesSql,
+    ensurePlaybookSchema,
+} = require('../lib/datagonProductAnalysisPlaybook');
 
 const CACHE_TTL_MS = 60 * 1000;
-const CACHE_VER = 'pa7';
+const CACHE_VER = 'pa9';
+/** Потолок кандидатов для post-filter новинок без полного snap-join. */
+const NEW_STOCK_POSTFILTER_CAP = 50000;
 const responseCache = new Map();
+
+const PLAYBOOK_COLS = `
+    pb.scenario AS playbook_scenario,
+    pb.status AS playbook_status,
+    pb.step_index AS playbook_step_index,
+    pb.steps_json AS playbook_steps_json,
+    pb.review_due AS playbook_review_due,
+    pb.expiry_date AS playbook_expiry_date`;
+
+function playbookFromSql(selectSql, whereExtra) {
+    return `FROM (${selectSql}) r
+            LEFT JOIN dg_product_analysis_playbook pb ON pb.code = r.code
+            WHERE 1=1 ${whereExtra}`;
+}
+
+function playbookStateFromRankingRow(r) {
+    let steps = [];
+    try {
+        const parsed = typeof r.playbook_steps_json === 'string'
+            ? JSON.parse(r.playbook_steps_json)
+            : r.playbook_steps_json;
+        steps = Array.isArray(parsed) ? parsed : [];
+    } catch (_e) {
+        steps = [];
+    }
+    return {
+        scenario: r.playbook_scenario || null,
+        status: r.playbook_status || null,
+        step_index: r.playbook_step_index,
+        steps,
+        review_due: r.playbook_review_due,
+        expiry_date: r.playbook_expiry_date,
+    };
+}
 
 function pageMode(req) {
     const actor = req && req.datagonActor;
@@ -198,6 +252,7 @@ function mapRankingRow(r) {
         boost_started_at: r.boost_started_at ? String(r.boost_started_at) : null,
         boost_days: r.boost_days == null ? null : num(r.boost_days),
         decision_note: r.decision_note != null ? String(r.decision_note) : null,
+        playbook_cell: cellModel(playbookStateFromRankingRow(r), todayYmdMoscow()),
     };
 }
 
@@ -278,23 +333,34 @@ function buildListFilterParts(src) {
     let whereExtra = `${sw.sql}${su.sql}${mw.sql}${lw.sql}`;
     const filterParams = [...sw.params, ...su.params, ...mw.params, ...lw.params];
 
+    /** 'only' | 'exclude' | null — без SQL по first_positive (тяжёлый snap-join). */
+    let postFilterNewOnStock = null;
     if (preset === 'new_on_stock') {
-        whereExtra += ` AND COALESCE(r.stock_qty, 0) > 0
-            AND r.first_positive_date IS NOT NULL
-            AND r.first_positive_date >= DATE_SUB(CURDATE(), INTERVAL ? DAY) `;
-        filterParams.push(newStockDays);
+        whereExtra += ` AND COALESCE(r.stock_qty, 0) > 0 `;
+        postFilterNewOnStock = 'only';
     } else {
         whereExtra += presetWhereSql(preset);
         if (
             excludeNew &&
             (preset === 'dead' || preset === 'stuck' || preset === 'dead_min_stock')
         ) {
-            whereExtra += ` AND (
-                r.first_positive_date IS NULL
-                OR r.first_positive_date < DATE_SUB(CURDATE(), INTERVAL ? DAY)
-            ) `;
-            filterParams.push(newStockDays);
+            postFilterNewOnStock = 'exclude';
         }
+    }
+
+    const playbookRaw = String((src && src.playbook) || '');
+    const playbookScenarios = new Set(['had_sales', 'never_sold', 'slow', 'expiry']);
+    let playbookKey = 'any';
+    if (playbookRaw === 'due') {
+        whereExtra += ` AND pb.status = 'active' AND pb.review_due IS NOT NULL AND pb.review_due <= CURDATE() `;
+        playbookKey = 'due';
+    } else if (playbookRaw === 'none') {
+        whereExtra += ` AND pb.scenario IS NULL `;
+        playbookKey = 'none';
+    } else if (playbookScenarios.has(playbookRaw)) {
+        whereExtra += ` AND pb.scenario = ? `;
+        filterParams.push(playbookRaw);
+        playbookKey = playbookRaw;
     }
 
     return {
@@ -305,10 +371,42 @@ function buildListFilterParts(src) {
         preset,
         new_stock_days: newStockDays,
         exclude_new_on_stock: excludeNew,
+        postFilterNewOnStock,
         whereExtra,
         filterParams,
-        cacheKeyPart: `${search}:${supplier}:${manager}:${lifecycle}:${preset}:ns${newStockDays}:ex${excludeNew ? 1 : 0}`,
+        cacheKeyPart: `${search}:${supplier}:${manager}:${lifecycle}:${preset}:ns${newStockDays}:ex${excludeNew ? 1 : 0}:pb${playbookKey}`,
     };
+}
+
+/**
+ * Догрузить дни на складе и отфильтровать новинки (exclude/only).
+ * @returns {{ rows: object[], snapMap: Map, truncated: boolean }}
+ */
+async function applyNewStockPostFilter(db, rows, mode, newStockDays) {
+    const list = Array.isArray(rows) ? rows : [];
+    if (!mode || !list.length) {
+        return { rows: list, snapMap: new Map(), truncated: false };
+    }
+    const lookback = Math.max(Number(newStockDays) + 30, 365);
+    const snapMap = await hydrateDaysOnStockForCodesChunked(
+        db,
+        list.map((r) => (r && (r.code != null ? r.code : r.catalog_code)) || ''),
+        lookback,
+    );
+    const filtered = list.filter((r) => {
+        const code = String((r && (r.code != null ? r.code : r.catalog_code)) || '');
+        return keepCodeForNewStockPostFilter(mode, snapMap.get(code), newStockDays);
+    });
+    return { rows: filtered, snapMap, truncated: false };
+}
+
+function mergeSnapIntoMappedRow(r, snapMap) {
+    const hit = snapMap && snapMap.get(r.code);
+    if (!hit) return r;
+    return Object.assign({}, r, {
+        first_positive_date: hit.first_positive_date,
+        days_on_stock: hit.days_on_stock,
+    });
 }
 
 module.exports = function productAnalysisRouterFactory(db, _appSettings) {
@@ -389,6 +487,7 @@ module.exports = function productAnalysisRouterFactory(db, _appSettings) {
     router.get('/sku-detail', async (req, res) => {
         try {
             await ensureProductAnalysisDecisionsSchema(db);
+            await ensurePlaybookSchema(db);
             const code = String(req.query.code || '').trim();
             if (!code) {
                 return res.status(400).json({ success: false, error: 'Не указан code' });
@@ -509,6 +608,7 @@ module.exports = function productAnalysisRouterFactory(db, _appSettings) {
     router.get('/overview', async (req, res) => {
         try {
             await ensureProductAnalysisDecisionsSchema(db);
+            await ensurePlaybookSchema(db);
             const days = clampInt(req.query.days, 7, 365, 90);
             const flt = buildListFilterParts(req.query);
             const preset = flt.preset;
@@ -524,8 +624,61 @@ module.exports = function productAnalysisRouterFactory(db, _appSettings) {
             });
             const whereExtra = flt.whereExtra;
             const params = [...baseParams, ...flt.filterParams];
+            const postMode = flt.postFilterNewOnStock;
 
-            const sql = `
+            let t;
+            if (postMode) {
+                const [cand] = await db.query(
+                    `SELECT
+                        r.code,
+                        COALESCE(r.sales_revenue, 0) AS sales_revenue,
+                        COALESCE(r.sales_revenue_prev, 0) AS sales_revenue_prev,
+                        COALESCE(r.sales_qty, 0) AS sales_qty,
+                        COALESCE(r.gross_margin_est, 0) AS gross_margin_est,
+                        COALESCE(r.stock_value_rub, 0) AS stock_value_rub,
+                        COALESCE(r.min_stock, 0) AS min_stock,
+                        COALESCE(r.stock_qty, 0) AS stock_qty,
+                        r.lifecycle,
+                        COALESCE(r.do_not_order, 0) AS do_not_order
+                     ${playbookFromSql(selectSql, whereExtra)}
+                     LIMIT ${NEW_STOCK_POSTFILTER_CAP}`,
+                    params,
+                );
+                const { rows: kept } = await applyNewStockPostFilter(
+                    db,
+                    cand || [],
+                    postMode,
+                    flt.new_stock_days,
+                );
+                t = {
+                    skus_total: kept.length,
+                    sales_revenue: 0,
+                    sales_revenue_prev: 0,
+                    sales_qty: 0,
+                    gross_margin_est: 0,
+                    stock_value_rub: 0,
+                    min_stock_sum: 0,
+                    dead_with_stock: 0,
+                    dead_with_min_stock: 0,
+                    in_boost: 0,
+                    in_exit_path: 0,
+                    do_not_order_count: 0,
+                };
+                kept.forEach((r) => {
+                    t.sales_revenue += num(r.sales_revenue);
+                    t.sales_revenue_prev += num(r.sales_revenue_prev);
+                    t.sales_qty += num(r.sales_qty);
+                    t.gross_margin_est += num(r.gross_margin_est);
+                    t.stock_value_rub += num(r.stock_value_rub);
+                    t.min_stock_sum += num(r.min_stock);
+                    if (num(r.sales_qty) <= 0 && num(r.stock_qty) > 0) t.dead_with_stock += 1;
+                    if (num(r.sales_qty) <= 0 && num(r.min_stock) > 0) t.dead_with_min_stock += 1;
+                    if (String(r.lifecycle || '') === 'boost') t.in_boost += 1;
+                    if (r.lifecycle === 'clearance' || r.lifecycle === 'exit') t.in_exit_path += 1;
+                    if (num(r.do_not_order) === 1) t.do_not_order_count += 1;
+                });
+            } else {
+                const sql = `
                 SELECT
                     COUNT(*) AS skus_total,
                     SUM(COALESCE(r.sales_revenue, 0)) AS sales_revenue,
@@ -539,11 +692,11 @@ module.exports = function productAnalysisRouterFactory(db, _appSettings) {
                     SUM(CASE WHEN r.lifecycle = 'boost' THEN 1 ELSE 0 END) AS in_boost,
                     SUM(CASE WHEN r.lifecycle IN ('clearance', 'exit') THEN 1 ELSE 0 END) AS in_exit_path,
                     SUM(CASE WHEN COALESCE(r.do_not_order, 0) = 1 THEN 1 ELSE 0 END) AS do_not_order_count
-                FROM (${selectSql}) r
-                WHERE 1=1 ${whereExtra}`;
+                ${playbookFromSql(selectSql, whereExtra)}`;
 
-            const [rows] = await db.query(sql, params);
-            const t = rows && rows[0] ? rows[0] : {};
+                const [rows] = await db.query(sql, params);
+                t = rows && rows[0] ? rows[0] : {};
+            }
             const rev = num(t.sales_revenue);
             const payload = {
                 success: true,
@@ -580,6 +733,7 @@ module.exports = function productAnalysisRouterFactory(db, _appSettings) {
     router.get('/ranking', async (req, res) => {
         try {
             await ensureProductAnalysisDecisionsSchema(db);
+            await ensurePlaybookSchema(db);
             const days = clampInt(req.query.days, 7, 365, 90);
             const limit = clampInt(req.query.limit, 1, 500, 100);
             const offset = clampInt(req.query.offset, 0, 500000, 0);
@@ -630,6 +784,7 @@ module.exports = function productAnalysisRouterFactory(db, _appSettings) {
 
             const needSnap = rankingNeedsSnapJoin(flt, sortBy);
             const needPrev = sortBy === 'revenue_change_pct';
+            const postMode = flt.postFilterNewOnStock;
             const { selectSql, baseParams, snapLookback } = buildRankingFromSql(days, pf, {
                 newStockDays: flt.new_stock_days,
                 includeSnap: needSnap,
@@ -637,37 +792,56 @@ module.exports = function productAnalysisRouterFactory(db, _appSettings) {
             });
             const whereExtra = flt.whereExtra;
             const filterParams = [...baseParams, ...flt.filterParams];
-
-            const [countRows] = await db.query(
-                `SELECT COUNT(*) AS cnt FROM (${selectSql}) r WHERE 1=1 ${whereExtra}`,
-                filterParams,
-            );
-            const total = num(countRows && countRows[0] ? countRows[0].cnt : 0);
-
             const orderCol = RANKING_SORT.has(sortBy) ? sortBy : 'sales_revenue';
-            const [rows] = await db.query(
-                `SELECT * FROM (${selectSql}) r
-                  WHERE 1=1 ${whereExtra}
-                  ORDER BY r.\`${orderCol}\` ${sortDir}, r.code ASC
-                  LIMIT ? OFFSET ?`,
-                [...filterParams, limit, offset],
-            );
 
-            let mapped = (rows || []).map(mapRankingRow);
-            if (!needSnap && mapped.length) {
-                const snapMap = await hydrateDaysOnStockForCodes(
-                    db,
-                    mapped.map((r) => r.code),
-                    Math.max(flt.new_stock_days + 30, 365),
+            let total = 0;
+            let mapped = [];
+            let snapJoined = needSnap;
+            let usedPostFilter = Boolean(postMode);
+
+            if (postMode) {
+                const [allRows] = await db.query(
+                    `SELECT r.*, ${PLAYBOOK_COLS}
+                      ${playbookFromSql(selectSql, whereExtra)}
+                      ORDER BY r.\`${orderCol}\` ${sortDir}, r.code ASC
+                      LIMIT ${NEW_STOCK_POSTFILTER_CAP}`,
+                    filterParams,
                 );
-                mapped = mapped.map((r) => {
-                    const hit = snapMap.get(r.code);
-                    if (!hit) return r;
-                    return Object.assign({}, r, {
-                        first_positive_date: hit.first_positive_date,
-                        days_on_stock: hit.days_on_stock,
-                    });
-                });
+                let candidates = (allRows || []).map(mapRankingRow);
+                const { rows: kept, snapMap } = await applyNewStockPostFilter(
+                    db,
+                    candidates,
+                    postMode,
+                    flt.new_stock_days,
+                );
+                total = kept.length;
+                mapped = kept
+                    .slice(offset, offset + limit)
+                    .map((r) => mergeSnapIntoMappedRow(r, snapMap));
+            } else {
+                const [countRows] = await db.query(
+                    `SELECT COUNT(*) AS cnt ${playbookFromSql(selectSql, whereExtra)}`,
+                    filterParams,
+                );
+                total = num(countRows && countRows[0] ? countRows[0].cnt : 0);
+
+                const [rows] = await db.query(
+                    `SELECT r.*, ${PLAYBOOK_COLS}
+                      ${playbookFromSql(selectSql, whereExtra)}
+                      ORDER BY r.\`${orderCol}\` ${sortDir}, r.code ASC
+                      LIMIT ? OFFSET ?`,
+                    [...filterParams, limit, offset],
+                );
+
+                mapped = (rows || []).map(mapRankingRow);
+                if (!needSnap && mapped.length) {
+                    const snapMap = await hydrateDaysOnStockForCodes(
+                        db,
+                        mapped.map((r) => r.code),
+                        Math.max(flt.new_stock_days + 30, 365),
+                    );
+                    mapped = mapped.map((r) => mergeSnapIntoMappedRow(r, snapMap));
+                }
             }
 
             mapped = await attachProductComments(db, mapped, actorId);
@@ -688,9 +862,10 @@ module.exports = function productAnalysisRouterFactory(db, _appSettings) {
                 can_write: canWrite(req),
                 actor_user_id: actorId,
                 perf: {
-                    snap_joined: needSnap,
-                    snap_lookback: needSnap ? snapLookback : 0,
+                    snap_joined: snapJoined,
+                    snap_lookback: snapJoined ? snapLookback : 0,
                     prev_period: needPrev,
+                    new_stock_postfilter: usedPostFilter,
                 },
             };
             // В кэш — без comments (can_edit зависит от актора); comments дописываем при отдаче.
@@ -712,6 +887,7 @@ module.exports = function productAnalysisRouterFactory(db, _appSettings) {
     router.get('/export', async (req, res) => {
         try {
             await ensureProductAnalysisDecisionsSchema(db);
+            await ensurePlaybookSchema(db);
             const days = clampInt(req.query.days, 7, 365, 90);
             const flt = buildListFilterParts(req.query);
             const pf = msDemandProjectFilterFromQuery(req.query);
@@ -722,11 +898,24 @@ module.exports = function productAnalysisRouterFactory(db, _appSettings) {
             });
             const whereExtra = flt.whereExtra;
             const filterParams = [...baseParams, ...flt.filterParams];
-            const [rows] = await db.query(
-                `SELECT * FROM (${selectSql}) r WHERE 1=1 ${whereExtra}
-                  ORDER BY r.sales_revenue DESC, r.code ASC LIMIT 20000`,
+            const postMode = flt.postFilterNewOnStock;
+            const exportCap = postMode ? Math.min(20000, NEW_STOCK_POSTFILTER_CAP) : 20000;
+            const [rawRows] = await db.query(
+                `SELECT r.*, ${PLAYBOOK_COLS}
+                  ${playbookFromSql(selectSql, whereExtra)}
+                  ORDER BY r.sales_revenue DESC, r.code ASC LIMIT ${exportCap}`,
                 filterParams,
             );
+            let rows = rawRows || [];
+            if (postMode && rows.length) {
+                const filtered = await applyNewStockPostFilter(
+                    db,
+                    rows.map(mapRankingRow),
+                    postMode,
+                    flt.new_stock_days,
+                );
+                rows = filtered.rows;
+            }
             const header = [
                 'code',
                 'name',
@@ -752,7 +941,7 @@ module.exports = function productAnalysisRouterFactory(db, _appSettings) {
             };
             const lines = [header.join(',')];
             (rows || []).forEach((raw) => {
-                const r = mapRankingRow(raw);
+                const r = raw && raw.code != null && raw.name != null ? raw : mapRankingRow(raw);
                 lines.push(
                     header
                         .map((k) => {
@@ -832,6 +1021,7 @@ module.exports = function productAnalysisRouterFactory(db, _appSettings) {
         const t0 = Date.now();
         try {
             await ensureProductAnalysisDecisionsSchema(db);
+            await ensurePlaybookSchema(db);
             if (!canWrite(req)) {
                 return res.status(403).json({ success: false, error: 'Режим только просмотра', code: 'PAGE_VIEW_ONLY' });
             }
@@ -869,6 +1059,63 @@ module.exports = function productAnalysisRouterFactory(db, _appSettings) {
             decision_note: comments[0] && comments[0].body ? String(comments[0].body).slice(0, 500) : null,
         };
     }
+
+    router.get('/playbook/meta', (_req, res) => {
+        res.json({ success: true, ...playbookMeta() });
+    });
+
+    router.get('/playbook/:code', async (req, res) => {
+        try {
+            await ensurePlaybookSchema(db);
+            const code = String(req.params.code || '').trim();
+            const today = todayYmdMoscow();
+            const days = clampInt(req.query.days, 7, 365, 90);
+            const state = withPhase(await loadPlaybook(db, code), today);
+            const [lifeRows] = await db.query(lifetimeSalesSql(), [code]);
+            const [winRows] = await db.query(salesWindowsSql(), [code]);
+            const [periodRows] = await db.query(periodSalesSql(), [code, days]);
+            const [stockRows] = await db.query(
+                `SELECT COALESCE(stock, 0) AS stock_qty FROM ms_export WHERE code = ? LIMIT 1`,
+                [code],
+            );
+            const win = winRows && winRows[0] ? winRows[0] : {};
+            const periodQty = num(periodRows && periodRows[0] && periodRows[0].qty);
+            const suggestion = suggestScenario({
+                lifetimeSales: Boolean(lifeRows && lifeRows[0]),
+                periodSalesQty: periodQty,
+                stockQty: num(stockRows && stockRows[0] && stockRows[0].stock_qty),
+                salesQty90: num(win.d90),
+                expiryDate: state.expiry_date,
+                today,
+            });
+            res.json({
+                success: true,
+                can_write: canWrite(req),
+                suggestion,
+                sales: { d30: num(win.d30), d60: num(win.d60), d90: num(win.d90) },
+                state,
+                cell: cellModel(state, today),
+            });
+        } catch (e) {
+            console.error('[product-analysis] playbook get', e);
+            res.status(500).json({ success: false, error: e.message || 'Ошибка' });
+        }
+    });
+
+    router.post('/playbook/:code', express.json({ limit: '64kb' }), async (req, res) => {
+        try {
+            if (!canWrite(req)) return res.status(403).json({ success: false, error: 'Недостаточно прав' });
+            const result = await handlePlaybookAction(db, req.params.code, req.body || {}, req.datagonActor || null, {
+                today: todayYmdMoscow,
+                upsertProductDecision,
+            });
+            if (!result.ok) return res.status(result.status).json({ success: false, error: result.error });
+            res.json(result.payload);
+        } catch (e) {
+            console.error('[product-analysis] playbook post', e);
+            res.status(500).json({ success: false, error: e.message || 'Ошибка' });
+        }
+    });
 
     router.post('/:code/comments', express.json({ limit: '32kb' }), async (req, res) => {
         try {
@@ -955,6 +1202,7 @@ module.exports = function productAnalysisRouterFactory(db, _appSettings) {
                 });
             }
             await ensureProductAnalysisDecisionsSchema(db);
+            await ensurePlaybookSchema(db);
             const body = req.body && typeof req.body === 'object' ? req.body : {};
             const dryRun = body.dry_run === true || body.dry_run === 1 || body.dry_run === '1';
             if (
@@ -993,11 +1241,28 @@ module.exports = function productAnalysisRouterFactory(db, _appSettings) {
                 const whereExtra = flt.whereExtra;
                 const filterParams = [...baseParams, ...flt.filterParams];
                 const maxRows = clampInt(body.limit, 1, 5000, 500);
+                const postMode = flt.postFilterNewOnStock;
+                const fetchLimit = postMode
+                    ? Math.min(NEW_STOCK_POSTFILTER_CAP, Math.max(maxRows * 20, maxRows))
+                    : maxRows;
                 const [rows] = await db.query(
-                    `SELECT r.code FROM (${selectSql}) r WHERE 1=1 ${whereExtra} LIMIT ?`,
-                    [...filterParams, maxRows],
+                    `SELECT r.code ${playbookFromSql(selectSql, whereExtra)} LIMIT ?`,
+                    [...filterParams, fetchLimit],
                 );
-                codes = (rows || []).map((r) => String(r.code || '').trim()).filter(Boolean);
+                let cand = (rows || []).map((r) => ({ code: String(r.code || '').trim() }));
+                if (postMode) {
+                    const filtered = await applyNewStockPostFilter(
+                        db,
+                        cand,
+                        postMode,
+                        flt.new_stock_days,
+                    );
+                    cand = filtered.rows;
+                }
+                codes = cand
+                    .map((r) => String(r.code || '').trim())
+                    .filter(Boolean)
+                    .slice(0, maxRows);
             }
 
             const total = codes.length;
@@ -1060,6 +1325,7 @@ module.exports = function productAnalysisRouterFactory(db, _appSettings) {
         const t0 = Date.now();
         try {
             await ensureProductAnalysisDecisionsSchema(db);
+            await ensurePlaybookSchema(db);
             const body = req.body && typeof req.body === 'object' ? req.body : {};
             const dryRun = body.dry_run === true || body.dry_run === 1 || body.dry_run === '1';
             const forceZero = body.force_zero === true || body.force_zero === 1 || body.force_zero === '1';
@@ -1083,12 +1349,29 @@ module.exports = function productAnalysisRouterFactory(db, _appSettings) {
                 const whereExtra = flt.whereExtra;
                 const filterParams = [...baseParams, ...flt.filterParams];
                 const maxRows = clampInt(body.limit, 1, 5000, 500);
+                const postMode = flt.postFilterNewOnStock;
+                const fetchLimit = postMode
+                    ? Math.min(NEW_STOCK_POSTFILTER_CAP, Math.max(maxRows * 20, maxRows))
+                    : maxRows;
                 const [rows] = await db.query(
                     `SELECT r.code, r.min_stock, r.min_stock_target
-                       FROM (${selectSql}) r WHERE 1=1 ${whereExtra} LIMIT ?`,
-                    [...filterParams, maxRows],
+                       ${playbookFromSql(selectSql, whereExtra)} LIMIT ?`,
+                    [...filterParams, fetchLimit],
                 );
-                codes = (rows || []).map((r) => String(r.code || '').trim()).filter(Boolean);
+                let cand = rows || [];
+                if (postMode) {
+                    const filtered = await applyNewStockPostFilter(
+                        db,
+                        cand,
+                        postMode,
+                        flt.new_stock_days,
+                    );
+                    cand = filtered.rows;
+                }
+                codes = cand
+                    .map((r) => String(r.code || '').trim())
+                    .filter(Boolean)
+                    .slice(0, maxRows);
             }
 
             if (!codes.length) {

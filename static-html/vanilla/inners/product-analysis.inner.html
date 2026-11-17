@@ -122,28 +122,32 @@
                   <div class="dg-pa-block-label mb-1">Пресеты</div>
                   <div class="dg-pa-presets" id="dg-pa-presets" role="group" aria-label="Пресеты фильтрации"></div>
                 </div>
+                <div class="col-12" data-dg-pa-filter-field="decision">
+                  <div class="dg-pa-block-label mb-1">Решение</div>
+                  <div class="dg-pa-presets" id="dg-pa-decisions" role="group" aria-label="Фильтр по решению"></div>
+                </div>
                 <div class="col-12">
                   <div class="dg-pa-block-label mb-1">Массовые решения</div>
                   <div class="dg-pa-actions-bar" role="group" aria-label="Массовые решения по SKU">
-                    <button type="button" class="btn btn-sm btn-outline-primary" id="dg-pa-act-boost"
+                    <button type="button" class="btn btn-sm btn-outline-primary d-none" id="dg-pa-act-boost"
                       data-dg-notify-start="Ставим в буст…"
                       data-dg-tooltip="Этап «Буст»: товар в рекламе/продвижении. Пишет lifecycle=boost (срок буста по умолчанию). Неснижаемый и закупки не трогает.">Буст (реклама)</button>
-                    <button type="button" class="btn btn-sm btn-outline-warning" id="dg-pa-act-boost-failed"
+                    <button type="button" class="btn btn-sm btn-outline-warning d-none" id="dg-pa-act-boost-failed"
                       data-dg-notify-start="Отмечаем: буст не сработал…"
                       data-dg-tooltip="Этап «Буст не сработал»: реклама уже была, эффекта нет. Кандидаты дальше на распродажу или вывод. Только метка lifecycle.">Буст не сработал</button>
-                    <button type="button" class="btn btn-sm btn-outline-info" id="dg-pa-act-infographic"
+                    <button type="button" class="btn btn-sm btn-outline-info d-none" id="dg-pa-act-infographic"
                       data-dg-notify-start="Ставим: обновление инфографики…"
                       data-dg-tooltip="Этап «Обновление инфографики»: нужна новая инфографика/креативы на витрине. Только lifecycle=infographic, НС и закупки не трогает.">Обновление инфографики</button>
-                    <button type="button" class="btn btn-sm btn-outline-danger" id="dg-pa-act-clearance"
+                    <button type="button" class="btn btn-sm btn-outline-danger d-none" id="dg-pa-act-clearance"
                       data-dg-notify-start="Переводим в распродажу…"
                       data-dg-tooltip="Этап «Распродажа»: сливаем остаток. Ставит lifecycle=clearance, флаг «не заказывать» и цель НС = 0. Сам неснижаемый в ms_export не меняет — для этого «Обнулить неснижаемый».">Распродажа (слить остаток)</button>
-                    <button type="button" class="btn btn-sm btn-danger" id="dg-pa-act-exit"
+                    <button type="button" class="btn btn-sm btn-danger d-none" id="dg-pa-act-exit"
                       data-dg-notify-start="Выводим из ассортимента…"
                       data-dg-tooltip="Этап «Вывод из ассортимента»: больше не ведём. lifecycle=exit + «не заказывать» + цель НС = 0. Неснижаемый в таблице меняется только через «Обнулить неснижаемый».">Вывод из ассортимента</button>
-                    <button type="button" class="btn btn-sm btn-outline-success" id="dg-pa-act-top"
+                    <button type="button" class="btn btn-sm btn-outline-success d-none" id="dg-pa-act-top"
                       data-dg-notify-start="Помечаем как топ…"
                       data-dg-tooltip="Метка «Топ-товар»: решение держать в ассортименте как приоритетный. Только lifecycle=top, без смены НС и флага заказа.">Топ-товар</button>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-pa-act-hold"
+                    <button type="button" class="btn btn-sm btn-outline-secondary d-none" id="dg-pa-act-hold"
                       data-dg-notify-start="Помечаем: держать…"
                       data-dg-tooltip="Метка «Держать»: оставляем в ассортименте без буста и без вывода. Только lifecycle=hold.">Держать в ассортименте</button>
                     <button type="button" class="btn btn-sm btn-warning" id="dg-pa-act-zero-ms"
@@ -318,6 +322,32 @@
                   <button type="button" class="btn btn-outline-secondary" id="dg-pa-prev" disabled>Назад</button>
                   <button type="button" class="btn btn-outline-secondary" id="dg-pa-next" disabled>Вперёд</button>
                 </div>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-pa-playbook-overlay" class="dg-pa-confirm-overlay" style="display:none" aria-hidden="true">
+            <div class="dg-pa-confirm-backdrop" id="dg-pa-playbook-backdrop"></div>
+            <div class="dg-pa-confirm-panel dg-pa-playbook-panel card shadow-lg border-0" role="dialog" aria-modal="true" aria-labelledby="dg-pa-playbook-title">
+              <div class="card-header d-flex align-items-center justify-content-between gap-2">
+                <div class="fw-semibold" id="dg-pa-playbook-title">Что делать с товаром</div>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-pa-playbook-close" data-dg-no-activity="1">Закрыть</button>
+              </div>
+              <div class="card-body" id="dg-pa-playbook-body"></div>
+            </div>
+          </div>
+          <div id="dg-pa-playbook-reset-overlay" class="dg-pa-confirm-overlay dg-pa-playbook-reset-overlay" style="display:none" aria-hidden="true">
+            <div class="dg-pa-confirm-backdrop" id="dg-pa-playbook-reset-backdrop"></div>
+            <div class="dg-pa-confirm-panel card shadow-lg border-0" role="dialog" aria-modal="true">
+              <div class="card-header">
+                <div class="fw-semibold">Сбросить сценарий</div>
+              </div>
+              <div class="card-body">
+                <p class="mb-0">Выбранный сценарий и отметки шагов по этому товару сотрутся. Остановка закупок, если она уже стоит, останется.</p>
+              </div>
+              <div class="card-footer d-flex justify-content-end gap-2 bg-white border-top-0">
+                <button type="button" class="btn btn-outline-secondary" id="dg-pa-playbook-reset-cancel" data-dg-no-activity="1">Отмена</button>
+                <button type="button" class="btn btn-danger" id="dg-pa-playbook-reset-ok">Сбросить</button>
               </div>
             </div>
           </div>

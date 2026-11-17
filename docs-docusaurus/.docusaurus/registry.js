@@ -17,6 +17,7 @@ export default {
   "5d8678d1": [() => import(/* webpackChunkName: "5d8678d1" */ "@site/docs/network-prices.md"), "@site/docs/network-prices.md", require.resolveWeak("@site/docs/network-prices.md")],
   "5e95c892": [() => import(/* webpackChunkName: "5e95c892" */ "@theme/DocsRoot"), "@theme/DocsRoot", require.resolveWeak("@theme/DocsRoot")],
   "5fbc5cf1": [() => import(/* webpackChunkName: "5fbc5cf1" */ "@site/docs/api.md"), "@site/docs/api.md", require.resolveWeak("@site/docs/api.md")],
+  "7529a2aa": [() => import(/* webpackChunkName: "7529a2aa" */ "@site/docs/ms-purchase-orders.md"), "@site/docs/ms-purchase-orders.md", require.resolveWeak("@site/docs/ms-purchase-orders.md")],
   "7a37b2d2": [() => import(/* webpackChunkName: "7a37b2d2" */ "@site/docs/product-analysis.md"), "@site/docs/product-analysis.md", require.resolveWeak("@site/docs/product-analysis.md")],
   "7f3d0e17": [() => import(/* webpackChunkName: "7f3d0e17" */ "@site/docs/dashboard.md"), "@site/docs/dashboard.md", require.resolveWeak("@site/docs/dashboard.md")],
   "806bb079": [() => import(/* webpackChunkName: "806bb079" */ "@site/docs/script-versioning.md"), "@site/docs/script-versioning.md", require.resolveWeak("@site/docs/script-versioning.md")],
@@ -39,6 +40,7 @@ export default {
   "e747ec83": [() => import(/* webpackChunkName: "e747ec83" */ "@site/docs/glossary.md"), "@site/docs/glossary.md", require.resolveWeak("@site/docs/glossary.md")],
   "e7cc8664": [() => import(/* webpackChunkName: "e7cc8664" */ "@site/docs/product.md"), "@site/docs/product.md", require.resolveWeak("@site/docs/product.md")],
   "e97a47ac": [() => import(/* webpackChunkName: "e97a47ac" */ "@site/docs/ms-sales.md"), "@site/docs/ms-sales.md", require.resolveWeak("@site/docs/ms-sales.md")],
+  "ed7df2fa": [() => import(/* webpackChunkName: "ed7df2fa" */ "@site/docs/catalog-review.md"), "@site/docs/catalog-review.md", require.resolveWeak("@site/docs/catalog-review.md")],
   "f5a8eba3": [() => import(/* webpackChunkName: "f5a8eba3" */ "@site/docs/ms-orders.md"), "@site/docs/ms-orders.md", require.resolveWeak("@site/docs/ms-orders.md")],
   "f9438354": [() => import(/* webpackChunkName: "f9438354" */ "@site/docs/suppliers.md"), "@site/docs/suppliers.md", require.resolveWeak("@site/docs/suppliers.md")],
   "fe0bc103": [() => import(/* webpackChunkName: "fe0bc103" */ "@site/docs/moysklad.md"), "@site/docs/moysklad.md", require.resolveWeak("@site/docs/moysklad.md")],};

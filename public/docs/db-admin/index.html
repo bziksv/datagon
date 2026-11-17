@@ -4,8 +4,8 @@
 <meta charset="UTF-8">
 <meta name="generator" content="Docusaurus v3.9.2">
 <title data-rh="true">Управление БД | Datagon Docs</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:url" content="http://localhost:3000/docs/db-admin/"><meta data-rh="true" property="og:locale" content="ru"><meta data-rh="true" name="docusaurus_locale" content="ru"><meta data-rh="true" name="docsearch:language" content="ru"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="Управление БД | Datagon Docs"><meta data-rh="true" name="description" content="Обзор основной MySQL Datagon, карта связей, превью таблиц, ANALYZE и OPTIMIZE"><meta data-rh="true" property="og:description" content="Обзор основной MySQL Datagon, карта связей, превью таблиц, ANALYZE и OPTIMIZE"><link data-rh="true" rel="icon" href="/docs/img/favicon.svg"><link data-rh="true" rel="canonical" href="http://localhost:3000/docs/db-admin/"><link data-rh="true" rel="alternate" href="http://localhost:3000/docs/db-admin/" hreflang="ru"><link data-rh="true" rel="alternate" href="http://localhost:3000/docs/db-admin/" hreflang="x-default"><script data-rh="true" type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Управление БД","item":"http://localhost:3000/docs/db-admin"}]}</script><link rel="stylesheet" href="/docs/assets/css/styles.c97817d2.css">
-<script src="/docs/assets/js/runtime~main.3e796c7e.js" defer="defer"></script>
-<script src="/docs/assets/js/main.2b1b9d65.js" defer="defer"></script>
+<script src="/docs/assets/js/runtime~main.05e8b1ad.js" defer="defer"></script>
+<script src="/docs/assets/js/main.6da5fb3a.js" defer="defer"></script>
 </head>
 <body class="navigation-with-keyboard">
 <svg style="display: none;"><defs>
@@ -16,8 +16,8 @@
 <h2 class="anchor anchorTargetStickyNavbar_zFqj" id="кому-доступно">Кому доступно<a href="#кому-доступно" class="hash-link" aria-label="Прямая ссылка на Кому доступно" title="Прямая ссылка на Кому доступно" translate="no">​</a></h2>
 <p>Два независимых уровня:</p>
 <ol>
-<li class=""><strong>Пункт меню / HTML</strong> — как «Активность/Логи»: виден и открывается только <strong><code>admin</code></strong> или пользователю с <strong><code>can_manage_users</code></strong>. Ключ матрицы <code>db-admin</code> участвует в общем реестре страниц, но замок меню завязан на manage-users, не только на <code>page_modes</code>.</li>
-<li class=""><strong>API <code>/api/db-admin/*</code></strong> — жёсткая проверка в <code>routes/dbAdmin.js</code>: иначе <strong>403</strong> («нужны администратор или право управления пользователями»). Даже при <code>db-admin=full</code> в матрице без <code>can_manage_users</code> API не отдаст данные.</li>
+<li class=""><strong>Пункт меню / HTML</strong> — ключ матрицы <code>db-admin</code>. Замок меню может показывать пункт менеджерам пользователей, но <strong>данные API только для <code>username=admin</code></strong>.</li>
+<li class=""><strong>API <code>/api/db-admin/*</code></strong> — жёсткая проверка в <code>routes/dbAdmin.js</code>: только <strong><code>admin</code></strong>, иначе <strong>403</strong>. <code>can_manage_users</code> <strong>не</strong> открывает DBA. Превью <code>app_settings</code> / <code>users</code> / <code>auth_sessions</code> / <code>work_*_passwords</code> / <code>work_services</code> — <strong>403</strong>; прочие таблицы — redact колонок <code>*password*</code>/<code>*token*</code>/<code>*secret*</code>/<code>*api_key*</code>/<code>*hash*</code>.</li>
 </ol>
 <h2 class="anchor anchorTargetStickyNavbar_zFqj" id="что-на-экране">Что на экране<a href="#что-на-экране" class="hash-link" aria-label="Прямая ссылка на Что на экране" title="Прямая ссылка на Что на экране" translate="no">​</a></h2>
 <ol>
