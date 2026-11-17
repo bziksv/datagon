@@ -77,7 +77,7 @@ const {
 } = require('../lib/datagonProductAnalysisPlaybook');
 
 const CACHE_TTL_MS = 60 * 1000;
-const CACHE_VER = 'pa9';
+const CACHE_VER = 'pa10';
 /** Потолок кандидатов для post-filter новинок без полного snap-join. */
 const NEW_STOCK_POSTFILTER_CAP = 50000;
 const responseCache = new Map();
@@ -154,6 +154,7 @@ const RANKING_SORT = new Set([
     'revenue_change_pct',
     'lifecycle',
     'do_not_order',
+    'expiry_goods',
 ]);
 
 function clampInt(v, min, max, def) {
@@ -252,6 +253,9 @@ function mapRankingRow(r) {
         boost_started_at: r.boost_started_at ? String(r.boost_started_at) : null,
         boost_days: r.boost_days == null ? null : num(r.boost_days),
         decision_note: r.decision_note != null ? String(r.decision_note) : null,
+        expiry_auto: Number(r.expiry_auto || 0) === 1,
+        expiry_manual: r.expiry_manual == null || r.expiry_manual === '' ? null : Number(r.expiry_manual) === 1,
+        expiry_goods: Number(r.expiry_goods || 0) === 1,
         playbook_cell: cellModel(playbookStateFromRankingRow(r), todayYmdMoscow()),
     };
 }
@@ -351,16 +355,41 @@ function buildListFilterParts(src) {
     const playbookRaw = String((src && src.playbook) || '');
     const playbookScenarios = new Set(['had_sales', 'never_sold', 'slow', 'expiry']);
     let playbookKey = 'any';
-    if (playbookRaw === 'due') {
-        whereExtra += ` AND pb.status = 'active' AND pb.review_due IS NOT NULL AND pb.review_due <= CURDATE() `;
-        playbookKey = 'due';
-    } else if (playbookRaw === 'none') {
+    if (playbookRaw === 'none') {
         whereExtra += ` AND pb.scenario IS NULL `;
         playbookKey = 'none';
     } else if (playbookScenarios.has(playbookRaw)) {
         whereExtra += ` AND pb.scenario = ? `;
         filterParams.push(playbookRaw);
         playbookKey = playbookRaw;
+    }
+
+    const expiryRaw = String((src && src.expiry_goods) || '');
+    let expiryKey = 'any';
+    if (expiryRaw === 'yes') {
+        whereExtra += ` AND COALESCE(r.expiry_goods, 0) = 1 `;
+        expiryKey = 'yes';
+    } else if (expiryRaw === 'no') {
+        whereExtra += ` AND COALESCE(r.expiry_goods, 0) = 0 `;
+        expiryKey = 'no';
+    } else if (expiryRaw === 'auto') {
+        whereExtra += ` AND COALESCE(r.expiry_auto, 0) = 1 AND (r.expiry_manual IS NULL OR r.expiry_manual = 1) `;
+        expiryKey = 'auto';
+    }
+
+    let reviewRaw = String((src && src.review) || '');
+    if (!reviewRaw && playbookRaw === 'due') reviewRaw = 'due';
+    const reviewDays = { d3: 3, d7: 7, d14: 14, d30: 30 };
+    let reviewKey = 'any';
+    if (reviewRaw === 'due') {
+        whereExtra += ` AND pb.status = 'active' AND pb.review_due IS NOT NULL AND pb.review_due <= CURDATE() `;
+        reviewKey = 'due';
+    } else if (reviewRaw === 'today') {
+        whereExtra += ` AND pb.status = 'active' AND pb.review_due = CURDATE() `;
+        reviewKey = 'today';
+    } else if (reviewDays[reviewRaw]) {
+        whereExtra += ` AND pb.status = 'active' AND pb.review_due IS NOT NULL AND pb.review_due <= DATE_ADD(CURDATE(), INTERVAL ${reviewDays[reviewRaw]} DAY) `;
+        reviewKey = reviewRaw;
     }
 
     return {
@@ -374,7 +403,7 @@ function buildListFilterParts(src) {
         postFilterNewOnStock,
         whereExtra,
         filterParams,
-        cacheKeyPart: `${search}:${supplier}:${manager}:${lifecycle}:${preset}:ns${newStockDays}:ex${excludeNew ? 1 : 0}:pb${playbookKey}`,
+        cacheKeyPart: `${search}:${supplier}:${manager}:${lifecycle}:${preset}:ns${newStockDays}:ex${excludeNew ? 1 : 0}:pb${playbookKey}:exg${expiryKey}:rv${reviewKey}`,
     };
 }
 
@@ -933,6 +962,8 @@ module.exports = function productAnalysisRouterFactory(db, _appSettings) {
                 'decision_note',
                 'lifecycle',
                 'do_not_order',
+                'expiry_goods',
+                'expiry_auto',
             ];
             const esc = (v) => {
                 const s = v == null ? '' : String(v);
@@ -973,6 +1004,11 @@ module.exports = function productAnalysisRouterFactory(db, _appSettings) {
         }
         if (body.lock_proposed_min_stock != null) {
             patch.lock_proposed_min_stock = Boolean(body.lock_proposed_min_stock);
+        }
+        if (Object.prototype.hasOwnProperty.call(body, 'expiry_manual')) {
+            patch.expiry_manual = body.expiry_manual == null || body.expiry_manual === ''
+                ? null
+                : Boolean(body.expiry_manual);
         }
         if (Object.prototype.hasOwnProperty.call(body, 'decision_note')) {
             patch.decision_note = body.decision_note;

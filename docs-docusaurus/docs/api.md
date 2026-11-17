@@ -2868,7 +2868,7 @@ Query: `days`, `search`, `project_mode`, `project_uuids` (как в ranking). О
 
 **Шаринг фильтров через URL:** после «Применить» / пресета / сортировки / страницы адрес обновляется (`history.replaceState`). Параметры (не-дефолтные): `days`, `new_stock_days`, `exclude_new_on_stock`, `search`, `supplier`, `manager`, `preset`, `project_mode` (`all`|`selected`), `project_uuids` (через запятую), `limit`, `page`, `sort_by`, `sort_dir`, `playbook`: `due` (пора проверить), `none` (нет сценария), `had_sales`, `never_sold`, `slow`, `expiry`. Открытие ссылки восстанавливает форму и сразу грузит выборку.
 
-**Производительность ranking/overview:** тяжёлый join к `dg_product_stock_snapshot` (~10M строк) **не** выполняется на каждом запросе (как в анализе поставщиков). Полный snap-join в SQL — **только** при сортировке по `days_on_stock` / `first_positive_date`. Пресет `new_on_stock` и `exclude_new_on_stock` для `dead`/`stuck`/`dead_min_stock` идут **без** join: сначала кандидаты по каталогу/продажам, затем post-filter через точечный hydrate по кодам (`hydrateDaysOnStockForCodesChunked`, кэш `pa9`). Иначе запрос «Зависшие» с «исключать новые» зависал на минуты, а кнопка «Применить» оставалась disabled в `busyRun`. Для обычных списков `days_on_stock` догружается по кодам текущей страницы. Окно «прошлый период» продаж в ranking — только при сортировке по `revenue_change_pct` (в overview — всегда, для KPI Δ%). Список делает `LEFT JOIN dg_product_analysis_playbook` и отдаёт в строке `playbook_cell: { text, tone }`.
+**Производительность ranking/overview:** тяжёлый join к `dg_product_stock_snapshot` (~10M строк) **не** выполняется на каждом запросе (как в анализе поставщиков). Полный snap-join в SQL — **только** при сортировке по `days_on_stock` / `first_positive_date`. Пресет `new_on_stock` и `exclude_new_on_stock` для `dead`/`stuck`/`dead_min_stock` идут **без** join: сначала кандидаты по каталогу/продажам, затем post-filter через точечный hydrate по кодам (`hydrateDaysOnStockForCodesChunked`, кэш `pa10`). Иначе запрос «Зависшие» с «исключать новые» зависал на минуты, а кнопка «Применить» оставалась disabled в `busyRun`. Для обычных списков `days_on_stock` догружается по кодам текущей страницы. Окно «прошлый период» продаж в ranking — только при сортировке по `revenue_change_pct` (в overview — всегда, для KPI Δ%). Список делает `LEFT JOIN dg_product_analysis_playbook` и отдаёт в строке `playbook_cell: { text, tone }`.
 
 Решения хранятся в **`dg_product_analysis_decisions`** (не в `dg_purchase_overrides`): `lifecycle` (`none`|`top`|`hold`|`boost`|`boost_failed`|`infographic`|`clearance`|`exit`), `do_not_order`, `min_stock_target`, `lock_proposed_min_stock`, поля буста (`boost_started_at`, `boost_days`), `decision_note` (снимок **последнего** комментария для CSV/экспорта).
 
@@ -2916,7 +2916,7 @@ Query: `days`, `new_stock_days` (7–180, default 30), `exclude_new_on_stock` (`
 
 ### GET `/api/product-analysis/ranking`
 
-Query: как overview + `limit` (default 100), `offset`, `sort_by`, `sort_dir`, `playbook=due`. Ответ: `{ total, rows[], can_write, actor_user_id }` — метрики продаж/остатка + `manager` + `days_on_stock` / `first_positive_date` + поля решения + **`playbook_cell`** `{ text, tone }` + **`comments[]`** (`id`, `body`, `author_short`, `created_at_label`, `can_edit`) и `decision_note` (текст последнего комментария).
+Query: как overview + `limit` (default 100), `offset`, `sort_by`, `sort_dir`, `playbook` (`none` | `had_sales` | `never_sold` | `slow` | `expiry`), `expiry_goods` (`yes` | `no` | `auto`), `review` (`due` | `today` | `d3` | `d7` | `d14` | `d30`). Старый `playbook=due` читается как `review=due`. `review=due` — активный сценарий и `review_due` ≤ сегодня; `today` — дата равна сегодня; `d3`…`d30` — `review_due` не позже чем через N дней, **включая уже наступившие**. `expiry_goods=yes` — галочка стоит (вручную или авто); `no` — снята; `auto` — в `automation_price` есть «расходка» и галочку не снимали. Ответ: `{ total, rows[], can_write, actor_user_id }` — метрики продаж/остатка + `manager` + `days_on_stock` / `first_positive_date` + поля решения + `expiry_goods` / `expiry_auto` / `expiry_manual` + **`playbook_cell`** `{ text, tone }` + **`comments[]`** (`id`, `body`, `author_short`, `created_at_label`, `can_edit`) и `decision_note` (текст последнего комментария). `tone=danger` и текст «Пора проверить · дата» — день контроля уже наступил.
 
 ### GET `/api/product-analysis/sku-detail`
 
@@ -2924,7 +2924,7 @@ Query: `code` (обяз.), `days`, `project_mode`, `project_uuids`. Детали
 
 ### GET `/api/product-analysis/log`
 
-Query: **`code`** (обяз.), **`field`** (опц.: `lifecycle`|`do_not_order`|`min_stock_target`|`lock_proposed_min_stock`|`boost_days`|`decision_note`|`playbook`|`playbook_scenario`|`playbook_step`|`playbook_status`), `limit` (default 100, max 500), `offset`. `playbook` возвращает три поля сценария сразу. Ответ: `{ success, code, total, rows: [{ id, field, field_label, old_value, new_value, source, source_label, changed_by_name, changed_at }] }`.
+Query: **`code`** (обяз.), **`field`** (опц.: `lifecycle`|`do_not_order`|`min_stock_target`|`lock_proposed_min_stock`|`boost_days`|`decision_note`|`expiry_manual`|`playbook`|`playbook_scenario`|`playbook_step`|`playbook_status`), `limit` (default 100, max 500), `offset`. `playbook` возвращает три поля сценария сразу. Ответ: `{ success, code, total, rows: [{ id, field, field_label, old_value, new_value, source, source_label, changed_by_name, changed_at }] }`.
 
 ### GET `/api/product-analysis/export`
 
@@ -2932,7 +2932,7 @@ CSV по текущим фильтрам (до 20 000 строк).
 
 ### POST `/api/product-analysis/decision`
 
-Body: `{ code, action? | lifecycle?, do_not_order?, min_stock_target?, lock_proposed_min_stock?, decision_note?, boost_days? }`. Actions: `boost`, `boost_failed`, `infographic`, `clearance`, `exit`, `top`, `hold`, `clear_decision`, `do_not_order_on`/`off`, `lock_proposed_zero`, `unlock_proposed` (снимает замок и очищает `dg_purchase_overrides.proposed_min_stock`). Ответ дополнительно: `changes[]`. Источник в журнале: `row`. Для новых комментариев предпочтительны эндпоинты ниже (не сырой `decision_note`).
+Body: `{ code, action? | lifecycle?, do_not_order?, min_stock_target?, lock_proposed_min_stock?, decision_note?, boost_days?, expiry_manual? }`. `expiry_manual`: `1` — товар со сроком годности вручную, `0` — снять галочку (в том числе автоматическую по слову «расходка»). Пока поле `NULL`, галочка считается сама из `ms_export.automation_price`. Actions: `boost`, `boost_failed`, `infographic`, `clearance`, `exit`, `top`, `hold`, `clear_decision`, `do_not_order_on`/`off`, `lock_proposed_zero`, `unlock_proposed` (снимает замок и очищает `dg_purchase_overrides.proposed_min_stock`). Ответ дополнительно: `changes[]`. Источник в журнале: `row`. Для новых комментариев предпочтительны эндпоинты ниже (не сырой `decision_note`).
 
 ### POST `/api/product-analysis/:code/comments`
 

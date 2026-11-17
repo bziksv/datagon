@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="generator" content="Docusaurus v3.9.2">
 <title data-rh="true">Анализ товаров | Datagon Docs</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:url" content="http://localhost:3000/docs/product-analysis/"><meta data-rh="true" property="og:locale" content="ru"><meta data-rh="true" name="docusaurus_locale" content="ru"><meta data-rh="true" name="docsearch:language" content="ru"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="Анализ товаров | Datagon Docs"><meta data-rh="true" name="description" content="Продажи по SKU — топы, мёртвые позиции, решения и неснижаемый остаток"><meta data-rh="true" property="og:description" content="Продажи по SKU — топы, мёртвые позиции, решения и неснижаемый остаток"><link data-rh="true" rel="icon" href="/docs/img/favicon.svg"><link data-rh="true" rel="canonical" href="http://localhost:3000/docs/product-analysis/"><link data-rh="true" rel="alternate" href="http://localhost:3000/docs/product-analysis/" hreflang="ru"><link data-rh="true" rel="alternate" href="http://localhost:3000/docs/product-analysis/" hreflang="x-default"><script data-rh="true" type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Анализ товаров","item":"http://localhost:3000/docs/product-analysis"}]}</script><link rel="stylesheet" href="/docs/assets/css/styles.c97817d2.css">
-<script src="/docs/assets/js/runtime~main.05e8b1ad.js" defer="defer"></script>
+<script src="/docs/assets/js/runtime~main.6b9649cf.js" defer="defer"></script>
 <script src="/docs/assets/js/main.6da5fb3a.js" defer="defer"></script>
 </head>
 <body class="navigation-with-keyboard">
@@ -28,19 +28,22 @@
 <h2 class="anchor anchorTargetStickyNavbar_zFqj" id="как-пользоваться">Как пользоваться<a href="#как-пользоваться" class="hash-link" aria-label="Прямая ссылка на Как пользоваться" title="Прямая ссылка на Как пользоваться" translate="no">​</a></h2>
 <ol>
 <li class=""><strong>Фильтры</strong> (черновик → <strong>Применить</strong> / Enter; dirty → «Применить •»). После apply / пресета / сортировки / страницы адрес обновляется (<code>history.replaceState</code>) — ссылку можно шарить.
-Параметры URL: <code>days</code>, <code>new_stock_days</code>, <code>exclude_new_on_stock</code>, <code>search</code>, <code>supplier</code>, <code>manager</code>, <code>preset</code>, <code>project_mode</code>, <code>project_uuids</code>, <code>limit</code>, <code>page</code>, <code>sort_by</code>, <code>sort_dir</code>, <code>playbook=due</code>.</li>
+Параметры URL: <code>days</code>, <code>new_stock_days</code>, <code>exclude_new_on_stock</code>, <code>search</code>, <code>supplier</code>, <code>manager</code>, <code>preset</code>, <code>project_mode</code>, <code>project_uuids</code>, <code>limit</code>, <code>page</code>, <code>sort_by</code>, <code>sort_dir</code>, <code>playbook</code>, <code>expiry_goods</code>, <code>review</code>. Старый <code>playbook=due</code> открывается как <code>review=due</code>.</li>
 <li class="">Пресеты (чипы): <code>all</code>, <code>top_revenue</code>, <code>top_qty</code>, <code>dead</code>, <code>stuck</code>, <code>new_on_stock</code>, <code>dead_min_stock</code>, <code>min_vs_proposed</code>, <code>do_not_order</code>. Чипы lifecycle скрыты.<!-- -->
 <ul>
 <li class=""><strong>Мёртвые</strong> (<code>dead</code>) — 0 продаж и <code>stock &gt; 0</code>.</li>
 <li class=""><strong>Зависшие</strong> (<code>stuck</code>) — шире: остаток и (0 продаж <strong>или</strong> ≥30 дн. без продаж).</li>
 <li class=""><strong>Новые на складе</strong> — первый положительный снимок в пределах <code>new_stock_days</code>.</li>
 <li class="">По умолчанию <code>exclude_new_on_stock=1</code> — новинки исключаются из мёртвых/зависших/<code>dead_min_stock</code>.</li>
-<li class=""><strong>Решение</strong> — чипы под пресетами: все, нет сценария, были продажи, не продавался, медленно, срок, пора проверить. Клик сразу фильтрует список.</li>
+<li class=""><strong>Решение</strong> — чипы: все, нет сценария, были продажи, не продавался, медленно, срок. Клик сразу фильтрует список.</li>
+<li class=""><strong>Товар со сроком годности</strong> — все / со сроком / без срока / авто (в «Автоматизация цены» есть «расходка» и галочку не снимали).</li>
+<li class=""><strong>Дата проверки</strong> — все, уже наступила, сегодня, 3 / 7 / 14 / 30 дней. Окна «N дней» включают уже наступившие даты. Сочетается с фильтром решения.</li>
 </ul>
 </li>
 <li class="">Проекты отгрузок и менеджер (<code>ms_export.manager</code>) — как у supplier-analysis / закупок.</li>
 <li class="">Карточка таблицы: зеркало поиска, <strong>🧩 Столбцы</strong> / <strong>📏 Ширины</strong> / <strong>Свернуть</strong>, пагинация (default <strong>100</strong>), раскрытие строки (<code>/sku-detail</code>).</li>
-<li class="">Колонка <strong>Решение</strong> — плашка. Серая «Нет сценария», синяя «шаг и дата», красная «Пора проверить». Клик открывает модалку: четыре карточки, одна подсвечена «Похоже на это». Дальше виден только текущий шаг и кнопка «Готово, дальше». Дата проверки ставится сама (+14 или +30 дней).</li>
+<li class="">Колонка <strong>Товар со сроком годности</strong> — галочка. Если в <code>ms_export.automation_price</code> есть слово «расходка», галочка стоит сама и помечена «авто»; её можно снять (тогда больше не вернётся, пока не поставят вручную). Ручная галочка без «расходки» тоже сохраняется. Снятие и постановка пишутся в журнал.</li>
+<li class="">Колонка <strong>Решение</strong> — плашка. Серая «Нет сценария», синяя «шаг и дата», красная «Пора проверить» с датой, когда день контроля наступил. Вся строка такого товара тоже краснеет. Клик открывает модалку: четыре карточки, одна подсвечена «Похоже на это». Дальше виден только текущий шаг и кнопка «Готово, дальше». Дата проверки ставится сама (+14 или +30 дней). Пока дата впереди, шаг ждёт; в день даты плашка становится красной «Пора проверить».</li>
 <li class=""><strong>Массовые действия</strong>, которые остались: фиксация предлагаемого и <strong>обнулить неснижаемый</strong>. Кнопки буст / распродажа / вывод / топ / держать скрыты.<!-- -->
 <ul>
 <li class="">Preflight <code>dry_run=1</code> → цифры в <code>#dg-pa-action-log</code>.</li>

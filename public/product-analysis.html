@@ -166,6 +166,25 @@
 
     .dg-pa-row-top { background: rgba(40, 167, 69, 0.06); }
     .dg-pa-row-dead { background: rgba(243, 156, 18, 0.08); }
+    .dg-pa-row-due { background: rgba(220, 53, 69, 0.14); }
+    .dg-pa-row-due td:first-child { box-shadow: inset 3px 0 0 #c92a2a; }
+    .dg-pa-expiry {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      margin: 0;
+    }
+    .dg-pa-expiry-auto {
+      display: inline-flex;
+      align-items: center;
+      font-size: 11px;
+      font-weight: 600;
+      line-height: 1.2;
+      padding: 0.12rem 0.35rem;
+      border-radius: 0.25rem;
+      background: #e7f1ff;
+      color: #1d4f91;
+    }
     .dg-pa-row-boost { background: rgba(30, 107, 184, 0.08); }
     .dg-pa-row-exit { background: rgba(192, 57, 43, 0.08); }
     .dg-pa-table tbody tr.dg-pa-row-active { background: rgba(30, 107, 184, 0.1) !important; }
@@ -1628,6 +1647,14 @@
                   <div class="dg-pa-block-label mb-1">Решение</div>
                   <div class="dg-pa-presets" id="dg-pa-decisions" role="group" aria-label="Фильтр по решению"></div>
                 </div>
+                <div class="col-12" data-dg-pa-filter-field="expiry_goods">
+                  <div class="dg-pa-block-label mb-1">Товар со сроком годности</div>
+                  <div class="dg-pa-presets" id="dg-pa-expiry-filter" role="group" aria-label="Фильтр по сроку годности"></div>
+                </div>
+                <div class="col-12" data-dg-pa-filter-field="review">
+                  <div class="dg-pa-block-label mb-1">Дата проверки</div>
+                  <div class="dg-pa-presets" id="dg-pa-review-filter" role="group" aria-label="Фильтр по дате проверки"></div>
+                </div>
                 <div class="col-12">
                   <div class="dg-pa-block-label mb-1">Массовые решения</div>
                   <div class="dg-pa-actions-bar" role="group" aria-label="Массовые решения по SKU">
@@ -2056,7 +2083,8 @@
         ["margin_pct", "Маржа % (оценка)", { tip: "Грубая оценка: не точная маржа. По умолчанию скрыта." }],
         ["days_without_sales", "Дней без продаж", { tip: "Дней с последней отгрузки в периоде; пусто — продаж не было" }],
         ["decision_note", "Комментарий", { tip: "Комментарии к SKU: «+» — новый, карандаш — свой. Как на «Менеджер продаж»." }],
-        ["lifecycle", "Решение", { tip: "Сценарий по зависшему товару: что сделать сегодня и когда проверить." }],
+        ["expiry_goods", "Товар со сроком годности", { tip: "Галочка: товар со сроком годности. Если в «Автоматизация цены» есть слово «расходка», галочка ставится сама и помечена «авто» — её можно снять." }],
+        ["lifecycle", "Решение", { tip: "Сценарий по зависшему товару: что сделать сегодня и когда проверить. Красная плашка «Пора проверить» — дата контроля уже наступила." }],
       ];
       var PA_DEFAULT_VISIBLE = PA_COLS.map(function (c) { return c[0]; }).filter(function (k) {
         return k !== "margin_pct";
@@ -2065,7 +2093,7 @@
         _expand: 32, _sel: 36, code: 110, name: 220, supplier_name: 140, manager: 140, stock_qty: 90,
         stock_value_rub: 100, days_on_stock: 100, min_stock: 120, formula_proposed: 160,
         sales_qty: 100, sales_revenue: 110, margin_pct: 90,
-        days_without_sales: 110, decision_note: 220, lifecycle: 220,
+        days_without_sales: 110, decision_note: 220, expiry_goods: 180, lifecycle: 220,
       };
 
       var PRESETS_FALLBACK = [
@@ -2293,6 +2321,8 @@
         project_uuids: [],
         manager: "",
         playbook: "",
+        expiry_goods: "",
+        review: "",
         limit: 100,
         offset: 0,
         total: 0,
@@ -2314,6 +2344,8 @@
           project_uuids: [],
           manager: "",
           playbook: "",
+          expiry_goods: "",
+          review: "",
         },
       };
 
@@ -2364,27 +2396,72 @@
         { key: "never_sold", label: "Не продавался" },
         { key: "slow", label: "Медленно" },
         { key: "expiry", label: "Срок" },
-        { key: "due", label: "Пора проверить" },
+      ];
+      var EXPIRY_CHIPS = [
+        { key: "", label: "Все" },
+        { key: "yes", label: "Со сроком" },
+        { key: "no", label: "Без срока" },
+        { key: "auto", label: "Авто (расходка)", tip: "Галочка стоит сама: в «Автоматизация цены» есть слово «расходка», и её не снимали." },
+      ];
+      var REVIEW_CHIPS = [
+        { key: "", label: "Все" },
+        { key: "due", label: "Уже наступила", tip: "Дата проверки сегодня или раньше. Строка и плашка «Решение» красные." },
+        { key: "today", label: "Сегодня", tip: "Дата проверки именно сегодня." },
+        { key: "d3", label: "3 дня", tip: "Проверить не позже чем через 3 дня, включая уже наступившие." },
+        { key: "d7", label: "7 дней", tip: "Проверить не позже чем через 7 дней, включая уже наступившие." },
+        { key: "d14", label: "14 дней", tip: "Проверить не позже чем через 14 дней, включая уже наступившие." },
+        { key: "d30", label: "30 дней", tip: "Проверить не позже чем через 30 дней, включая уже наступившие." },
       ];
 
-      function normalizePlaybook(value) {
+      function normalizeChip(list, value) {
         var s = String(value || "");
-        return DECISION_CHIPS.some(function (c) { return c.key === s; }) ? s : "";
+        if (s === "due" && list === DECISION_CHIPS) return "";
+        return list.some(function (c) { return c.key === s; }) ? s : "";
+      }
+
+      function normalizePlaybook(value) {
+        return normalizeChip(DECISION_CHIPS, value);
+      }
+
+      function normalizeExpiry(value) {
+        return normalizeChip(EXPIRY_CHIPS, value);
+      }
+
+      function normalizeReview(value) {
+        return normalizeChip(REVIEW_CHIPS, value);
       }
 
       function syncDueChip() {
         renderDecisionChips();
+        renderExpiryChips();
+        renderReviewChips();
+      }
+
+      function chipRowHtml(list, current, attr) {
+        return list.map(function (c) {
+          var active = c.key === current ? " is-active" : "";
+          var danger = c.key === "due" ? " dg-pa-preset-chip-due" : "";
+          var tip = c.tip ? ' data-dg-tooltip="' + esc(c.tip) + '"' : "";
+          return '<button type="button" class="dg-pa-preset-chip' + danger + active + '" ' + attr + '="' + esc(c.key) + '"' + tip + ">" + esc(c.label) + "</button>";
+        }).join("");
       }
 
       function renderDecisionChips() {
         var host = document.getElementById("dg-pa-decisions");
         if (!host) return;
-        var cur = normalizePlaybook(state.pending.playbook);
-        host.innerHTML = DECISION_CHIPS.map(function (c) {
-          var active = c.key === cur ? " is-active" : "";
-          var danger = c.key === "due" ? " dg-pa-preset-chip-due" : "";
-          return '<button type="button" class="dg-pa-preset-chip' + danger + active + '" data-dg-decision="' + esc(c.key) + '">' + esc(c.label) + "</button>";
-        }).join("");
+        host.innerHTML = chipRowHtml(DECISION_CHIPS, normalizePlaybook(state.pending.playbook), "data-dg-decision");
+      }
+
+      function renderExpiryChips() {
+        var host = document.getElementById("dg-pa-expiry-filter");
+        if (!host) return;
+        host.innerHTML = chipRowHtml(EXPIRY_CHIPS, normalizeExpiry(state.pending.expiry_goods), "data-dg-expiry");
+      }
+
+      function renderReviewChips() {
+        var host = document.getElementById("dg-pa-review-filter");
+        if (!host) return;
+        host.innerHTML = chipRowHtml(REVIEW_CHIPS, normalizeReview(state.pending.review), "data-dg-review");
       }
 
       function applyPendingProjectCheckboxes() {
@@ -2434,6 +2511,8 @@
           params.set("sort_dir", state.sort_dir);
         }
         if (state.playbook) params.set("playbook", state.playbook);
+        if (state.expiry_goods) params.set("expiry_goods", state.expiry_goods);
+        if (state.review) params.set("review", state.review);
         var qs = params.toString();
         var next = qs
           ? window.location.pathname + "?" + qs
@@ -2501,7 +2580,17 @@
         }
         if (has("playbook")) {
           info.fromUrl = true;
-          state.pending.playbook = normalizePlaybook(params.get("playbook"));
+          var pbUrl = String(params.get("playbook") || "");
+          if (pbUrl === "due" && !has("review")) state.pending.review = "due";
+          state.pending.playbook = normalizePlaybook(pbUrl);
+        }
+        if (has("expiry_goods")) {
+          info.fromUrl = true;
+          state.pending.expiry_goods = normalizeExpiry(params.get("expiry_goods"));
+        }
+        if (has("review")) {
+          info.fromUrl = true;
+          state.pending.review = normalizeReview(params.get("review"));
         }
         if (has("project_mode")) {
           info.fromUrl = true;
@@ -2647,6 +2736,8 @@
         if (state.supplier) p.set("supplier", state.supplier);
         if (state.manager) p.set("manager", state.manager);
         if (state.playbook) p.set("playbook", state.playbook);
+        if (state.expiry_goods) p.set("expiry_goods", state.expiry_goods);
+        if (state.review) p.set("review", state.review);
         if (state._presetSortOnce) {
           p.set("preset_sort", "1");
           state._presetSortOnce = false;
@@ -2670,6 +2761,8 @@
           supplier: state.supplier,
           manager: state.manager,
           playbook: state.playbook || "",
+          expiry_goods: state.expiry_goods || "",
+          review: state.review || "",
           limit: 2000,
         };
       }
@@ -2686,7 +2779,9 @@
           state.pending.project_mode !== state.project_mode ||
           JSON.stringify(state.pending.project_uuids || []) !==
             JSON.stringify(state.project_uuids || []) ||
-          String(state.pending.playbook || "") !== String(state.playbook || "");
+          String(state.pending.playbook || "") !== String(state.playbook || "") ||
+          String(state.pending.expiry_goods || "") !== String(state.expiry_goods || "") ||
+          String(state.pending.review || "") !== String(state.review || "");
         var btn = document.getElementById("dg-pa-apply");
         if (!btn) return;
         btn.textContent = dirty ? "Применить •" : "Применить";
@@ -2747,6 +2842,8 @@
         state.manager = String(state.pending.manager || "").trim();
         state.preset = state.pending.preset || "all";
         state.playbook = normalizePlaybook(state.pending.playbook);
+        state.expiry_goods = normalizeExpiry(state.pending.expiry_goods);
+        state.review = normalizeReview(state.pending.review);
         state.project_mode = state.pending.project_mode === "selected" ? "selected" : "all";
         state.project_uuids =
           state.project_mode === "selected" ? readPendingProjectUuids() : [];
@@ -3196,6 +3293,11 @@
           var out = arr.filter(function (k) { return known[k]; });
           if (out.indexOf("_expand") < 0) out.unshift("_expand");
           if (out.indexOf("_sel") < 0) out.splice(1, 0, "_sel");
+          if (out.indexOf("expiry_goods") < 0) {
+            var lifeAt = out.indexOf("lifecycle");
+            if (lifeAt < 0) out.push("expiry_goods");
+            else out.splice(lifeAt, 0, "expiry_goods");
+          }
           return out.length ? out : PA_DEFAULT_VISIBLE.slice();
         } catch (e) {
           return PA_DEFAULT_VISIBLE.slice();
@@ -3433,12 +3535,14 @@
       }
 
       function rowClass(r) {
-        if (r.lifecycle === "exit" || r.lifecycle === "clearance") return "dg-pa-row-exit";
-        if (r.lifecycle === "boost") return "dg-pa-row-boost";
-        if (r.lifecycle === "top") return "dg-pa-row-top";
-        if (Number(r.sales_qty || 0) <= 0 && Number(r.min_stock || 0) > 0) return "dg-pa-row-dead";
-        if (Number(r.sales_qty || 0) <= 0 && Number(r.stock_qty || 0) > 0) return "dg-pa-row-dead";
-        return "";
+        var cls = "";
+        if (r.lifecycle === "exit" || r.lifecycle === "clearance") cls = "dg-pa-row-exit";
+        else if (r.lifecycle === "boost") cls = "dg-pa-row-boost";
+        else if (r.lifecycle === "top") cls = "dg-pa-row-top";
+        else if (Number(r.sales_qty || 0) <= 0 && Number(r.min_stock || 0) > 0) cls = "dg-pa-row-dead";
+        else if (Number(r.sales_qty || 0) <= 0 && Number(r.stock_qty || 0) > 0) cls = "dg-pa-row-dead";
+        if (r.playbook_cell && r.playbook_cell.tone === "danger") cls = (cls + " dg-pa-row-due").trim();
+        return cls;
       }
 
       function cellHtml(key, r) {
@@ -3467,6 +3571,27 @@
         if (key === "name" || key === "supplier_name" || key === "manager") return esc(r[key] || "");
         if (key === "decision_note") {
           return renderCommentsCell(r);
+        }
+        if (key === "expiry_goods") {
+          var on = !!r.expiry_goods;
+          var dis = state.can_write ? "" : " disabled";
+          var auto = on && !!r.expiry_auto
+            ? '<span class="dg-pa-expiry-auto" data-dg-tooltip="Стоит сама: в «Автоматизация цены» есть слово «расходка». Галочку можно снять.">авто</span>'
+            : "";
+          return (
+            '<label class="dg-pa-expiry">' +
+            '<input type="checkbox" class="dg-pa-expiry-check" data-code="' +
+            esc(r.code) +
+            '"' +
+            (on ? " checked" : "") +
+            dis +
+            ' data-dg-notify-start="Сохраняю срок годности…" />' +
+            auto +
+            '<button type="button" class="btn btn-sm btn-outline-secondary dg-pa-lc-log" data-dg-code="' +
+            esc(r.code) +
+            '" data-dg-field="expiry_manual" aria-label="Журнал срока годности" data-dg-no-activity="1">лог</button>' +
+            "</label>"
+          );
         }
         if (key === "lifecycle") {
           var cell = r.playbook_cell || { text: "Нет сценария", tone: "muted" };
@@ -4907,6 +5032,9 @@
                   { key: "manager", title: "Менеджер" },
                   { key: "projects", title: "Проекты" },
                   { key: "presets", title: "Пресеты" },
+                  { key: "decision", title: "Решение" },
+                  { key: "expiry_goods", title: "Товар со сроком годности" },
+                  { key: "review", title: "Дата проверки" },
                   { key: "page_size", title: "На странице" },
                 ],
               },
@@ -4982,21 +5110,29 @@
           syncDirtyApply();
         });
 
-        var decisions = document.getElementById("dg-pa-decisions");
-        if (decisions) {
-          decisions.addEventListener("click", function (ev) {
-            var btn = ev.target.closest("[data-dg-decision]");
+        function bindChipFilter(hostId, attr, apply) {
+          var host = document.getElementById(hostId);
+          if (!host) return;
+          host.addEventListener("click", function (ev) {
+            var btn = ev.target.closest("[" + attr + "]");
             if (!btn) return;
-            state.pending.playbook = normalizePlaybook(btn.getAttribute("data-dg-decision"));
-            renderDecisionChips();
+            apply(btn.getAttribute(attr));
+            syncDueChip();
             var run = function () { return commitFilters(); };
             if (window.DatagonNotify && window.DatagonNotify.busyRun) {
               window.DatagonNotify.busyRun(btn, run);
-            } else {
-              run();
-            }
+            } else run();
           });
         }
+        bindChipFilter("dg-pa-decisions", "data-dg-decision", function (value) {
+          state.pending.playbook = normalizePlaybook(value);
+        });
+        bindChipFilter("dg-pa-expiry-filter", "data-dg-expiry", function (value) {
+          state.pending.expiry_goods = normalizeExpiry(value);
+        });
+        bindChipFilter("dg-pa-review-filter", "data-dg-review", function (value) {
+          state.pending.review = normalizeReview(value);
+        });
 
         document.getElementById("dg-pa-presets").addEventListener("click", function (ev) {
           var btn = ev.target.closest("[data-preset]");
@@ -5032,6 +5168,8 @@
             project_mode: "selected",
             project_uuids: [],
             playbook: "",
+            expiry_goods: "",
+            review: "",
           };
           state.limit = 100;
           state.offset = 0;
@@ -5091,6 +5229,13 @@
           }
           var dno = ev.target.closest(".dg-pa-dno-check");
           if (dno) return;
+          var expiry = ev.target.closest(".dg-pa-expiry-check");
+          if (expiry) {
+            var expiryCode = expiry.getAttribute("data-code");
+            if (!expiryCode || !state.can_write) return;
+            postRowDecision(expiryCode, { expiry_manual: expiry.checked ? 1 : 0 }, expiry);
+            return;
+          }
           var inp = ev.target.closest(".dg-pa-row-sel");
           if (!inp) return;
           state.selected[inp.getAttribute("data-code")] = !!inp.checked;
@@ -5133,6 +5278,7 @@
           if (
             ev.target.closest("a") ||
             ev.target.closest(".dg-pa-row-sel") ||
+            ev.target.closest(".dg-pa-expiry") ||
             ev.target.closest(".dg-pa-detail-row") ||
             ev.target.closest(".dg-pa-lc-select") ||
             ev.target.closest("[data-dg-playbook]") ||
