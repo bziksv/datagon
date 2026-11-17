@@ -863,6 +863,7 @@ async function listBonusPastOrders(db, year, month, managerId) {
 
 async function fetchPlanfixAppCounts(db, year, managers) {
     const b = pf.yearBounds(year);
+    const idMap = await pf.loadAssignerIdMap(db, managers);
     const [mapRows] = await db.query(
         `SELECT status_value, bucket, count_in_apps FROM dg_ops_planfix_status_map`
     );
@@ -873,10 +874,10 @@ async function fetchPlanfixAppCounts(db, year, managers) {
         }
     });
     const [agg] = await db.query(
-        `SELECT assigner_name, MONTH(created_at) AS m, status_value, COUNT(*) AS n
+        `SELECT assigner_id, assigner_name, MONTH(created_at) AS m, status_value, COUNT(*) AS n
            FROM dg_ops_planfix_tasks
           WHERE created_at >= ? AND created_at < ?
-          GROUP BY assigner_name, MONTH(created_at), status_value`,
+          GROUP BY assigner_id, assigner_name, MONTH(created_at), status_value`,
         [b.fromSql, b.toSql]
     );
     const counts = {};
@@ -885,7 +886,7 @@ async function fetchPlanfixAppCounts(db, year, managers) {
     (agg || []).forEach((row) => {
         const status = String(row.status_value || '');
         const n = Number(row.n) || 0;
-        const mgr = pf.matchManagerByAssigner(row.assigner_name, managers);
+        const mgr = pf.resolveManagerByAssigner(row.assigner_id, row.assigner_name, managers, idMap);
         const m = Number(row.m);
         if (!m || m < 1 || m > 12) return;
 
@@ -1379,16 +1380,22 @@ async function listPlanfixUsers(appSettings, onProgress) {
     return out;
 }
 
-function matchAssignerIds(pfUsers, managers) {
+function matchAssignerIds(pfUsers, managers, idMap) {
     const ids = [];
     const names = [];
     const mgrHits = new Set();
     (pfUsers || []).forEach((u) => {
         let mgr = null;
+        const mappedId = idMap && u && idMap[Number(u.id)];
+        if (mappedId != null) {
+            mgr = (managers || []).find((m) => Number(m.id) === Number(mappedId)) || null;
+        }
         const cands = pf.pfUserNameCandidates ? pf.pfUserNameCandidates(u) : [u && u.name];
-        for (let i = 0; i < cands.length; i += 1) {
-            mgr = pf.matchManagerByAssigner(cands[i], managers);
-            if (mgr) break;
+        if (!mgr) {
+            for (let i = 0; i < cands.length; i += 1) {
+                mgr = pf.matchManagerByAssigner(cands[i], managers);
+                if (mgr) break;
+            }
         }
         if (!mgr) return;
         if (ids.indexOf(u.id) >= 0) {
@@ -3034,16 +3041,22 @@ function opsSheetRouterFactory(db, appSettings) {
                 return res.status(404).json({ success: false, error: 'Менеджер не найден' });
             }
             const b = pf.periodBounds(year, month);
+            const idMap = await pf.loadAssignerIdMap(db, managers);
             const [agg] = await db.query(
-                `SELECT assigner_name, status_value, COUNT(*) AS n
+                `SELECT assigner_id, assigner_name, status_value, COUNT(*) AS n
                    FROM dg_ops_planfix_tasks
                   WHERE created_at >= ? AND created_at < ?
-                  GROUP BY assigner_name, status_value`,
+                  GROUP BY assigner_id, assigner_name, status_value`,
                 [b.fromSql, b.toSql]
             );
             const byStatus = {};
             (agg || []).forEach((row) => {
-                const matched = pf.matchManagerByAssigner(row.assigner_name, [mgr]);
+                const matched = pf.resolveManagerByAssigner(
+                    row.assigner_id,
+                    row.assigner_name,
+                    managers,
+                    idMap
+                );
                 if (!matched || Number(matched.id) !== mid) return;
                 const st = String(row.status_value || '');
                 const n = Number(row.n) || 0;
@@ -3224,9 +3237,11 @@ function opsSheetRouterFactory(db, appSettings) {
                     error: 'Сначала сохраните REST-токен в Настройки → Planfix',
                 });
             }
-            const managers = await listSalesManagers(db);
+            const managersAll = await listSalesManagers(db, { includeArchived: true });
+            const idMap = await pf.loadAssignerIdMap(db, managersAll);
+            const managers = managersAll.filter((m) => !m.is_archived);
             const pfUsers = await listPlanfixUsers(settings, null);
-            const matched = matchAssignerIds(pfUsers, managers);
+            const matched = matchAssignerIds(pfUsers, managers, idMap);
             res.json({
                 success: true,
                 sync_script: getOpsPlanfixSyncMeta(),
@@ -3441,7 +3456,9 @@ function opsSheetRouterFactory(db, appSettings) {
                 return;
             }
             const errors = [];
-            const managers = await listSalesManagers(db);
+            const managersAll = await listSalesManagers(db, { includeArchived: true });
+            const idMap = await pf.loadAssignerIdMap(db, managersAll);
+            const managers = managersAll.filter((m) => !m.is_archived);
             let pfUsers = [];
             try {
                 markPfSync({ stage: 'users', message: 'Сотрудники Planfix — ищем постановщиков-менеджеров продаж' });
@@ -3454,7 +3471,7 @@ function opsSheetRouterFactory(db, appSettings) {
                     error: e && e.message ? e.message : 'Не удалось получить /user/list',
                 });
             }
-            const matchedAssigners = matchAssignerIds(pfUsers, managers);
+            const matchedAssigners = matchAssignerIds(pfUsers, managers, idMap);
             const unmatchedNames = (matchedAssigners.unmatchedManagers || []).map(
                 (m) => m.full_name || m.username || String(m.id)
             );
@@ -3570,7 +3587,7 @@ function opsSheetRouterFactory(db, appSettings) {
                         return;
                     }
                     seenFetched.add(String(mapped.task_id));
-                    if (!pf.matchManagerByAssigner(mapped.assigner_name, managers)) {
+                    if (!pf.resolveManagerByAssigner(mapped.assigner_id, mapped.assigner_name, managersAll, idMap)) {
                         skippedNotManager += 1;
                         return;
                     }
