@@ -4817,4 +4817,113 @@
         loadUsers();
       });
     })();
+
+    // Ozon: ссылка для бота (задачи на смену категории) — токен + мини-пароль
+    (function ozonCategoryTasksAccess() {
+      var API = "/api/exports/marketplaces/ozon-merge/category-tasks/config";
+      var card = document.getElementById("dg-set-oct");
+      if (!card) return;
+      var tokenInp = document.getElementById("dg-set-oct-token");
+      var pinInp = document.getElementById("dg-set-oct-pin");
+      var pinState = document.getElementById("dg-set-oct-pin-state");
+      var linkInp = document.getElementById("dg-set-oct-link");
+      var msg = document.getElementById("dg-set-oct-save-msg");
+      var saveBtn = document.getElementById("dg-set-btn-save-oct");
+
+      function maskToken(t) {
+        return t ? t.slice(0, 4) + "…" + t.slice(-4) + " (" + t.length + " симв.)" : "пусто";
+      }
+      function linkFor(token) {
+        return token ? location.origin + "/public/ozon-category-tasks?token=" + encodeURIComponent(token) : "";
+      }
+      function showMsg(kind, html) {
+        msg.className = "alert mt-3 mb-0 alert-" + kind;
+        msg.innerHTML = html;
+      }
+      function apply(cfg) {
+        tokenInp.value = cfg.token || "";
+        linkInp.value = linkFor(cfg.token || "");
+        pinState.textContent = cfg.has_pin ? "Пароль задан" : "Пароль не задан — без него ссылка не откроется";
+      }
+      function load() {
+        return fetch(API, { credentials: "same-origin" })
+          .then(function (r) {
+            if (r.status === 403) {
+              card.classList.add("d-none");
+              return null;
+            }
+            return r.json();
+          })
+          .then(function (cfg) {
+            if (cfg && cfg.success) apply(cfg);
+            return cfg;
+          });
+      }
+
+      tokenInp.addEventListener("input", function () {
+        linkInp.value = linkFor(tokenInp.value.trim());
+      });
+      document.getElementById("dg-set-oct-generate").addEventListener("click", function () {
+        var bytes = new Uint8Array(24);
+        crypto.getRandomValues(bytes);
+        tokenInp.value = btoa(String.fromCharCode.apply(null, bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+        linkInp.value = linkFor(tokenInp.value);
+        showMsg("warning", "Новый токен ещё не сохранён — нажмите «Сохранить». После сохранения старая ссылка перестанет работать.");
+      });
+      document.getElementById("dg-set-oct-copy").addEventListener("click", function () {
+        if (!linkInp.value) return;
+        navigator.clipboard.writeText(linkInp.value).then(function () {
+          if (window.DatagonNotify) window.DatagonNotify.toast({ type: "success", message: "Ссылка скопирована" });
+        });
+      });
+
+      saveBtn.addEventListener("click", function () {
+        var sentToken = tokenInp.value.trim();
+        var sentPin = pinInp.value.trim();
+        saveBtn.disabled = true;
+        showMsg("warning", "Сохраняем…");
+        fetch(API, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify(sentPin ? { token: sentToken, pin: sentPin } : { token: sentToken }),
+        })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              if (!r.ok || !j.success) throw new Error("HTTP " + r.status + ": " + ((j && j.error) || "ошибка"));
+              return j;
+            });
+          })
+          .then(function () {
+            return load();
+          })
+          .then(function (cfg) {
+            pinInp.value = "";
+            var esc = function (s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
+            var tokenOk = cfg && cfg.token === sentToken;
+            var pinOk = !sentPin || (cfg && cfg.has_pin);
+            if (tokenOk && pinOk) {
+              showMsg(
+                "success",
+                "Сохранено и проверено в БД: токен " + esc(maskToken(cfg.token)) + ", пароль " + (cfg.has_pin ? "задан" : "<strong>не задан</strong>") +
+                  (sentPin ? " (обновлён)" : "") + "."
+              );
+            } else {
+              showMsg(
+                "warning",
+                "Сервер ответил успехом, но в БД другое: токен отправили " + esc(maskToken(sentToken)) + ", в БД " +
+                  esc(maskToken(cfg && cfg.token)) + "; пароль в БД " + (cfg && cfg.has_pin ? "задан" : "не задан") + "."
+              );
+            }
+          })
+          .catch(function (err) {
+            showMsg("danger", "Не сохранено: " + String(err.message || err).replace(/</g, "&lt;"));
+          })
+          .then(function () {
+            saveBtn.disabled = false;
+          });
+      });
+
+      load().catch(function () {});
+    })();
   </script>

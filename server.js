@@ -4115,6 +4115,8 @@ initDB().then(async () => {
         }
     });
     app.use('/api/settings', require('./routes/settings')(db, appSettings));
+    const ozonCategoryTasksRoutes = require('./routes/ozonCategoryTasks');
+    app.use('/api/exports/marketplaces/ozon-merge/category-tasks', ozonCategoryTasksRoutes.createAdminRouter(db));
     app.use('/api/exports/marketplaces', exportsMarketplacesRouterFactory(db, appSettings));
     app.use('/api/exports/competitors', require('./routes/exportsCompetitors')(db));
     app.use('/api/exports/dimensions', require('./routes/dimensions')(db, appSettings));
@@ -4727,6 +4729,9 @@ initDB().then(async () => {
         const qs = qsFromReq(req);
         return res.redirect(302, '/login.html' + qs);
     });
+
+    /** Задачи на смену категории Ozon для бота: без сессии, доступ по токену в ссылке + мини-паролю. */
+    app.use('/public/ozon-category-tasks', ozonCategoryTasksRoutes.createPublicRouter(db));
 
     const publicDir = path.join(__dirname, 'public');
     /** CSS/JS/favicon — без проверки сессии и без ожидания пула MySQL (иначе «белая» страница при занятом пуле). */

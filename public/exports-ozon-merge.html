@@ -1411,6 +1411,18 @@
                   </select>
                 </div>
 
+                <div class="col-lg-3 col-md-6" data-dg-ozm-filter-field="min_items" data-dg-filter-field-title="Товаров в группе">
+                  <label for="dg-ozm-f-min-items" class="form-label fw-semibold text-dark">Товаров в группе:</label>
+                  <select id="dg-ozm-f-min-items" class="form-select form-select-sm">
+                    <option value="0">Любое количество</option>
+                    <option value="3">От 3 товаров</option>
+                    <option value="4">От 4 товаров</option>
+                    <option value="5">От 5 товаров</option>
+                    <option value="6">От 6 товаров</option>
+                    <option value="8">От 8 товаров</option>
+                  </select>
+                </div>
+
                 <div class="col-lg-3 col-md-6" data-dg-ozm-filter-field="search" data-dg-filter-field-title="Умный поиск">
                   <label for="dg-ozm-f-search" class="form-label fw-semibold text-dark">Умный поиск (код МС, название, поставщик):</label>
                   <input
@@ -1463,6 +1475,22 @@
                 </div>
 
                 <div class="d-flex flex-wrap align-items-center gap-2">
+                  <button
+                    type="button"
+                    id="dg-ozm-bulk-merge-btn"
+                    class="btn btn-success btn-sm fw-semibold"
+                    data-dg-notify-start="Считаем группы по фильтру для массового объединения…"
+                  >
+                    Объединить все по фильтру
+                  </button>
+                  <button
+                    type="button"
+                    id="dg-ozm-bulk-stop-btn"
+                    class="btn btn-outline-danger btn-sm fw-semibold d-none"
+                    data-dg-notify-start="Останавливаем массовое объединение…"
+                  >
+                    Остановить
+                  </button>
                   <button
                     type="button"
                     id="dg-ozm-open-all-log-btn"
@@ -1841,6 +1869,7 @@
           ["queue_status", "Очередь групп (Предложения / Объединены / Скрытые)"],
           ["kind", "По какому признаку найдены"],
           ["manager", "Менеджер товара"],
+          ["min_items", "Товаров в группе (от N)"],
           ["search", "Умный поиск"],
           ["step_mode", "Пошаговый режим (по 1 группе)"],
         ],
@@ -1853,6 +1882,7 @@
       kind: "all",
       manager: "all",
       search: "",
+      minItems: 0,
       stepMode: true,
       page: 1,
       pageSize: 100,
@@ -1861,6 +1891,7 @@
         kind: "all",
         manager: "all",
         search: "",
+        minItems: 0,
         stepMode: true,
       },
       managers: ["Назерке Койман", "Катерина Лычковская", "Яна Ярцева", "Ирина Новикова"],
@@ -1942,6 +1973,7 @@
         state.pending.status !== state.status ||
         state.pending.kind !== state.kind ||
         state.pending.manager !== state.manager ||
+        Number(state.pending.minItems || 0) !== Number(state.minItems || 0) ||
         state.pending.search.trim() !== state.search.trim() ||
         Boolean(state.pending.stepMode) !== Boolean(state.stepMode)
       );
@@ -2268,6 +2300,7 @@
           kind: state.kind,
           manager: state.manager,
           search: state.search,
+          minItems: Number(state.minItems) || 0,
           stepMode: Boolean(state.stepMode),
           pageSize: Number(state.pageSize) || 100,
           page: Number(state.page) || 1,
@@ -2276,6 +2309,7 @@
             kind: state.pending.kind,
             manager: state.pending.manager,
             search: state.pending.search,
+            minItems: Number(state.pending.minItems) || 0,
             stepMode: Boolean(state.pending.stepMode),
           },
         };
@@ -2292,6 +2326,8 @@
           else url.searchParams.delete("manager");
           if (state.search) url.searchParams.set("search", state.search);
           else url.searchParams.delete("search");
+          if (state.minItems > 1) url.searchParams.set("min_items", String(state.minItems));
+          else url.searchParams.delete("min_items");
           url.searchParams.set("step", state.stepMode ? "1" : "0");
           if (!state.stepMode) url.searchParams.set("pageSize", String(state.pageSize || 100));
           else url.searchParams.delete("pageSize");
@@ -2372,10 +2408,21 @@
 
       var page = Math.max(1, Number((params && params.get("page")) || (saved && saved.page) || 1) || 1);
 
+      var validMinItems = [0, 3, 4, 5, 6, 8];
+      var mi = Number(
+        params && params.has("min_items")
+          ? params.get("min_items")
+          : saved && saved.pending && saved.pending.minItems != null
+            ? saved.pending.minItems
+            : (saved && saved.minItems) || 0
+      ) || 0;
+      if (validMinItems.indexOf(mi) < 0) mi = 0;
+
       state.status = st;
       state.kind = kd;
       state.manager = mgr;
       state.search = String(sr || "").trim();
+      state.minItems = mi;
       state.stepMode = stepMode;
       state.pageSize = pageSize;
       state.page = page;
@@ -2384,9 +2431,12 @@
         kind: kd,
         manager: mgr,
         search: String(sr || ""),
+        minItems: mi,
         stepMode: stepMode,
       };
 
+      var minItemsSel = byId("dg-ozm-f-min-items");
+      if (minItemsSel) minItemsSel.value = String(mi);
       var kindSel = byId("dg-ozm-f-kind");
       var searchInp = byId("dg-ozm-f-search");
       var mirrorInp = byId("dg-ozm-table-search-mirror");
@@ -2491,6 +2541,8 @@
         encodeURIComponent(state.manager || "all") +
         "&search=" +
         encodeURIComponent(state.search) +
+        "&min_items=" +
+        encodeURIComponent(state.minItems || 0) +
         "&limit=" +
         encodeURIComponent(effectiveLimit) +
         "&offset=" +
@@ -2536,6 +2588,7 @@
       state.kind = state.pending.kind;
       state.manager = state.pending.manager || "all";
       state.search = state.pending.search.trim();
+      state.minItems = Number(state.pending.minItems) || 0;
       state.stepMode = Boolean(state.pending.stepMode);
       state.page = 1;
 
@@ -2564,8 +2617,11 @@
         kind: "all",
         manager: "all",
         search: "",
+        minItems: 0,
         stepMode: true,
       };
+      var minItemsSel = byId("dg-ozm-f-min-items");
+      if (minItemsSel) minItemsSel.value = "0";
       var kindSel = byId("dg-ozm-f-kind");
       var mgrSel = byId("dg-ozm-f-manager");
       var searchInp = byId("dg-ozm-f-search");
@@ -2674,9 +2730,18 @@
           actorMetaHtml +
           "</div>" +
           '<div class="dg-ozm-group-title">' + esc(g.reason_title) + "</div>" +
+          (g.vitrine_text
+            ? '<div class="alert ' +
+              (g.vitrine_state === "one" ? "alert-success" : g.vitrine_state === "split" ? "alert-warning" : "alert-secondary") +
+              ' py-2 px-3 mt-2 mb-0 small">' +
+              esc(g.vitrine_text) +
+              "</div>"
+            : "") +
           '<div class="dg-ozm-group-meta mt-1">' +
           "Чем отличаются карточки: <strong>" + esc(g.what_differs_label) + "</strong> · " +
-          'Общий код склейки на Ozon (9048): <span class="dg-ozm-code-pill">' + esc(g.group_key) + "</span>" +
+          (g.link_mode === "similar"
+            ? 'На витрине: <strong>блок «Похожие»</strong> <span class="dg-ozm-code-pill">' + esc(g.group_key) + "</span>"
+            : 'Общий код склейки на Ozon (9048): <span class="dg-ozm-code-pill">' + esc(g.group_key) + "</span>") +
           "</div>" +
           "</div>";
 
@@ -2699,7 +2764,9 @@
             "</button>";
         } else if (g.queue_status === "merged") {
           html +=
-            '<span class="dg-ozm-pill dg-ozm-pill-success">Уже объединены на Ozon</span>' +
+            '<span class="dg-ozm-pill dg-ozm-pill-success">' +
+            (g.link_mode === "similar" ? "Собраны в «Похожие» на витрине" : "Уже объединены на Ozon") +
+            "</span>" +
             '<button type="button" class="btn btn-outline-primary btn-sm fw-semibold dg-ozm-btn-merge-group" data-group-idx="' + gIdx + '" data-dg-no-activity="1">' +
             "Перезаписать склейку на Ozon" +
             "</button>" +
@@ -2732,6 +2799,21 @@
             '<div class="alert alert-danger mx-3 mt-3 mb-0 py-2 px-3 border-danger">' +
             '<div class="fw-bold text-dark mb-1">⚠️ Почему не прошло объединение на Ozon:</div>' +
             '<div class="small text-dark">' + esc(g.problem_reason) + "</div>" +
+            "</div>";
+        }
+
+        var ct = g.category_task;
+        if (ct && (ct.needs_category_change || ct.comment)) {
+          html +=
+            '<div class="alert ' + (ct.comment ? "alert-info" : "alert-secondary") + ' mx-3 mt-2 mb-0 py-2 px-3">' +
+            '<div class="fw-bold text-dark mb-1">Категория Ozon</div>' +
+            (ct.comment
+              ? '<div class="small text-dark">' + esc(ct.comment) + "</div>" +
+                '<div class="small text-muted mt-1">' + esc(ct.by || "бот") + (ct.at ? " · " + esc(fmtDateTime(ct.at)) : "") + "</div>" +
+                (ct.needs_category_change
+                  ? '<div class="small text-dark mt-1">Категория сменена — можно повторить склейку.</div>'
+                  : "")
+              : '<div class="small text-dark">Ждёт смены категории: задача на публичной странице для бота, комментария пока нет.</div>') +
             "</div>";
         }
 
@@ -2807,6 +2889,9 @@
             html +=
               "<td>" +
               '<div class="fw-semibold text-dark">' + esc(it.name || it.ms_name || "—") + "</div>" +
+              (it.ozon_archived
+                ? '<div class="mt-1"><span class="dg-ozm-pill dg-ozm-pill-danger">Автоархив Ozon</span></div>'
+                : "") +
               "</td>";
           }
 
@@ -2832,6 +2917,9 @@
               (it.current_merge_key
                 ? '<span class="dg-ozm-pill dg-ozm-pill-info">' + esc(it.current_merge_key) + "</span>"
                 : '<span class="small text-dark">Не склеен</span>') +
+              (it.ozon_color
+                ? '<div class="small mt-1">Цвет на витрине: <strong>' + esc(it.ozon_color) + "</strong></div>"
+                : "") +
               "</td>";
           }
 
@@ -3157,7 +3245,7 @@
                   ": " +
                   esc(res.summary || res.message || "") +
                   "</div>" +
-                  '<div class="small text-muted">Запись в Ozon выполнит другой пользователь с полным доступом к «Настройки» (или admin). Admin может писать сразу.</div>'
+                  '<div class="small text-muted">Запись в Ozon выполнит другой пользователь с полным доступом к «Настройки» (или admin). Admin и специальность «Менеджер маркетплейсов» записывают объединение сразу.</div>'
               );
               toast("warning", "Заявка на объединение создана — ждёт подтверждения");
               loadPendingApprovals();
@@ -3204,15 +3292,32 @@
                 "</ul>";
             }
 
+            var colorSwitch = res && res.merge_mode === "color_switch";
+            var colorLine = "";
+            if (colorSwitch && Array.isArray(res.colors) && res.colors.length) {
+              colorLine = res.colors
+                .map(function (c) { return esc(c.offerId) + ": " + esc(c.value); })
+                .join(", ");
+            } else if (colorSwitch && res.groups_result && res.groups_result[0] && Array.isArray(res.groups_result[0].colors)) {
+              colorLine = res.groups_result[0].colors
+                .map(function (c) { return esc(c.offerId) + ": " + esc(c.value); })
+                .join(", ");
+            }
             showActionLog(
               res.ms_failed > 0 ? "warning" : "success",
-              "<div><strong>Объединение группы «" +
-                esc(group.group_key) +
-                "» завершено за " +
+              "<div><strong>" +
+                (colorSwitch ? "Плакаты склеены переключателем цвета" : "Объединение группы «" + esc(group.group_key) + "» завершено") +
+                " за " +
                 esc(res.duration_sec || 0) +
                 " с.</strong></div>" +
-                '<div class="small mt-1 text-dark">Эта группа перемещена во вкладку <strong>«Уже объединены на Ozon»</strong>, а ниже автоматически открыта следующая группа из очереди предложений.</div>' +
-                '<div class="small mt-1 text-dark">⏳ <em>Обратите внимание: в личном кабинете Ozon атрибуты уже записаны мгновенно, а на покупательской витрине ozon.ru склейка вариантов в одну карточку появляется после переиндексации Ozon (обычно от 2 до 15 минут).</em></div>' +
+                (colorSwitch
+                  ? '<div class="small mt-1 text-dark">В категории плакатов Ozon умеет переключать только цвет. Форматы получили разные цвета и общий код склейки' +
+                    (res.similar_value ? " «" + esc(res.similar_value) + "»" : "") +
+                    ". На витрине появится переключатель цвета, в названии карточки останется размер и материал." +
+                    (colorLine ? " " + colorLine + "." : "") +
+                    " Блок появляется после обновления витрины Ozon.</div>"
+                  : '<div class="small mt-1 text-dark">Эта группа перемещена во вкладку <strong>«Уже объединены на Ozon»</strong>, а ниже автоматически открыта следующая группа из очереди предложений.</div>' +
+                    '<div class="small mt-1 text-dark">⏳ <em>Обратите внимание: в личном кабинете Ozon атрибуты уже записаны мгновенно, а на покупательской витрине ozon.ru склейка вариантов в одну карточку появляется после переиндексации Ozon (обычно от 2 до 15 минут).</em></div>') +
                 '<ul class="small mb-0 mt-2">' +
                 "<li>Обработано карточек: <strong>" + fmtNum(res.total || 0) + "</strong></li>" +
                 "<li>Успешно записано в Ozon ✓: <strong>" + fmtNum(res.ms_ok || 0) + "</strong> (новых склеек: " + fmtNum(res.filled || 0) + ", обновлено: " + fmtNum(res.corrected || 0) + ")</li>" +
@@ -3223,7 +3328,9 @@
 
             toast(
               res.ms_failed > 0 ? "warning" : "success",
-              "Группа «" + group.group_key + "» отправлена в Ozon (" + fmtNum(res.ms_ok || 0) + " шт.)"
+              colorSwitch
+                ? "Плакаты склеены переключателем цвета (" + fmtNum(res.ms_ok || 0) + " шт.)"
+                : "Группа «" + group.group_key + "» отправлена в Ozon (" + fmtNum(res.ms_ok || 0) + " шт.)"
             );
             clearGroupDraft(group.signature);
             return loadGroupsList();
@@ -3240,6 +3347,273 @@
       } else {
         doReq();
       }
+    }
+
+    // Массовое объединение всех групп по применённому фильтру
+    var KIND_LABELS = {
+      all: "все типы",
+      bundles: "товар + комплекты",
+      name_variants: "линейки одной модели",
+      partial_merged: "доклейка к связке",
+      custom: "свои группы",
+    };
+    var bulkPollTimer = null;
+
+    function bulkFiltersPayload() {
+      return {
+        status: state.status,
+        kind: state.kind,
+        manager: state.manager || "all",
+        search: state.search,
+        min_items: state.minItems > 1 ? state.minItems : 2,
+      };
+    }
+
+    function bulkFiltersHtml(f) {
+      var mgr = f.manager === "all" ? "все" : f.manager === "__empty__" ? "без менеджера" : f.manager;
+      return (
+        '<div class="small mt-1">Фильтры: очередь <strong>' +
+        esc(f.status === "failed" ? "проблемные" : "предложения") +
+        "</strong> · тип: <strong>" +
+        esc(KIND_LABELS[f.kind] || f.kind) +
+        "</strong> · менеджер: <strong>" +
+        esc(mgr) +
+        "</strong> · товаров в группе: <strong>от " +
+        fmtNum(f.min_items) +
+        "</strong>" +
+        (f.search ? " · поиск: <code>" + esc(f.search) + "</code>" : "") +
+        "</div>"
+      );
+    }
+
+    function bulkErrorsHtml(errors) {
+      if (!Array.isArray(errors) || !errors.length) return "";
+      return (
+        '<div class="mt-2 fw-semibold small">Первые ошибки:</div><ul class="small mb-0">' +
+        errors
+          .slice(0, 20)
+          .map(function (e) {
+            return (
+              "<li><code>" + esc(e.code) + "</code>" +
+              (e.group_key ? " (" + esc(e.group_key) + ")" : "") +
+              ": " + esc(e.error) + "</li>"
+            );
+          })
+          .join("") +
+        "</ul>"
+      );
+    }
+
+    function startBulkMergePreflight(btn) {
+      if (isDirty()) {
+        toast("warning", "Сначала нажмите «Применить» — объединяем по применённому фильтру");
+        return;
+      }
+      if (state.status !== "suggested" && state.status !== "failed") {
+        toast("warning", "Массовое объединение работает в очередях «Предложения» и «Проблемные»");
+        return;
+      }
+      var filters = bulkFiltersPayload();
+      var doPreflight = function () {
+        showActionLog(
+          "info",
+          "<div><strong>Проверяем, что попадёт в массовое объединение…</strong></div>" + bulkFiltersHtml(filters)
+        );
+        return fetch("/api/exports/marketplaces/ozon-merge/apply-filtered", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify(Object.assign({ dry_run: true }, filters)),
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (res) {
+            if (!res || !res.success) {
+              throw new Error((res && res.error) || "Не удалось посчитать группы по фильтру");
+            }
+            var sizes = Object.keys(res.by_size || {})
+              .sort(function (a, b) { return Number(a) - Number(b); })
+              .map(function (k) { return fmtNum(k) + " товаров — " + fmtNum(res.by_size[k]) + " гр."; })
+              .join(", ");
+            var skippedHtml = "";
+            if (res.skipped > 0) {
+              skippedHtml =
+                '<div class="small mt-1">Пропущено (не заполнено отличие у товара): <strong>' +
+                fmtNum(res.skipped) +
+                "</strong></div>" +
+                '<ul class="small mb-0">' +
+                (res.skipped_list || [])
+                  .map(function (s) { return "<li>" + esc(s.group_key) + ": " + esc(s.reason) + "</li>"; })
+                  .join("") +
+                "</ul>";
+            }
+            var previewHtml =
+              '<ul class="small mb-0 mt-1">' +
+              (res.groups_preview || [])
+                .map(function (g) {
+                  return (
+                    "<li><code>" + esc(g.main_offer_id) + "</code> " +
+                    esc(g.group_key) + " — " + fmtNum(g.items) + " шт.</li>"
+                  );
+                })
+                .join("") +
+              (res.would_update > 20 ? "<li>… и ещё " + fmtNum(res.would_update - 20) + "</li>" : "") +
+              "</ul>";
+            var summaryHtml =
+              "<div><strong>Preflight массового объединения</strong></div>" +
+              bulkFiltersHtml(res.filters || filters) +
+              '<ul class="small mb-0 mt-1">' +
+              "<li>Групп по фильтру: <strong>" + fmtNum(res.total) + "</strong></li>" +
+              "<li>Будет объединено: <strong>" + fmtNum(res.would_update) + "</strong> групп, " +
+              fmtNum(res.items_total) + " карточек" + (sizes ? " (" + esc(sizes) + ")" : "") + "</li>" +
+              "</ul>" +
+              skippedHtml;
+            showActionLog(res.would_update > 0 ? "info" : "warning", summaryHtml);
+
+            if (res.running) {
+              toast("warning", "Массовое объединение уже идёт — показываем прогресс");
+              startBulkPolling();
+              return;
+            }
+            if (!res.would_update) {
+              toast("warning", "По фильтру нет групп, готовых к объединению");
+              return;
+            }
+            if (res.would_update > res.max_groups) {
+              toast("warning", "Групп больше лимита " + fmtNum(res.max_groups) + " — сузьте фильтр");
+              return;
+            }
+            openConfirmModal({
+              title: "Объединить " + fmtNum(res.would_update) + " групп на Ozon",
+              okText: "Да, объединить все",
+              okClass: "btn-success",
+              bodyHtml:
+                '<div class="mb-2">Будет записано в Ozon <strong>' + fmtNum(res.items_total) +
+                "</strong> карточек в <strong>" + fmtNum(res.would_update) + "</strong> группах." +
+                (sizes ? " Состав: " + esc(sizes) + "." : "") + "</div>" +
+                bulkFiltersHtml(res.filters || filters) +
+                '<div class="small mt-2">В каждую группу идут <strong>все</strong> её товары с отличием, которое предложено автоматически. Ручные правки и снятые галочки на карточках групп не учитываются.</div>' +
+                '<div class="small mt-1">Группы обрабатываются по очереди в фоне, можно остановить кнопкой «Остановить».</div>' +
+                '<div class="fw-semibold small mt-2 mb-1">Первые группы:</div>' +
+                previewHtml,
+              onConfirm: function () {
+                startBulkMergeLive(filters, summaryHtml);
+              },
+            });
+          })
+          .catch(function (err) {
+            showActionLog("danger", "<strong>Ошибка preflight:</strong> " + esc(err.message || String(err)));
+            toast("danger", err.message || String(err));
+          });
+      };
+      if (window.DatagonNotify && window.DatagonNotify.busyRun) {
+        window.DatagonNotify.busyRun(btn, doPreflight);
+      } else {
+        doPreflight();
+      }
+    }
+
+    function startBulkMergeLive(filters, preflightHtml) {
+      return fetch("/api/exports/marketplaces/ozon-merge/apply-filtered", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify(Object.assign({ confirm: true }, filters)),
+      })
+        .then(function (r) {
+          return r.json().then(function (body) {
+            if (!r.ok || !body || !body.success) {
+              throw new Error("HTTP " + r.status + ": " + ((body && body.error) || "не удалось запустить"));
+            }
+            return body;
+          });
+        })
+        .then(function () {
+          toast("info", "Массовое объединение запущено");
+          startBulkPolling();
+        })
+        .catch(function (err) {
+          showActionLog(
+            "danger",
+            preflightHtml + '<div class="mt-2"><strong>Не запустилось:</strong> ' + esc(err.message || String(err)) + "</div>"
+          );
+          toast("danger", err.message || String(err));
+        });
+    }
+
+    function setBulkButtonsRunning(running) {
+      var b = byId("dg-ozm-bulk-merge-btn");
+      var s = byId("dg-ozm-bulk-stop-btn");
+      if (b) b.disabled = running;
+      if (s) s.classList.toggle("d-none", !running);
+    }
+
+    function renderBulkStatus(st) {
+      var head;
+      var kind = "info";
+      if (st.active) {
+        head =
+          "<strong>Массовое объединение идёт: " + fmtNum(st.done) + " из " + fmtNum(st.total) +
+          " групп, прошло " + fmtNum(st.duration_sec) + " с.</strong>" +
+          (st.current ? '<div class="small mt-1">Сейчас: <code>' + esc(st.current) + "</code></div>" : "");
+      } else {
+        kind = st.fatal || st.groups_failed > 0 ? (st.groups_ok > 0 ? "warning" : "danger") : st.groups_partial > 0 || st.stopped ? "warning" : "success";
+        head =
+          "<strong>Массовое объединение " + (st.stopped ? "остановлено" : "завершено") +
+          " за " + fmtNum(st.duration_sec) + " с.</strong>" +
+          (st.fatal ? '<div class="small mt-1">Сбой: ' + esc(st.fatal) + "</div>" : "");
+      }
+      showActionLog(
+        kind,
+        head +
+          (st.filters ? bulkFiltersHtml(st.filters) : "") +
+          '<ul class="small mb-0 mt-1">' +
+          "<li>Групп обработано: <strong>" + fmtNum(st.done) + "</strong> из " + fmtNum(st.total) + "</li>" +
+          "<li>Объединено полностью ✓: <strong>" + fmtNum(st.groups_ok) + "</strong>, частично: <strong>" +
+          fmtNum(st.groups_partial) + "</strong>, ошибкой ×: <strong>" + fmtNum(st.groups_failed) + "</strong></li>" +
+          "<li>Карточек записано в Ozon ✓: <strong>" + fmtNum(st.ms_ok) + "</strong>, ошибок ×: <strong>" +
+          fmtNum(st.ms_failed) + "</strong></li>" +
+          "</ul>" +
+          (!st.active && (st.groups_failed > 0 || st.groups_partial > 0)
+            ? '<div class="small mt-1">Неудачные группы — во вкладке «Проблемные объединения».</div>'
+            : "") +
+          (!st.active ? '<div class="small mt-1 text-muted">На витрине ozon.ru склейка появляется после переиндексации (обычно 2–15 минут).</div>' : "") +
+          bulkErrorsHtml(st.errors)
+      );
+    }
+
+    function startBulkPolling() {
+      if (bulkPollTimer) clearInterval(bulkPollTimer);
+      setBulkButtonsRunning(true);
+      var tick = function () {
+        fetch("/api/exports/marketplaces/ozon-merge/apply-filtered/status", { credentials: "same-origin" })
+          .then(function (r) { return r.json(); })
+          .then(function (st) {
+            if (!st || !st.success) return;
+            renderBulkStatus(st);
+            if (!st.active) {
+              clearInterval(bulkPollTimer);
+              bulkPollTimer = null;
+              setBulkButtonsRunning(false);
+              toast(
+                st.groups_failed > 0 || st.groups_partial > 0 ? "warning" : "success",
+                "Массовое объединение: " + fmtNum(st.groups_ok) + " из " + fmtNum(st.total) + " групп ✓"
+              );
+              loadGroupsList();
+            }
+          })
+          .catch(function () {});
+      };
+      tick();
+      bulkPollTimer = setInterval(tick, 3000);
+    }
+
+    function resumeBulkIfRunning() {
+      fetch("/api/exports/marketplaces/ozon-merge/apply-filtered/status", { credentials: "same-origin" })
+        .then(function (r) { return r.json(); })
+        .then(function (st) {
+          if (st && st.success && st.active) startBulkPolling();
+        })
+        .catch(function () {});
     }
 
     function executeUnmergeGroup(group, activeItems, triggerBtn) {
@@ -3393,6 +3767,45 @@
           state.pending.manager = mgrSel.value || "all";
           saveFilterState();
           syncDirtyButton();
+        });
+      }
+
+      var minItemsSel = byId("dg-ozm-f-min-items");
+      if (minItemsSel) {
+        minItemsSel.addEventListener("change", function () {
+          state.pending.minItems = Number(minItemsSel.value) || 0;
+          saveFilterState();
+          syncDirtyButton();
+        });
+      }
+
+      var bulkBtn = byId("dg-ozm-bulk-merge-btn");
+      if (bulkBtn) {
+        bulkBtn.addEventListener("click", function () {
+          startBulkMergePreflight(bulkBtn);
+        });
+      }
+      var bulkStopBtn = byId("dg-ozm-bulk-stop-btn");
+      if (bulkStopBtn) {
+        bulkStopBtn.addEventListener("click", function () {
+          var doStop = function () {
+            return fetch("/api/exports/marketplaces/ozon-merge/apply-filtered/stop", {
+              method: "POST",
+              credentials: "same-origin",
+            })
+              .then(function (r) { return r.json(); })
+              .then(function (res) {
+                toast("warning", (res && res.message) || "Остановка запрошена");
+              })
+              .catch(function (err) {
+                toast("danger", err.message || String(err));
+              });
+          };
+          if (window.DatagonNotify && window.DatagonNotify.busyRun) {
+            window.DatagonNotify.busyRun(bulkStopBtn, doStop);
+          } else {
+            doStop();
+          }
         });
       }
 
@@ -3986,6 +4399,7 @@
       loadPendingApprovals();
       bindFilterAndHeaderEvents();
       loadGroupsList();
+      resumeBulkIfRunning();
     }
 
     if (document.readyState === "loading") {

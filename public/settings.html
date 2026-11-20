@@ -1804,6 +1804,46 @@
             </div>
           </div>
 
+          <div class="main-card mb-3 card" id="dg-set-oct">
+            <div class="card-header d-flex align-items-center">
+              <i class="header-icon pe-7s-link icon-gradient bg-happy-fisher me-2"> </i>
+              <span>Ozon: ссылка для бота (смена категорий)</span>
+            </div>
+            <div class="card-body">
+              <p class="small text-muted">
+                Публичная страница со списком групп, которые Ozon не склеил из-за категории. Бот открывает её по ссылке,
+                вводит пароль, меняет категорию в кабинете Ozon и оставляет комментарий. По ссылке — только чтение и комментарии,
+                в Ozon ничего не пишется. Смена токена или пароля сразу отключает старый доступ. Только для admin.
+              </p>
+              <div class="row g-2">
+                <div class="col-md-7">
+                  <label class="form-label" for="dg-set-oct-token">Токен ссылки</label>
+                  <div class="input-group">
+                    <input type="text" class="form-control font-monospace" id="dg-set-oct-token" autocomplete="off" spellcheck="false" placeholder="не задан — нажмите «Сгенерировать»" />
+                    <button type="button" class="btn btn-outline-secondary" id="dg-set-oct-generate" data-dg-no-activity="1">Сгенерировать</button>
+                  </div>
+                </div>
+                <div class="col-md-5">
+                  <label class="form-label" for="dg-set-oct-pin">Новый пароль (4–64 символа)</label>
+                  <input type="password" class="form-control" id="dg-set-oct-pin" autocomplete="new-password" placeholder="пусто — оставить текущий" />
+                  <small class="text-muted" id="dg-set-oct-pin-state"></small>
+                </div>
+                <div class="col-12">
+                  <label class="form-label" for="dg-set-oct-link">Ссылка для бота</label>
+                  <div class="input-group">
+                    <input type="text" class="form-control font-monospace" id="dg-set-oct-link" readonly />
+                    <button type="button" class="btn btn-outline-secondary" id="dg-set-oct-copy" data-dg-no-activity="1">Копировать</button>
+                  </div>
+                  <small class="text-muted">JSON для API: добавьте <code>&amp;format=json</code> и заголовок <code>X-Datagon-Pin</code>.</small>
+                </div>
+              </div>
+              <div class="mt-3 d-flex gap-2 flex-wrap">
+                <button type="button" class="btn btn-success" id="dg-set-btn-save-oct" data-dg-notify-start="Сохраняем доступ для бота…">Сохранить</button>
+              </div>
+              <div id="dg-set-oct-save-msg" class="alert mt-3 mb-0 d-none" role="status"></div>
+            </div>
+          </div>
+
           <div class="main-card mb-3 card" id="dg-set-planfix">
             <div class="card-header d-flex align-items-center">
               <i class="header-icon pe-7s-notebook icon-gradient bg-happy-itmeo me-2"> </i>
@@ -8351,6 +8391,115 @@
         }
         loadUsers();
       });
+    })();
+
+    // Ozon: ссылка для бота (задачи на смену категории) — токен + мини-пароль
+    (function ozonCategoryTasksAccess() {
+      var API = "/api/exports/marketplaces/ozon-merge/category-tasks/config";
+      var card = document.getElementById("dg-set-oct");
+      if (!card) return;
+      var tokenInp = document.getElementById("dg-set-oct-token");
+      var pinInp = document.getElementById("dg-set-oct-pin");
+      var pinState = document.getElementById("dg-set-oct-pin-state");
+      var linkInp = document.getElementById("dg-set-oct-link");
+      var msg = document.getElementById("dg-set-oct-save-msg");
+      var saveBtn = document.getElementById("dg-set-btn-save-oct");
+
+      function maskToken(t) {
+        return t ? t.slice(0, 4) + "…" + t.slice(-4) + " (" + t.length + " симв.)" : "пусто";
+      }
+      function linkFor(token) {
+        return token ? location.origin + "/public/ozon-category-tasks?token=" + encodeURIComponent(token) : "";
+      }
+      function showMsg(kind, html) {
+        msg.className = "alert mt-3 mb-0 alert-" + kind;
+        msg.innerHTML = html;
+      }
+      function apply(cfg) {
+        tokenInp.value = cfg.token || "";
+        linkInp.value = linkFor(cfg.token || "");
+        pinState.textContent = cfg.has_pin ? "Пароль задан" : "Пароль не задан — без него ссылка не откроется";
+      }
+      function load() {
+        return fetch(API, { credentials: "same-origin" })
+          .then(function (r) {
+            if (r.status === 403) {
+              card.classList.add("d-none");
+              return null;
+            }
+            return r.json();
+          })
+          .then(function (cfg) {
+            if (cfg && cfg.success) apply(cfg);
+            return cfg;
+          });
+      }
+
+      tokenInp.addEventListener("input", function () {
+        linkInp.value = linkFor(tokenInp.value.trim());
+      });
+      document.getElementById("dg-set-oct-generate").addEventListener("click", function () {
+        var bytes = new Uint8Array(24);
+        crypto.getRandomValues(bytes);
+        tokenInp.value = btoa(String.fromCharCode.apply(null, bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+        linkInp.value = linkFor(tokenInp.value);
+        showMsg("warning", "Новый токен ещё не сохранён — нажмите «Сохранить». После сохранения старая ссылка перестанет работать.");
+      });
+      document.getElementById("dg-set-oct-copy").addEventListener("click", function () {
+        if (!linkInp.value) return;
+        navigator.clipboard.writeText(linkInp.value).then(function () {
+          if (window.DatagonNotify) window.DatagonNotify.toast({ type: "success", message: "Ссылка скопирована" });
+        });
+      });
+
+      saveBtn.addEventListener("click", function () {
+        var sentToken = tokenInp.value.trim();
+        var sentPin = pinInp.value.trim();
+        saveBtn.disabled = true;
+        showMsg("warning", "Сохраняем…");
+        fetch(API, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify(sentPin ? { token: sentToken, pin: sentPin } : { token: sentToken }),
+        })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              if (!r.ok || !j.success) throw new Error("HTTP " + r.status + ": " + ((j && j.error) || "ошибка"));
+              return j;
+            });
+          })
+          .then(function () {
+            return load();
+          })
+          .then(function (cfg) {
+            pinInp.value = "";
+            var esc = function (s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
+            var tokenOk = cfg && cfg.token === sentToken;
+            var pinOk = !sentPin || (cfg && cfg.has_pin);
+            if (tokenOk && pinOk) {
+              showMsg(
+                "success",
+                "Сохранено и проверено в БД: токен " + esc(maskToken(cfg.token)) + ", пароль " + (cfg.has_pin ? "задан" : "<strong>не задан</strong>") +
+                  (sentPin ? " (обновлён)" : "") + "."
+              );
+            } else {
+              showMsg(
+                "warning",
+                "Сервер ответил успехом, но в БД другое: токен отправили " + esc(maskToken(sentToken)) + ", в БД " +
+                  esc(maskToken(cfg && cfg.token)) + "; пароль в БД " + (cfg && cfg.has_pin ? "задан" : "не задан") + "."
+              );
+            }
+          })
+          .catch(function (err) {
+            showMsg("danger", "Не сохранено: " + String(err.message || err).replace(/</g, "&lt;"));
+          })
+          .then(function () {
+            saveBtn.disabled = false;
+          });
+      });
+
+      load().catch(function () {});
     })();
   </script>
 

@@ -62,6 +62,7 @@ const {
     releaseMpHeavyLock,
     getMpHeavyLock,
     ensureMpWriteApprovalsSchema,
+    actorMayWriteOzonMergeDirect,
 } = require('../lib/datagonMpWriteApprovals');
 
 const MARKETPLACE_EXTERNAL_KEY = {
@@ -580,7 +581,8 @@ function requireSettingsFullOrAdmin(req, res, next) {
 }
 
 /**
- * Live mass-write: admin — сразу; иначе pending для dual-control.
+ * Live mass-write: admin и специальность «Менеджер маркетплейсов» пишут объединение сразу;
+ * разъединение сразу только у admin. Иначе pending для dual-control.
  * @returns {{mode:'execute',...}|null} null — ответ уже отправлен (pending)
  */
 async function beginOzonMergeLiveWrite(dbConn, req, res, kind, payload) {
@@ -595,7 +597,9 @@ async function beginOzonMergeLiveWrite(dbConn, req, res, kind, payload) {
     const actorName = String(
         a.full_name || a.fullName || a.username || s.full_name || s.username || 'user'
     ).slice(0, 255);
-    if (a.username === 'admin') {
+    const direct =
+        a.username === 'admin' || (kind === 'ozon-merge-apply' && actorMayWriteOzonMergeDirect(a));
+    if (direct) {
         return { mode: 'execute', actorName, actorUserId, approvalId: null };
     }
     if (!Number.isFinite(actorUserId) || actorUserId <= 0) {
@@ -4132,17 +4136,20 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
      *  - status = 'suggested' («Предложения к объединению»)
      *  - status = 'merged' («Уже объединены на Ozon»)
      *  - status = 'ignored' («Не объединять / Скрытые»)
-     * Query: status, kind (all|bundles|name_variants|partial_merged|custom), search, limit, offset
+     * Query: status, kind (all|bundles|name_variants|partial_merged|custom), search, min_items, limit, offset
      */
     router.get('/ozon-merge/list', async (req, res) => {
         try {
+            await refreshMarketplaceCredsFromDb(db, appSettings);
             const out = await buildAutoMergeGroupsList(db, {
                 status: req.query.status || 'suggested',
                 kind: req.query.kind || 'all',
                 manager: req.query.manager || 'all',
                 search: req.query.search || '',
+                min_items: req.query.min_items || 0,
                 limit: req.query.limit || 100,
                 offset: req.query.offset || 0,
+                creds: getOzonCreds(appSettings),
             });
             return res.json(out);
         } catch (e) {
@@ -4499,6 +4506,317 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
             });
         } finally {
             if (lockHeld) releaseMpHeavyLock('ozon-merge-apply');
+        }
+    });
+
+    /**
+     * Массовое объединение всех групп по применённому фильтру (status/kind/manager/search/min_items).
+     * dry_run — preflight без записи; live — фоновая задача, прогресс в GET /ozon-merge/apply-filtered/status.
+     */
+    const OZON_BULK_MERGE_MAX_GROUPS = 300;
+    const ozonBulkMergeJob = {
+        active: false,
+        stopRequested: false,
+        startedAt: null,
+        finishedAt: null,
+        actorName: '',
+        filters: null,
+        total: 0,
+        done: 0,
+        groupsOk: 0,
+        groupsPartial: 0,
+        groupsFailed: 0,
+        msOk: 0,
+        msFailed: 0,
+        current: '',
+        errors: [],
+        stopped: false,
+        fatal: '',
+    };
+
+    function ozonBulkMergeFilters(src) {
+        const s = src && typeof src === 'object' ? src : {};
+        const status = String(s.status || 'suggested').trim();
+        return {
+            status: status === 'failed' ? 'failed' : 'suggested',
+            kind: String(s.kind || 'all').trim() || 'all',
+            manager: String(s.manager || 'all').trim() || 'all',
+            search: String(s.search || '').trim(),
+            min_items: Math.max(2, Math.min(50, Number(s.min_items) || 2)),
+        };
+    }
+
+    function ozonBulkGroupPayload(g) {
+        return {
+            signature: g.signature,
+            group_key: g.group_key,
+            main_offer_id: g.main_offer_id,
+            copy_from_main: true,
+            recommended_aspect_hint: g.recommended_aspect_hint,
+            items: (g.items || []).map((it) => ({
+                offer_id: it.offer_id,
+                aspect_value: String(it.aspect_value == null ? '' : it.aspect_value).trim(),
+            })),
+        };
+    }
+
+    async function collectOzonBulkMergeGroups(filters) {
+        const out = await buildAutoMergeGroupsList(db, {
+            ...filters,
+            limit: 5000,
+            offset: 0,
+            unlimited: true,
+        });
+        const rows = Array.isArray(out.rows) ? out.rows : [];
+        const ready = [];
+        const skipped = [];
+        for (const g of rows) {
+            const items = g.items || [];
+            const emptyAspect = items.filter((it) => !String(it.aspect_value == null ? '' : it.aspect_value).trim());
+            if (items.length < 2) {
+                skipped.push({ group_key: g.group_key, reason: 'меньше 2 товаров' });
+            } else if (emptyAspect.length) {
+                skipped.push({
+                    group_key: g.group_key,
+                    reason: `не заполнено отличие: ${emptyAspect.map((it) => it.offer_id).slice(0, 5).join(', ')}`,
+                });
+            } else {
+                ready.push(g);
+            }
+        }
+        return { ready, skipped, total: rows.length };
+    }
+
+    function ozonBulkMergeStatusPayload() {
+        const j = ozonBulkMergeJob;
+        const endTs = j.finishedAt ? Date.parse(j.finishedAt) : Date.now();
+        return {
+            success: true,
+            active: j.active,
+            started_at: j.startedAt,
+            finished_at: j.finishedAt,
+            actor: j.actorName,
+            filters: j.filters,
+            total: j.total,
+            done: j.done,
+            groups_ok: j.groupsOk,
+            groups_partial: j.groupsPartial,
+            groups_failed: j.groupsFailed,
+            ms_ok: j.msOk,
+            ms_failed: j.msFailed,
+            current: j.current,
+            errors: j.errors.slice(0, 20),
+            stopped: j.stopped,
+            fatal: j.fatal,
+            duration_sec: j.startedAt ? Math.round((endTs - Date.parse(j.startedAt)) / 1000) : 0,
+        };
+    }
+
+    router.get('/ozon-merge/apply-filtered/status', (req, res) => {
+        return res.json(ozonBulkMergeStatusPayload());
+    });
+
+    router.post('/ozon-merge/apply-filtered/stop', (req, res) => {
+        if (!assertMarketplaceShopAccess(req, res, 'ozon', { write: true })) return;
+        if (!ozonBulkMergeJob.active) {
+            return res.json({ success: true, active: false, message: 'Массовое объединение не запущено' });
+        }
+        ozonBulkMergeJob.stopRequested = true;
+        return res.json({ success: true, active: true, message: 'Остановим после текущей группы' });
+    });
+
+    router.post('/ozon-merge/apply-filtered', async (req, res) => {
+        if (!assertMarketplaceShopAccess(req, res, 'ozon', { write: true })) return;
+        try {
+            const body = req.body && typeof req.body === 'object' ? req.body : {};
+            const dryRun = Boolean(body.dry_run) || String(req.query.dry_run || '') === '1';
+            const filters = ozonBulkMergeFilters(body);
+            const { ready, skipped, total } = await collectOzonBulkMergeGroups(filters);
+            const bySize = {};
+            let itemsTotal = 0;
+            for (const g of ready) {
+                const n = (g.items || []).length;
+                itemsTotal += n;
+                bySize[n] = (bySize[n] || 0) + 1;
+            }
+
+            if (dryRun) {
+                return res.json({
+                    success: true,
+                    dry_run: true,
+                    filters,
+                    total,
+                    would_update: ready.length,
+                    items_total: itemsTotal,
+                    by_size: bySize,
+                    skipped: skipped.length,
+                    skipped_list: skipped.slice(0, 20),
+                    max_groups: OZON_BULK_MERGE_MAX_GROUPS,
+                    groups_preview: ready.slice(0, 20).map((g) => ({
+                        group_key: g.group_key,
+                        main_offer_id: g.main_offer_id,
+                        items: (g.items || []).length,
+                        title: g.reason_title || '',
+                    })),
+                    running: ozonBulkMergeJob.active,
+                });
+            }
+
+            if (!Boolean(body.confirm)) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Для записи в Ozon передайте confirm: true (или dry_run: true для проверки)',
+                    code: 'CONFIRM_REQUIRED',
+                });
+            }
+            const a = req.datagonActor || {};
+            if (!(a.username === 'admin' || actorMayWriteOzonMergeDirect(a))) {
+                return res.status(403).json({
+                    success: false,
+                    error: 'Массовое объединение доступно admin и специальности «Менеджер маркетплейсов»',
+                    code: 'BULK_MERGE_FORBIDDEN',
+                });
+            }
+            if (ozonBulkMergeJob.active) {
+                return res.status(409).json({
+                    success: false,
+                    error: 'Массовое объединение уже идёт',
+                    code: 'BULK_MERGE_RUNNING',
+                });
+            }
+            if (!ready.length) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'По фильтру нет групп, готовых к объединению',
+                    code: 'EMPTY_GROUPS',
+                });
+            }
+            if (ready.length > OZON_BULK_MERGE_MAX_GROUPS) {
+                return res.status(400).json({
+                    success: false,
+                    error: `По фильтру ${ready.length} групп — больше лимита ${OZON_BULK_MERGE_MAX_GROUPS}. Сузьте фильтр.`,
+                    code: 'TOO_MANY_GROUPS',
+                });
+            }
+            await refreshMarketplaceCredsFromDb(db, appSettings);
+            const creds = getOzonCreds(appSettings);
+            if (!creds.clientId || !creds.apiKey) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Не заданы ozon_client_id / ozon_api_key в настройках',
+                    code: 'MISSING_CREDS',
+                });
+            }
+            if (!acquireFillHeavyOrReject(res, 'ozon-merge-apply-filtered')) return;
+
+            const { actorName, actorUserId } = resolveOzonMergeActor(req);
+            Object.assign(ozonBulkMergeJob, {
+                active: true,
+                stopRequested: false,
+                startedAt: new Date().toISOString(),
+                finishedAt: null,
+                actorName,
+                filters,
+                total: ready.length,
+                done: 0,
+                groupsOk: 0,
+                groupsPartial: 0,
+                groupsFailed: 0,
+                msOk: 0,
+                msFailed: 0,
+                current: '',
+                errors: [],
+                stopped: false,
+                fatal: '',
+            });
+            await auditMarketplaceMassWrite(db, req, 'ozon-merge-apply-filtered', {
+                shop: 'ozon',
+                groups: ready.length,
+                filters,
+                dry_run: false,
+            });
+
+            const delayMs = Math.max(
+                MP_MIN_DELAY_MS.ozon || 200,
+                Number((appSettings && appSettings.mp_ozon_delay_ms) || 400) || 400
+            );
+            const logger = createMarketplaceLogger('ozon-merge-bulk');
+            (async () => {
+                const j = ozonBulkMergeJob;
+                try {
+                    for (const g of ready) {
+                        if (j.stopRequested) {
+                            j.stopped = true;
+                            break;
+                        }
+                        j.current = g.group_key || g.main_offer_id || '';
+                        try {
+                            const out = await applyOzonMergeGroups(creds, db, {
+                                groups: [ozonBulkGroupPayload(g)],
+                                copyFromMain: true,
+                                dryRun: false,
+                                delayMs,
+                                actorName,
+                                actorUserId,
+                                logger,
+                            });
+                            const ok = Number((out && out.ms_ok) || 0);
+                            const failed = Number((out && out.ms_failed) || 0);
+                            j.msOk += ok;
+                            j.msFailed += failed;
+                            if (out && out.success && !failed) j.groupsOk += 1;
+                            else if (ok > 0) j.groupsPartial += 1;
+                            else j.groupsFailed += 1;
+                            const errs = Array.isArray(out && out.errors) ? out.errors : [];
+                            if (!errs.length && out && !out.success && out.error) {
+                                errs.push({ code: g.main_offer_id, error: out.error });
+                            }
+                            for (const e of errs) {
+                                if (j.errors.length >= 20) break;
+                                j.errors.push({
+                                    group_key: g.group_key,
+                                    code: e.code || e.offer_id || g.main_offer_id,
+                                    error: e.error || String(e),
+                                });
+                            }
+                        } catch (eGroup) {
+                            j.groupsFailed += 1;
+                            if (j.errors.length < 20) {
+                                j.errors.push({
+                                    group_key: g.group_key,
+                                    code: g.main_offer_id,
+                                    error: eGroup && eGroup.message ? eGroup.message : String(eGroup),
+                                });
+                            }
+                        }
+                        j.done += 1;
+                    }
+                } catch (eJob) {
+                    j.fatal = eJob && eJob.message ? eJob.message : String(eJob);
+                    console.error('[exports/marketplaces] ozon-merge bulk failed:', eJob && eJob.stack ? eJob.stack : eJob);
+                } finally {
+                    j.current = '';
+                    j.active = false;
+                    j.finishedAt = new Date().toISOString();
+                    releaseMpHeavyLock('ozon-merge-apply-filtered');
+                }
+            })();
+
+            return res.json({
+                success: true,
+                started: true,
+                total: ready.length,
+                items_total: itemsTotal,
+                skipped: skipped.length,
+                filters,
+            });
+        } catch (e) {
+            console.error('[exports/marketplaces] ozon-merge/apply-filtered failed:', e && e.stack ? e.stack : e);
+            return res.status(500).json({
+                success: false,
+                error: e && e.message ? e.message : String(e),
+                code: 'OZON_MERGE_APPLY_FILTERED_FAILED',
+            });
         }
     });
 

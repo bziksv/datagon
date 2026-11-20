@@ -1166,11 +1166,12 @@ UI: кнопка **«Исправить НДС на Я.М»**, колонка **
 Ответ — как у `fix-ozon-vat` / `fix-wb-vat`. Локальный снапшот: marketplace=`yandex_market`, `updated_label = 'YM НДС ← МС'`.
 
 ### GET `/api/exports/marketplaces/ozon-merge/list`
-Автоматический список групп объединения карточек Ozon по 4 очередям (`lib/ozonProductMerge.js`, экран `/exports-ozon-merge.html`, пункт меню **Маркетплейсы → Объединение Ozon**, ключ доступа `exports-ozon-merge`):
+Автоматический список групп объединения карточек Ozon по 4 очередям (`lib/ozonProductMerge.js`, экран `/exports-ozon-merge.html`, пункт меню **Маркетплейсы → Объединение Ozon**, ключ доступа `exports-ozon-merge`). В строке группы поле `vitrine_text`: одна модель и число цветов, либо несколько отдельных склеек. У товара `ozon_color`. Если в линейке есть карточка из автоархива Ozon, группа в список не попадает: склейка с архивом на витрине не собирается. Автоархив читается по `visibility: ARCHIVED`, кэш списка 15 минут.
 - Query-параметры:
   - `status`: `suggested` («Предложения к объединению», по умолчанию), `merged` («Уже объединены на Ozon» — только группы, где в Ozon у всех карточек фактически сохранён единый `9048`), `failed` («Проблемные объединения» — группы, по которым была попытка объединения, но Ozon отклонил или проигнорировал склейку `9048`), `ignored` («Не объединять / Скрытые»);
   - `kind`: `all`, `bundles` (базовый товар + моно-комплекты из `dg_bundle_components` и коды `БАЗА-N`), `name_variants` (линейки одной модели по основе названия, коду модификации `БАЗАsМОД` и поставщику/бренду), `partial_merged` (доклейка к существующей связке `9048`), `custom` (ручные группы);
   - `manager`: фильтр по менеджеру товара из МойСклад (`all`, ФИО менеджера — например `Назерке Койман`, `Катерина Лычковская`, `Яна Ярцева`, либо `__empty__` — без менеджера);
+  - `min_items`: только группы, где товаров не меньше N (на экране селект «Товаров в группе»: от 3 / 4 / 5 / 6 / 8). Учитывается и в `counts`;
   - `search`, `limit` (по умолчанию `100`, в пошаговом режиме `1`), `offset`.
 - Возвращает `{ success, counts: { suggested, merged, failed, ignored, by_kind }, managers: string[], cache_stats: { total_ozon_rows, cached_cards, cards_with_9048 }, total, limit, offset, rows }`, где каждая группа во вкладке `failed` содержит `problem_reason` с точным объяснением причины отказа Ozon.
 
@@ -1211,8 +1212,38 @@ UI: кнопка **«Исправить НДС на Я.М»**, колонка **
 - Принимает `{ groups: [{ group_key, main_offer_id, copy_from_main, aspect_attribute_id, items: [{ offer_id, aspect_value, aspect_dictionary_value_id }] }], dry_run?: boolean, confirm?: boolean }`.
 - При `copy_from_main: true` (по умолчанию) выравнивает `description_category_id`, `type_id`, Бренд (`id: 85`) и недостающие обязательные атрибуты по главной карточке.
 - `dry_run: true` — без dual-control и без записи в Ozon.
-- **Dual-control (F-MPK-02):** при live (`confirm: true`, не dry_run) не-admin получает `{ success, pending: true, approval_id, summary, code: 'APPROVAL_PENDING' }` вместо записи в кабинет; admin пишет сразу. Mutex: не параллельно с `POST /sync` и fill-* (`MP_HEAVY_BUSY` / `MP_SYNC_RUNNING`).
+- **Dual-control (F-MPK-02):** при live (`confirm: true`, не dry_run) запись сразу делают `username=admin` и специальность **«Менеджер маркетплейсов»**. Остальные получают `{ success, pending: true, approval_id, summary, code: 'APPROVAL_PENDING' }` вместо записи в кабинет; исполнение — через `POST …/approvals/:id/confirm` другим пользователем с `settings=full` (или admin). Mutex: не параллельно с `POST /sync` и fill-* (`MP_HEAVY_BUSY` / `MP_SYNC_RUNNING`).
+- **Плакаты (категория, где вариативный атрибут только «Цвет товара», а цвета карточек совпадают):** переключатель размера Ozon не собирает. Склейка пишет общий `9048` (`плакат: <название>`) и раздаёт вариантам разные значения справочника **10096** (белый остаётся у первой карточки, повторы получают серый, бежевый, коричневый и дальше по палитре). Ответ: `merge_mode: "color_switch"`, `colors[]`. На витрине одна карточка с переключателем цвета; размер и материал остаются в названии варианта. Если карточки уже сидят в нескольких моделях (две пары по 2), перед общей склейкой каждой временно ставится свой код `split-<offer_id>`, пары распадаются, затем пишется общий `9048`.
 - Возвращает расширенные счётчики для `#dg-ozm-action-log`: `{ success, dry_run, total_groups, total, to_update, would_update, filled, corrected, skipped, ms_ok, ms_failed, errors[], groups_result[], duration_sec }`.
+
+### POST `/api/exports/marketplaces/ozon-merge/apply-filtered`
+Массовое объединение всех групп по применённому фильтру экрана (кнопка **«Объединить все по фильтру»**).
+- Body: `{ status: 'suggested'|'failed', kind, manager, search, min_items, dry_run?: boolean, confirm?: boolean }`. `min_items` по умолчанию `2`.
+- В каждую группу уходят все её товары с автоматически предложенным отличием (ручные черновики и снятые галочки в браузере не учитываются). Группы, где у товара пустое отличие, пропускаются.
+- `dry_run: true` — preflight: `{ success, dry_run, filters, total, would_update, items_total, by_size: { "<число товаров>": групп }, skipped, skipped_list[≤20], groups_preview[≤20], max_groups, running }`.
+- Live (`confirm: true`): только `username=admin` и специальность «Менеджер маркетплейсов» (иначе `403 BULK_MERGE_FORBIDDEN`, dual-control для массовой записи нет). Лимит 300 групп (`TOO_MANY_GROUPS`). Запускает фоновую задачу и сразу отвечает `{ success, started: true, total, items_total, skipped, filters }`; группы пишутся по очереди через ту же логику, что `POST /ozon-merge/apply` (включая переключатель цвета для плакатов). Держит mutex `MP_HEAVY_BUSY` до конца прогона; повторный запуск — `409 BULK_MERGE_RUNNING`.
+
+### GET `/api/exports/marketplaces/ozon-merge/apply-filtered/status`
+Прогресс массового объединения: `{ success, active, started_at, finished_at, actor, filters, total, done, groups_ok, groups_partial, groups_failed, ms_ok, ms_failed, current, errors[≤20]: [{ group_key, code, error }], stopped, fatal, duration_sec }`. Состояние в памяти процесса Node (после перезапуска сбрасывается).
+
+### POST `/api/exports/marketplaces/ozon-merge/apply-filtered/stop`
+Остановить массовое объединение после текущей группы.
+
+### Задачи на смену категории Ozon (ссылка для бота)
+Группы, которые Ozon не склеил, потому что категория не поддерживает атрибут 9048 и вариативные характеристики (`dg_ozon_merge_decisions.status = 'failed'`, `problem_code = 'category_no_merge'`). Внешний бот меняет категорию в кабинете Ozon и пишет комментарий. Код: `lib/ozonCategoryTasks.js`, `routes/ozonCategoryTasks.js`.
+
+**Публичные адреса (без сессии Datagon):**
+- `GET /public/ozon-category-tasks?token=<token>` — HTML-страница; `&format=json` — JSON `{ success, total, rows: [{ signature, main_offer_id, title, items: [{ offer_id, name, product_id, sku, ozon_url, description_category_id, type_id }], current_category: { description_category_id, type_id, type_name, path }, items_same_category, suggested_categories: [{ description_category_id, type_id, type_name, path, aspects[], score }], category_comment, category_comment_by, category_comment_at, failed_at }] }`. Название, SKU и текущая категория читаются из Ozon (`/v3/product/info/list`, кэш 2 минуты), так что после смены категории страница показывает новую.
+- `POST /public/ozon-category-tasks/login?token=` — тело `{ pin }`, ставит cookie `dg_oct` (httpOnly, SameSite=Strict, 12 часов, Path `/public/ozon-category-tasks`).
+- `POST /public/ozon-category-tasks/comment?token=` — тело `{ signature, comment (≤1000), author (≤100, по умолчанию «бот") }`. Ответ `{ success, signature, category_comment, category_comment_by, category_comment_at }`. Пишет колонки `category_comment*` и строку в `dg_ozon_merge_log` (`action = 'category_comment'`).
+- Доступ: токен в ссылке + мини-пароль (cookie после входа или заголовок `X-Datagon-Pin` / поле `pin`). Неверный или пустой токен → `404`; нет пароля → `401 PIN_REQUIRED`; неверный → `401 PIN_INVALID`; 5 неверных паролей с одного IP за 15 минут → `429 PIN_BLOCKED` на 15 минут; пароль не настроен → `503 PIN_NOT_CONFIGURED`. Смена токена или пароля аннулирует старые cookie.
+- Подбор `suggested_categories`: дерево `/v1/description-category/tree` (кэш 24 ч), совпадение основ слов из названий товаров с названием типа, приоритет — та же верхняя ветка; в выдаче только типы с атрибутом 9048 и хотя бы одной вариативной характеристикой, до 5 штук.
+
+**Админка (сессия):**
+- `GET /api/exports/marketplaces/ozon-merge/category-tasks/config` (admin) → `{ success, token, has_pin }`.
+- `POST /api/exports/marketplaces/ozon-merge/category-tasks/config` (admin) — `{ token?, pin?, generate_token? }`; токен ≥24 символов (пустой — ссылка выключена), пароль 4–64 символа, хранится bcrypt-хэшем в `app_settings.ozon_category_tasks_pin_secret`; токен — `app_settings.ozon_category_tasks_token` (в `GET /api/settings` оба маскируются). UI: карточка «Ozon: ссылка для бота» на `/settings.html`.
+- `GET /api/exports/marketplaces/ozon-merge/category-tasks/list` — тот же список для админки (`suggest=0` — без подбора категорий).
+- В `GET /ozon-merge/list` у группы поле `category_task: { needs_category_change, comment, by, at } | null` — блок «Категория Ozon» на карточке проблемной группы.
 
 ### GET `/api/exports/marketplaces/ozon-merge/approvals`
 Список pending mass-write заявок (`dg_mp_write_approvals`). Доступ: `settings=full` или `admin`. Ответ: `{ success, rows: [{ id, kind, requested_by, requested_by_name, payload_summary, created_at }] }`. UI: блок `#dg-ozm-approvals-box` на `/exports-ozon-merge.html`.
