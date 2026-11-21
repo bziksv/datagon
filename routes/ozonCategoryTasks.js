@@ -53,6 +53,12 @@ button:disabled{opacity:.6}
 .msg{margin-left:8px}
 .ok{color:#2e7d32}.err{color:#c62828}
 .last{background:#f8f9fa;border-left:3px solid #3f6ad8;padding:6px 8px;margin:8px 0}
+.check{background:#fff8e1;border-left:3px solid #f7b924;padding:6px 8px;margin:8px 0}
+.check.ok{background:#e8f5e9;border-left-color:#3ac47d;color:inherit}
+.task.done{opacity:.55}
+.btn-grey{background:#6c757d}
+.queue{background:#fff;border-radius:6px;padding:10px 16px;margin:12px 0;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+ol.how{margin:6px 0 0 18px;padding:0}
 `;
 
 function loginPage(error) {
@@ -81,6 +87,15 @@ document.getElementById('login-form').addEventListener('submit',function(e){
 
 function tasksPage(data) {
     const rows = data.rows || [];
+    const q = data.queue || {};
+    const rf = data.refill || {};
+    const refillText = rf.running
+        ? 'Сейчас ищем новые группы в предложениях склейки — обновите страницу через минуту.'
+        : rf.last_at
+          ? `Последний поиск новых групп: ${rf.last_at}` +
+            (rf.last_result ? `, добавлено ${rf.last_result.added} из ${rf.last_result.scanned} проверенных.` : '') +
+            (rf.last_error ? ` Ошибка: ${rf.last_error}` : '')
+          : 'Очередь пополняется автоматически, когда в пачке меньше 10 задач.';
     const cards = rows
         .map((g) => {
             const items = g.items
@@ -114,6 +129,11 @@ ${last}
 <textarea id="comment-${esc(g.signature)}" name="comment-${esc(g.signature)}" maxlength="1000" placeholder="Например: сменил «Ректальная насадка» → «Катетер медицинский» у всех 4 карточек"></textarea>
 <div style="margin-top:8px"><input type="text" id="author-${esc(g.signature)}" name="author-${esc(g.signature)}" maxlength="100" placeholder="Кто (например, Hermes)">
 <button type="button" class="save-btn" id="save-${esc(g.signature)}" data-signature="${esc(g.signature)}">Сохранить комментарий</button><span class="msg" id="msg-${esc(g.signature)}"></span></div>
+<div class="check" id="note-${esc(g.signature)}"${g.check_note ? '' : ' style="display:none"'}>${g.check_note ? `<strong>Последняя проверка ${esc(g.checked_at)}:</strong> ${esc(g.check_note)}` : ''}</div>
+<div style="margin-top:8px">
+<button type="button" class="check-btn" id="check-${esc(g.signature)}" data-signature="${esc(g.signature)}">Готово — проверить в Ozon</button>
+<button type="button" class="skip-btn btn-grey" id="skip-${esc(g.signature)}" data-signature="${esc(g.signature)}">Не получилось — пропустить</button>
+<span class="msg" id="cmsg-${esc(g.signature)}"></span></div>
 </div>`;
         })
         .join('');
@@ -121,10 +141,40 @@ ${last}
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>Задачи на смену категории Ozon</title><style>${PAGE_CSS}</style></head>
 <body><div class="wrap">
 <h1>Задачи на смену категории Ozon</h1>
-<div class="muted">Группы, которые Ozon не склеил: в текущей категории нет атрибута склейки 9048 и вариативных характеристик. Смените категорию в кабинете Ozon и оставьте комментарий «с какой на какую». Всего: <strong id="tasks-total">${rows.length}</strong>. JSON: добавьте к ссылке <code>&amp;format=json</code>.</div>
-${cards || '<div class="card">Задач нет.</div>'}
+<div class="muted">Группы, которые Ozon не может склеить: в текущей категории нет атрибута склейки 9048 и вариативных характеристик. JSON: добавьте к ссылке <code>&amp;format=json</code>.</div>
+<ol class="how muted">
+<li>Смените категорию у всех карточек группы в кабинете Ozon.</li>
+<li>Сохраните комментарий: с какой категории на какую сменили.</li>
+<li>Нажмите «Готово — проверить в Ozon». Datagon сам посмотрит категорию в Ozon: если склейка в ней есть, задача закрыта и вместо неё придёт следующая.</li>
+<li>Если сменить нельзя — комментарий «почему» и «Не получилось — пропустить».</li>
+</ol>
+<div class="queue">В этой пачке: <strong id="tasks-total">${rows.length}</strong> · ждут в очереди: <strong>${esc(q.waiting || 0)}</strong> · проверено и закрыто: <strong>${esc(q.done || 0)}</strong> · пропущено: <strong>${esc(q.skipped || 0)}</strong>
+<br><span class="muted">${esc(refillText)}</span>
+<div style="margin-top:6px"><button type="button" id="reload-btn" onclick="location.reload()">Загрузить следующую пачку</button></div></div>
+${cards || '<div class="card">Задач нет. Очередь пополняется автоматически из новых предложений склейки — загляните позже.</div>'}
 </div>
 <script>
+function octAction(kind,btn){
+  var sig=btn.getAttribute('data-signature');
+  var au=document.getElementById('author-'+sig),msg=document.getElementById('cmsg-'+sig),note=document.getElementById('note-'+sig);
+  msg.className='msg';msg.textContent=kind==='check'?'Проверяем в Ozon…':'Пропускаем…';
+  var btns=document.querySelectorAll('[data-signature="'+sig+'"]');btns.forEach(function(b){b.disabled=true;});
+  fetch('/public/ozon-category-tasks/'+kind+location.search,{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',
+    body:JSON.stringify({signature:sig,author:au.value})})
+  .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
+  .then(function(p){
+    if(!p.ok||!p.j.success){btns.forEach(function(b){b.disabled=false;});msg.className='msg err';msg.textContent=(p.j&&p.j.error)||'Ошибка';return;}
+    var closed=kind==='skip'||p.j.verified;
+    if(p.j.note){note.style.display='';note.textContent=p.j.note;note.className='check'+(p.j.verified?' ok':'');}
+    msg.className='msg '+(closed?'ok':'err');
+    msg.textContent=kind==='skip'?'Пропущено — задача закрыта':p.j.verified?'Проверено — задача закрыта':'Не подтверждено — см. причину выше';
+    if(closed){document.querySelector('.task[data-signature="'+sig+'"]').classList.add('done');}
+    else{btns.forEach(function(b){b.disabled=false;});}
+  })
+  .catch(function(err){btns.forEach(function(b){b.disabled=false;});msg.className='msg err';msg.textContent=String(err);});
+}
+document.querySelectorAll('.check-btn').forEach(function(b){b.addEventListener('click',function(){octAction('check',b);});});
+document.querySelectorAll('.skip-btn').forEach(function(b){b.addEventListener('click',function(){octAction('skip',b);});});
 document.querySelectorAll('.save-btn').forEach(function(btn){
   btn.addEventListener('click',function(){
     var sig=btn.getAttribute('data-signature');
@@ -173,7 +223,7 @@ function createPublicRouter(db) {
             if (access.pinAccepted && !wantsJson(req)) {
                 res.append('Set-Cookie', tasks.buildSessionCookie(access.settings, isSecure(req)));
             }
-            const data = await tasks.listCategoryTasks(db);
+            const data = await tasks.listCategoryTasks(db, { autoRefill: true });
             if (wantsJson(req)) return res.json(data);
             return res.type('html').send(tasksPage(data));
         } catch (e) {
@@ -212,13 +262,34 @@ function createPublicRouter(db) {
             });
             return res.json(out);
         } catch (e) {
-            const code = e && e.code ? e.code : 'COMMENT_FAILED';
-            const status = code === 'TASK_NOT_FOUND' ? 404 : /REQUIRED|TOO_LONG/.test(code) ? 400 : 500;
-            return res.status(status).json({ success: false, error: e && e.message ? e.message : String(e), code });
+            return sendTaskError(res, e, 'COMMENT_FAILED');
         }
     });
 
+    const taskAction = (fn, fallbackCode) => async (req, res) => {
+        setNoStore(res);
+        try {
+            const body = req.body && typeof req.body === 'object' ? req.body : {};
+            const access = await tasks.checkAccess(db, req, { pin: body.pin });
+            if (!access.ok) {
+                return res.status(access.status).json({ success: false, error: access.error, code: access.code });
+            }
+            return res.json(await fn(db, { signature: body.signature, author: body.author }));
+        } catch (e) {
+            return sendTaskError(res, e, fallbackCode);
+        }
+    };
+    router.post('/check', taskAction(tasks.verifyCategoryTask, 'CHECK_FAILED'));
+    router.post('/skip', taskAction(tasks.skipCategoryTask, 'SKIP_FAILED'));
+
     return router;
+}
+
+function sendTaskError(res, e, fallbackCode) {
+    const code = e && e.code ? e.code : fallbackCode;
+    const status =
+        code === 'TASK_NOT_FOUND' ? 404 : code === 'TASK_CLOSED' ? 409 : /REQUIRED|TOO_LONG|NO_OZON_CREDS/.test(code) ? 400 : 500;
+    return res.status(status).json({ success: false, error: e && e.message ? e.message : String(e), code });
 }
 
 function createAdminRouter(db) {
@@ -244,6 +315,23 @@ function createAdminRouter(db) {
         } catch (e) {
             const status = e && /TOKEN_TOO_SHORT|PIN_INVALID/.test(String(e.code)) ? 400 : 500;
             return res.status(status).json({ success: false, error: e && e.message ? e.message : String(e), code: e && e.code });
+        }
+    });
+
+    router.post('/refill', async (req, res) => {
+        try {
+            const started = tasks.startRefill(db, { force: true });
+            return res.json({ success: true, started, refill: tasks.refillStatus(), queue: await tasks.countTasks(db) });
+        } catch (e) {
+            return res.status(500).json({ success: false, error: e && e.message ? e.message : String(e) });
+        }
+    });
+
+    router.get('/refill', async (req, res) => {
+        try {
+            return res.json({ success: true, refill: tasks.refillStatus(), queue: await tasks.countTasks(db) });
+        } catch (e) {
+            return res.status(500).json({ success: false, error: e && e.message ? e.message : String(e) });
         }
     });
 

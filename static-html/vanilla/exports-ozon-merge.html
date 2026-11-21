@@ -2810,9 +2810,11 @@
             (ct.comment
               ? '<div class="small text-dark">' + esc(ct.comment) + "</div>" +
                 '<div class="small text-muted mt-1">' + esc(ct.by || "бот") + (ct.at ? " · " + esc(fmtDateTime(ct.at)) : "") + "</div>" +
-                (ct.needs_category_change
-                  ? '<div class="small text-dark mt-1">Категория сменена — можно повторить склейку.</div>'
-                  : "")
+                (ct.state === "done"
+                  ? '<div class="small text-success mt-1">Проверено в Ozon: категория поддерживает склейку — можно объединять.</div>'
+                  : ct.state === "skipped"
+                    ? '<div class="small text-dark mt-1">Бот не смог сменить категорию — задача пропущена.</div>'
+                    : '<div class="small text-dark mt-1">Ждёт проверки в Ozon' + (ct.check_note ? ": " + esc(ct.check_note) : ".") + "</div>")
               : '<div class="small text-dark">Ждёт смены категории: задача на публичной странице для бота, комментария пока нет.</div>') +
             "</div>";
         }
