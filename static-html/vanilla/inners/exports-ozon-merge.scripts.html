@@ -399,6 +399,8 @@
       if (cMer) cMer.textContent = fmtNum(state.counts.merged || 0);
       if (cFail) cFail.textContent = fmtNum(state.counts.failed || 0);
       if (cIgn) cIgn.textContent = fmtNum(state.counts.ignored || 0);
+      var cBot = byId("dg-ozm-cnt-bot_question");
+      if (cBot) cBot.textContent = fmtNum(state.counts.bot_question || 0);
 
       var listTitle = byId("dg-ozm-list-title");
       if (listTitle) {
@@ -408,6 +410,8 @@
           listTitle.textContent = "Уже объединены на Ozon (" + fmtNum(state.total) + ")";
         } else if (state.status === "failed") {
           listTitle.textContent = "Проблемные объединения (" + fmtNum(state.total) + ")";
+        } else if (state.status === "bot_question") {
+          listTitle.textContent = "Бот просит уточнить (" + fmtNum(state.total) + ")";
         } else {
           listTitle.textContent = "Не объединять / Скрытые (" + fmtNum(state.total) + ")";
         }
@@ -547,7 +551,7 @@
         params = new URLSearchParams(window.location.search || "");
       } catch (_) {}
 
-      var validStatuses = ["suggested", "merged", "failed", "ignored"];
+      var validStatuses = ["suggested", "merged", "failed", "bot_question", "ignored"];
       var validKinds = ["all", "bundles", "name_variants", "partial_merged", "custom"];
       var validPageSizes = [10, 25, 50, 100];
 
@@ -817,6 +821,25 @@
       return commitFilters();
     }
 
+    var CT_KIND_LABELS = { "bot:comment": "комментарий", "bot:question": "просит уточнить", "human:answer": "ответ" };
+    function renderCategoryThread(thread) {
+      return (thread || [])
+        .map(function (m) {
+          var cls = m.role === "human" ? "border-success" : m.kind === "question" ? "border-warning" : "border-primary";
+          return (
+            '<div class="border-start border-3 ' + cls + ' ps-2 mb-2">' +
+            '<div class="small text-muted">' +
+            esc(m.author || (m.role === "human" ? "сотрудник" : "бот")) +
+            " · " + esc(CT_KIND_LABELS[m.role + ":" + m.kind] || m.kind) +
+            (m.created_at ? " · " + esc(fmtDateTime(m.created_at)) : "") +
+            "</div>" +
+            '<div class="small text-dark" style="white-space:pre-wrap">' + esc(m.body) + "</div>" +
+            "</div>"
+          );
+        })
+        .join("");
+    }
+
     // Рендер карточек групп
     function renderGroupsList() {
       var container = byId("dg-ozm-groups-container");
@@ -841,6 +864,12 @@
             '<div class="alert alert-success mb-0">' +
             '<div class="fw-bold mb-1">Проблемных объединений нет!</div>' +
             '<div class="small">Все отправленные на Ozon склейки успешно применились.</div>' +
+            "</div>";
+        } else if (state.status === "bot_question") {
+          emptyMsg =
+            '<div class="alert alert-success mb-0">' +
+            '<div class="fw-bold mb-1">Вопросов от бота нет</div>' +
+            '<div class="small">Сюда попадают группы, по которым бот на странице задач нажал «Требуется уточнение».</div>' +
             "</div>";
         } else {
           emptyMsg =
@@ -874,7 +903,7 @@
           var actionVerb =
             g.queue_status === "merged"
               ? "Склеил(а)"
-              : g.queue_status === "failed"
+              : g.queue_status === "failed" || g.queue_status === "bot_question"
                 ? "Попытка склейки"
                 : g.queue_status === "ignored"
                   ? "Скрыл(а)"
@@ -961,6 +990,15 @@
             '<button type="button" class="btn btn-outline-dark btn-sm fw-semibold dg-ozm-btn-ignore-group" data-group-idx="' + gIdx + '" data-dg-notify-start="Скрываем группу в «Не объединять»…">' +
             "Не объединять (скрыть)" +
             "</button>";
+        } else if (g.queue_status === "bot_question") {
+          html +=
+            '<span class="dg-ozm-pill dg-ozm-pill-step">Бот ждёт ответа</span>' +
+            '<button type="button" class="btn btn-outline-secondary btn-sm fw-semibold dg-ozm-btn-restore-group" data-group-idx="' + gIdx + '" data-dg-notify-start="Возвращаем группу в предложения…">' +
+            "Вернуть в предложения" +
+            "</button>" +
+            '<button type="button" class="btn btn-outline-dark btn-sm fw-semibold dg-ozm-btn-ignore-group" data-group-idx="' + gIdx + '" data-dg-notify-start="Скрываем группу в «Не объединять»…">' +
+            "Не объединять (скрыть)" +
+            "</button>";
         } else if (g.queue_status === "ignored") {
           html +=
             '<span class="dg-ozm-pill dg-ozm-pill-neutral">Скрыто («Не объединять»)</span>' +
@@ -979,19 +1017,32 @@
         }
 
         var ct = g.category_task;
-        if (ct && (ct.needs_category_change || ct.comment)) {
+        if (ct && (ct.needs_category_change || ct.comment || (ct.thread && ct.thread.length))) {
+          var thread = ct.thread && ct.thread.length ? ct.thread : ct.comment ? [{ role: "bot", kind: "comment", author: ct.by, body: ct.comment, created_at: ct.at }] : [];
+          var stateLine =
+            ct.state === "done"
+              ? '<div class="small text-success mt-1">Проверено в Ozon: категория поддерживает склейку — можно объединять.</div>'
+              : ct.state === "skipped"
+                ? '<div class="small text-dark mt-1">Бот не смог сменить категорию — задача пропущена.</div>'
+                : ct.state === "needs_info"
+                  ? '<div class="small fw-semibold text-dark mt-1">Бот ждёт ответа: напишите, что делать, — задача вернётся к нему.</div>'
+                  : ct.state === "answered"
+                    ? '<div class="small text-dark mt-1">Ответ отправлен — задача снова у бота.</div>'
+                    : thread.length
+                      ? '<div class="small text-dark mt-1">Ждёт проверки в Ozon' + (ct.check_note ? ": " + esc(ct.check_note) : ".") + "</div>"
+                      : '<div class="small text-dark">Ждёт смены категории: задача на публичной странице для бота, комментария пока нет.</div>';
           html +=
-            '<div class="alert ' + (ct.comment ? "alert-info" : "alert-secondary") + ' mx-3 mt-2 mb-0 py-2 px-3">' +
+            '<div class="alert ' + (ct.state === "needs_info" ? "alert-warning" : thread.length ? "alert-info" : "alert-secondary") + ' mx-3 mt-2 mb-0 py-2 px-3">' +
             '<div class="fw-bold text-dark mb-1">Категория Ozon</div>' +
-            (ct.comment
-              ? '<div class="small text-dark">' + esc(ct.comment) + "</div>" +
-                '<div class="small text-muted mt-1">' + esc(ct.by || "бот") + (ct.at ? " · " + esc(fmtDateTime(ct.at)) : "") + "</div>" +
-                (ct.state === "done"
-                  ? '<div class="small text-success mt-1">Проверено в Ozon: категория поддерживает склейку — можно объединять.</div>'
-                  : ct.state === "skipped"
-                    ? '<div class="small text-dark mt-1">Бот не смог сменить категорию — задача пропущена.</div>'
-                    : '<div class="small text-dark mt-1">Ждёт проверки в Ozon' + (ct.check_note ? ": " + esc(ct.check_note) : ".") + "</div>")
-              : '<div class="small text-dark">Ждёт смены категории: задача на публичной странице для бота, комментария пока нет.</div>') +
+            '<div class="dg-ozm-ct-thread" data-ct-thread="' + esc(g.signature) + '">' + renderCategoryThread(thread) + "</div>" +
+            stateLine +
+            (g.queue_status === "bot_question"
+              ? '<div class="mt-2">' +
+                '<label class="form-label small fw-semibold text-dark mb-1" for="dg-ozm-ct-answer-' + gIdx + '">Ответ боту</label>' +
+                '<textarea class="form-control form-control-sm" rows="2" maxlength="1000" id="dg-ozm-ct-answer-' + gIdx + '" placeholder="Например: ставь категорию «Катетер медицинский», переключение по «Количество в упаковке»"></textarea>' +
+                '<button type="button" class="btn btn-primary btn-sm fw-semibold mt-2 dg-ozm-ct-answer-btn" data-group-idx="' + gIdx + '" data-dg-no-activity="1">Ответить боту</button>' +
+                "</div>"
+              : "") +
             "</div>";
         }
 
@@ -1243,6 +1294,44 @@
           } else {
             runIgnore();
           }
+        });
+      });
+
+      container.querySelectorAll(".dg-ozm-ct-answer-btn").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var gIdx = Number(btn.getAttribute("data-group-idx"));
+          var g = state.rows[gIdx];
+          var ta = byId("dg-ozm-ct-answer-" + gIdx);
+          if (!g || !ta) return;
+          var answer = String(ta.value || "").trim();
+          if (!answer) {
+            toast("warning", "Напишите ответ боту");
+            ta.focus();
+            return;
+          }
+          var run = function () {
+            return fetch("/api/exports/marketplaces/ozon-merge/category-tasks/answer", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              credentials: "same-origin",
+              body: JSON.stringify({ signature: g.signature, answer: answer }),
+            })
+              .then(function (r) {
+                return r.json().then(function (j) {
+                  if (!r.ok || !j || !j.success) throw new Error("HTTP " + r.status + ": " + ((j && j.error) || "не удалось отправить ответ"));
+                  return j;
+                });
+              })
+              .then(function (j) {
+                toast("success", j.returned_to_bot ? "Ответ отправлен — задача вернулась боту" : "Ответ добавлен в историю");
+                loadGroupsList();
+              })
+              .catch(function (err) {
+                toast("danger", err.message || String(err));
+              });
+          };
+          if (window.DatagonNotify && window.DatagonNotify.busyRun) window.DatagonNotify.busyRun(btn, run);
+          else run();
         });
       });
 
