@@ -941,7 +941,7 @@ module.exports = function suppliersRouterFactory(db, appSettings = {}) {
     });
 
     router.post('/:supplierKey/send-ms-order', async (req, res) => {
-        const logId = () => (e && e.log_id != null ? e.log_id : null);
+        const logId = (e) => (e && e.log_id != null ? e.log_id : null);
         try {
             // F-PUR-01: запись в боевой МС только с явным confirm: true (UI-модалка + body).
             const body = req.body && typeof req.body === 'object' ? req.body : {};

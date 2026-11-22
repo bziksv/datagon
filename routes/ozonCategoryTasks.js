@@ -68,7 +68,9 @@ ol.how{margin:6px 0 0 18px;padding:0}
 .msg-body{white-space:pre-wrap}
 .badge{font-size:12px;font-weight:600;padding:2px 8px;border-radius:10px;vertical-align:middle}
 .b-answer{background:#3ac47d;color:#fff}.b-wait{background:#f7b924;color:#212529}
-h2.section{font-size:18px;margin:28px 0 4px}
+.tabs{display:flex;gap:4px;margin:16px 0 0;border-bottom:2px solid #dee2e6}
+.tab{background:transparent;color:#495057;border-radius:4px 4px 0 0;padding:8px 16px;font-weight:600;margin-bottom:-2px;border-bottom:2px solid transparent}
+.tab.active{color:#3f6ad8;border-bottom-color:#3f6ad8;background:#fff}
 `;
 
 function loginPage(error) {
@@ -193,10 +195,28 @@ function tasksPage(data) {
 <div class="queue">В этой пачке: <strong id="tasks-total">${rows.length}</strong>${q.answered ? ` (с ответом: <strong>${esc(q.answered)}</strong>)` : ''} · ждут в очереди: <strong>${esc(q.waiting || 0)}</strong> · ждут ответа сотрудника: <strong>${esc(q.needs_info || 0)}</strong> · проверено и закрыто: <strong>${esc(q.done || 0)}</strong> · пропущено: <strong>${esc(q.skipped || 0)}</strong>
 <br><span class="muted">${esc(refillText)}</span>
 <div style="margin-top:6px"><button type="button" id="reload-btn" onclick="location.reload()">Загрузить следующую пачку</button></div></div>
+<div class="tabs" role="tablist">
+<button type="button" class="tab active" id="tab-work" data-tab="work" role="tab">В работе (${rows.length})</button>
+<button type="button" class="tab" id="tab-waiting" data-tab="waiting" role="tab">Ждут уточнения (${esc(q.needs_info || 0)})</button>
+</div>
+<div class="tab-pane" id="pane-work">
 ${cards || '<div class="card">Задач нет. Очередь пополняется автоматически из новых предложений склейки — загляните позже.</div>'}
-${waitCards ? `<h2 class="section">Ждут ответа сотрудника (${waitingRows.length})</h2><div class="muted">Вопрос отправлен. Когда сотрудник ответит, группа вернётся в пачку выше.</div>${waitCards}` : ''}
+</div>
+<div class="tab-pane" id="pane-waiting" style="display:none">
+<div class="muted">Вопрос отправлен сотруднику. Когда он ответит, группа вернётся во вкладку «В работе» первой, с пометкой «Есть ответ».${(q.needs_info || 0) > waitingRows.length ? ` Показаны первые ${waitingRows.length}.` : ''}</div>
+${waitCards || '<div class="card">Групп, ждущих уточнения, нет.</div>'}
+</div>
 </div>
 <script>
+function showTab(name){
+  ['work','waiting'].forEach(function(t){
+    document.getElementById('pane-'+t).style.display=t===name?'':'none';
+    document.getElementById('tab-'+t).classList.toggle('active',t===name);
+  });
+  if(history.replaceState)history.replaceState(null,'',location.pathname+location.search+(name==='waiting'?'#waiting':''));
+}
+document.querySelectorAll('.tab').forEach(function(b){b.addEventListener('click',function(){showTab(b.getAttribute('data-tab'));});});
+if(location.hash==='#waiting')showTab('waiting');
 var LBL={'bot:comment':'комментарий','bot:question':'нужно уточнение','human:answer':'ответ'};
 function renderThread(sig,thread){
   var box=document.getElementById('thread-'+sig);box.textContent='';
@@ -227,7 +247,7 @@ function octAction(kind,btn){
   post(kind,body).then(function(p){
     if(!p.ok||!p.j.success){lock(sig,false);msg.className='msg err';msg.textContent=(p.j&&p.j.error)||'Ошибка';return;}
     if(kind==='comment'){lock(sig,false);msg.className='msg ok';msg.textContent='Сохранено';renderThread(sig,p.j.thread);ta.value='';return;}
-    if(kind==='clarify'){msg.className='msg ok';msg.textContent='Вопрос отправлен — ждём ответа сотрудника';ta.value='';closeCard(sig);return;}
+    if(kind==='clarify'){msg.className='msg ok';msg.textContent='Вопрос отправлен — группа перейдёт во вкладку «Ждут уточнения» после обновления страницы';ta.value='';closeCard(sig);return;}
     var closed=kind==='skip'||p.j.verified;
     if(p.j.note){note.style.display='';note.textContent=p.j.note;note.className='check'+(p.j.verified?' ok':'');}
     msg.className='msg '+(closed?'ok':'err');
