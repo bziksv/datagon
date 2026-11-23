@@ -68,6 +68,11 @@ ol.how{margin:6px 0 0 18px;padding:0}
 .msg-body{white-space:pre-wrap}
 .badge{font-size:12px;font-weight:600;padding:2px 8px;border-radius:10px;vertical-align:middle}
 .b-answer{background:#3ac47d;color:#fff}.b-wait{background:#f7b924;color:#212529}
+.btn-red{background:#d92550}.btn-purple{background:#794c8a}.btn-green{background:#3ac47d}
+.msg-item.ticket{border-left-color:#794c8a;background:#f3eef6}
+.b-ticket{background:#794c8a;color:#fff}.b-skip{background:#6c757d;color:#fff}
+.row-ctl{margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.ticket-in{width:170px}
 .tabs{display:flex;gap:4px;margin:16px 0 0;border-bottom:2px solid #dee2e6}
 .tab{background:transparent;color:#495057;border-radius:4px 4px 0 0;padding:8px 16px;font-weight:600;margin-bottom:-2px;border-bottom:2px solid transparent}
 .tab.active{color:#3f6ad8;border-bottom-color:#3f6ad8;background:#fff}
@@ -100,6 +105,8 @@ document.getElementById('login-form').addEventListener('submit',function(e){
 const THREAD_LABELS = {
     'bot:comment': 'комментарий',
     'bot:question': 'нужно уточнение',
+    'bot:ticket': 'тикет Ozon',
+    'bot:status': 'смена статуса',
     'human:answer': 'ответ',
 };
 
@@ -108,14 +115,28 @@ function threadHtml(thread) {
     return thread
         .map(
             (m) =>
-                `<div class="msg-item ${m.role === 'human' ? 'human' : m.kind === 'question' ? 'question' : 'bot'}">` +
+                `<div class="msg-item ${m.role === 'human' ? 'human' : m.kind === 'question' ? 'question' : m.kind === 'ticket' ? 'ticket' : 'bot'}">` +
                 `<div class="msg-head"><strong>${esc(m.author || (m.role === 'human' ? 'сотрудник' : 'бот'))}</strong> · ${esc(THREAD_LABELS[`${m.role}:${m.kind}`] || m.kind)} · ${esc(m.at)}</div>` +
                 `<div class="msg-body">${esc(m.body)}</div></div>`
         )
         .join('');
 }
 
-function taskCard(g, { waiting }) {
+/** Кнопки действий по статусу задачи; {SIG} подставляется в taskCard. */
+function cardButtons(state) {
+    const b = (action, label, cls = '') => `<button type="button" class="act-btn ${cls}" data-action="${action}" data-signature="{SIG}">${label}</button>`;
+    const reject = b('reject', 'Не объединять (окончательно)', 'btn-red');
+    const ticket = b('ticket', state === 'ticket' ? 'Обновить тикет' : 'Создал тикет в Ozon', 'btn-purple');
+    if (state === 'skipped') {
+        return [b('reopen', 'Вернуть в работу', 'btn-green'), ticket, reject];
+    }
+    if (state === 'ticket') {
+        return [b('check', 'Готово — проверить в Ozon'), b('reopen', 'Вернуть в работу', 'btn-green'), ticket, reject];
+    }
+    return [b('check', 'Готово — проверить в Ozon'), b('skip', 'Не получилось — пропустить', 'btn-grey'), ticket, reject];
+}
+
+function taskCard(g, { full }) {
     const sig = esc(g.signature);
     const items = g.items
         .map(
@@ -126,7 +147,7 @@ function taskCard(g, { waiting }) {
         )
         .join('');
     const cur = g.current_category || {};
-    const sug = waiting
+    const sug = !full
         ? ''
         : `<div class="cat"><strong>Подходящие категории (есть склейка):</strong>${
               (g.suggested_categories || []).length
@@ -143,7 +164,12 @@ function taskCard(g, { waiting }) {
             ? '<span class="badge b-answer">Есть ответ — прочитайте историю</span>'
             : g.state === 'needs_info'
               ? '<span class="badge b-wait">Ждёт ответа сотрудника</span>'
-              : '';
+              : g.state === 'ticket'
+                ? `<span class="badge b-ticket">Тикет Ozon № ${esc(g.ticket)}</span>`
+                : g.state === 'skipped'
+                  ? '<span class="badge b-skip">Пропущено</span>'
+                  : '';
+    const buttons = cardButtons(g.state).join('\n').replace(/\{SIG\}/g, sig);
     return `<div class="card task" data-signature="${sig}">
 <h2>${esc(g.title)} ${badge}</h2>
 <div class="muted">Группа <code>${sig}</code> · главный товар <code>${esc(g.main_offer_id)}</code> · отказ Ozon ${esc(g.failed_at)}</div>
@@ -153,23 +179,36 @@ ${sug}
 <div><strong>История</strong></div>
 <div class="thread" id="thread-${sig}">${threadHtml(g.thread)}</div>
 <label for="comment-${sig}"><strong>Новый комментарий или вопрос</strong></label>
-<textarea id="comment-${sig}" name="comment-${sig}" maxlength="1000" placeholder="Что сделано: «сменил Ректальная насадка → Катетер медицинский у всех 4 карточек». Или что непонятно — для кнопки «Требуется уточнение»"></textarea>
-<div style="margin-top:8px"><input type="text" class="author" id="author-${sig}" name="author-${sig}" maxlength="100" placeholder="Кто (например, Hermes)">
-<button type="button" class="save-btn" data-signature="${sig}">Сохранить комментарий</button>
-<button type="button" class="clarify-btn btn-amber" data-signature="${sig}">Требуется уточнение</button>
+<textarea id="comment-${sig}" name="comment-${sig}" maxlength="1000" placeholder="Что сделано: «сменил Ректальная насадка → Катетер медицинский у всех 4 карточек». Для вопроса, тикета или смены статуса — что произошло"></textarea>
+<div class="row-ctl"><input type="text" class="author" id="author-${sig}" name="author-${sig}" maxlength="100" placeholder="Кто (например, Hermes)">
+<input type="text" class="ticket-in" id="ticket-${sig}" name="ticket-${sig}" maxlength="100" placeholder="№ обращения в Ozon" value="${esc(g.ticket || '')}">
+<button type="button" class="act-btn" data-action="comment" data-signature="${sig}">Сохранить комментарий</button>
+<button type="button" class="act-btn btn-amber" data-action="clarify" data-signature="${sig}">Требуется уточнение</button>
 <span class="msg" id="msg-${sig}"></span></div>
 <div class="check" id="note-${sig}"${g.check_note ? '' : ' style="display:none"'}>${g.check_note ? `<strong>Последняя проверка ${esc(g.checked_at)}:</strong> ${esc(g.check_note)}` : ''}</div>
-<div style="margin-top:8px">
-<button type="button" class="check-btn" data-signature="${sig}">Готово — проверить в Ozon</button>
-<button type="button" class="skip-btn btn-grey" data-signature="${sig}">Не получилось — пропустить</button>
+<div class="row-ctl">
+${buttons}
 <span class="msg" id="cmsg-${sig}"></span></div>
 </div>`;
 }
 
+const TABS = [
+    ['work', 'В работе'],
+    ['waiting', 'Ждут уточнения'],
+    ['tickets', 'Тикеты Ozon'],
+    ['skipped', 'Пропущенные'],
+];
+
 function tasksPage(data) {
     const rows = data.rows || [];
-    const waitingRows = data.waiting_answer || [];
+    const lists = {
+        work: rows,
+        waiting: data.waiting_answer || [],
+        tickets: data.tickets || [],
+        skipped: data.skipped || [],
+    };
     const q = data.queue || {};
+    const totals = { work: rows.length, waiting: q.needs_info || 0, tickets: q.ticket || 0, skipped: q.skipped || 0 };
     const rf = data.refill || {};
     const refillText = rf.running
         ? 'Сейчас ищем новые группы в предложениях склейки — обновите страницу через минуту.'
@@ -178,8 +217,30 @@ function tasksPage(data) {
             (rf.last_result ? `, добавлено ${rf.last_result.added} из ${rf.last_result.scanned} проверенных.` : '') +
             (rf.last_error ? ` Ошибка: ${rf.last_error}` : '')
           : 'Очередь пополняется автоматически, когда в пачке меньше 10 задач.';
-    const cards = rows.map((g) => taskCard(g, { waiting: false })).join('');
-    const waitCards = waitingRows.map((g) => taskCard(g, { waiting: true })).join('');
+    const intro = {
+        work: '',
+        waiting: 'Вопрос отправлен сотруднику. Когда он ответит, группа вернётся во вкладку «В работе» первой, с пометкой «Есть ответ».',
+        tickets: 'Обращения в поддержку Ozon. Когда поддержка ответит: сменили категорию — «Готово — проверить в Ozon»; можно доделать самим — «Вернуть в работу»; склеить нельзя — «Не объединять (окончательно)».',
+        skipped: 'Группы, по которым не получилось сменить категорию. Можно доработать: «Вернуть в работу», завести тикет в Ozon или закрыть «Не объединять (окончательно)».',
+    };
+    const empty = {
+        work: 'Задач нет. Очередь пополняется автоматически из новых предложений склейки — загляните позже.',
+        waiting: 'Групп, ждущих уточнения, нет.',
+        tickets: 'Открытых тикетов нет.',
+        skipped: 'Пропущенных групп нет.',
+    };
+    const tabsHtml = TABS.map(
+        ([key, label], i) =>
+            `<button type="button" class="tab${i ? '' : ' active'}" id="tab-${key}" data-tab="${key}" role="tab">${label} (${esc(totals[key])})</button>`
+    ).join('\n');
+    const panes = TABS.map(([key], i) => {
+        const list = lists[key];
+        const more = totals[key] > list.length && key !== 'work' ? ` Показаны первые ${list.length}.` : '';
+        return `<div class="tab-pane" id="pane-${key}"${i ? ' style="display:none"' : ''}>
+${intro[key] || more ? `<div class="muted">${esc(intro[key])}${more}</div>` : ''}
+${list.map((g) => taskCard(g, { full: key === 'work' })).join('') || `<div class="card">${esc(empty[key])}</div>`}
+</div>`;
+    }).join('\n');
     return `<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="robots" content="noindex,nofollow">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>Задачи на смену категории Ozon</title><style>${PAGE_CSS}</style></head>
 <body><div class="wrap">
@@ -189,39 +250,35 @@ function tasksPage(data) {
 <li>Смените категорию у всех карточек группы в кабинете Ozon.</li>
 <li>Сохраните комментарий: с какой категории на какую сменили. Комментарии не затираются — копятся в «Истории».</li>
 <li>Нажмите «Готово — проверить в Ozon». Datagon сам посмотрит категорию в Ozon: если склейка в ней есть, задача закрыта и вместо неё придёт следующая.</li>
-<li>Если что-то непонятно — напишите вопрос и нажмите «Требуется уточнение». Задача уйдёт сотруднику; когда он ответит, она вернётся в пачку первой с пометкой «Есть ответ», ответ — в «Истории». Выполните, сохраните комментарий и снова «Готово» или «Требуется уточнение».</li>
-<li>Если сменить нельзя — комментарий «почему» и «Не получилось — пропустить».</li>
+<li>Непонятно — вопрос в поле комментария и «Требуется уточнение»: задача уйдёт сотруднику, ответ вернётся в «Историю».</li>
+<li>Нужна поддержка Ozon — заведите обращение, впишите его номер в поле «№ обращения в Ozon», комментарий и «Создал тикет в Ozon». Задача во вкладке «Тикеты Ozon».</li>
+<li>Сменить нельзя пока — комментарий «почему» и «Не получилось — пропустить». Склеить нельзя совсем (подтвердила поддержка) — «Не объединять (окончательно)»: группа уйдёт в скрытые.</li>
 </ol>
-<div class="queue">В этой пачке: <strong id="tasks-total">${rows.length}</strong>${q.answered ? ` (с ответом: <strong>${esc(q.answered)}</strong>)` : ''} · ждут в очереди: <strong>${esc(q.waiting || 0)}</strong> · ждут ответа сотрудника: <strong>${esc(q.needs_info || 0)}</strong> · проверено и закрыто: <strong>${esc(q.done || 0)}</strong> · пропущено: <strong>${esc(q.skipped || 0)}</strong>
+<div class="queue">В этой пачке: <strong id="tasks-total">${rows.length}</strong>${q.answered ? ` (с ответом: <strong>${esc(q.answered)}</strong>)` : ''} · ждут в очереди: <strong>${esc(q.waiting || 0)}</strong> · ждут ответа сотрудника: <strong>${esc(q.needs_info || 0)}</strong> · тикеты Ozon: <strong>${esc(q.ticket || 0)}</strong> · проверено и закрыто: <strong>${esc(q.done || 0)}</strong> · пропущено: <strong>${esc(q.skipped || 0)}</strong> · не объединять: <strong>${esc(q.rejected || 0)}</strong>
 <br><span class="muted">${esc(refillText)}</span>
 <div style="margin-top:6px"><button type="button" id="reload-btn" onclick="location.reload()">Загрузить следующую пачку</button></div></div>
 <div class="tabs" role="tablist">
-<button type="button" class="tab active" id="tab-work" data-tab="work" role="tab">В работе (${rows.length})</button>
-<button type="button" class="tab" id="tab-waiting" data-tab="waiting" role="tab">Ждут уточнения (${esc(q.needs_info || 0)})</button>
+${tabsHtml}
 </div>
-<div class="tab-pane" id="pane-work">
-${cards || '<div class="card">Задач нет. Очередь пополняется автоматически из новых предложений склейки — загляните позже.</div>'}
-</div>
-<div class="tab-pane" id="pane-waiting" style="display:none">
-<div class="muted">Вопрос отправлен сотруднику. Когда он ответит, группа вернётся во вкладку «В работе» первой, с пометкой «Есть ответ».${(q.needs_info || 0) > waitingRows.length ? ` Показаны первые ${waitingRows.length}.` : ''}</div>
-${waitCards || '<div class="card">Групп, ждущих уточнения, нет.</div>'}
-</div>
+${panes}
 </div>
 <script>
+var TAB_KEYS=${JSON.stringify(TABS.map((t) => t[0]))};
 function showTab(name){
-  ['work','waiting'].forEach(function(t){
+  if(TAB_KEYS.indexOf(name)<0)name='work';
+  TAB_KEYS.forEach(function(t){
     document.getElementById('pane-'+t).style.display=t===name?'':'none';
     document.getElementById('tab-'+t).classList.toggle('active',t===name);
   });
-  if(history.replaceState)history.replaceState(null,'',location.pathname+location.search+(name==='waiting'?'#waiting':''));
+  if(history.replaceState)history.replaceState(null,'',location.pathname+location.search+(name==='work'?'':'#'+name));
 }
 document.querySelectorAll('.tab').forEach(function(b){b.addEventListener('click',function(){showTab(b.getAttribute('data-tab'));});});
-if(location.hash==='#waiting')showTab('waiting');
-var LBL={'bot:comment':'комментарий','bot:question':'нужно уточнение','human:answer':'ответ'};
+if(location.hash)showTab(location.hash.slice(1));
+var LBL=${JSON.stringify(THREAD_LABELS)};
 function renderThread(sig,thread){
   var box=document.getElementById('thread-'+sig);box.textContent='';
   (thread||[]).forEach(function(m){
-    var d=document.createElement('div');d.className='msg-item '+(m.role==='human'?'human':m.kind==='question'?'question':'bot');
+    var d=document.createElement('div');d.className='msg-item '+(m.role==='human'?'human':m.kind==='question'?'question':m.kind==='ticket'?'ticket':'bot');
     var h=document.createElement('div');h.className='msg-head';var s=document.createElement('strong');s.textContent=m.author||'';h.appendChild(s);
     h.appendChild(document.createTextNode(' · '+(LBL[m.role+':'+m.kind]||m.kind)+' · '+m.at));
     var b=document.createElement('div');b.className='msg-body';b.textContent=m.body;d.appendChild(h);d.appendChild(b);box.appendChild(d);
@@ -235,29 +292,36 @@ function post(kind,body){
 }
 function lock(sig,on){document.querySelectorAll('button[data-signature="'+sig+'"]').forEach(function(b){b.disabled=on;});}
 function closeCard(sig){document.querySelector('.task[data-signature="'+sig+'"]').classList.add('done');}
+var BUSY={comment:'Сохраняем…',clarify:'Отправляем вопрос…',check:'Проверяем в Ozon…',skip:'Пропускаем…',ticket:'Сохраняем тикет…',reopen:'Возвращаем в работу…',reject:'Закрываем…'};
+var DONE={clarify:'Вопрос отправлен — группа во вкладке «Ждут уточнения» после обновления страницы',skip:'Пропущено — группа во вкладке «Пропущенные»',ticket:'Тикет сохранён — группа во вкладке «Тикеты Ozon»',reopen:'Возвращено в работу — группа появится во вкладке «В работе»',reject:'Закрыто: группа в «Не объединять (скрытые)»'};
+var rejectArmed={};
 function octAction(kind,btn){
   var sig=btn.getAttribute('data-signature');
-  var ta=document.getElementById('comment-'+sig),au=document.getElementById('author-'+sig);
+  if(kind==='reject'&&!rejectArmed[sig]){
+    rejectArmed[sig]=btn.textContent;btn.textContent='Точно не объединять? Нажмите ещё раз';
+    setTimeout(function(){if(rejectArmed[sig]){btn.textContent=rejectArmed[sig];delete rejectArmed[sig];}},6000);
+    return;
+  }
+  if(kind==='reject'){btn.textContent=rejectArmed[sig];delete rejectArmed[sig];}
+  var ta=document.getElementById('comment-'+sig),au=document.getElementById('author-'+sig),tk=document.getElementById('ticket-'+sig);
   var msg=document.getElementById(kind==='comment'||kind==='clarify'?'msg-'+sig:'cmsg-'+sig),note=document.getElementById('note-'+sig);
   var body={signature:sig,author:au.value};
-  if(kind==='comment')body.comment=ta.value;
-  if(kind==='clarify')body.question=ta.value;
-  msg.className='msg';msg.textContent={comment:'Сохраняем…',clarify:'Отправляем вопрос…',check:'Проверяем в Ozon…',skip:'Пропускаем…'}[kind];
+  if(kind==='clarify')body.question=ta.value;else if(kind!=='check'&&kind!=='skip')body.comment=ta.value;
+  if(kind==='ticket')body.ticket=tk.value;
+  msg.className='msg';msg.textContent=BUSY[kind];
   lock(sig,true);
   post(kind,body).then(function(p){
     if(!p.ok||!p.j.success){lock(sig,false);msg.className='msg err';msg.textContent=(p.j&&p.j.error)||'Ошибка';return;}
-    if(kind==='comment'){lock(sig,false);msg.className='msg ok';msg.textContent='Сохранено';renderThread(sig,p.j.thread);ta.value='';return;}
-    if(kind==='clarify'){msg.className='msg ok';msg.textContent='Вопрос отправлен — группа перейдёт во вкладку «Ждут уточнения» после обновления страницы';ta.value='';closeCard(sig);return;}
-    var closed=kind==='skip'||p.j.verified;
+    if(p.j.thread)renderThread(sig,p.j.thread);
+    if(kind==='comment'){lock(sig,false);msg.className='msg ok';msg.textContent='Сохранено';ta.value='';return;}
+    if(DONE[kind]){msg.className='msg ok';msg.textContent=DONE[kind];ta.value='';closeCard(sig);return;}
     if(p.j.note){note.style.display='';note.textContent=p.j.note;note.className='check'+(p.j.verified?' ok':'');}
-    msg.className='msg '+(closed?'ok':'err');
-    msg.textContent=kind==='skip'?'Пропущено — задача закрыта':p.j.verified?'Проверено — задача закрыта':'Не подтверждено — см. причину выше';
-    if(closed)closeCard(sig);else lock(sig,false);
+    msg.className='msg '+(p.j.verified?'ok':'err');
+    msg.textContent=p.j.verified?'Проверено — задача закрыта':'Не подтверждено — см. причину выше';
+    if(p.j.verified)closeCard(sig);else lock(sig,false);
   }).catch(function(err){lock(sig,false);msg.className='msg err';msg.textContent=String(err);});
 }
-[['save-btn','comment'],['clarify-btn','clarify'],['check-btn','check'],['skip-btn','skip']].forEach(function(p){
-  document.querySelectorAll('.'+p[0]).forEach(function(b){b.addEventListener('click',function(){octAction(p[1],b);});});
-});
+document.querySelectorAll('.act-btn').forEach(function(b){b.addEventListener('click',function(){octAction(b.getAttribute('data-action'),b);});});
 </script></body></html>`;
 }
 
@@ -358,6 +422,29 @@ function createPublicRouter(db) {
             return sendTaskError(res, e, 'CLARIFY_FAILED');
         }
     });
+    for (const action of ['ticket', 'reopen', 'reject']) {
+        router.post(`/${action}`, async (req, res) => {
+            setNoStore(res);
+            try {
+                const body = req.body && typeof req.body === 'object' ? req.body : {};
+                const access = await tasks.checkAccess(db, req, { pin: body.pin });
+                if (!access.ok) {
+                    return res.status(access.status).json({ success: false, error: access.error, code: access.code });
+                }
+                return res.json(
+                    await tasks.changeTaskStatus(db, {
+                        action,
+                        signature: body.signature,
+                        comment: body.comment,
+                        ticket: body.ticket,
+                        author: body.author,
+                    })
+                );
+            } catch (e) {
+                return sendTaskError(res, e, `${action.toUpperCase()}_FAILED`);
+            }
+        });
+    }
     router.post('/check', taskAction(tasks.verifyCategoryTask, 'CHECK_FAILED'));
     router.post('/skip', taskAction(tasks.skipCategoryTask, 'SKIP_FAILED'));
 
@@ -367,7 +454,13 @@ function createPublicRouter(db) {
 function sendTaskError(res, e, fallbackCode) {
     const code = e && e.code ? e.code : fallbackCode;
     const status =
-        code === 'TASK_NOT_FOUND' ? 404 : code === 'TASK_CLOSED' ? 409 : /REQUIRED|TOO_LONG|NO_OZON_CREDS/.test(code) ? 400 : 500;
+        code === 'TASK_NOT_FOUND'
+            ? 404
+            : code === 'TASK_CLOSED' || code === 'BAD_STATE'
+              ? 409
+              : /REQUIRED|TOO_LONG|NO_OZON_CREDS|BAD_ACTION/.test(code)
+                ? 400
+                : 500;
     return res.status(status).json({ success: false, error: e && e.message ? e.message : String(e), code });
 }
 
