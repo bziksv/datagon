@@ -2776,7 +2776,7 @@ Query: `search`, **`inn`** / `counterparty_inn` (только цифры; под
 
 ### GET `/api/finance/cash/summary`
 
-Сводка для дашборда карточки «Наличные». Query как у analytics: `date_from`/`date_to` или `months`, `customer_code` / `customer_codes` / `org`, `account_id`. Ответ: `{ success, fact_source: "once", date_from, date_to, months, currency, series: [{ month, in, out, net, once_*, tmpl_*, count_* }], totals: { in, out, net, once_*, tmpl_*, count }, forecast: { … } }`. Поля `in`/`out`/`net` в `series` и `totals` — **только разовые** (факт графика). `tmpl_*` — справка по развёрнутым шаблонам, не входят в факт. **`forecast`** — следующий календарный месяц: активные шаблоны с overrides, без `skipped`.
+Сводка для дашборда карточки «Наличные». Query как у analytics: `date_from`/`date_to` или `months`, `customer_code` / `customer_codes` / `org`, `account_id`. Ответ: `{ success, fact_source: "once+tmpl_posted", date_from, date_to, months, currency, series: [{ month, in, out, net, once_*, tmpl_*, count_* }], totals: { in, out, net, once_*, tmpl_*, count, count_once, count_tmpl }, forecast: { … } }`. Поля `in`/`out`/`net` в `series` и `totals` — **факт** = разовые (`once_*`) + шаблонные проводки (`tmpl_*`), которые уже наступили (`booked_date <= сегодня`) и не ждут проверки (`review_pending`). Будущие даты и «ждут проверки» в факт не входят. `count_in`/`count_out` в `series` — число операций факта (разовые + шаблоны). **`forecast`** — следующий календарный месяц: активные шаблоны с overrides, без `skipped`.
 
 ### GET/POST/PATCH/DELETE `/api/finance/cash/templates`
 

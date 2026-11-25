@@ -7150,25 +7150,24 @@
     var fcOut = Number(fc.out) || 0;
     var fcIn = Number(fc.in) || 0;
     var fcYm = fc.ym ? fmtMonthLabel(fc.ym) : "—";
-    var onceOut = Number(t.once_out) || 0;
     var tmplOut = Number(t.tmpl_out) || 0;
     box.innerHTML =
-      '<div class="dg-fin-kpi is-cash-out"><div class="dg-fin-kpi-label">Факт исход (разовые)</div><div class="dg-fin-kpi-value">' +
-      esc(fmtMoney(onceOut, cur)) +
+      '<div class="dg-fin-kpi is-cash-out"><div class="dg-fin-kpi-label">Факт исход</div><div class="dg-fin-kpi-value">' +
+      esc(fmtMoney(totOut, cur)) +
       '</div><div class="dg-fin-kpi-sub">на графике динамики · ' +
       esc(String(Number(t.count) || 0)) +
       " оп.</div></div>" +
-      '<div class="dg-fin-kpi is-cash-in"><div class="dg-fin-kpi-label">Факт вход (разовые)</div><div class="dg-fin-kpi-value">' +
+      '<div class="dg-fin-kpi is-cash-in"><div class="dg-fin-kpi-label">Факт вход</div><div class="dg-fin-kpi-value">' +
       esc(fmtMoney(totIn, cur)) +
-      '</div><div class="dg-fin-kpi-sub">только разовые проводки</div></div>' +
+      '</div><div class="dg-fin-kpi-sub">разовые + прошедшие шаблоны</div></div>' +
       '<div class="dg-fin-kpi is-diff"><div class="dg-fin-kpi-label">Чистый факт</div><div class="dg-fin-kpi-value ' +
       netCls +
       '">' +
       esc((net > 0 ? "+" : "") + fmtMoney(net, cur)) +
-      '</div><div class="dg-fin-kpi-sub">вход − исход (без шаблонов)</div></div>' +
-      '<div class="dg-fin-kpi is-cash-fc"><div class="dg-fin-kpi-label">Шаблоны за период</div><div class="dg-fin-kpi-value">' +
+      '</div><div class="dg-fin-kpi-sub">вход − исход</div></div>' +
+      '<div class="dg-fin-kpi is-cash-fc"><div class="dg-fin-kpi-label">Шаблоны в факте</div><div class="dg-fin-kpi-value">' +
       esc(fmtMoney(tmplOut, cur)) +
-      '</div><div class="dg-fin-kpi-sub">справка · не в факте графика</div></div>' +
+      '</div><div class="dg-fin-kpi-sub">исход из шаблонов · уже наступившие</div></div>' +
       '<div class="dg-fin-kpi is-cash-fc"><div class="dg-fin-kpi-label">Потребуется (прогноз)</div><div class="dg-fin-kpi-value">' +
       esc(fmtMoney(fcOut, cur)) +
       '</div><div class="dg-fin-kpi-sub">' +
@@ -7354,13 +7353,13 @@
                         var idx = items && items[0] ? items[0].dataIndex : -1;
                         var s = series[idx] || {};
                         var lines = [
-                          "Факт = разовые · оп.: " +
-                            ((Number(s.count_in) || 0) + (Number(s.count_out) || 0)),
+                          "Факт · оп.: " + ((Number(s.count_in) || 0) + (Number(s.count_out) || 0)),
                         ];
                         if ((Number(s.tmpl_out) || 0) > 0.005) {
-                          lines.push(
-                            "Шаблоны (не в факте): " + fmtMoney(Number(s.tmpl_out) || 0, cur)
-                          );
+                          lines.push("в т.ч. шаблоны (исход): " + fmtMoney(Number(s.tmpl_out) || 0, cur));
+                        }
+                        if ((Number(s.once_out) || 0) > 0.005) {
+                          lines.push("в т.ч. разовые (исход): " + fmtMoney(Number(s.once_out) || 0, cur));
                         }
                         return lines;
                       },
