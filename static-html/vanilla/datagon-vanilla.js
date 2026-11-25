@@ -2515,7 +2515,7 @@
       if (st.open && st.startedAt) {
         btn.classList.remove("btn-success");
         btn.classList.add("btn-danger");
-        btn.setAttribute("data-dg-notify-start", "Завершаем смену…");
+        btn.removeAttribute("data-dg-notify-start");
         if (label) label.textContent = "Закончить";
         if (icon) icon.className = "pe-7s-less me-1";
         if (timer) {
@@ -2681,8 +2681,71 @@
         });
     }
 
+    function openStopConfirmModal(onConfirm) {
+      var st = readState();
+      var elapsed = st.startedAt ? formatElapsed(Date.now() - st.startedAt) : "00:00:00";
+      var overlay = document.getElementById("dg-ws-clock-stop-overlay");
+      if (!overlay) {
+        overlay = document.createElement("div");
+        overlay.id = "dg-ws-clock-stop-overlay";
+        overlay.setAttribute("role", "dialog");
+        overlay.setAttribute("aria-modal", "true");
+        overlay.setAttribute("aria-labelledby", "dg-ws-clock-stop-title");
+        overlay.style.cssText =
+          "position:fixed;inset:0;background:rgba(15,23,42,.48);z-index:1085;display:none;align-items:center;justify-content:center;padding:16px;";
+        overlay.innerHTML =
+          '<div class="card shadow" style="width:100%;max-width:420px;margin:0;">' +
+          '<div class="card-body">' +
+          '<h5 class="card-title mb-2" id="dg-ws-clock-stop-title">Завершить рабочий день?</h5>' +
+          '<p class="small text-muted mb-2" id="dg-ws-clock-stop-elapsed"></p>' +
+          '<p class="small mb-3">Смена будет остановлена, время зафиксируется в табеле и синхронизируется с CRM.</p>' +
+          '<div class="d-flex justify-content-end gap-2">' +
+          '<button type="button" class="btn btn-sm btn-outline-secondary" id="dg-ws-clock-stop-cancel">Отмена</button>' +
+          '<button type="button" class="btn btn-sm btn-danger" id="dg-ws-clock-stop-ok" data-dg-notify-start="Завершаем смену…">Завершить смену</button>' +
+          "</div></div></div>";
+        document.body.appendChild(overlay);
+      }
+      var elInfo = document.getElementById("dg-ws-clock-stop-elapsed");
+      if (elInfo) elInfo.textContent = "Текущая длительность смены: " + elapsed;
+      var cancelBtn = document.getElementById("dg-ws-clock-stop-cancel");
+      var okBtn = document.getElementById("dg-ws-clock-stop-ok");
+
+      function close() {
+        overlay.style.display = "none";
+        document.removeEventListener("keydown", onKey);
+        overlay.removeEventListener("click", onBackdrop);
+        if (cancelBtn) cancelBtn.removeEventListener("click", onCancel);
+        if (okBtn) okBtn.removeEventListener("click", onOk);
+      }
+      function onKey(ev) {
+        if (ev.key === "Escape") close();
+      }
+      function onBackdrop(ev) {
+        if (ev.target === overlay) close();
+      }
+      function onCancel() {
+        close();
+      }
+      function onOk() {
+        close();
+        if (typeof onConfirm === "function") onConfirm();
+      }
+
+      document.addEventListener("keydown", onKey);
+      overlay.addEventListener("click", onBackdrop);
+      if (cancelBtn) cancelBtn.addEventListener("click", onCancel);
+      if (okBtn) okBtn.addEventListener("click", onOk);
+      overlay.style.display = "flex";
+    }
+
     function toggle() {
-      return readState().open ? stop() : start();
+      if (readState().open) {
+        openStopConfirmModal(function () {
+          stop();
+        });
+        return Promise.resolve(readState());
+      }
+      return start();
     }
 
     window.DatagonWorkClock = {
