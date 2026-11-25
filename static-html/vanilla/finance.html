@@ -2996,6 +2996,71 @@
             </div>
           </div>
 
+          <div id="dg-fin-cash-once-overlay" class="dg-fin-confirm-overlay d-none" role="dialog" aria-modal="true" aria-labelledby="dg-fin-cash-once-modal-title">
+            <div class="dg-fin-confirm-dialog card shadow" style="max-width:480px">
+              <div class="card-body">
+                <h5 class="card-title" id="dg-fin-cash-once-modal-title">Правка разовой проводки</h5>
+                <p class="small text-muted" id="dg-fin-cash-once-modal-sub"></p>
+                <div class="row g-2">
+                  <div class="col-6">
+                    <label class="form-label" for="dg-fin-cash-once-m-date">Дата</label>
+                    <input type="date" class="form-control form-control-sm" id="dg-fin-cash-once-m-date" />
+                  </div>
+                  <div class="col-6">
+                    <label class="form-label" for="dg-fin-cash-once-m-dir">Направление</label>
+                    <select id="dg-fin-cash-once-m-dir" class="form-select form-select-sm">
+                      <option value="out">Исходящий</option>
+                      <option value="in">Входящий</option>
+                    </select>
+                  </div>
+                  <div class="col-12">
+                    <label class="form-label" for="dg-fin-cash-once-m-amount">Сумма</label>
+                    <input type="text" class="form-control form-control-sm" id="dg-fin-cash-once-m-amount" inputmode="decimal" placeholder="10 000" />
+                  </div>
+                  <div class="col-12">
+                    <label class="form-label" for="dg-fin-cash-once-m-purpose">Назначение</label>
+                    <input type="text" class="form-control form-control-sm" id="dg-fin-cash-once-m-purpose" />
+                  </div>
+                  <div class="col-12">
+                    <label class="form-label" for="dg-fin-cash-once-m-scope">Привязка</label>
+                    <select id="dg-fin-cash-once-m-scope" class="form-select form-select-sm">
+                      <option value="all">Все компании</option>
+                      <option value="org">Организация</option>
+                    </select>
+                  </div>
+                  <div class="col-12 d-none" id="dg-fin-cash-once-m-org-wrap">
+                    <div class="row g-2">
+                      <div class="col-6">
+                        <label class="form-label" for="dg-fin-cash-once-m-org-q">Поиск организации</label>
+                        <input type="search" class="form-control form-control-sm" id="dg-fin-cash-once-m-org-q" placeholder="Поиск…" autocomplete="off" />
+                      </div>
+                      <div class="col-6">
+                        <label class="form-label" for="dg-fin-cash-once-m-org">Организация</label>
+                        <select id="dg-fin-cash-once-m-org" class="form-select form-select-sm"></select>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="col-12">
+                    <label class="form-label" for="dg-fin-cash-once-m-plan">Статья плана</label>
+                    <select id="dg-fin-cash-once-m-plan" class="form-select form-select-sm">
+                      <option value="">— не привязана —</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="mt-2 d-flex flex-wrap gap-3">
+                  <label class="mb-0 small d-inline-flex align-items-center gap-1">
+                    <input type="checkbox" class="form-check-input m-0" id="dg-fin-cash-once-m-chart" checked />
+                    <span>Учитывать в графике</span>
+                  </label>
+                </div>
+                <div class="d-flex justify-content-end gap-2 mt-3">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-fin-cash-once-m-cancel">Отмена</button>
+                  <button type="button" class="btn btn-sm btn-primary" id="dg-fin-cash-once-m-ok" data-dg-notify-start="Сохраняем проводку…">Сохранить</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
         </div>
 
         <div class="app-footer">
@@ -8208,6 +8273,131 @@
       toast("danger", e.message || String(e));
     });
   }
+  function openCashOnceEditor(id) {
+    if (!state.canWrite) {
+      toast("warning", "Нет прав на запись");
+      return;
+    }
+    var row = (state.cashOnce || []).find(function (r) {
+      return String(r.id) === String(id);
+    });
+    if (!row) {
+      toast("warning", "Строка не найдена");
+      return;
+    }
+    state.cashOnceModalEditId = row.id;
+    var overlay = el("dg-fin-cash-once-overlay");
+    var sub = el("dg-fin-cash-once-modal-sub");
+    if (sub) sub.textContent = "Разовая №" + String(row.id) + " · " + String(row.purpose || "—");
+    if (el("dg-fin-cash-once-m-date")) {
+      var ymd = String(row.booked_date || "").slice(0, 10);
+      el("dg-fin-cash-once-m-date").value = /^\d{4}-\d{2}-\d{2}$/.test(ymd) ? ymd : "";
+    }
+    if (el("dg-fin-cash-once-m-dir")) el("dg-fin-cash-once-m-dir").value = row.direction === "in" ? "in" : "out";
+    if (el("dg-fin-cash-once-m-amount")) el("dg-fin-cash-once-m-amount").value = formatCashMoneyInput(row.amount);
+    if (el("dg-fin-cash-once-m-purpose")) el("dg-fin-cash-once-m-purpose").value = row.purpose || "";
+    if (el("dg-fin-cash-once-m-scope")) el("dg-fin-cash-once-m-scope").value = row.scope === "org" ? "org" : "all";
+    syncCashScopeUi("once-m");
+    if (row.scope === "org") {
+      renderCashOrgSelect("once-m", false);
+      if (el("dg-fin-cash-once-m-org") && row.customer_code) {
+        var sel = el("dg-fin-cash-once-m-org");
+        var code = String(row.customer_code);
+        if (![].slice.call(sel.options).some(function (o) { return o.value === code; })) {
+          sel.insertAdjacentHTML(
+            "beforeend",
+            '<option value="' + esc(code) + '">' + esc(orgOptionLabel(code) || code) + "</option>"
+          );
+        }
+        sel.value = code;
+      }
+    }
+    fillCashPlanSelects();
+    if (el("dg-fin-cash-once-m-plan")) {
+      el("dg-fin-cash-once-m-plan").value = row.plan_item_id ? String(row.plan_item_id) : "";
+    }
+    if (el("dg-fin-cash-once-m-chart")) el("dg-fin-cash-once-m-chart").checked = Number(row.include_chart) !== 0;
+    if (overlay) overlay.classList.remove("d-none");
+  }
+  function closeCashOnceEditor() {
+    var overlay = el("dg-fin-cash-once-overlay");
+    if (overlay) overlay.classList.add("d-none");
+    state.cashOnceModalEditId = null;
+  }
+  function saveCashOnceModal() {
+    var editId = state.cashOnceModalEditId;
+    if (!editId) return Promise.resolve();
+    if (!state.canWrite) {
+      toast("warning", "Нет прав на запись");
+      return Promise.resolve();
+    }
+    var booked = String((el("dg-fin-cash-once-m-date") && el("dg-fin-cash-once-m-date").value) || "").trim();
+    var amount = parseCashMoney(el("dg-fin-cash-once-m-amount") && el("dg-fin-cash-once-m-amount").value);
+    var purpose = String((el("dg-fin-cash-once-m-purpose") && el("dg-fin-cash-once-m-purpose").value) || "").trim();
+    var scope = String((el("dg-fin-cash-once-m-scope") && el("dg-fin-cash-once-m-scope").value) || "all");
+    var org = String((el("dg-fin-cash-once-m-org") && el("dg-fin-cash-once-m-org").value) || "").trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(booked)) {
+      toast("warning", "Укажите дату");
+      return Promise.resolve();
+    }
+    if (amount == null || amount <= 0) {
+      toast("warning", "Укажите сумму больше 0");
+      return Promise.resolve();
+    }
+    if (!purpose) {
+      toast("warning", "Укажите назначение");
+      return Promise.resolve();
+    }
+    if (scope === "org" && !org) {
+      toast("warning", "Выберите организацию или «Все компании»");
+      return Promise.resolve();
+    }
+    var planVal = String((el("dg-fin-cash-once-m-plan") && el("dg-fin-cash-once-m-plan").value) || "").trim();
+    var body = {
+      booked_date: booked,
+      direction: (el("dg-fin-cash-once-m-dir") && el("dg-fin-cash-once-m-dir").value) || "out",
+      amount: amount,
+      purpose: purpose,
+      scope: scope,
+      customer_code: scope === "org" ? org : "",
+      include_chart: !!(el("dg-fin-cash-once-m-chart") && el("dg-fin-cash-once-m-chart").checked),
+      plan_item_id: planVal ? Number(planVal) : null,
+    };
+    var btn = el("dg-fin-cash-once-m-ok");
+    var run = function () {
+      return fetch("/api/finance/cash/tx/" + encodeURIComponent(editId), {
+        method: "PATCH",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
+        .then(function (r) {
+          return r.json().then(function (j) {
+            return { ok: r.ok, j: j };
+          });
+        })
+        .then(function (x) {
+          if (!x.ok || !x.j || !x.j.success) throw new Error((x.j && x.j.error) || "Не удалось сохранить");
+          closeCashOnceEditor();
+          toast("success", "Разовая проводка обновлена");
+          return Promise.all([
+            loadCashLists(),
+            loadTx(),
+            loadMonthlyAnalytics(),
+            loadCounterparties(),
+            loadPlans(),
+          ]);
+        });
+    };
+    if (window.DatagonNotify && window.DatagonNotify.busyRun && btn) {
+      return window.DatagonNotify.busyRun(btn, run).catch(function (e) {
+        toast("danger", e.message || String(e));
+      });
+    }
+    return run().catch(function (e) {
+      toast("danger", e.message || String(e));
+    });
+  }
   function bindCashUi() {
     var onceTab = el("dg-fin-cash-tab-once");
     var tmplTab = el("dg-fin-cash-tab-tmpl");
@@ -8294,7 +8484,8 @@
         }
         var editBtn = ev.target && ev.target.closest ? ev.target.closest(".dg-fin-cash-once-edit") : null;
         if (editBtn) {
-          beginEditCashOnce(editBtn.getAttribute("data-id"));
+          ev.preventDefault();
+          openCashOnceEditor(editBtn.getAttribute("data-id"));
           return;
         }
         var btn = ev.target && ev.target.closest ? ev.target.closest(".dg-fin-cash-once-del") : null;
@@ -8359,6 +8550,34 @@
       document.addEventListener("keydown", function (ev) {
         if (ev.key === "Escape" && monthOverlay && !monthOverlay.classList.contains("d-none")) {
           closeCashMonthEditor();
+        }
+      });
+    }
+    var onceMCancel = el("dg-fin-cash-once-m-cancel");
+    var onceMOk = el("dg-fin-cash-once-m-ok");
+    var onceMOverlay = el("dg-fin-cash-once-overlay");
+    var onceMScope = el("dg-fin-cash-once-m-scope");
+    var onceMOrgQ = el("dg-fin-cash-once-m-org-q");
+    if (onceMCancel) onceMCancel.addEventListener("click", closeCashOnceEditor);
+    if (onceMOk) onceMOk.addEventListener("click", saveCashOnceModal);
+    if (onceMScope) {
+      onceMScope.addEventListener("change", function () {
+        syncCashScopeUi("once-m");
+        if (onceMScope.value === "org") renderCashOrgSelect("once-m", false);
+      });
+    }
+    if (onceMOrgQ) {
+      onceMOrgQ.addEventListener("input", function () {
+        renderCashOrgSelect("once-m", true);
+      });
+    }
+    if (onceMOverlay) {
+      onceMOverlay.addEventListener("click", function (ev) {
+        if (ev.target === onceMOverlay) closeCashOnceEditor();
+      });
+      document.addEventListener("keydown", function (ev) {
+        if (ev.key === "Escape" && onceMOverlay && !onceMOverlay.classList.contains("d-none")) {
+          closeCashOnceEditor();
         }
       });
     }
@@ -8646,7 +8865,7 @@
           );
         })
         .join("");
-    ["dg-fin-cash-once-plan", "dg-fin-cash-tmpl-plan"].forEach(function (id) {
+    ["dg-fin-cash-once-plan", "dg-fin-cash-once-m-plan", "dg-fin-cash-tmpl-plan"].forEach(function (id) {
       var sel = el(id);
       if (!sel) return;
       var cur = sel.value;
